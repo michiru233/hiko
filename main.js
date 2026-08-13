@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu, shell, nativeImage } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, shell, nativeImage, net, session } = require('electron');
 const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
@@ -64,6 +64,15 @@ function mostCommon(values) {
   return best;
 }
 
+// 从文件夹名 / 标题 / 文件名中提取 DLsite RJ 号
+function extractRjCode(...values) {
+  for (const value of values) {
+    const match = String(value || '').match(/RJ\d{5,}/i);
+    if (match) return match[0].toUpperCase();
+  }
+  return null;
+}
+
 // 嵌入封面缩放到 500px 内并转 JPEG，避免超大 base64 拖垮导入与 library.json
 function coverDataUrl(picture) {
   try {
@@ -125,6 +134,7 @@ async function scanAlbum(albumPath, files) {
     title: mostCommon(albumNames) || path.basename(albumPath),
     artist: mostCommon(artists) || mostCommon(albumArtists) || '本地导入',
     albumArtist: mostCommon(albumArtists) || '',
+    rjCode: extractRjCode(path.basename(albumPath), path.basename(audioPaths[0] || '')),
     group: '本地文件夹',
     genre: '未分类',
     duration: tracks.length,
@@ -254,6 +264,100 @@ ipcMain.handle('library:removeAlbums', async (_event, { ids, deleteFiles }) => {
   }
   await saveLibrary(kept);
   return { ok: true, removed: removed.length, deletedFiles };
+});
+
+// ---- DLsite 标签刮削 ----
+function scrapeConfigPath() {
+  return path.join(app.getPath('userData'), 'scrape-config.json');
+}
+async function loadScrapeConfig() {
+  try {
+    return JSON.parse(await fs.readFile(scrapeConfigPath(), 'utf8'));
+  } catch {
+    return { proxy: 'http://127.0.0.1:7890' };
+  }
+}
+async function saveScrapeConfig(config) {
+  await fs.mkdir(path.dirname(scrapeConfigPath()), { recursive: true });
+  await fs.writeFile(scrapeConfigPath(), JSON.stringify({ proxy: String(config?.proxy || '') }, null, 2));
+}
+async function fetchWithProxy(url, proxy) {
+  const headers = { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36' };
+  // 优先使用系统代理直连
+  try {
+    const res = await net.fetch(url, { headers });
+    if (res.ok) return await res.text();
+  } catch { /* 落到显式代理 */ }
+  if (proxy) {
+    const s = session.defaultSession;
+    await s.setProxy({ proxyRules: proxy });
+    try {
+      const res = await net.fetch(url, { headers });
+      if (res.ok) return await res.text();
+    } finally {
+      await s.setProxy({ proxyRules: '' }); // 恢复系统代理
+    }
+  }
+  throw new Error('无法连接 DLsite');
+}
+function parseDlsiteTags(html) {
+  const tags = [];
+  const regex = /genre\/\d+\/from\/work\.genre\/ana_flg\/all"[^>]*>([^<]+)<\/a>/gi;
+  let match;
+  while ((match = regex.exec(html)) !== null) {
+    const tag = match[1].trim();
+    if (tag && !tags.includes(tag)) tags.push(tag);
+  }
+  return tags;
+}
+function parseDlsiteTitle(html) {
+  const match = html.match(/id="work_name"[^>]*>([^<]+)</);
+  return match ? match[1].trim() : null;
+}
+
+ipcMain.handle('dlsite:scrape', async (event, { ids, force }) => {
+  const idSet = new Set((Array.isArray(ids) ? ids : []).map(String));
+  const albums = await loadLibrary();
+  const targets = albums.filter(a => idSet.has(String(a.id)) && a.rjCode);
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const config = await loadScrapeConfig();
+  const results = { scraped: 0, failed: 0, skipped: 0, details: [] };
+  let processed = 0;
+  const sendProgress = () => {
+    if (!win || win.isDestroyed()) return;
+    win.webContents.send('dlsite:progress', { processed, total: targets.length });
+  };
+  sendProgress();
+  for (const album of targets) {
+    processed += 1;
+    if (!force && Array.isArray(album.tags) && album.tags.length) {
+      results.skipped += 1;
+      sendProgress();
+      continue;
+    }
+    try {
+      const html = await fetchWithProxy(`https://www.dlsite.com/maniax/work/=/product_id/${album.rjCode}.html`, config.proxy);
+      const tags = parseDlsiteTags(html);
+      const title = parseDlsiteTitle(html);
+      album.tags = tags;
+      album.dlsiteTitle = title;
+      results.details.push({ id: album.id, rj: album.rjCode, tags, title });
+      if (tags.length) results.scraped += 1;
+      else results.failed += 1;
+    } catch (error) {
+      results.failed += 1;
+      results.details.push({ id: album.id, rj: album.rjCode, error: error.message });
+    }
+    await new Promise(resolve => setTimeout(resolve, 400)); // 礼貌限速
+    sendProgress();
+  }
+  await saveLibrary(albums);
+  return results;
+});
+ipcMain.handle('scrape:getConfig', () => loadScrapeConfig());
+ipcMain.handle('scrape:setConfig', async (_event, config) => {
+  await saveScrapeConfig(config);
+  return loadScrapeConfig();
 });
 
 ipcMain.handle('library:load', () => loadLibrary());

@@ -38,7 +38,7 @@
   </div>
   <audio id="audio" preload="metadata"></audio>
   <div class="toast" id="toast" role="status"></div>
-  <div class="multi-bar" id="multiBar"><span class="multi-count" id="multiCount">已选 0 张</span><button id="multiSelectAll">全选</button><span class="multi-sep"></span><button id="multiDelete">删除所选</button><button class="danger" id="multiDeleteFiles">删除所选及源文件</button><span class="multi-sep"></span><button id="multiCancel">取消</button></div>
+  <div class="multi-bar" id="multiBar"><span class="multi-count" id="multiCount">已选 0 张</span><button id="multiSelectAll">全选</button><span class="multi-sep"></span><button id="multiScrape">刮削标签</button><span class="multi-sep"></span><button id="multiDelete">删除所选</button><button class="danger" id="multiDeleteFiles">删除所选及源文件</button><span class="multi-sep"></span><button id="multiCancel">取消</button></div>
   <div class="import-bar" id="importBar"><span class="import-text" id="importText">正在导入</span><div class="import-track"><span class="import-fill" id="importFill"></span></div></div>
   <div class="ctx-menu" id="ctxMenu" role="menu"></div>
   <div class="confirm-overlay" id="confirmOverlay">
@@ -81,6 +81,10 @@
         <div class="settings-row">
           <div class="settings-label">失效记录</div>
           <button class="settings-btn" id="cleanMissing">清理失效记录</button>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">刮削代理</div>
+          <input class="settings-input" id="scrapeProxy" placeholder="留空使用系统代理" spellcheck="false" />
         </div>
       </section>
       <section class="settings-section">

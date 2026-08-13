@@ -13,5 +13,9 @@ contextBridge.exposeInMainWorld('kikoeru', {
     return ipcRenderer.invoke('library:importFolder');
   },
   onImportRequested: callback => ipcRenderer.on('library:requestImport', callback),
-  onImportProgress: callback => ipcRenderer.on('import:progress', (_event, data) => callback(data))
+  onImportProgress: callback => ipcRenderer.on('import:progress', (_event, data) => callback(data)),
+  scrapeDlsite: (ids, force) => ipcRenderer.invoke('dlsite:scrape', { ids, force }),
+  onDlsiteProgress: callback => ipcRenderer.on('dlsite:progress', (_event, data) => callback(data)),
+  getScrapeConfig: () => ipcRenderer.invoke('scrape:getConfig'),
+  setScrapeConfig: config => ipcRenderer.invoke('scrape:setConfig', config)
 });

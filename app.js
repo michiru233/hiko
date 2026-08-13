@@ -7,14 +7,14 @@ let volume=Number(localStorage.getItem('kikoeru-volume')||0.8);
 audio.volume=volume;
 function coverSvg(a){const[c1,c2]=a.color;const sh={moon:`<circle cx="76" cy="76" r="30" fill="${c1}"/><circle cx="87" cy="68" r="27" fill="${c2}"/><circle cx="128" cy="34" r="2" fill="#fff"/><circle cx="110" cy="54" r="1.5" fill="#fff"/>`,window:`<rect x="34" y="25" width="84" height="104" rx="3" fill="#f4d7ca"/><path d="M76 25v104M34 76h84" stroke="${c2}" stroke-width="3" opacity=".45"/>`,radio:`<rect x="38" y="46" width="76" height="55" rx="8" fill="#e6f4ec"/><circle cx="76" cy="73" r="16" fill="${c2}"/><circle cx="76" cy="73" r="6" fill="#d2ecdc"/>`,cat:`<path d="M40 111L49 55l20 16 14-18 24 17 8 41z" fill="#fff1c8"/><circle cx="65" cy="82" r="3" fill="${c2}"/><circle cx="91" cy="82" r="3" fill="${c2}"/>`,star:`<path d="M76 27l10 30 31 1-24 19 8 30-25-17-25 17 8-30-24-19 31-1z" fill="#e9ddff"/><circle cx="76" cy="75" r="11" fill="${c2}"/>`,herb:`<path d="M76 130V61M76 90C50 83 48 64 48 64s19-2 28 19M76 76c23-11 30-29 30-29s-21 2-30 19" fill="none" stroke="#f1f6d8" stroke-width="7" stroke-linecap="round"/>`,sea:`<path d="M0 102q30-22 60 0t60 0t60 0v60H0z" fill="#d4f0f1"/><path d="M0 115q30-22 60 0t60 0t60 0" fill="none" stroke="#fff" stroke-width="3"/><circle cx="135" cy="39" r="20" fill="#fff1ba"/>`,book:`<path d="M33 47q22-9 43 7v64q-21-15-43-5zM119 47q-22-9-43 7v64q21-15 43-5z" fill="#f8f2ed"/><path d="M76 54v63" stroke="${c2}" stroke-width="3"/>`,heart:`<path d="M76 119C35 91 42 54 62 54c8 0 13 5 14 11 2-6 7-11 15-11 20 0 27 37-15 65z" fill="#ffe4df" stroke="${c2}" stroke-width="3"/>`,pillow:`<rect x="38" y="49" width="76" height="51" rx="24" fill="#eee7ff" transform="rotate(-8 76 75)"/>`,fire:`<path d="M76 119c-20-16-14-34 0-48 2 12 10 15 9 25 10-13 14-25 7-39 24 22 24 45 1 62z" fill="#ffd7a6"/><path d="M76 115c-11-12-6-24 1-31 2 8 6 11 8 16 5-8 4-14 3-19 13 14 9 28-12 34z" fill="#e98062"/>`,sun:`<circle cx="76" cy="77" r="24" fill="#fff6ca"/><g stroke="#fff6ca" stroke-width="4" stroke-linecap="round"><path d="M76 31v13M76 110v13M30 77h13M109 77h13M43 44l9 9M100 101l9 9M109 44l-9 9M52 101l-9 9"/></g>`};return`<svg viewBox="0 0 152 152" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="g${a.id}" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs><rect width="152" height="152" fill="url(#g${a.id})"/><circle cx="128" cy="125" r="48" fill="#ffffff18"/><circle cx="23" cy="18" r="36" fill="#ffffff10"/>${sh[a.shape]}<text x="12" y="142" fill="#ffffffb8" font-family="sans-serif" font-size="8" letter-spacing="1.6">KIKOERU · ${String(a.id).padStart(2,'0')}</text></svg>`}
 function filtered(){let d=albums.filter(a=>{if(activeView==='收藏夹'&&!a.favorite)return false;if(['ASMR','剧情向','治愈系','环境音'].includes(activeView)&&a.genre!==activeView)return false;if(activeFilter==='unplayed'&&a.played>=a.duration)return false;if(activeFilter==='favorite'&&!a.favorite)return false;const q=$('#searchInput').value.trim().toLowerCase();return!q||[a.title,a.artist,a.group,a.genre].some(v=>v.toLowerCase().includes(q))});const s=$('#sortSelect').value;if(s==='title')d.sort((a,b)=>a.title.localeCompare(b.title));if(s==='duration')d.sort((a,b)=>b.duration-a.duration);return d}
-function render(){const d=filtered();$('#resultText').textContent=`显示 ${d.length} 张专辑`;$('#clearBtn').style.display=($('#searchInput').value||activeFilter!=='all'||activeView!=='全部音声')?'block':'none';$('#countAll').textContent=albums.length;$('#countFav').textContent=albums.filter(a=>a.favorite).length;$('#countAsmr').textContent=albums.filter(a=>a.genre==='ASMR').length;$('#countStory').textContent=albums.filter(a=>a.genre==='剧情向').length;$('#countHeal').textContent=albums.filter(a=>a.genre==='治愈系').length;$('#countAmbient').textContent=albums.filter(a=>a.genre==='环境音').length;$('#heroCount').textContent=albums.filter(a=>a.favorite).length;grid.innerHTML=d.length?d.map((a,i)=>`<article class="album-card${multiSelect&&multiIds.has(String(a.id))?' selected':''}" data-id="${a.id}" style="animation-delay:${i*35}ms"><div class="cover-wrap">${multiSelect?`<button class="multi-check${multiIds.has(String(a.id))?' on':''}" data-multi="${a.id}">${multiIds.has(String(a.id))?'✓':''}</button>`:''}${coverSvg(a)}<div class="cover-overlay"><button class="quick-play" data-play="${a.id}">▶</button><button class="fav" data-fav="${a.id}">${a.favorite?'♥':'♡'}</button></div></div><div class="album-info"><div class="album-title">${a.title}${a.albumArtist?`<span class="artist-inline">${a.albumArtist}</span>`:''}</div><div class="album-sub">${a.artist} · ${a.group}</div><div class="tags"><span class="tag purple">${a.genre}</span><span class="tag">${a.totalDuration?formatDuration(a.totalDuration):`${a.duration} 首`}</span></div></div></article>`).join(''):(albums.length?`<div class="empty"><strong>没有找到匹配的音声</strong><span>试试其他关键词或清除筛选条件</span></div>`:`<div class="empty"><strong>还没有导入任何音声</strong><span>点击右上角 ↥ 按钮，选择你的音声文件夹</span></div>`);document.querySelectorAll('.album-card').forEach(c=>c.addEventListener('click',e=>{if(e.target.closest('[data-play]')||e.target.closest('[data-fav]')||e.target.closest('[data-multi]'))return;const a=albums.find(x=>String(x.id)===String(c.dataset.id));if(multiSelect){toggleMulti(String(a.id));return;}openDetail(a)}));document.querySelectorAll('[data-play]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();selected=albums.find(x=>x.id==b.dataset.play);playing=true;updatePlayer()}));document.querySelectorAll('[data-fav]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const a=albums.find(x=>x.id==b.dataset.fav);a.favorite=!a.favorite;if(window.kikoeru?.saveAlbums)window.kikoeru.saveAlbums(albums);render()}));document.querySelectorAll('[data-multi]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();toggleMulti(b.dataset.multi)}))}
+function render(){const d=filtered();$('#resultText').textContent=`显示 ${d.length} 张专辑`;$('#clearBtn').style.display=($('#searchInput').value||activeFilter!=='all'||activeView!=='全部音声')?'block':'none';$('#countAll').textContent=albums.length;$('#countFav').textContent=albums.filter(a=>a.favorite).length;$('#countAsmr').textContent=albums.filter(a=>a.genre==='ASMR').length;$('#countStory').textContent=albums.filter(a=>a.genre==='剧情向').length;$('#countHeal').textContent=albums.filter(a=>a.genre==='治愈系').length;$('#countAmbient').textContent=albums.filter(a=>a.genre==='环境音').length;$('#heroCount').textContent=albums.filter(a=>a.favorite).length;grid.innerHTML=d.length?d.map((a,i)=>`<article class="album-card${multiSelect&&multiIds.has(String(a.id))?' selected':''}" data-id="${a.id}" style="animation-delay:${i*35}ms"><div class="cover-wrap">${multiSelect?`<button class="multi-check${multiIds.has(String(a.id))?' on':''}" data-multi="${a.id}">${multiIds.has(String(a.id))?'✓':''}</button>`:''}${coverSvg(a)}<div class="cover-overlay"><button class="quick-play" data-play="${a.id}">▶</button><button class="fav" data-fav="${a.id}">${a.favorite?'♥':'♡'}</button></div></div><div class="album-info"><div class="album-title">${a.title}${a.albumArtist?`<span class="artist-inline">${a.albumArtist}</span>`:''}</div><div class="album-sub">${a.artist} · ${a.group}</div><div class="tags"><span class="tag purple">${a.genre}</span><span class="tag">${a.totalDuration?formatDuration(a.totalDuration):`${a.duration} 首`}</span></div>${a.tags&&a.tags.length?`<div class="tags dlsite-tags">${a.tags.slice(0,3).map(t=>`<span class="tag teal">${t}</span>`).join('')}${a.tags.length>3?`<span class="tag teal more">+${a.tags.length-3}</span>`:''}</div>`:''}</div></article>`).join(''):(albums.length?`<div class="empty"><strong>没有找到匹配的音声</strong><span>试试其他关键词或清除筛选条件</span></div>`:`<div class="empty"><strong>还没有导入任何音声</strong><span>点击右上角 ↥ 按钮，选择你的音声文件夹</span></div>`);document.querySelectorAll('.album-card').forEach(c=>c.addEventListener('click',e=>{if(e.target.closest('[data-play]')||e.target.closest('[data-fav]')||e.target.closest('[data-multi]'))return;const a=albums.find(x=>String(x.id)===String(c.dataset.id));if(multiSelect){toggleMulti(String(a.id));return;}openDetail(a)}));document.querySelectorAll('[data-play]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();selected=albums.find(x=>x.id==b.dataset.play);playing=true;updatePlayer()}));document.querySelectorAll('[data-fav]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();const a=albums.find(x=>x.id==b.dataset.fav);a.favorite=!a.favorite;if(window.kikoeru?.saveAlbums)window.kikoeru.saveAlbums(albums);render()}));document.querySelectorAll('[data-multi]').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();toggleMulti(b.dataset.multi)}))}
 function albumCover(a){return a.currentCover||a.localCover||null}
 function openDetail(a){
   selected=a;
   const sourceCover=albumCover(a); const detailCover=sourceCover?`<img src="${sourceCover}" alt="${a.title}" />`:coverSvg(a);
   const tracks=a.tracks||[{name:`序章 · ${a.title}`},{name:'午后的阳光'},{name:'轻声的约定'}];
   const progress=a.totalDuration?Math.round((a.played/(a.totalDuration||1))*100):0;
-  $('#detailContent').innerHTML=`<div class="detail-cover">${detailCover}</div><div class="detail-kicker">${a.genre.toUpperCase()} · ALBUM ${String(a.id).padStart(2,'0')}</div><h2>${a.title}${a.albumArtist?`<span class="artist-inline">${a.albumArtist}</span>`:''}</h2><div class="detail-artist">${a.artist} · ${a.group}</div><div class="detail-actions"><button class="primary" id="detailPlay">▶ 从头播放</button><button class="secondary" id="detailFav">${a.favorite?'♥ 已收藏':'♡ 收藏'}</button></div><div class="detail-row"><span>总时长</span><strong>${a.tracks?`${tracks.length} 首${a.totalDuration?` · ${formatDuration(a.totalDuration)}`:''}`:`${a.duration} 分钟`}</strong></div><div class="detail-row"><span>完成进度</span><strong>${progress}%</strong></div><div class="track-list">${tracks.map((t,i)=>{const active=a.tracks&&selected===a&&queueIndex===i;return`<div class="track ${active?'active':''}" data-track-row="${i}"><button class="track-play" data-track-play="${i}" title="${active&&!audio.paused?'暂停':'播放'}">${active&&!audio.paused?'Ⅱ':'▶'}</button><span class="track-no">${String(i+1).padStart(2,'0')}</span><span class="track-title">${t.name}</span><span class="track-time">${t.duration?formatTime(t.duration):'--:--'}</span></div>`}).join('')}</div>`;
+  $('#detailContent').innerHTML=`<div class="detail-cover">${detailCover}</div><div class="detail-kicker">${a.genre.toUpperCase()} · ALBUM ${String(a.id).padStart(2,'0')}</div><h2>${a.title}${a.albumArtist?`<span class="artist-inline">${a.albumArtist}</span>`:''}</h2><div class="detail-artist">${a.artist} · ${a.group}</div><div class="detail-actions"><button class="primary" id="detailPlay">▶ 从头播放</button><button class="secondary" id="detailFav">${a.favorite?'♥ 已收藏':'♡ 收藏'}</button></div><div class="detail-row"><span>总时长</span><strong>${a.tracks?`${tracks.length} 首${a.totalDuration?` · ${formatDuration(a.totalDuration)}`:''}`:`${a.duration} 分钟`}</strong></div><div class="detail-row"><span>完成进度</span><strong>${progress}%</strong></div>${a.tags&&a.tags.length?`<div class="detail-tags">${a.tags.map(t=>`<span class="tag teal">${t}</span>`).join('')}</div>`:''}${a.rjCode?`<div class="detail-rj">DLsite ${a.rjCode}${a.dlsiteTitle?` · ${a.dlsiteTitle}`:''}</div>`:''}<div class="track-list">${tracks.map((t,i)=>{const active=a.tracks&&selected===a&&queueIndex===i;return`<div class="track ${active?'active':''}" data-track-row="${i}"><button class="track-play" data-track-play="${i}" title="${active&&!audio.paused?'暂停':'播放'}">${active&&!audio.paused?'Ⅱ':'▶'}</button><span class="track-no">${String(i+1).padStart(2,'0')}</span><span class="track-title">${t.name}</span><span class="track-time">${t.duration?formatTime(t.duration):'--:--'}</span></div>`}).join('')}</div>`;
   $('#details').classList.add('open');
   $('#detailPlay').onclick=()=>{if(a.tracks)chooseImported(a,0);else{playing=true;updatePlayer()};};
   $('#detailFav').onclick=()=>{a.favorite=!a.favorite;if(window.kikoeru?.saveAlbums)window.kikoeru.saveAlbums(albums);openDetail(a);render()};
@@ -255,6 +255,7 @@ ctxMenu.addEventListener('click', e => {
   closeCtxMenu();
   if (action === 'delete-only') deleteAlbum(id, false);
   else if (action === 'delete-files') deleteAlbum(id, true);
+  else if (action === 'scrape-tags') scrapeDlsite([id], true);
 });
 grid.addEventListener('contextmenu', e => {
   const card = e.target.closest('.album-card');
@@ -263,7 +264,9 @@ grid.addEventListener('contextmenu', e => {
   e.stopPropagation();
   const a = albums.find(x => String(x.id) === String(card.dataset.id));
   if (!a) return;
-  const items = [{ action: 'delete-only', label: '从库中删除' }];
+  const items = [];
+  if (a.rjCode) items.push({ action: 'scrape-tags', label: '刮削 DLsite 标签' });
+  items.push({ action: 'delete-only', label: '从库中删除' });
   if (a.sourcePath || a.tracks?.some(t => t.url && t.url.startsWith('file:'))) {
     items.push({ action: 'delete-files', label: '删除专辑及源文件', danger: true });
   }
@@ -369,6 +372,7 @@ async function deleteAlbums(ids, deleteFiles){
 }
 $('#multiDelete').onclick = () => deleteAlbums([...multiIds], false);
 $('#multiDeleteFiles').onclick = () => deleteAlbums([...multiIds], true);
+$('#multiScrape').onclick = () => scrapeDlsite([...multiIds], false);
 
 // ---- 导入进度条 ----
 let importBarHideTimer;
@@ -388,6 +392,45 @@ function hideImportBar(){
   $('#importBar').classList.remove('open');
 }
 window.kikoeru?.onImportProgress(showImportProgress);
+
+// ---- DLsite 标签刮削 ----
+async function scrapeDlsite(ids, force){
+  const idSet = new Set(ids.map(String));
+  const withRj = albums.filter(a => idSet.has(String(a.id)) && a.rjCode);
+  const noRj = ids.length - withRj.length;
+  if (!withRj.length) { showToast('所选专辑均未检测到 RJ 号'); return; }
+  try {
+    const result = await window.kikoeru.scrapeDlsite(withRj.map(a => a.id), force);
+    const scraped = new Map((result.details || []).filter(d => Array.isArray(d.tags)).map(d => [String(d.id), d]));
+    albums.forEach(a => {
+      if (scraped.has(String(a.id))) {
+        a.tags = scraped.get(String(a.id)).tags;
+        a.dlsiteTitle = scraped.get(String(a.id)).title || a.dlsiteTitle;
+      }
+    });
+    render();
+    hideImportBar();
+    showToast(`刮削完成：${result.scraped} 张成功，${result.failed} 张失败${noRj ? `，${noRj} 张无 RJ 号` : ''}${result.skipped ? `，${result.skipped} 张已刮过跳过` : ''}`);
+  } catch (error) { hideImportBar(); showToast(`刮削失败：${error.message || '未知错误'}`); }
+}
+window.kikoeru?.onDlsiteProgress(({ processed, total }) => {
+  const bar = $('#importBar');
+  bar.classList.add('open');
+  $('#importText').textContent = `正在刮削 ${processed} / ${total} 张专辑的标签`;
+  $('#importFill').style.width = total ? `${Math.round(processed / total * 100)}%` : '0%';
+  if (processed >= total) {
+    clearTimeout(importBarHideTimer);
+    importBarHideTimer = setTimeout(() => bar.classList.remove('open'), 800);
+  }
+});
+// 刮削代理设置
+if (window.kikoeru?.getScrapeConfig) {
+  window.kikoeru.getScrapeConfig().then(config => { if (config) $('#scrapeProxy').value = config.proxy || ''; }).catch(() => {});
+}
+$('#scrapeProxy').addEventListener('change', () => {
+  window.kikoeru?.setScrapeConfig({ proxy: $('#scrapeProxy').value.trim() });
+  showToast('刮削代理已保存');
+});
 
 // ---- 侧栏显示/隐藏 ----
 const sidebarToggle = $('#sidebarToggle');
