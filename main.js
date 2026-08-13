@@ -64,13 +64,20 @@ function mostCommon(values) {
   return best;
 }
 
-// 从文件夹名 / 标题 / 文件名中提取 DLsite RJ 号
+// 从文件夹路径 / 标题 / 文件名中提取 DLsite RJ 号（检查路径所有层级）
 function extractRjCode(...values) {
   for (const value of values) {
     const match = String(value || '').match(/RJ\d{5,}/i);
     if (match) return match[0].toUpperCase();
   }
   return null;
+}
+
+// 专辑兜底取 RJ 号（老专辑 rjCode 缺失时从路径/标题/曲目名再提取）
+function albumRjCode(album) {
+  if (album.rjCode) return album.rjCode;
+  const trackNames = (album.tracks || []).map(track => track.name || '').join(' ');
+  return extractRjCode(album.sourcePath, album.title, trackNames);
 }
 
 // 嵌入封面缩放到 500px 内并转 JPEG，避免超大 base64 拖垮导入与 library.json
@@ -134,7 +141,7 @@ async function scanAlbum(albumPath, files) {
     title: mostCommon(albumNames) || path.basename(albumPath),
     artist: mostCommon(artists) || mostCommon(albumArtists) || '本地导入',
     albumArtist: mostCommon(albumArtists) || '',
-    rjCode: extractRjCode(path.basename(albumPath), path.basename(audioPaths[0] || '')),
+    rjCode: extractRjCode(albumPath, path.basename(albumPath), path.basename(audioPaths[0] || '')),
     group: '本地文件夹',
     genre: '未分类',
     duration: tracks.length,
@@ -318,10 +325,18 @@ function parseDlsiteTitle(html) {
 ipcMain.handle('dlsite:scrape', async (event, { ids, force }) => {
   const idSet = new Set((Array.isArray(ids) ? ids : []).map(String));
   const albums = await loadLibrary();
-  const targets = albums.filter(a => idSet.has(String(a.id)) && a.rjCode);
+  const targets = [];
+  let noRj = 0;
+  for (const album of albums) {
+    if (!idSet.has(String(album.id))) continue;
+    const rj = albumRjCode(album);
+    if (!rj) { noRj += 1; continue; }
+    album.rjCode = rj;
+    targets.push(album);
+  }
   const win = BrowserWindow.fromWebContents(event.sender);
   const config = await loadScrapeConfig();
-  const results = { scraped: 0, failed: 0, skipped: 0, details: [] };
+  const results = { scraped: 0, failed: 0, skipped: 0, noRj, details: [] };
   let processed = 0;
   const sendProgress = () => {
     if (!win || win.isDestroyed()) return;
@@ -358,6 +373,23 @@ ipcMain.handle('scrape:getConfig', () => loadScrapeConfig());
 ipcMain.handle('scrape:setConfig', async (_event, config) => {
   await saveScrapeConfig(config);
   return loadScrapeConfig();
+});
+
+// 在 Finder 中打开专辑所在文件夹
+ipcMain.handle('library:revealInFolder', async (_event, id) => {
+  const albums = await loadLibrary();
+  const album = albums.find(a => String(a.id) === String(id));
+  if (!album) return { ok: false, error: 'not-found' };
+  if (album.sourcePath) {
+    const error = await shell.openPath(album.sourcePath);
+    return { ok: !error, error: error || null };
+  }
+  const track = (album.tracks || []).find(t => t.url && t.url.startsWith('file:'));
+  if (track) {
+    shell.showItemInFolder(fileURLToPath(track.url));
+    return { ok: true };
+  }
+  return { ok: false, error: '无本地文件' };
 });
 
 ipcMain.handle('library:load', () => loadLibrary());

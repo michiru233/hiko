@@ -14,7 +14,7 @@ function openDetail(a){
   const sourceCover=albumCover(a); const detailCover=sourceCover?`<img src="${sourceCover}" alt="${a.title}" />`:coverSvg(a);
   const tracks=a.tracks||[{name:`序章 · ${a.title}`},{name:'午后的阳光'},{name:'轻声的约定'}];
   const progress=a.totalDuration?Math.round((a.played/(a.totalDuration||1))*100):0;
-  $('#detailContent').innerHTML=`<div class="detail-cover">${detailCover}</div><div class="detail-kicker">${a.genre.toUpperCase()} · ALBUM ${String(a.id).padStart(2,'0')}</div><h2>${a.title}${a.albumArtist?`<span class="artist-inline">${a.albumArtist}</span>`:''}</h2><div class="detail-artist">${a.artist} · ${a.group}</div><div class="detail-actions"><button class="primary" id="detailPlay">▶ 从头播放</button><button class="secondary" id="detailFav">${a.favorite?'♥ 已收藏':'♡ 收藏'}</button></div><div class="detail-row"><span>总时长</span><strong>${a.tracks?`${tracks.length} 首${a.totalDuration?` · ${formatDuration(a.totalDuration)}`:''}`:`${a.duration} 分钟`}</strong></div><div class="detail-row"><span>完成进度</span><strong>${progress}%</strong></div>${a.tags&&a.tags.length?`<div class="detail-tags">${a.tags.map(t=>`<span class="tag teal">${t}</span>`).join('')}</div>`:''}${a.rjCode?`<div class="detail-rj">DLsite ${a.rjCode}${a.dlsiteTitle?` · ${a.dlsiteTitle}`:''}</div>`:''}<div class="track-list">${tracks.map((t,i)=>{const active=a.tracks&&selected===a&&queueIndex===i;return`<div class="track ${active?'active':''}" data-track-row="${i}"><button class="track-play" data-track-play="${i}" title="${active&&!audio.paused?'暂停':'播放'}">${active&&!audio.paused?'Ⅱ':'▶'}</button><span class="track-no">${String(i+1).padStart(2,'0')}</span><span class="track-title">${t.name}</span><span class="track-time">${t.duration?formatTime(t.duration):'--:--'}</span></div>`}).join('')}</div>`;
+  $('#detailContent').innerHTML=`<div class="detail-cover">${detailCover}</div><div class="detail-kicker">${a.genre.toUpperCase()} · ALBUM ${String(a.id).padStart(2,'0')}</div><h2>${a.title}${a.albumArtist?`<span class="artist-inline">${a.albumArtist}</span>`:''}</h2><div class="detail-artist">${a.artist} · ${a.group}</div><div class="detail-actions"><button class="primary" id="detailPlay">▶ 从头播放</button><button class="secondary" id="detailFav">${a.favorite?'♥ 已收藏':'♡ 收藏'}</button></div><div class="detail-row"><span>总时长</span><strong>${a.tracks?`${tracks.length} 首${a.totalDuration?` · ${formatDuration(a.totalDuration)}`:''}`:`${a.duration} 分钟`}</strong></div><div class="detail-row"><span>完成进度</span><strong>${progress}%</strong></div>${a.tags&&a.tags.length?`<div class="detail-tags">${a.tags.map(t=>`<span class="tag teal">${t}</span>`).join('')}</div>`:''}${albumRj(a)?`<div class="detail-rj">DLsite ${albumRj(a)}${a.dlsiteTitle?` · ${a.dlsiteTitle}`:''}</div>`:''}<div class="track-list">${tracks.map((t,i)=>{const active=a.tracks&&selected===a&&queueIndex===i;return`<div class="track ${active?'active':''}" data-track-row="${i}"><button class="track-play" data-track-play="${i}" title="${active&&!audio.paused?'暂停':'播放'}">${active&&!audio.paused?'Ⅱ':'▶'}</button><span class="track-no">${String(i+1).padStart(2,'0')}</span><span class="track-title">${t.name}</span><span class="track-time">${t.duration?formatTime(t.duration):'--:--'}</span></div>`}).join('')}</div>`;
   $('#details').classList.add('open');
   $('#detailPlay').onclick=()=>{if(a.tracks)chooseImported(a,0);else{playing=true;updatePlayer()};};
   $('#detailFav').onclick=()=>{a.favorite=!a.favorite;if(window.kikoeru?.saveAlbums)window.kikoeru.saveAlbums(albums);openDetail(a);render()};
@@ -256,6 +256,10 @@ ctxMenu.addEventListener('click', e => {
   if (action === 'delete-only') deleteAlbum(id, false);
   else if (action === 'delete-files') deleteAlbum(id, true);
   else if (action === 'scrape-tags') scrapeDlsite([id], true);
+  else if (action === 'reveal-folder') {
+    if (window.kikoeru?.revealInFolder) window.kikoeru.revealInFolder(id);
+    else showToast('打开文件夹仅桌面版可用');
+  }
 });
 grid.addEventListener('contextmenu', e => {
   const card = e.target.closest('.album-card');
@@ -265,7 +269,11 @@ grid.addEventListener('contextmenu', e => {
   const a = albums.find(x => String(x.id) === String(card.dataset.id));
   if (!a) return;
   const items = [];
-  if (a.rjCode) items.push({ action: 'scrape-tags', label: '刮削 DLsite 标签' });
+  const rj = albumRj(a);
+  if (rj) items.push({ action: 'scrape-tags', label: '刮削 DLsite 标签' });
+  if (a.sourcePath || a.tracks?.some(t => t.url && t.url.startsWith('file:'))) {
+    items.push({ action: 'reveal-folder', label: '打开所在文件夹' });
+  }
   items.push({ action: 'delete-only', label: '从库中删除' });
   if (a.sourcePath || a.tracks?.some(t => t.url && t.url.startsWith('file:'))) {
     items.push({ action: 'delete-files', label: '删除专辑及源文件', danger: true });
@@ -394,23 +402,28 @@ function hideImportBar(){
 window.kikoeru?.onImportProgress(showImportProgress);
 
 // ---- DLsite 标签刮削 ----
+function albumRj(a){
+  if (a.rjCode) return a.rjCode;
+  const match = /RJ\d{5,}/i.exec(`${a.sourcePath || ''} ${a.title || ''}`);
+  return match ? match[0].toUpperCase() : null;
+}
 async function scrapeDlsite(ids, force){
-  const idSet = new Set(ids.map(String));
-  const withRj = albums.filter(a => idSet.has(String(a.id)) && a.rjCode);
-  const noRj = ids.length - withRj.length;
-  if (!withRj.length) { showToast('所选专辑均未检测到 RJ 号'); return; }
+  if (!ids.length) return;
   try {
-    const result = await window.kikoeru.scrapeDlsite(withRj.map(a => a.id), force);
+    const result = await window.kikoeru.scrapeDlsite(ids.map(String), force);
     const scraped = new Map((result.details || []).filter(d => Array.isArray(d.tags)).map(d => [String(d.id), d]));
     albums.forEach(a => {
-      if (scraped.has(String(a.id))) {
-        a.tags = scraped.get(String(a.id)).tags;
-        a.dlsiteTitle = scraped.get(String(a.id)).title || a.dlsiteTitle;
+      const hit = scraped.get(String(a.id));
+      if (hit) {
+        a.tags = hit.tags;
+        a.dlsiteTitle = hit.title || a.dlsiteTitle;
+        a.rjCode = hit.rj || a.rjCode;
       }
     });
     render();
     hideImportBar();
-    showToast(`刮削完成：${result.scraped} 张成功，${result.failed} 张失败${noRj ? `，${noRj} 张无 RJ 号` : ''}${result.skipped ? `，${result.skipped} 张已刮过跳过` : ''}`);
+    if (result.noRj === ids.length) { showToast('所选专辑均未检测到 RJ 号'); return; }
+    showToast(`刮削完成：${result.scraped} 张成功，${result.failed} 张失败${result.noRj ? `，${result.noRj} 张无 RJ 号` : ''}${result.skipped ? `，${result.skipped} 张已刮过跳过` : ''}`);
   } catch (error) { hideImportBar(); showToast(`刮削失败：${error.message || '未知错误'}`); }
 }
 window.kikoeru?.onDlsiteProgress(({ processed, total }) => {

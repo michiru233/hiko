@@ -17,5 +17,6 @@ contextBridge.exposeInMainWorld('kikoeru', {
   scrapeDlsite: (ids, force) => ipcRenderer.invoke('dlsite:scrape', { ids, force }),
   onDlsiteProgress: callback => ipcRenderer.on('dlsite:progress', (_event, data) => callback(data)),
   getScrapeConfig: () => ipcRenderer.invoke('scrape:getConfig'),
-  setScrapeConfig: config => ipcRenderer.invoke('scrape:setConfig', config)
+  setScrapeConfig: config => ipcRenderer.invoke('scrape:setConfig', config),
+  revealInFolder: id => ipcRenderer.invoke('library:revealInFolder', id)
 });
