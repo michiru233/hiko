@@ -1,0 +1,30 @@
+{
+  "name": "kikoeru-mac",
+  "version": "0.24.0",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "dev": "node server.js",
+    "desktop": "electron .",
+    "bump-version": "node scripts/bump-version.js",
+    "dist": "npm run bump-version && electron-builder --mac"
+  },
+  "dependencies": {
+    "music-metadata": "^11.9.0"
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "top.voicehub.kikoeru",
+    "productName": "Kikoeru",
+    "mac": {
+      "category": "public.app-category.music",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    }
+  }
+}

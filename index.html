@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kikoeru · 音声库</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="window">
+    <aside class="sidebar">
+      <div class="traffic"><i></i><i></i><i></i></div>
+      <div class="brand"><div class="brand-mark">K</div><div class="brand-text"><strong>Kikoeru</strong><span>音声收藏室</span></div><button class="sidebar-toggle" id="sidebarToggle" title="隐藏侧栏">◀</button></div>
+      <nav class="primary-nav">
+        <button class="nav-item active" data-view="全部音声"><span class="icon">▦</span>全部音声<span class="count" id="countAll">0</span></button>
+        <button class="nav-item" data-view="最近添加"><span class="icon">◷</span>最近添加</button>
+        <button class="nav-item" data-view="正在播放"><span class="icon">▶</span>正在播放</button>
+        <button class="nav-item" data-view="收藏夹"><span class="icon">♡</span>收藏夹<span class="count" id="countFav">0</span></button>
+      </nav>
+      <div class="nav-label">我的分类 <button class="plus" title="新建分类">＋</button></div>
+      <nav class="collections">
+        <button class="nav-item" data-view="ASMR"><span class="dot lavender"></span>ASMR<span class="count" id="countAsmr">0</span></button>
+        <button class="nav-item" data-view="剧情向"><span class="dot coral"></span>剧情向<span class="count" id="countStory">0</span></button>
+        <button class="nav-item" data-view="治愈系"><span class="dot mint"></span>治愈系<span class="count" id="countHeal">0</span></button>
+        <button class="nav-item" data-view="环境音"><span class="dot amber"></span>环境音<span class="count" id="countAmbient">0</span></button>
+      </nav>
+      <div class="sidebar-bottom"><button class="nav-item" id="settingsBtn"><span class="icon">⚙</span>偏好设置</button><div class="storage"><div class="storage-line"><span>本地存储</span><span>48.2 GB / 120 GB</span></div><div class="meter"><span></span></div></div></div>
+    </aside>
+    <main class="main">
+      <header class="topbar"><div class="breadcrumbs"><span>音声库</span><b>/</b><strong id="viewTitle">全部音声</strong></div><div class="top-actions"><button class="round-btn" title="切换主题" id="themeBtn">☼</button><button class="round-btn" title="导入文件夹" id="importBtn">↥</button><input id="folderInput" type="file" webkitdirectory directory multiple hidden /><div class="avatar">M</div></div></header>
+      <section class="hero"><div><p class="eyebrow">PERSONAL LIBRARY</p><h1 id="heroTitle">全部音声</h1><p class="hero-copy">把每一次心动、每一段陪伴，都放进自己的声音收藏室。</p></div><div class="hero-stat"><span>已收藏</span><strong id="heroCount">0</strong><small>张专辑</small></div></section>
+      <section class="toolbar"><div class="search"><span>⌕</span><input id="searchInput" placeholder="搜索标题、社团或声优" /><kbd>⌘ K</kbd></div><div class="filter-group"><button class="filter active" data-filter="all">全部</button><button class="filter" data-filter="unplayed">未听完</button><button class="filter" data-filter="favorite">已收藏</button></div><div class="sort"><span>排序</span><select id="sortSelect"><option value="recent">最近添加</option><option value="title">标题 A-Z</option><option value="duration">时长</option></select></div><button class="view-toggle active" title="网格视图">▦</button><button class="view-toggle" title="列表视图">☷</button><button class="multi-select-btn" id="multiSelectBtn" title="多选专辑进行批量操作">多选</button></section>
+      <div class="results-line"><span id="resultText">显示 12 张专辑</span><button class="clear" id="clearBtn">清除筛选</button></div>
+      <section class="album-grid" id="albumGrid"></section>
+    </main>
+    <aside class="details" id="details"><button class="close-detail" id="closeDetail" title="关闭">✕</button><div id="detailContent"></div></aside>
+    <footer class="player"><div class="now-cover" id="nowCover"></div><div class="now-meta"><span class="now-label">正在播放</span><strong id="nowTitle">雨后的耳语 · 01</strong><small id="nowArtist">CV. 花泽香菜 · 02:18 / 18:42</small></div><div class="player-controls"><button title="上一首" id="prevBtn">◀◀</button><button class="play" id="playBtn" title="播放/暂停">▶</button><button title="下一首" id="nextBtn">▶▶</button></div><div class="timeline" id="timeline"><span class="time-current" id="currentTime">00:00</span><input class="progress" id="progressInput" type="range" min="0" max="100" value="0" /><span class="time-total" id="totalTime">00:00</span><div class="progress-tooltip" id="progressTooltip"></div></div><div class="player-actions"><div class="mode-control"><button class="mode-btn" id="modeBtn" title="播放模式">列表</button><div class="mode-popover" id="modePopover"><div class="mode-title">播放模式</div><button class="mode-option" data-mode="list"><span class="mode-name">列表循环</span><span class="mode-desc">本专辑最后一首播完回到第一首</span></button><button class="mode-option" data-mode="single"><span class="mode-name">单曲循环</span><span class="mode-desc">当前曲目循环播放</span></button><button class="mode-option" data-mode="shuffle"><span class="mode-name">随机播放</span><span class="mode-desc">当前专辑内随机切曲</span></button><button class="mode-option" data-mode="album"><span class="mode-name">专辑循环</span><span class="mode-desc">播完当前专辑自动接下一张</span></button></div></div><div class="volume-control"><button title="音量" id="volumeBtn">◖</button><div class="volume-popover" id="volumePopover"><span>音量</span><input id="volumeInput" type="range" min="0" max="100" value="80" /><strong id="volumeValue">80%</strong></div></div></div></footer>
+  </div>
+  <audio id="audio" preload="metadata"></audio>
+  <div class="toast" id="toast" role="status"></div>
+  <div class="multi-bar" id="multiBar"><span class="multi-count" id="multiCount">已选 0 张</span><button id="multiSelectAll">全选</button><span class="multi-sep"></span><button id="multiDelete">删除所选</button><button class="danger" id="multiDeleteFiles">删除所选及源文件</button><span class="multi-sep"></span><button id="multiCancel">取消</button></div>
+  <div class="import-bar" id="importBar"><span class="import-text" id="importText">正在导入</span><div class="import-track"><span class="import-fill" id="importFill"></span></div></div>
+  <div class="ctx-menu" id="ctxMenu" role="menu"></div>
+  <div class="confirm-overlay" id="confirmOverlay">
+    <div class="confirm" role="alertdialog" aria-modal="true">
+      <h3 id="confirmTitle">确认</h3>
+      <p id="confirmText"></p>
+      <div class="confirm-actions"><button class="settings-btn" id="confirmCancel">取消</button><button class="danger-btn" id="confirmOk">删除</button></div>
+    </div>
+  </div>
+  <div class="settings-overlay" id="settingsOverlay">
+    <div class="settings" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <header class="settings-header"><h2 id="settingsTitle">偏好设置</h2><button class="close-settings" id="settingsClose" title="关闭">×</button></header>
+      <section class="settings-section">
+        <h3>外观</h3>
+        <div class="settings-row">
+          <div class="settings-label">主题</div>
+          <div class="theme-switch">
+            <button class="theme-option" data-theme-opt="light">浅色</button>
+            <button class="theme-option" data-theme-opt="dark">深色</button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">强调色</div>
+          <div class="accent-swatches">
+            <button class="swatch" data-accent="#6559d8" style="--swatch:#6559d8" title="紫"></button>
+            <button class="swatch" data-accent="#3b82c4" style="--swatch:#3b82c4" title="蓝"></button>
+            <button class="swatch" data-accent="#2ea8a0" style="--swatch:#2ea8a0" title="青"></button>
+            <button class="swatch" data-accent="#4c9f70" style="--swatch:#4c9f70" title="绿"></button>
+            <button class="swatch" data-accent="#d97b4d" style="--swatch:#d97b4d" title="橙"></button>
+            <button class="swatch" data-accent="#c6577e" style="--swatch:#c6577e" title="粉"></button>
+          </div>
+        </div>
+      </section>
+      <section class="settings-section">
+        <h3>数据</h3>
+        <div class="settings-row">
+          <div class="settings-label">库文件位置</div>
+          <button class="settings-btn" id="openDataDir">打开数据目录</button>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">失效记录</div>
+          <button class="settings-btn" id="cleanMissing">清理失效记录</button>
+        </div>
+      </section>
+      <section class="settings-section">
+        <h3>关于</h3>
+        <div class="settings-about">
+          <div class="about-brand">K</div>
+          <div><strong>Kikoeru · 音声收藏室</strong><p>版本 <span id="appVersion">—</span></p><p>本地优先的音声库管理器</p></div>
+        </div>
+      </section>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
