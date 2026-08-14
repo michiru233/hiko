@@ -24,6 +24,8 @@ class LibraryNotifier extends StateNotifier<List<Album>> {
   /// 导入合并：新专辑在前，按 id 去重；同时按「曲目 URL」匹配旧专辑并替换
   /// （解决分组策略变化导致的 id 漂移——同文件换组后不产生重复专辑）
   Future<void> mergeNew(List<Album> incoming) async {
+    if (incoming.isEmpty) return;
+
     final importedIds = {for (final a in incoming) a.id};
     // 旧库中「包含与任一新专辑相同曲目文件」的专辑 → 被替换（移除旧条目）
     final newTrackUrls = {
@@ -33,9 +35,16 @@ class LibraryNotifier extends StateNotifier<List<Album>> {
       for (final a in state)
         if (a.tracks.any((t) => newTrackUrls.contains(t.url))) a.id,
     };
+    final kept = state.where((a) => !importedIds.contains(a.id) && !replacedIds.contains(a.id)).toList();
+
+    // 检查是否有实质变动（若全部已存在且没有替换/新加入项，直接返回，避免无谓触发重渲染与整库序列化写盘）
+    if (kept.length == state.length && incoming.every((inc) => state.any((s) => s.id == inc.id))) {
+      return;
+    }
+
     final next = [
       ...incoming,
-      ...state.where((a) => !importedIds.contains(a.id) && !replacedIds.contains(a.id)),
+      ...kept,
     ];
     state = next;
     await _store.save(next);

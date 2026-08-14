@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/library_provider.dart';
+import '../../data/library_reorganizer.dart';
 import '../../models/album.dart';
 import '../../models/track.dart';
 import '../../playback/playback_controller.dart';
@@ -21,23 +22,29 @@ class DetailDrawer extends ConsumerStatefulWidget {
 }
 
 class _DetailDrawerState extends ConsumerState<DetailDrawer> {
-  late Album _album = widget.album;
-
-  void _refresh(Album album) {
-    setState(() => _album = album);
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final albums = ref.watch(libraryProvider);
-    // 保持与库同步（收藏切换等）
-    final album = albums.firstWhere((a) => a.id == _album.id, orElse: () => _album);
-    _album = album;
+    final album = ref.watch(
+      libraryProvider.select(
+        (list) => list.firstWhere(
+          (a) => a.id == widget.album.id,
+          orElse: () => widget.album,
+        ),
+      ),
+    );
 
-    final playback = ref.watch(playbackProvider);
-    final isCurrentAlbum = playback.album?.id == album.id;
-    final currentIndex = isCurrentAlbum ? playback.queueIndex : -1;
+    // 精确监听播放状态，避免 positionStream 高频更新导致抽屉频繁整树重建
+    final isCurrentAlbum = ref.watch(
+      playbackProvider.select((p) => p.album?.id == album.id),
+    );
+    final currentIndex = ref.watch(
+      playbackProvider.select((p) => isCurrentAlbum ? p.queueIndex : -1),
+    );
+    final isPlaying = ref.watch(
+      playbackProvider.select((p) => isCurrentAlbum && p.playing),
+    );
+
     final progress = album.totalDuration > 0
         ? ((album.played / album.totalDuration) * 100).round().clamp(0, 100)
         : 0;
@@ -54,113 +61,149 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
       child: Stack(
         children: [
           Positioned.fill(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // 封面
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: AspectRatio(
-                      aspectRatio: 1,
-                      child: AlbumCover(album: album),
-                    ),
-                  ),
-                  const SizedBox(height: 22),
-                  Text(
-                    '${album.genre.toUpperCase()} · ALBUM ${album.id.padLeft(2, '0')}',
-                    style: TextStyle(
-                      fontSize: 10,
-                      letterSpacing: 1.2,
-                      fontWeight: FontWeight.w700,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  Text(
-                    album.title,
-                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.7),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${album.artist} · ${album.group}',
-                    style: TextStyle(fontSize: 12, color: theme.hintColor),
-                  ),
-                  const SizedBox(height: 20),
-                  // 操作
-                  Row(
-                    children: [
-                      FilledButton.icon(
-                        onPressed: () => ref.read(playbackProvider.notifier).playAlbum(album, index: 0),
-                        icon: const Icon(Icons.play_arrow, size: 16),
-                        label: const Text('从头播放', style: TextStyle(fontSize: 11)),
+            child: SelectionArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 封面
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: AspectRatio(
+                        aspectRatio: 1,
+                        child: AlbumCover(album: album),
                       ),
-                      const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          await ref
-                              .read(libraryProvider.notifier)
-                              .updateAlbum(album.id, (a) => a.copyWith(favorite: !a.favorite));
-                          _refresh(albums.firstWhere((x) => x.id == album.id));
-                        },
-                        icon: Icon(
-                          album.favorite ? Icons.favorite : Icons.favorite_border,
-                          size: 14,
-                          color: album.favorite ? const Color(0xFFD34C44) : null,
-                        ),
-                        label: Text(album.favorite ? '已收藏' : '收藏', style: const TextStyle(fontSize: 11)),
+                    ),
+                    const SizedBox(height: 22),
+                    Text(
+                      '${album.genre.toUpperCase()} · ALBUM ${album.id.padLeft(2, '0')}',
+                      style: TextStyle(
+                        fontSize: 10,
+                        letterSpacing: 1.2,
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.primary,
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  // 信息行
-                  _InfoRow(label: '总时长', value: '${album.tracks.length} 首${album.totalDuration > 0 ? ' · ${formatDuration(album.totalDuration)}' : ''}'),
-                  _InfoRow(label: '完成进度', value: '$progress%'),
-                  // DLsite 标签
-                  if (album.tags.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 5,
-                      runSpacing: 5,
+                    ),
+                    const SizedBox(height: 7),
+                    Text(
+                      album.title,
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.7),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${album.artist} · ${album.rjCode ?? '本地导入'}',
+                      style: TextStyle(fontSize: 12, color: theme.hintColor),
+                    ),
+                    const SizedBox(height: 20),
+                    // 操作
+                    Row(
                       children: [
-                        for (final t in album.tags)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE3F4F2),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(t, style: const TextStyle(fontSize: 9, color: Color(0xFF2E8A8F))),
+                        FilledButton.icon(
+                          onPressed: () => ref.read(playbackProvider.notifier).playAlbum(album, index: 0),
+                          icon: const Icon(Icons.play_arrow, size: 16),
+                          label: const Text('从头播放', style: TextStyle(fontSize: 11)),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            await ref
+                                .read(libraryProvider.notifier)
+                                .updateAlbum(album.id, (a) => a.copyWith(favorite: !a.favorite));
+                          },
+                          icon: Icon(
+                            album.favorite ? Icons.favorite : Icons.favorite_border,
+                            size: 14,
+                            color: album.favorite ? const Color(0xFFD34C44) : null,
                           ),
+                          label: Text(album.favorite ? '已收藏' : '收藏', style: const TextStyle(fontSize: 11)),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            try {
+                              final result = await ref
+                                  .read(libraryReorganizerProvider)
+                                  .reorganizeSingleAlbum(album);
+                              if (result.albums.isNotEmpty) {
+                                final updated = result.albums.first;
+                                await ref
+                                    .read(libraryProvider.notifier)
+                                    .updateAlbum(album.id, (_) => updated);
+                              }
+                              if (context.mounted) {
+                                final stats = result.stats;
+                                final msg = stats.hasChanges
+                                    ? '专辑已整理完成（变动已同步）'
+                                    : '专辑文件与元数据已是最新';
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                  content: Text(msg),
+                                  behavior: SnackBarBehavior.floating,
+                                ));
+                              }
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                  content: Text('整理失败：$e'),
+                                  behavior: SnackBarBehavior.floating,
+                                ));
+                              }
+                            }
+                          },
+                          icon: const Icon(Icons.refresh, size: 14),
+                          label: const Text('整理专辑', style: TextStyle(fontSize: 11)),
+                        ),
                       ],
                     ),
+                    const SizedBox(height: 20),
+                    // 信息行
+                    _InfoRow(label: '总时长', value: '${album.tracks.length} 首${album.totalDuration > 0 ? ' · ${formatDuration(album.totalDuration)}' : ''}'),
+                    _InfoRow(label: '完成进度', value: '$progress%'),
+                    // DLsite 标签
+                    if (album.tags.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 5,
+                        runSpacing: 5,
+                        children: [
+                          for (final t in album.tags)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE3F4F2),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(t, style: const TextStyle(fontSize: 9, color: Color(0xFF2E8A8F))),
+                            ),
+                        ],
+                      ),
+                    ],
+                    if (rj != null) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        'DLsite $rj${album.dlsiteTitle != null ? ' · ${album.dlsiteTitle}' : ''}',
+                        style: TextStyle(fontSize: 10, color: theme.hintColor),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    // 曲目列表
+                    for (var i = 0; i < album.tracks.length; i++)
+                      _TrackRow(
+                        track: album.tracks[i],
+                        index: i,
+                        active: isCurrentAlbum && currentIndex == i,
+                        playing: isCurrentAlbum && currentIndex == i && isPlaying,
+                        onTap: () {
+                          final controller = ref.read(playbackProvider.notifier);
+                          if (isCurrentAlbum && currentIndex == i && isPlaying) {
+                            controller.pause();
+                          } else {
+                            controller.playAlbum(album, index: i);
+                          }
+                        },
+                      ),
                   ],
-                  if (rj != null) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      'DLsite $rj${album.dlsiteTitle != null ? ' · ${album.dlsiteTitle}' : ''}',
-                      style: TextStyle(fontSize: 10, color: theme.hintColor),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  // 曲目列表
-                  for (var i = 0; i < album.tracks.length; i++)
-                    _TrackRow(
-                      track: album.tracks[i],
-                      index: i,
-                      active: isCurrentAlbum && currentIndex == i,
-                      playing: isCurrentAlbum && currentIndex == i && playback.playing,
-                      onTap: () {
-                        final controller = ref.read(playbackProvider.notifier);
-                        if (isCurrentAlbum && currentIndex == i && playback.playing) {
-                          controller.pause();
-                        } else {
-                          controller.playAlbum(album, index: i);
-                        }
-                      },
-                    ),
-                ],
+                ),
               ),
             ),
           ),
@@ -228,12 +271,14 @@ class _TrackRow extends StatelessWidget {
     final color = active ? theme.colorScheme.primary : theme.colorScheme.onSurface;
     return InkWell(
       onTap: onTap,
+      mouseCursor: SystemMouseCursors.click,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 9),
         child: Row(
           children: [
             InkWell(
               onTap: onTap,
+              mouseCursor: SystemMouseCursors.click,
               borderRadius: BorderRadius.circular(13),
               child: Container(
                 width: 26,

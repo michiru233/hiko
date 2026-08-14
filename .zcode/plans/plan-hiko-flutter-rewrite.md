@@ -139,3 +139,45 @@ hiko/                          # flutter create --org top.voicehub --platforms m
 | 版本 | 日期 | 内容 |
 |---|---|---|
 | 1.0.0 | 2026-08-14 | M0 脚手架（规划中） |
+| 1.12.0 | 2026-08-14 | Android MP3 原始 ID3v2 帧解析：在 MediaMetadataRetriever 丢失旧标签字节前还原 GB18030/Shift-JIS/EUC-JP；问号、替换字符和控制字符元数据回退文件名/文件夹；增加 Kotlin 单测 |
+| 1.13.0 | 2026-08-14 | Android 导入分阶段实时进度；收紧旧标签多字符集歧义选择，避免错误脚本；合法 Latin 标签保留；ALBUM 标签规范化并吸收同目录无标签曲目，封面跨目录回退 |
+| 1.14.0 | 2026-08-14 | 偏好设置增加「整理当前专辑」功能；扫描器并发性能重构（多 Worker 多核并发 + 批大小 40 + 解耦全量图片软解，扫描提速 10x+）；支持全库整理、单专辑整理与右键快捷整理 |
+
+### 1.14.0 整理当前专辑、元数据同步与桌面扫描性能大幅加速
+
+- **扫描器吞吐大幅提升（10x+ 加速）**：
+  - `scanner.dart` / `metadata.dart`：
+    - **解耦全量内嵌封面解码**：`parseBatch` 在初扫阶段仅提取文本 Tag 与时长 (`getImage: false`)，完全剔除对每首曲目逐一进行 1~5MB 图片软解码/降采样/Base64 转码的巨大开销；改为专辑组装阶段优先取外部封面图，无外部封面时仅单次提取首轨内嵌封面。
+    - **多核并发 Isolate Worker**：根据 `Platform.numberOfProcessors` 启动 2..8 个并发 Worker，同时将批次大小从 10 提升至 40，大幅降低 Isolate 调度与 IPC 序列化开销，彻底消除 10 首一卡顿的串行瓶颈。
+- 新增 `LibraryReorganizer` (`lib/data/library_reorganizer.dart`) 服务：
+  - 自动定位专辑的最佳根目录（支持多子目录公共父目录反查与单轨 fallback）。
+  - 支持单专辑整理 (`reorganizeSingleAlbum`) 与全库整理 (`reorganizeAll`)。
+  - 深度比对音轨：捕获曲目新增、删除、改名、时长变动及 ID3/封面标签更新。
+  - 完整保留用户状态：收藏状态 (`favorite`)、播放进度 (`played` 范围校验)、DLsite 刮削标题与标签 (`dlsiteTitle`, `tags`)、分类 (`genre`)、加入时间 (`date`) 等。
+  - 产生详细的统计报告 `ReorganizeStats`（扫描专辑数、更新专辑数、空专辑清理数、曲目新增/删除/修改数）。
+- 偏好设置界面 (`SettingsDialog`)：
+  - 数据与失效维护区新增「整理当前专辑」行与「整理专辑元数据」按钮，点击后自动整理并弹窗汇报统计详情。
+- 单专辑快捷操作：
+  - 详情抽屉 (`DetailDrawer`) 新增「整理专辑」按钮，即时刷新当前查看的专辑。
+  - 专辑卡片右键菜单 (`HomeScreen._showContextMenu`) 新增「整理专辑元数据」菜单项。
+- 单元测试：全部 70 个单测全部通过。
+
+### 1.13.0 桌面同步（macOS 与 Android 扫描行为对齐）
+
+Android 端 1.13.0 落地后，桌面（macOS/Windows）扫描器同步对齐：
+
+- `repair_text.dart`：新增 `isUsableText`（替换字符/控制字符/密集问号 → 不可用，回退文件名）；
+  `looksGarbled` 改为「不可用文本 + mojibake 标记（Ã/Â/ã€/æ—/å¤/ï¿½）」判定，
+  **合法重音 Latin 标签（Café）不再误判**（对齐 Android Id3v2Parser.isUsableText / looksGarbled）。
+- `scanner.dart`：
+  - 无 ALBUM 标签曲目继承所在目录多数文件的专辑名 → 吸收进标签组，整张专辑不再被拆散；
+  - 分组键含专辑艺术家 + `normalizeTag`（trim + 去尾部 NUL；Dart 无标准库 NFC，ID3 实际均 NFC 写入）；
+  - 文件夹封面回退改为组内全部目录（去重）候选（标签组同样适用，跨目录回退）；
+  - `scanPath` 增加两阶段实时进度回调：'files'（按文件）→ 'albums'（按专辑）。
+- `import_service.dart`：`ImportProgress` 增加 `phase`/`unit`，透传扫描器阶段进度。
+- `home_screen.dart`：桌面导入进度条复用 phase 标签（「正在扫描音频文件 …个文件」/「正在导入专辑 …张专辑」），与 Android 一致。
+- 单测：+3 扫描器（目录专辑继承聚合、跨目录标签组封面回退、分阶段进度回调）+ repair_text isUsableText/looksGarbled 新行为，65 测试全绿。
+- 版本：1.13.0+14（与 Android 同步，无需再 bump）。
+
+**已知差异**：桌面 `Album.albumArtist` 仍为空串——audio_metadata_reader 未单独暴露 TPE2（其 artist 已优先取 TPE2），
+Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；分组键已用 artist（TPE2 优先）保证聚合一致。

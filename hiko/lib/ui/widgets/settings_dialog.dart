@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/library_provider.dart';
+import '../../data/library_reorganizer.dart';
 import '../../data/music_folder_scanner.dart';
 import '../../data/settings_store.dart';
 import '../../platform/platform_service.dart';
@@ -31,6 +32,50 @@ class SettingsDialog extends ConsumerWidget {
       }
     }
 
+    Future<void> reorganizeLibrary() async {
+      try {
+        final result = await ref.read(libraryReorganizerProvider).reorganizeAll();
+        final stats = result.stats;
+        if (!context.mounted) return;
+        if (!stats.hasChanges) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('已检查全部专辑，元数据与曲目均与本地文件一致'),
+            behavior: SnackBarBehavior.floating,
+          ));
+          return;
+        }
+
+        final parts = <String>[];
+        if (stats.updatedAlbums > 0) {
+          parts.add('更新 ${stats.updatedAlbums} 张专辑');
+        }
+        if (stats.removedAlbums > 0) {
+          parts.add('清理 ${stats.removedAlbums} 张空专辑');
+        }
+        if (stats.tracksAdded > 0) {
+          parts.add('+${stats.tracksAdded} 首新增');
+        }
+        if (stats.tracksRemoved > 0) {
+          parts.add('-${stats.tracksRemoved} 首删除');
+        }
+        if (stats.tracksModified > 0) {
+          parts.add('${stats.tracksModified} 首标签/信息更新');
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('整理完成：${parts.join('，')}'),
+          behavior: SnackBarBehavior.floating,
+        ));
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('整理失败：$e'),
+            behavior: SnackBarBehavior.floating,
+          ));
+        }
+      }
+    }
+
     return AlertDialog(
       titlePadding: const EdgeInsets.fromLTRB(24, 22, 16, 0),
       contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
@@ -57,6 +102,7 @@ class SettingsDialog extends ConsumerWidget {
                       for (final (key, label) in [('light', '浅色'), ('dark', '深色')])
                         InkWell(
                           onTap: () => ref.read(settingsProvider.notifier).setTheme(key),
+                          mouseCursor: SystemMouseCursors.click,
                           borderRadius: BorderRadius.circular(6),
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -79,6 +125,7 @@ class SettingsDialog extends ConsumerWidget {
                     for (final accent in AppSettings.accents)
                       InkWell(
                         onTap: () => ref.read(settingsProvider.notifier).setAccent(accent),
+                        mouseCursor: SystemMouseCursors.click,
                         child: Container(
                           width: 22,
                           height: 22,
@@ -176,6 +223,13 @@ class SettingsDialog extends ConsumerWidget {
                 trailing: _ActionButton(
                   label: '打开数据目录',
                   onTap: () => ref.read(platformServiceProvider).openDataDir(),
+                ),
+              ),
+              _SettingRow(
+                label: '整理当前专辑',
+                trailing: _ActionButton(
+                  label: '整理专辑元数据',
+                  onTap: reorganizeLibrary,
                 ),
               ),
               _SettingRow(

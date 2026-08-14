@@ -9,6 +9,7 @@ import '../../data/dlsite_scraper.dart';
 import '../../data/filter.dart';
 import '../../data/import_service.dart';
 import '../../data/library_provider.dart';
+import '../../data/library_reorganizer.dart';
 import '../../data/music_folder_scanner.dart';
 import '../../data/settings_store.dart';
 import '../../models/album.dart';
@@ -16,6 +17,7 @@ import '../../platform/platform_service.dart';
 import '../../utils/rj.dart';
 import '../widgets/album_card.dart';
 import '../widgets/confirm_dialog.dart';
+import '../widgets/context_menu.dart';
 import '../widgets/detail_drawer.dart';
 import '../widgets/player_bar.dart';
 import '../widgets/settings_dialog.dart';
@@ -51,13 +53,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // 启动后自动扫描常驻音乐目录（静默，新专辑自动入库）
-    Future.microtask(() async {
-      final scanner = ref.read(musicFolderScannerProvider);
-      final added = await scanner.scanAll(silent: true);
+    // 启动后执行静默扫描：由于有了快速增量 diff 检查，无新文件时 10ms 即可极速返回；
+    // 有新文件时展示非阻塞轻量提示与进度浮条。
+    Future.delayed(const Duration(milliseconds: 500), () async {
       if (!mounted) return;
+      final scanner = ref.read(musicFolderScannerProvider);
+      final added = await scanner.scanAll(
+        silent: true,
+        onProgress: (p) {
+          if (!mounted) return;
+          setState(() {
+            _importing = true;
+            _importLabel = p.phase == 'files' ? '正在快速同步音乐目录' : '正在导入新增专辑';
+            _importProcessed = p.processed;
+            _importTotal = p.total;
+            _importProgress = p.total > 0 ? p.processed / p.total : 0;
+          });
+        },
+      );
+      if (!mounted) return;
+      if (_importing) {
+        setState(() => _importing = false);
+      }
       if (added > 0) {
-        _showToast('已自动扫描，发现 $added 张新专辑');
+        _showToast('已自动同步，发现 $added 张新专辑');
       }
     });
   }
@@ -102,14 +121,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       List<Album> albums;
       if (isAndroid) {
         final android = platform as dynamic;
-        final result = await android.importAudioFolder(onProgress: (p, t) {
+        final result = await android.importAudioFolder(onProgress: (p, t, phase, unit) {
           if (!mounted) return;
           setState(() {
+            _importLabel = phase == 'files' ? '正在扫描音频文件' : '正在导入专辑';
             _importProcessed = p;
             _importTotal = t;
             _importProgress = t > 0 ? p / t : 0;
           });
         });
+
         albums = result.albums as List<Album>;
         // 记住所选目录 → 常驻自动扫描
         final treeUri = result.treeUri as String?;
@@ -123,6 +144,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         albums = await service.importFolders(paths, onProgress: (p) {
           if (!mounted) return;
           setState(() {
+            _importLabel = p.phase == 'files' ? '正在扫描音频文件' : '正在导入专辑';
             _importProcessed = p.processed;
             _importTotal = p.total;
             _importProgress = p.total > 0 ? p.processed / p.total : 0;
@@ -358,7 +380,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '$_importLabel $_importProcessed / $_importTotal 张专辑',
+                                '$_importLabel $_importProcessed / $_importTotal ${_importLabel.contains('音频') ? '个文件' : '张专辑'}',
                                 style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
                               ),
                               const SizedBox(height: 7),
@@ -368,7 +390,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                   width: 280,
                                   height: 4,
                                   child: LinearProgressIndicator(
-                                    value: _importProgress,
+                                    value: _importTotal > 0 ? _importProgress : null,
                                     backgroundColor: Colors.white.withValues(alpha: 0.15),
                                     color: theme.colorScheme.primary,
                                   ),
@@ -560,22 +582,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       hintText: '搜索标题、社团或声优',
                       hintStyle: TextStyle(fontSize: 13, color: theme.hintColor),
                       prefixIcon: const Icon(Icons.search, size: 18),
-                      suffixIcon: isMobile
-                          ? null
-                          : Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: theme.dividerColor),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  Platform.isMacOS ? '⌘ K' : 'Ctrl K',
-                                  style: TextStyle(fontSize: 10, color: theme.hintColor),
-                                ),
-                              ),
-                            ),
                       isDense: true,
                       filled: true,
                       fillColor: theme.colorScheme.surface,
@@ -605,6 +611,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     for (final (key, label) in [('all', '全部'), ('unplayed', '未听完'), ('favorite', '已收藏')])
                       InkWell(
                         onTap: () => setState(() => _filter = key),
+                        mouseCursor: SystemMouseCursors.click,
                         borderRadius: BorderRadius.circular(6),
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
@@ -787,28 +794,41 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  /// 右键/长按菜单：在触发位置（指针/手指）附近弹出，屏幕边缘自动收拢
+  /// 右键/长按菜单：弹出柔和圆角紧凑微动效上下文菜单
   void _showContextMenu(Album album, Offset position) {
-    // 以触发点为锚点（1x1 锚矩形），showMenu 会自动把菜单收在屏幕内
-    final overlay =
-        Overlay.of(context).context.findRenderObject() as RenderBox;
-    final anchor = RelativeRect.fromRect(
-      Rect.fromLTWH(position.dx, position.dy, 1, 1),
-      Offset.zero & overlay.size,
-    );
-    showMenu<String>(
+    showHikoContextMenu<String>(
       context: context,
-      position: anchor,
+      position: position,
       items: [
         if (albumRjCode(album) != null)
-          const PopupMenuItem(value: 'scrape', child: Text('刮削 DLsite 标签')),
+          const HikoContextMenuItem(
+            value: 'scrape',
+            label: '刮削 DLsite 标签',
+            icon: Icons.auto_awesome_outlined,
+          ),
         if (album.hasLocalFiles)
-          const PopupMenuItem(value: 'reveal', child: Text('打开所在文件夹')),
-        const PopupMenuItem(value: 'delete-only', child: Text('从库中删除')),
+          const HikoContextMenuItem(
+            value: 'reorganize',
+            label: '整理专辑元数据',
+            icon: Icons.sync_outlined,
+          ),
         if (album.hasLocalFiles)
-          const PopupMenuItem(
+          const HikoContextMenuItem(
+            value: 'reveal',
+            label: '打开所在文件夹',
+            icon: Icons.folder_open_outlined,
+          ),
+        const HikoContextMenuItem(
+          value: 'delete-only',
+          label: '从库中删除',
+          icon: Icons.remove_circle_outline,
+        ),
+        if (album.hasLocalFiles)
+          const HikoContextMenuItem(
             value: 'delete-files',
-            child: Text('删除专辑及源文件', style: TextStyle(color: Color(0xFFD34C44))),
+            label: '删除专辑及源文件',
+            icon: Icons.delete_outline,
+            isDestructive: true,
           ),
       ],
     ).then((action) {
@@ -816,6 +836,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       switch (action) {
         case 'scrape':
           _scrapeSelected({album.id}, force: true);
+        case 'reorganize':
+          _reorganizeSingle(album);
         case 'reveal':
           ref.read(platformServiceProvider).revealInFolder(album);
         case 'delete-only':
@@ -824,6 +846,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           _deleteSingle(album, true);
       }
     });
+  }
+
+  Future<void> _reorganizeSingle(Album album) async {
+    try {
+      final result = await ref
+          .read(libraryReorganizerProvider)
+          .reorganizeSingleAlbum(album);
+      if (result.albums.isNotEmpty) {
+        final updated = result.albums.first;
+        await ref
+            .read(libraryProvider.notifier)
+            .updateAlbum(album.id, (_) => updated);
+        if (_detailAlbum?.id == album.id) {
+          setState(() => _detailAlbum = updated);
+        }
+      }
+      final stats = result.stats;
+      final msg = stats.hasChanges
+          ? '「${album.title}」已整理完成（变动已同步）'
+          : '「${album.title}」文件与元数据已是最新';
+      _showToast(msg);
+    } catch (e) {
+      _showToast('整理失败：$e');
+    }
   }
 
   Future<void> _deleteSingle(Album album, bool deleteFiles) async {

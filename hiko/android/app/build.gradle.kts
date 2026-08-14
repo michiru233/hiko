@@ -49,6 +49,7 @@ dependencies {
     implementation("androidx.documentfile:documentfile:1.0.1")
     // FileProvider（导出分享 library.json）
     implementation("androidx.core:core-ktx:1.13.1")
+    testImplementation("junit:junit:4.13.2")
 }
 
 flutter {

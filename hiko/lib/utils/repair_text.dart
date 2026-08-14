@@ -52,15 +52,33 @@ bool hasCjkOrKana(String s) => s.codeUnits.any((code) =>
     (code >= 0x3040 && code <= 0x30FF) ||
     (code >= 0xFF61 && code <= 0xFF9F));
 
-/// 字符串是否仍像乱码（含 Latin-1 扩展字符但无中文/日文），用于回退到文件名
+/// 文本是否可用（对齐 Android Id3v2Parser.isUsableText）：
+/// 空、替换字符、控制字符、密集问号（2 个以上且占比 ≥1/3 或连续）视为不可用，
+/// 调用方回退文件名/文件夹。
+bool isUsableText(String? value) {
+  if (value == null || value.trim().isEmpty) return false;
+  if (value.contains('\uFFFD') ||
+      value.codeUnits.any((c) =>
+          c <= 0x08 || (c >= 0x0E && c <= 0x1F) || (c >= 0x7F && c <= 0x9F))) {
+    return false;
+  }
+  final questionCount =
+      value.split('').where((ch) => ch == '?' || ch == '？').length;
+  if (questionCount >= 2 &&
+      (questionCount * 3 >= value.length ||
+          value.contains('??') ||
+          value.contains('？？'))) {
+    return false;
+  }
+  return true;
+}
+
+/// 字符串是否仍像乱码（对齐 Android ImportScanner.looksGarbled）：
+/// 不可用文本直接视为乱码；再查 UTF-8 被按 Latin-1 解码的典型 mojibake 标记
+/// （Ã/Â/ã€/æ—/å¤/ï¿½ 等）。合法重音 Latin 文本（如 Café）不再仅因含高位字符被误判。
 bool looksGarbled(String? s) {
-  if (s == null || s.isEmpty) return false;
-  final latinExt = s.codeUnits.where((c) => c >= 0xA0 && c <= 0xFF).length;
-  final good = s.codeUnits
-      .where((c) =>
-          (c >= 0x4E00 && c <= 0x9FFF) ||
-          (c >= 0x3040 && c <= 0x30FF) ||
-          (c >= 0xFF61 && c <= 0xFF9F))
-      .length;
-  return latinExt > 0 && good == 0;
+  if (s == null || s.trim().isEmpty) return false;
+  if (!isUsableText(s)) return true;
+  const mojibakeMarkers = ['Ã', 'Â', 'ã€', 'ãƒ', 'ã‚', 'æ—', 'å¤', 'ï¿½'];
+  return mojibakeMarkers.any(s.contains);
 }

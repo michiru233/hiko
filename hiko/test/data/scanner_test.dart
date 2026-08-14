@@ -55,7 +55,7 @@ void main() {
   void createTaggedMp3(
     String path, {
     required String title,
-    required String album,
+    String? album,
     String artist = '某社团',
     String? albumArtist,
     int? trackNumber,
@@ -79,7 +79,7 @@ void main() {
     }
 
     addFrame('TIT2', title);
-    addFrame('TALB', album);
+    if (album != null) addFrame('TALB', album);
     addFrame('TPE1', artist);
     if (albumArtist != null) addFrame('TPE2', albumArtist);
     if (trackNumber != null) addFrame('TRCK', '$trackNumber');
@@ -174,6 +174,73 @@ void main() {
     final albums = await scanPath(root.path);
     expect(albums.single.title, '中文测试专辑');
     expect(albums.single.tracks.single.name, '第一章 中文标签');
+  });
+
+  test('无 ALBUM 标签曲目继承目录多数专辑名 → 不拆散聚合', () async {
+    final dir = Directory('${root.path}/RJ99999_作品甲');
+    dir.createSync();
+    // 仅第一首带 ALBUM 标签，第二首无标签 → 继承目录专辑名进标签组
+    createTaggedMp3('${dir.path}/01 第一首.mp3',
+        title: '第一首', album: '作品甲', artist: '社团X', trackNumber: 1);
+    createTaggedMp3('${dir.path}/02 第二首.mp3',
+        title: '第二首', artist: '社团X', trackNumber: 2);
+
+    final albums = await scanPath(root.path);
+
+    expect(albums.length, 1, reason: '无标签曲目吸收进同目录标签组');
+    expect(albums.single.title, '作品甲');
+    expect(albums.single.tracks.length, 2);
+    expect(albums.single.tracks[0].name, '第一首');
+    expect(albums.single.tracks[1].name, '第二首');
+  });
+
+  test('跨目录标签组封面回退（封面只在其中一个目录）', () async {
+    final dirA = Directory('${root.path}/folderA/RJ11111_作品甲');
+    dirA.createSync(recursive: true);
+    final dirB = Directory('${root.path}/folderB/RJ11111_作品甲');
+    dirB.createSync(recursive: true);
+    createTaggedMp3('${dirA.path}/01 第一首.mp3',
+        title: '第一首', album: '作品甲', artist: '社团X', trackNumber: 1);
+    createTaggedMp3('${dirB.path}/02 第二首.mp3',
+        title: '第二首', album: '作品甲', artist: '社团X', trackNumber: 2);
+    createPngCover('${dirB.path}/cover.png');
+
+    final albums = await scanPath(root.path);
+
+    expect(albums.length, 1);
+    expect(albums.single.localCover, startsWith('data:image/jpeg'),
+        reason: '标签组跨目录封面回退');
+  });
+
+  test('导入进度分阶段实时回调（files → albums）', () async {
+    // 3 个文件分布在 2 个目录 → files 阶段 total=3，albums 阶段 total=2
+    final dirA = Directory('${root.path}/folderA/RJ11111_作品甲');
+    dirA.createSync(recursive: true);
+    final dirB = Directory('${root.path}/folderB/RJ22222_作品乙');
+    dirB.createSync(recursive: true);
+    createTaggedMp3('${dirA.path}/01 第一首.mp3',
+        title: '第一首', album: '作品甲', artist: '社团X', trackNumber: 1);
+    createTaggedMp3('${dirA.path}/02 第二首.mp3',
+        title: '第二首', album: '作品甲', artist: '社团X', trackNumber: 2);
+    createTaggedMp3('${dirB.path}/01 第一首.mp3',
+        title: '第一首', album: '作品乙', artist: '社团Y', trackNumber: 1);
+
+    final events = <(int, int, String)>[];
+    await scanPath(root.path, onProgress: (p, t, phase) {
+      events.add((p, t, phase));
+    });
+
+    final filesEvents = events.where((e) => e.$3 == 'files').toList();
+    final albumsEvents = events.where((e) => e.$3 == 'albums').toList();
+    expect(filesEvents, isNotEmpty);
+    expect(filesEvents.last.$2, 3, reason: 'files 阶段 total = 音频文件数');
+    expect(filesEvents.last.$1, 3);
+    expect(albumsEvents, isNotEmpty);
+    expect(albumsEvents.last.$2, 2, reason: 'albums 阶段 total = 专辑数');
+    expect(albumsEvents.last.$1, 2);
+    // 阶段顺序：全部 files 事件先于 albums 事件
+    final firstAlbumEvent = events.indexWhere((e) => e.$3 == 'albums');
+    expect(events.take(firstAlbumEvent).every((e) => e.$3 == 'files'), isTrue);
   });
 }
 

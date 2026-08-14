@@ -31,7 +31,7 @@ function formatTime(seconds){if(!Number.isFinite(seconds)||seconds<0)return'00:0
 function formatDuration(seconds){if(!Number.isFinite(seconds)||seconds<=0)return'--';const totalMin=Math.round(seconds/60);const h=Math.floor(totalMin/60),m=totalMin%60;if(h&&m)return`${h}小时${m}分钟`;if(h)return`${h}小时`;return`${m}分钟`;}
 function updateTimeline(current=audio.currentTime||0,total=audio.duration||selected.tracks?.[queueIndex]?.duration||0){$('#currentTime').textContent=formatTime(current);$('#totalTime').textContent=formatTime(total);const pct=total?Math.max(0,Math.min(100,current/total*100)):0;if(total){$('#progressInput').value=pct;$('#progressInput').style.setProperty('--fill',pct+'%');}}
 function updatePlayer(){if(!selected){$('#nowCover').innerHTML='';$('#nowTitle').textContent='未在播放';$('#nowArtist').textContent='';$('#playBtn').textContent='▶';updateTimeline(0,0);return;}const sourceCover=albumCover(selected);const cover=sourceCover?`<img src="${sourceCover}" alt="${selected.title}" />`:coverSvg(selected);$('#nowCover').innerHTML=cover;$('#nowTitle').textContent=`${selected.title} · ${queueIndex>=0?String(queueIndex+1).padStart(2,'0'):'01'}`;$('#nowArtist').textContent=`${selected.artist} · ${importedQueue[queueIndex]?.name||'待选择音频'}`;$('#playBtn').textContent=playing?'Ⅱ':'▶';updateTimeline();if($('#details').classList.contains('open')&&selected.tracks)openDetail(selected)}
-document.querySelectorAll('.nav-item[data-view]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));b.classList.add('active');activeView=b.dataset.view;$('#viewTitle').textContent=activeView;$('#heroTitle').textContent=activeView;render()}));document.querySelectorAll('.filter').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.filter').forEach(x=>x.classList.remove('active'));b.classList.add('active');activeFilter=b.dataset.filter;render()}));$('#searchInput').addEventListener('input',render);$('#sortSelect').addEventListener('change',render);$('#clearBtn').addEventListener('click',()=>{$('#searchInput').value='';activeFilter='all';activeView='全部音声';document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x.dataset.filter==='all'));$('#viewTitle').textContent='全部音声';$('#heroTitle').textContent='全部音声';render()});$('#closeDetail').onclick=()=>$('#details').classList.remove('open');$('#playBtn').onclick=()=>{playing=!playing;updatePlayer()};document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('#searchInput').focus()}});render();updatePlayer();
+document.querySelectorAll('.nav-item[data-view]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));b.classList.add('active');activeView=b.dataset.view;$('#viewTitle').textContent=activeView;$('#heroTitle').textContent=activeView;render();if(document.documentElement.classList.contains('mobile'))applySidebar(false)}));document.querySelectorAll('.filter').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('.filter').forEach(x=>x.classList.remove('active'));b.classList.add('active');activeFilter=b.dataset.filter;render()}));$('#searchInput').addEventListener('input',render);$('#sortSelect').addEventListener('change',render);$('#clearBtn').addEventListener('click',()=>{$('#searchInput').value='';activeFilter='all';activeView='全部音声';document.querySelectorAll('.filter').forEach(x=>x.classList.toggle('active',x.dataset.filter==='all'));$('#viewTitle').textContent='全部音声';$('#heroTitle').textContent='全部音声';render()});$('#closeDetail').onclick=()=>$('#details').classList.remove('open');$('#playBtn').onclick=()=>{playing=!playing;updatePlayer()};document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();$('#searchInput').focus()}});render();updatePlayer();
 
 // Local folder import and real audio playback.
 $('#volumeInput').value = Math.round(volume * 100);
@@ -87,6 +87,8 @@ $('#importBtn').onclick=()=>{
   if(window.location.protocol==='file:'){showToast('桌面导入接口未加载，请重新启动应用');console.error('Kikoeru preload API is unavailable');return;}
   $('#folderInput').click();
 };
+// 偏好设置里的导入入口（复用顶部导入按钮的完整逻辑：桌面对话框 / Android SAF / Web 文件夹选择）
+$('#settingsImport').onclick = () => $('#importBtn').click();
 function showToast(message){const toast=$('#toast');toast.textContent=message;toast.classList.add('show');clearTimeout(showToast.timer);showToast.timer=setTimeout(()=>toast.classList.remove('show'),3200);}
 window.kikoeru?.onImportRequested(importFromDesktop);
 window.kikoeru?.loadLibrary().then(savedAlbums=>{if(savedAlbums?.length){mergeLibrary(savedAlbums);render();}}).catch(()=>{});
@@ -98,6 +100,8 @@ updatePlayer = function(){ originalUpdatePlayer(); const track=importedQueue[que
 $('#playBtn').onclick=()=>{ if(importedQueue.length && audio.src){ if(audio.paused) audio.play().catch(()=>{}); else audio.pause(); playing=!audio.paused; updatePlayer(); } else { playing=!playing; updatePlayer(); } };
 $('#prevBtn').onclick=()=>stepTrack(-1);
 $('#nextBtn').onclick=()=>stepTrack(1);
+// 点击左下角正在播放的封面 → 跳转到专辑详情
+$('#nowCover').onclick=()=>{ if(selected) openDetail(selected); };
 $('#volumeBtn').onclick=e=>{e.stopPropagation();$('.volume-control').classList.toggle('open');};
 $('#volumeInput').addEventListener('input',e=>setVolume(Number(e.target.value)/100));
 document.addEventListener('click',e=>{if(!e.target.closest('.volume-control'))$('.volume-control').classList.remove('open');if(!e.target.closest('.mode-control'))$('.mode-control').classList.remove('open');});
@@ -152,6 +156,7 @@ function applyAccent(color){
 applyTheme(savedTheme);
 applyAccent(savedAccent);
 $('#settingsBtn').onclick = () => settingsOverlay.classList.add('open');
+$('#bottomSettings').onclick = () => settingsOverlay.classList.add('open');
 $('#settingsClose').onclick = () => settingsOverlay.classList.remove('open');
 settingsOverlay.addEventListener('click', e => { if (e.target === settingsOverlay) settingsOverlay.classList.remove('open'); });
 document.querySelectorAll('.theme-option').forEach(btn => btn.addEventListener('click', () => applyTheme(btn.dataset.themeOpt)));
@@ -261,6 +266,19 @@ ctxMenu.addEventListener('click', e => {
     else showToast('打开文件夹仅桌面版可用');
   }
 });
+// 专辑是否关联本地文件（Android 轨道为 content://，桌面为 file://）
+function hasLocalFiles(a) {
+  return !!(a.sourcePath || (a.tracks || []).some(t => t.url && (t.url.startsWith('file:') || t.url.startsWith('content:'))));
+}
+function cardMenuItems(a) {
+  const items = [];
+  const rj = albumRj(a);
+  if (rj) items.push({ action: 'scrape-tags', label: '刮削 DLsite 标签' });
+  if (hasLocalFiles(a)) items.push({ action: 'reveal-folder', label: '打开所在文件夹' });
+  items.push({ action: 'delete-only', label: '从库中删除' });
+  if (hasLocalFiles(a)) items.push({ action: 'delete-files', label: '删除专辑及源文件', danger: true });
+  return items;
+}
 grid.addEventListener('contextmenu', e => {
   const card = e.target.closest('.album-card');
   if (!card) return;
@@ -268,18 +286,27 @@ grid.addEventListener('contextmenu', e => {
   e.stopPropagation();
   const a = albums.find(x => String(x.id) === String(card.dataset.id));
   if (!a) return;
-  const items = [];
-  const rj = albumRj(a);
-  if (rj) items.push({ action: 'scrape-tags', label: '刮削 DLsite 标签' });
-  if (a.sourcePath || a.tracks?.some(t => t.url && t.url.startsWith('file:'))) {
-    items.push({ action: 'reveal-folder', label: '打开所在文件夹' });
-  }
-  items.push({ action: 'delete-only', label: '从库中删除' });
-  if (a.sourcePath || a.tracks?.some(t => t.url && t.url.startsWith('file:'))) {
-    items.push({ action: 'delete-files', label: '删除专辑及源文件', danger: true });
-  }
-  showCtxMenu(e.clientX, e.clientY, items, a.id);
+  showCtxMenu(e.clientX, e.clientY, cardMenuItems(a), a.id);
 });
+// 移动端：长按唤起右键菜单
+if ('ontouchstart' in window) {
+  let pressTimer = null;
+  grid.addEventListener('touchstart', e => {
+    const card = e.target.closest('.album-card');
+    if (!card) return;
+    const a = albums.find(x => String(x.id) === String(card.dataset.id));
+    if (!a) return;
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => {
+      const touch = e.touches[0] || { clientX: window.innerWidth / 2, clientY: 180 };
+      showCtxMenu(touch.clientX, touch.clientY, cardMenuItems(a), a.id);
+    }, 500);
+  }, { passive: true });
+  const cancelPress = () => clearTimeout(pressTimer);
+  grid.addEventListener('touchend', cancelPress);
+  grid.addEventListener('touchmove', cancelPress);
+  grid.addEventListener('touchcancel', cancelPress);
+}
 
 function confirmDialog(title, text, okLabel){
   return new Promise(resolve => {
@@ -453,5 +480,17 @@ function applySidebar(shown){
   sidebarToggle.textContent = shown ? '◀' : '▶';
   sidebarToggle.title = shown ? '隐藏侧栏' : '显示侧栏';
 }
-applySidebar(localStorage.getItem('kikoeru-sidebar') !== 'hidden');
+applySidebar(window.matchMedia('(max-width: 760px)').matches ? false : (localStorage.getItem('kikoeru-sidebar') !== 'hidden'));
 sidebarToggle.onclick = () => applySidebar(document.querySelector('.window').classList.contains('sidebar-hidden'));
+// 移动端：点击遮罩（抽屉外区域）自动收起侧栏
+$('#sidebarBackdrop').onclick = () => { if (!document.querySelector('.window').classList.contains('sidebar-hidden')) applySidebar(false); };
+
+// 移动端布局 class：Android 由桥接层判定（较宽阈值）；Web/桌面窄窗口也进入移动布局
+if (!window.__kikoeruMobileHandled) {
+  const applyWebMobile = () => {
+    document.documentElement.classList.toggle('mobile', window.innerWidth <= 760);
+    document.documentElement.classList.toggle('desktop', window.innerWidth > 760);
+  };
+  applyWebMobile();
+  window.addEventListener('resize', applyWebMobile);
+}

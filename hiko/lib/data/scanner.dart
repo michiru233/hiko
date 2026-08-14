@@ -82,10 +82,10 @@ class ParseBatch {
   const ParseBatch(this.paths);
 }
 
-/// compute 入口：批量解析元数据（单文件失败返回 null 容错）
+/// compute 入口：批量解析元数据（单文件失败返回 null 容错；默认不提取大图）
 Future<List<FileMeta?>> parseBatch(ParseBatch job) async {
   return Future.wait(job.paths.map((p) async {
-    final meta = await readTrackMetadata(p);
+    final meta = await readTrackMetadata(p, getImage: false);
     if (meta == null) return null;
     final dirPath = p.substring(0, p.lastIndexOf(Platform.pathSeparator));
     return FileMeta(
@@ -97,37 +97,54 @@ Future<List<FileMeta?>> parseBatch(ParseBatch job) async {
       album: meta.album,
       trackNumber: meta.trackNumber,
       duration: meta.duration,
-      cover: meta.picture == null ? null : coverDataUrl(meta.picture!),
+      cover: null,
     );
   }));
 }
 
-/// 混合分组键：有 ALBUM 标签 → 按专辑聚合；无标签 → 按文件夹
-String _groupKey(FileMeta m) {
-  final album = m.album;
-  final hasAlbum = album != null && album.trim().isNotEmpty && !looksGarbled(album);
-  return hasAlbum ? 'tag:|$album' : 'dir:${m.dirPath}';
+/// 混合分组键（对齐 Android ImportScanner）：
+/// 有可用 ALBUM 标签（或无标签时继承目录多数文件的专辑名）→ 按「专辑艺术家|专辑名」聚合；
+/// 否则按文件夹。专辑名/艺术家先规范化（trim + 去尾部 NUL）。
+String _groupKey(FileMeta m, Map<String, String?> directoryAlbums) {
+  final albumName = m.album ?? directoryAlbums[m.dirPath];
+  final albumKey = (albumName != null && !looksGarbled(albumName) && albumName.trim().isNotEmpty)
+      ? albumName
+      : null;
+  final normalizedAlbum = albumKey == null ? null : normalizeTag(albumKey);
+  final normalizedArtist = normalizeTag(m.artist ?? '');
+  return normalizedAlbum != null
+      ? 'tag:$normalizedArtist|$normalizedAlbum'
+      : 'dir:${m.dirPath}';
 }
 
-/// 文件夹封面（按目录聚合图片文件，压缩后 dataURL）
-Future<String?> _dirCover(String dirPath) async {
+/// 标签规范化（对齐 Android normalizeTag）：去首尾空白与尾部 NUL。
+/// Dart 无标准库 NFC 规范化，ID3 文本实际均为 NFC 写入，此处只做必要清洗。
+String normalizeTag(String s) => s.trim().replaceAll(RegExp(r'\u0000+$'), '');
+
+/// 组内全部目录（去重）的文件夹封面：优先 (cover|front|folder|album|封面) 命名的图片，
+/// 否则第一张图，压缩后 dataURL（对齐 Android 跨目录封面回退）
+Future<String?> _groupDirCover(List<String> dirs) async {
+  final images = <File>[];
+  for (final dir in dirs) {
+    try {
+      await for (final e in Directory(dir).list(followLinks: false)) {
+        if (e is File && imageExtensions.contains(_ext(e.path))) {
+          images.add(e);
+        }
+      }
+    } catch (_) {}
+  }
+  if (images.isEmpty) return null;
+  File? pick;
+  for (final f in images) {
+    if (RegExp(r'cover|front|folder|album|封面', caseSensitive: false)
+        .hasMatch(_fileName(f.path))) {
+      pick = f;
+      break;
+    }
+  }
+  pick ??= images.first;
   try {
-    final images = <File>[];
-    await for (final e in Directory(dirPath).list(followLinks: false)) {
-      if (e is File && imageExtensions.contains(_ext(e.path))) {
-        images.add(e);
-      }
-    }
-    File? pick;
-    for (final f in images) {
-      if (RegExp(r'cover|front|folder|album|封面', caseSensitive: false)
-          .hasMatch(_fileName(f.path))) {
-        pick = f;
-        break;
-      }
-    }
-    pick ??= images.isEmpty ? null : images.first;
-    if (pick == null) return null;
     if (await pick.length() > 15 * 1024 * 1024) return null;
     return coverDataUrl(await pick.readAsBytes());
   } catch (_) {
@@ -135,31 +152,98 @@ Future<String?> _dirCover(String dirPath) async {
   }
 }
 
-/// 扫描根目录：文件级解析 + 混合分组 → 专辑列表
-Future<List<Album>> scanPath(String rootPath) async {
+/// 扫描根目录：文件级解析 + 混合分组 → 专辑列表。
+/// [onProgress] 分两阶段实时回传（对齐 Android）：'files' 按文件计数，
+/// 'albums' 按已组装专辑计数。
+Future<List<Album>> scanPath(
+  String rootPath, {
+  void Function(int processed, int total, String phase)? onProgress,
+}) async {
   final files = await collectFiles(rootPath);
   final audio = files.where((p) => audioExtensions.contains(_ext(p))).toList();
+  if (audio.isEmpty) return [];
 
-  // 分批 compute 解析（每批 10 个文件，避免 isolate 开销过大）
-  const batchSize = 10;
-  final metas = <FileMeta>[];
+  // 并行多 Worker 分块解析：
+  // 1. 每批增大至 40 首，大幅减少 isolate 跨线程调度开销；
+  // 2. 根据 CPU 核心数启动并发 Worker (2..8 个并发)，多核全速吞吐。
+  final concurrency = Platform.numberOfProcessors.clamp(2, 8);
+  const batchSize = 40;
+  final batches = <List<String>>[];
   for (var i = 0; i < audio.length; i += batchSize) {
     final end = i + batchSize > audio.length ? audio.length : i + batchSize;
-    final batch = audio.sublist(i, end);
-    final results = await compute(parseBatch, ParseBatch(batch));
-    metas.addAll(results.whereType<FileMeta>());
+    batches.add(audio.sublist(i, end));
   }
 
-  // 聚合分组（保持首次出现顺序）
+  var nextBatchIndex = 0;
+  var processedFiles = 0;
+  final allMetas = List<List<FileMeta?>>.filled(batches.length, const []);
+
+  Future<void> worker() async {
+    while (true) {
+      int currentIdx;
+      List<String> currentBatch;
+      if (nextBatchIndex >= batches.length) return;
+      currentIdx = nextBatchIndex++;
+      currentBatch = batches[currentIdx];
+
+      final results = await compute(parseBatch, ParseBatch(currentBatch));
+      allMetas[currentIdx] = results;
+      processedFiles += currentBatch.length;
+      onProgress?.call(
+        processedFiles.clamp(0, audio.length),
+        audio.length,
+        'files',
+      );
+    }
+  }
+
+  final workerCount = concurrency < batches.length ? concurrency : batches.length;
+  await Future.wait(List.generate(workerCount, (_) => worker()));
+
+  final metas = <FileMeta>[];
+  for (final batchResults in allMetas) {
+    metas.addAll(batchResults.whereType<FileMeta>());
+  }
+
+  // 无 ALBUM 标签曲目继承所在目录多数文件的专辑名（避免整张专辑被拆散）
+  final byDir = <String, List<FileMeta>>{};
+  for (final m in metas) {
+    byDir.putIfAbsent(m.dirPath, () => []).add(m);
+  }
+  final directoryAlbums = <String, String?>{};
+  for (final entry in byDir.entries) {
+    directoryAlbums[entry.key] =
+        mostCommon(entry.value.map((m) => m.album).toList());
+  }
+
+  // 聚合分组（保持首次出现顺序）；无标签曲目吸收进标签组
   final groups = <String, List<FileMeta>>{};
   for (final m in metas) {
-    groups.putIfAbsent(_groupKey(m), () => []).add(m);
+    final inherited = m.album ?? directoryAlbums[m.dirPath];
+    final meta = m.album == null && inherited != null
+        ? FileMeta(
+            path: m.path,
+            dirPath: m.dirPath,
+            dirName: m.dirName,
+            title: m.title,
+            artist: m.artist,
+            album: inherited,
+            trackNumber: m.trackNumber,
+            duration: m.duration,
+            cover: m.cover,
+          )
+        : m;
+    groups.putIfAbsent(_groupKey(meta, directoryAlbums), () => []).add(meta);
   }
 
   final albums = <Album>[];
-  for (final entry in groups.entries) {
-    final album = await _buildAlbum(entry.key, entry.value);
-    if (album != null) albums.add(album);
+  final groupEntries = groups.entries.toList();
+  for (var i = 0; i < groupEntries.length; i++) {
+    final album = await _buildAlbum(groupEntries[i].key, groupEntries[i].value);
+    if (album != null) {
+      albums.add(album);
+      onProgress?.call(albums.length, groupEntries.length, 'albums');
+    }
   }
   return albums;
 }
@@ -197,7 +281,6 @@ Future<Album?> _buildAlbum(String key, List<FileMeta> files) async {
   var totalDuration = 0.0;
   for (var i = 0; i < sorted.length; i++) {
     final m = sorted[i];
-    embeddedCover ??= m.cover;
     final fileName = _fileName(m.path);
     final stem = fileName.substring(0, _stemLength(fileName));
     final t = m.title;
@@ -212,9 +295,18 @@ Future<Album?> _buildAlbum(String key, List<FileMeta> files) async {
     ));
     totalDuration += m.duration;
   }
-  var localCover = embeddedCover;
-  if (localCover == null && !isTagGroup) {
-    localCover = await _dirCover(sorted.first.dirPath);
+
+  // 封面获取：优先外置图片（无需读取大音频），无外置图片时按需从第一轨提取内嵌封面
+  final dirs = <String>{for (final m in sorted) m.dirPath}.toList();
+  var localCover = await _groupDirCover(dirs);
+  if (localCover == null) {
+    for (final m in sorted) {
+      final picBytes = await readEmbeddedPicture(m.path);
+      if (picBytes != null) {
+        localCover = coverDataUrl(picBytes);
+        if (localCover != null) break;
+      }
+    }
   }
 
   final idValue = isTagGroup ? key : sorted.first.dirPath;

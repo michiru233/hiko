@@ -11,7 +11,7 @@ class AndroidPlatformService implements PlatformService {
 
   /// SAF 目录选择 + 扫描；返回新专辑列表与所选目录 tree URI（未落盘，由调用方 merge+save）
   Future<({List<Album> albums, String? treeUri})> importAudioFolder({
-    void Function(int processed, int total)? onProgress,
+    void Function(int processed, int total, String phase, String unit)? onProgress,
   }) async {
     final albums = <Album>[];
     var total = 0;
@@ -22,7 +22,12 @@ class AndroidPlatformService implements PlatformService {
           albums.add(Album.fromJson(json));
         case 'onProgress':
           final args = Map<String, dynamic>.from(call.arguments as Map);
-          onProgress?.call((args['processed'] as num).toInt(), (args['total'] as num).toInt());
+          onProgress?.call(
+            (args['processed'] as num).toInt(),
+            (args['total'] as num).toInt(),
+            args['phase'] as String? ?? 'albums',
+            args['unit'] as String? ?? 'albums',
+          );
         default:
           total = (call.arguments as num?)?.toInt() ?? total;
       }
@@ -44,7 +49,7 @@ class AndroidPlatformService implements PlatformService {
 
   /// 扫描已授权的常驻音乐目录（SAF tree URI），事件流与导入一致，不弹选择器
   Future<List<Album>> scanSavedFolder(String treeUri,
-      {void Function(int processed, int total)? onProgress}) async {
+      {void Function(int processed, int total, String phase, String unit)? onProgress}) async {
     final albums = <Album>[];
     _channel.setMethodCallHandler((call) async {
       switch (call.method) {
@@ -53,7 +58,12 @@ class AndroidPlatformService implements PlatformService {
           albums.add(Album.fromJson(json));
         case 'onProgress':
           final args = Map<String, dynamic>.from(call.arguments as Map);
-          onProgress?.call((args['processed'] as num).toInt(), (args['total'] as num).toInt());
+          onProgress?.call(
+            (args['processed'] as num).toInt(),
+            (args['total'] as num).toInt(),
+            args['phase'] as String? ?? 'albums',
+            args['unit'] as String? ?? 'albums',
+          );
       }
       return null;
     });

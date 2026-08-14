@@ -1,9 +1,30 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../models/album.dart';
+
+/// Base64 封面解码缓存，容量 300 张，避免每次点击/重建时重复在 UI 主线程进行 Base64 字符串解析与内存分配
+final Map<String, Uint8List> _coverBytesCache = {};
+
+Uint8List? _getOrDecodeCover(String dataUrl) {
+  final cached = _coverBytesCache[dataUrl];
+  if (cached != null) return cached;
+  try {
+    final commaIndex = dataUrl.indexOf(',');
+    final b64 = commaIndex >= 0 ? dataUrl.substring(commaIndex + 1) : dataUrl;
+    final bytes = base64Decode(b64);
+    if (_coverBytesCache.length > 300) {
+      _coverBytesCache.clear();
+    }
+    _coverBytesCache[dataUrl] = bytes;
+    return bytes;
+  } catch (_) {
+    return null;
+  }
+}
 
 /// 12 种兜底封面 SVG 生成（移植旧版 app.js coverSvg）。
 /// 无内嵌/文件夹封面时用「渐变底色 + 形状」生成，离线可用。
@@ -59,9 +80,17 @@ class AlbumCover extends StatelessWidget {
   Widget build(BuildContext context) {
     final cover = album.currentCover ?? album.localCover;
     if (cover != null && cover.startsWith('data:')) {
-      final bytes = base64Decode(cover.substring(cover.indexOf(',') + 1));
-      // high 滤波：封面放大（详情页/Retina）时保持锐利
-      return Image.memory(bytes, fit: fit, gaplessPlayback: true, filterQuality: FilterQuality.high);
+      final bytes = _getOrDecodeCover(cover);
+      if (bytes != null) {
+        // high 滤波：封面放大（详情页/Retina）时保持锐利
+        return Image.memory(
+          bytes,
+          fit: fit,
+          gaplessPlayback: true,
+          filterQuality: FilterQuality.high,
+          errorBuilder: (_, __, ___) => _svg(),
+        );
+      }
     }
     if (cover != null && (cover.startsWith('http:') || cover.startsWith('https:'))) {
       return Image.network(cover,

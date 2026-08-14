@@ -135,32 +135,28 @@ class HikoPlugin : MethodChannel.MethodCallHandler {
         val root = DocumentFile.fromTreeUri(context, rootUri)
         if (root == null) return "无法打开所选文件夹"
         val albums = try {
-            // 文件级并行扫描 + 混合分组（有标签按专辑聚合 / 无标签按文件夹）
-            ImportScanner.scanAlbums(context, root)
+            // 文件级并行扫描 + 混合分组；进度在扫描阶段实时回传，专辑阶段由回调发送。
+            ImportScanner.scanAlbums(context, root) { processed, total, phase, album ->
+                mainHandler.post {
+                    try {
+                        album?.let { channel?.invokeMethod("onAlbum", it.toBridge()) }
+                        channel?.invokeMethod(
+                            "onProgress",
+                            mapOf(
+                                "processed" to processed,
+                                "total" to total,
+                                "phase" to phase,
+                                "unit" to if (phase == "albums") "albums" else "files",
+                            )
+                        )
+                    } catch (_: Exception) { }
+                }
+            }
         } catch (e: SecurityException) {
             // 授权已失效（App 重装/系统清理后常驻目录 URI 失效）
             return "目录访问权限已失效，请重新导入该目录"
         } catch (e: Exception) {
             return "扫描失败：${e.message}"
-        }
-        var processed = 0
-        val total = albums.size
-        for (album in albums) {
-            // JSONObject 不能直接过 MethodChannel（引擎只支持 Map/List/String/num/bool），
-            // 递归转成 Map 后再传，否则抛 "Unsupported value" 导致整次导入失败
-            val bridge = album.toBridge()
-            val now = ++processed
-            mainHandler.post {
-                try {
-                    channel?.invokeMethod("onAlbum", bridge)
-                    channel?.invokeMethod(
-                        "onProgress",
-                        mapOf("processed" to now, "total" to total)
-                    )
-                } catch (e: Exception) {
-                    // 单张专辑事件发送失败不中断扫描；Dart 侧以已收到的专辑为准
-                }
-            }
         }
         return null
     }

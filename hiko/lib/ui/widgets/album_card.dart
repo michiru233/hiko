@@ -137,7 +137,7 @@ class AlbumCard extends ConsumerWidget {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      '${album.artist} · ${album.group}',
+                      '${album.artist} · ${album.rjCode ?? '本地导入'}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontSize: 10, color: theme.hintColor),

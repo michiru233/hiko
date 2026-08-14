@@ -2,18 +2,24 @@ import '../models/album.dart';
 import 'library_store.dart';
 import 'scanner.dart' as scanner;
 
-/// 导入进度（对应旧版 import:progress 事件）
+/// 导入进度（对应旧版 import:progress 事件）。
+/// [phase] 两阶段（对齐 Android）：'files' 文件解析 / 'albums' 专辑组装；
+/// [unit] 对应用户可见单位（files / albums）。
 class ImportProgress {
   final int folderIndex;
   final int folderTotal;
   final int processed;
   final int total;
+  final String phase;
+  final String unit;
 
   const ImportProgress({
     required this.folderIndex,
     required this.folderTotal,
     required this.processed,
     required this.total,
+    this.phase = 'albums',
+    this.unit = 'albums',
   });
 }
 
@@ -23,7 +29,7 @@ class ImportService {
 
   ImportService(this.store);
 
-  /// 扫描一个根目录下的全部专辑（文件级解析 + 混合分组）；
+  /// 扫描一个根目录下的全部专辑（文件级解析 + 混合分组，分阶段实时进度）；
   /// 返回新专辑列表（未保存，由调用方 merge+save）
   Future<List<Album>> scanPath(
     String rootPath, {
@@ -31,13 +37,16 @@ class ImportService {
     int folderTotal = 1,
     void Function(ImportProgress)? onProgress,
   }) async {
-    final albums = await scanner.scanPath(rootPath);
-    onProgress?.call(ImportProgress(
-      folderIndex: folderIndex,
-      folderTotal: folderTotal,
-      processed: albums.length,
-      total: albums.length,
-    ));
+    final albums = await scanner.scanPath(rootPath, onProgress: (p, t, phase) {
+      onProgress?.call(ImportProgress(
+        folderIndex: folderIndex,
+        folderTotal: folderTotal,
+        processed: p,
+        total: t,
+        phase: phase,
+        unit: phase == 'albums' ? 'albums' : 'files',
+      ));
+    });
     return albums;
   }
 

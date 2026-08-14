@@ -35,6 +35,14 @@
     </main>
     <aside class="details" id="details"><button class="close-detail" id="closeDetail" title="关闭">✕</button><div id="detailContent"></div></aside>
     <footer class="player"><div class="now-cover" id="nowCover"></div><div class="now-meta"><span class="now-label">正在播放</span><strong id="nowTitle">雨后的耳语 · 01</strong><small id="nowArtist">CV. 花泽香菜 · 02:18 / 18:42</small></div><div class="player-controls"><button title="上一首" id="prevBtn">◀◀</button><button class="play" id="playBtn" title="播放/暂停">▶</button><button title="下一首" id="nextBtn">▶▶</button></div><div class="timeline" id="timeline"><span class="time-current" id="currentTime">00:00</span><input class="progress" id="progressInput" type="range" min="0" max="100" value="0" /><span class="time-total" id="totalTime">00:00</span><div class="progress-tooltip" id="progressTooltip"></div></div><div class="player-actions"><div class="mode-control"><button class="mode-btn" id="modeBtn" title="播放模式">列表</button><div class="mode-popover" id="modePopover"><div class="mode-title">播放模式</div><button class="mode-option" data-mode="list"><span class="mode-name">列表循环</span><span class="mode-desc">本专辑最后一首播完回到第一首</span></button><button class="mode-option" data-mode="single"><span class="mode-name">单曲循环</span><span class="mode-desc">当前曲目循环播放</span></button><button class="mode-option" data-mode="shuffle"><span class="mode-name">随机播放</span><span class="mode-desc">当前专辑内随机切曲</span></button><button class="mode-option" data-mode="album"><span class="mode-name">专辑循环</span><span class="mode-desc">播完当前专辑自动接下一张</span></button></div></div><div class="volume-control"><button title="音量" id="volumeBtn">◖</button><div class="volume-popover" id="volumePopover"><span>音量</span><input id="volumeInput" type="range" min="0" max="100" value="80" /><strong id="volumeValue">80%</strong></div></div></div></footer>
+    <nav class="bottom-nav" id="bottomNav" aria-label="主导航">
+      <button class="nav-item nav-tab active" data-view="全部音声"><span class="tab-icon">▦</span><span>全部</span></button>
+      <button class="nav-item nav-tab" data-view="最近添加"><span class="tab-icon">◷</span><span>最近</span></button>
+      <button class="nav-item nav-tab" data-view="正在播放"><span class="tab-icon">▶</span><span>播放</span></button>
+      <button class="nav-item nav-tab" data-view="收藏夹"><span class="tab-icon">♡</span><span>收藏</span></button>
+      <button class="nav-item nav-tab" id="bottomSettings"><span class="tab-icon">⚙</span><span>设置</span></button>
+    </nav>
+    <div class="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true"></div>
   </div>
   <audio id="audio" preload="metadata"></audio>
   <div class="toast" id="toast" role="status"></div>
@@ -74,6 +82,10 @@
       </section>
       <section class="settings-section">
         <h3>数据</h3>
+        <div class="settings-row">
+          <div class="settings-label">导入音声</div>
+          <button class="settings-btn" id="settingsImport">导入文件夹</button>
+        </div>
         <div class="settings-row">
           <div class="settings-label">库文件位置</div>
           <button class="settings-btn" id="openDataDir">打开数据目录</button>

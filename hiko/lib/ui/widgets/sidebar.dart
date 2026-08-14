@@ -48,6 +48,7 @@ class Sidebar extends ConsumerWidget {
       final active = activeView == view;
       return InkWell(
         onTap: onTap ?? () => onViewChanged(view),
+        mouseCursor: SystemMouseCursors.click,
         borderRadius: BorderRadius.circular(8),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),

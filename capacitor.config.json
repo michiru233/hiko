@@ -1,0 +1,9 @@
+{
+  "appId": "top.voicehub.kikoeru",
+  "appName": "Kikoeru",
+  "webDir": "web",
+  "backgroundColor": "#f6f5f2",
+  "android": {
+    "allowMixedContent": false
+  }
+}

@@ -92,6 +92,7 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
     final size = widget.compact ? 40.0 : 48.0;
     return InkWell(
       onTap: album == null ? null : () => widget.onCoverTap?.call(album),
+      mouseCursor: album == null ? SystemMouseCursors.basic : SystemMouseCursors.click,
       borderRadius: BorderRadius.circular(7),
       child: SizedBox(
         width: size,
@@ -340,6 +341,7 @@ class _PlayButton extends StatelessWidget {
     final theme = Theme.of(context);
     return InkWell(
       onTap: onPressed,
+      mouseCursor: onPressed == null ? SystemMouseCursors.basic : SystemMouseCursors.click,
       borderRadius: BorderRadius.circular(size / 2),
       child: Container(
         width: size,
@@ -372,6 +374,7 @@ class _ModeButton extends StatelessWidget {
     final info = playModes.firstWhere((m) => m.key == mode.key);
     return InkWell(
       onTap: onTap,
+      mouseCursor: SystemMouseCursors.click,
       borderRadius: BorderRadius.circular(6),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
@@ -398,6 +401,7 @@ class _ModeOption extends StatelessWidget {
     final theme = Theme.of(context);
     return InkWell(
       onTap: onTap,
+      mouseCursor: SystemMouseCursors.click,
       borderRadius: BorderRadius.circular(6),
       child: Container(
         width: double.infinity,

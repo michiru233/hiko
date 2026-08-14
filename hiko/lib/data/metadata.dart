@@ -24,10 +24,14 @@ class TrackMetadata {
   });
 }
 
-/// 解析单曲元数据；标签损坏/解析失败返回 null（容忍坏标签，文件仍可导入）
-Future<TrackMetadata?> readTrackMetadata(String path) async {
+/// 解析单曲元数据；[getImage] 默认 false（避免无谓解码每个音轨的内嵌大图）
+/// 标签损坏/解析失败返回 null（容忍坏标签，文件仍可导入）
+Future<TrackMetadata?> readTrackMetadata(
+  String path, {
+  bool getImage = false,
+}) async {
   try {
-    final meta = readMetadata(File(path), getImage: true);
+    final meta = readMetadata(File(path), getImage: getImage);
     return TrackMetadata(
       title: repairText(meta.title),
       artist: repairText(meta.artist),
@@ -39,4 +43,15 @@ Future<TrackMetadata?> readTrackMetadata(String path) async {
   } catch (_) {
     return null;
   }
+}
+
+/// 针对单曲按需提取内嵌封面字节（单次调用）
+Future<Uint8List?> readEmbeddedPicture(String path) async {
+  try {
+    final meta = readMetadata(File(path), getImage: true);
+    if (meta.pictures.isNotEmpty) {
+      return meta.pictures.first.bytes;
+    }
+  } catch (_) {}
+  return null;
 }

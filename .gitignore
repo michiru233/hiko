@@ -1,4 +1,14 @@
 node_modules/
 dist/
+web/
 .DS_Store
 *.log
+local.properties
+.idea/
+*.iml
+capacitor-cordova-android-plugins/
+android/.gradle/
+android/app/build/
+android/build/
+android/capacitor-cordova-android-plugins/build/
+android/.idea/
