@@ -14,7 +14,7 @@ flutter run -d windows    # Windows（需 Windows 机器）
 flutter test              # 单测（RJ 提取/自然排序/repairText/模型往返/播放模式队列）
 ```
 
-- **版本号规则（重要）**：每次修复 bug / 发新功能必须 bump `hiko/pubspec.yaml` 的 `version`（1.x.0），并同步 `hiko/android/app/build.gradle` 的 `versionCode`（+1）/`versionName`。Android APK 重建并确认版本生效后才能交付。
+- **版本号与封包规则（重要）**：每次修复 bug / 发新功能必须 bump `hiko/pubspec.yaml` 的 `version`（1.x.0），并同步 `hiko/android/app/build.gradle.kts` 的 `versionCode`（+1）/`versionName`。**改动完成后必须自动执行 Release 封包构建（macOS: `flutter build macos --release`），并在交付时明确提供 App 所在路径**。
 - **架构**：`lib/models/` 数据模型；`lib/data/` 存储与扫描（library.json 原子写 + 每 5 张增量保存）；`lib/playback/` just_audio + audio_service（Android 后台播放/通知/锁屏）；`lib/ui/` 共享 UI（桌面三栏布局 / 移动端底部导航按宽度自适应）。
 - **Android 原生**：`lib/platform/` 调 MethodChannel（android/ 内 Kotlin 插件，移植自旧版 ImportScanner.kt / KikoeruPlugin.kt）：SAF 导入（content://）、删除、cleanMissing、revealInFolder、openDataDir（分享导出 library.json）。**封面统一 ≤300px/120KB**，标签乱码用 repairText 多字符集打分还原（中文 GBK / 日文 Shift-JIS）。
 - **播放模式**：列表循环/单曲循环/随机（专辑内避免连播）/专辑循环（跨专辑接续）。
