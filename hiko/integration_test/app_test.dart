@@ -98,6 +98,17 @@ void main() {
     expect(find.textContaining('RJ01000112'), findsOneWidget);
     expect(find.text('01 プロローグ'), findsWidgets);
 
+    // 2.5 点击抽屉外区域（主界面）应关闭详情（桌面端遮罩）
+    if (!Platform.isAndroid) {
+      await tester.tapAt(const Offset(300, 500));
+      await tester.pumpAndSettle();
+      expect(find.text('从头播放'), findsNothing, reason: '点击主界面应关闭详情');
+      // 重新打开详情继续后续流程
+      await tester.tap(find.text('雨夜耳语'));
+      await tester.pumpAndSettle();
+      expect(find.text('从头播放'), findsOneWidget);
+    }
+
     // 3. 从头播放 → 播放状态应为 playing
     await tester.tap(find.text('从头播放'));
     await tester.pump(const Duration(seconds: 2));
@@ -118,19 +129,22 @@ void main() {
     debugPrint('[test] after wait: position=${playback.position} playing=${playback.playing}');
     expect(playback.position, greaterThan(0));
 
-    // 5. 先暂停再下一首 → 队列推进到第 2 首（避免 3 秒 WAV 自然播完的竞态）
+    // 5. 先暂停，关闭详情（桌面遮罩 / Android 用 ✕ 按钮），再下一首 → 队列推进到第 2 首
     await container.read(playbackProvider.notifier).pause();
     await tester.pump(const Duration(milliseconds: 200));
+    if (Platform.isAndroid) {
+      await tester.tap(find.byIcon(Icons.close));
+    } else {
+      await tester.tapAt(const Offset(200, 200)); // 详情遮罩区域关闭
+    }
+    await tester.pumpAndSettle();
     await tester.tap(find.text('▶▶'));
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
     expect(container.read(playbackProvider).queueIndex, 1);
 
     // 6. 右键菜单：应在指针位置附近弹出（而非屏幕中央）
-    // 关闭详情回到网格
-    await tester.tap(find.byIcon(Icons.close));
-    await tester.pumpAndSettle();
-    // tester.tap 支持 buttons 参数：完整指针生命周期，可靠触发 onSecondaryTapDown
+    // （详情已在第 5 步关闭，直接右键卡片）
     await tester.tap(
       find.text('雨夜耳语'),
       buttons: kSecondaryMouseButton,

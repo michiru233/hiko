@@ -289,6 +289,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ],
                       ),
                     ),
+                  // 详情遮罩（桌面）：点击抽屉外区域关闭（不阻断抽屉内交互，
+                  // Stack hit test 短路保证上层抽屉命中时遮罩不参与）
+                  if (_detailAlbum != null && !isMobile)
+                    Positioned.fill(
+                      child: GestureDetector(
+                        onTap: () => setState(() => _detailAlbum = null),
+                        behavior: HitTestBehavior.opaque,
+                      ),
+                    ),
                   // 详情：桌面右侧抽屉 / 移动全屏弹层
                   if (_detailAlbum != null)
                     Positioned(
