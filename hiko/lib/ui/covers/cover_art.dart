@@ -60,10 +60,12 @@ class AlbumCover extends StatelessWidget {
     final cover = album.currentCover ?? album.localCover;
     if (cover != null && cover.startsWith('data:')) {
       final bytes = base64Decode(cover.substring(cover.indexOf(',') + 1));
-      return Image.memory(bytes, fit: fit, gaplessPlayback: true);
+      // high 滤波：封面放大（详情页/Retina）时保持锐利
+      return Image.memory(bytes, fit: fit, gaplessPlayback: true, filterQuality: FilterQuality.high);
     }
     if (cover != null && (cover.startsWith('http:') || cover.startsWith('https:'))) {
-      return Image.network(cover, fit: fit, errorBuilder: (_, _, _) => _svg());
+      return Image.network(cover,
+          fit: fit, filterQuality: FilterQuality.high, errorBuilder: (_, _, _) => _svg());
     }
     return _svg();
   }

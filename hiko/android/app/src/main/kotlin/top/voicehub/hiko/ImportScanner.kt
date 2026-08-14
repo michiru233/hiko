@@ -99,7 +99,8 @@ object ImportScanner {
         return groups
     }
 
-    /** Android 封面策略：缩放到 ≤300px 转 JPEG 75%，上限 120KB。
+    /** Android 封面策略：缩放到 ≤600px 转 JPEG 82%，上限 500KB。
+     *  与桌面端 Dart cover.dart 一致——详情页封面在手机全屏下需要更高分辨率。
      *  相比桌面（500px/300KB）进一步压缩，因为整份 library.json 要经 native↔JS 桥
      *  整体传输——90+ 专辑时 500px 封面会产生十几 MB 载荷，实机堆小直接 OOM 崩溃，
      *  且重进软件解析大 JSON 会"专辑慢慢出现"。300px 在手机屏幕上视觉无损。 */
@@ -108,7 +109,7 @@ object ImportScanner {
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
-        val max = 300
+        val max = 600
         var sample = 1
         while (bounds.outWidth / sample > max * 2 || bounds.outHeight / sample > max * 2) {
             sample *= 2
@@ -126,9 +127,9 @@ object ImportScanner {
             if (out !== bmp) bmp.recycle()
         }
         val stream = ByteArrayOutputStream()
-        if (!out.compress(Bitmap.CompressFormat.JPEG, 75, stream)) return null
+        if (!out.compress(Bitmap.CompressFormat.JPEG, 82, stream)) return null
         val data = stream.toByteArray()
-        if (data.isEmpty() || data.size > 120 * 1024) return null
+        if (data.isEmpty() || data.size > 500 * 1024) return null
         out.recycle()
         return "data:image/jpeg;base64," + Base64.encodeToString(data, Base64.NO_WRAP)
     }

@@ -3,11 +3,13 @@ import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
 
-/// 封面压缩策略（与旧版 Android 统一）：缩放到 ≤300px，JPEG 75%，≤120KB。
-/// 整份 library.json 整体读写，封面过大直接拖垮库文件；300px 在手机/桌面卡片视觉无损。
-const int coverMaxSize = 300;
-const int coverMaxBytes = 120 * 1024;
-const int coverQuality = 75;
+/// 封面压缩策略：缩放到 ≤600px，JPEG 82%，≤500KB。
+/// 详情页封面在 Retina 屏上需要 ~650 物理像素才清晰（300px 会被放大 2 倍发糊）。
+/// 新版无 WebView 桥载荷限制，600px × 100 张 ≈ 8-15MB library.json，
+/// 本地读写无内存峰值问题，可接受。
+const int coverMaxSize = 600;
+const int coverMaxBytes = 500 * 1024;
+const int coverQuality = 82;
 
 /// 图片字节 → 压缩后的 dataURL；失败/超限返回 null
 String? coverDataUrl(Uint8List bytes) {
