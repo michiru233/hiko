@@ -44,6 +44,13 @@ kotlin {
     }
 }
 
+dependencies {
+    // SAF 目录/文件操作（KikoeruPlugin）
+    implementation("androidx.documentfile:documentfile:1.0.1")
+    // FileProvider（导出分享 library.json）
+    implementation("androidx.core:core-ktx:1.13.1")
+}
+
 flutter {
     source = "../.."
 }

@@ -27,6 +27,7 @@ class AlbumCard extends ConsumerWidget {
     final theme = Theme.of(context);
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onContextMenu,
       onSecondaryTapDown: onContextMenu == null
           ? null
           : (_) => onContextMenu!(),

@@ -18,7 +18,7 @@ void main() {
     if (root.existsSync()) root.deleteSync(recursive: true);
   });
 
-  Album _albumWithFiles({int trackCount = 2, bool withCover = true, String name = '专辑'}) {
+  Album albumWithFiles({int trackCount = 2, bool withCover = true, String name = '专辑'}) {
     final dir = Directory('${root.path}/$name');
     dir.createSync();
     final tracks = <Track>[];
@@ -50,7 +50,7 @@ void main() {
 
   group('removeAlbumFiles', () {
     test('删除音轨 + 封面 + 空目录', () async {
-      final album = _albumWithFiles();
+      final album = albumWithFiles();
       final dir = Directory(album.sourcePath);
       expect(dir.existsSync(), isTrue);
       expect(dir.listSync().length, 3); // 2 wav + cover
@@ -62,7 +62,7 @@ void main() {
     });
 
     test('目录非空时保留目录', () async {
-      final album = _albumWithFiles(trackCount: 1);
+      final album = albumWithFiles(trackCount: 1);
       // 额外放一个非音频文件占位
       File('${album.sourcePath}/说明.txt').writeAsStringSync('保留');
       final deleted = await service.removeAlbumFiles(album);
@@ -72,7 +72,7 @@ void main() {
     });
 
     test('文件已不存在时容错', () async {
-      final album = _albumWithFiles();
+      final album = albumWithFiles();
       Directory(album.sourcePath).deleteSync(recursive: true);
       final deleted = await service.removeAlbumFiles(album);
       expect(deleted, 0);
@@ -81,12 +81,12 @@ void main() {
 
   group('cleanMissing', () {
     test('剔除整张失效专辑、修剪部分失效曲目', () async {
-      final a1 = _albumWithFiles(name: 'a1'); // 完整存活
-      final a2 = _albumWithFiles(name: 'a2', trackCount: 2);
+      final a1 = albumWithFiles(name: 'a1'); // 完整存活
+      final a2 = albumWithFiles(name: 'a2', trackCount: 2);
       // a2 第一首删除 → 应保留 1 首
       File(Uri.parse(a2.tracks[0].url).toFilePath()).deleteSync();
       // a3 全部失效 → 整张移除
-      final a3 = _albumWithFiles(name: 'a3');
+      final a3 = albumWithFiles(name: 'a3');
       Directory(a3.sourcePath).deleteSync(recursive: true);
 
       final kept = await service.cleanMissing([a1, a2, a3]);

@@ -20,8 +20,8 @@ import '../widgets/player_bar.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/sidebar.dart';
 
-/// 主界面：桌面三栏布局（侧栏 | 网格 | 详情抽屉）+ 底部播放条。
-/// 移动端（M6）按宽度切换为底部导航 + 抽屉式侧栏 + 全屏详情。
+/// 主界面：桌面三栏布局（侧栏 | 网格 | 详情抽屉）+ 底部播放条；
+/// Android 触屏（≤1000px）切换为移动布局：底部导航 + 抽屉侧栏 + 全屏详情 + 长按菜单 + 系统返回逐层关闭。
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -38,7 +38,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final Set<String> _multiIds = {};
   Album? _detailAlbum;
   bool _sidebarCollapsed = false;
+  bool _drawerOpen = false;
   bool _importing = false;
+  String _importLabel = '正在导入';
   double _importProgress = 0;
   int _importProcessed = 0;
   int _importTotal = 0;
@@ -71,26 +73,42 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _importFolder() async {
     if (_importing) return;
-    final path = await getDirectoryPath();
-    if (path == null) return;
     setState(() {
       _importing = true;
+      _importLabel = '正在导入';
       _importProcessed = 0;
       _importTotal = 0;
       _importProgress = 0;
     });
+    final service = ImportService(ref.read(libraryStoreProvider));
     try {
-      final service = ImportService(ref.read(libraryStoreProvider));
-      final albums = await service.importFolders([path], onProgress: (p) {
-        if (!mounted) return;
-        setState(() {
-          _importProcessed = p.processed;
-          _importTotal = p.total;
-          _importProgress = p.total > 0 ? p.processed / p.total : 0;
+      final platform = ref.read(platformServiceProvider);
+      final isAndroid = Platform.isAndroid;
+      List<Album> albums;
+      if (isAndroid) {
+        final android = platform as dynamic;
+        albums = await android.importAudioFolder(onProgress: (p, t) {
+          if (!mounted) return;
+          setState(() {
+            _importProcessed = p;
+            _importTotal = t;
+            _importProgress = t > 0 ? p / t : 0;
+          });
         });
-      });
-      await ref.read(libraryProvider.notifier).mergeNew(albums);
+      } else {
+        final path = await getDirectoryPath();
+        if (path == null) return;
+        albums = await service.importFolders([path], onProgress: (p) {
+          if (!mounted) return;
+          setState(() {
+            _importProcessed = p.processed;
+            _importTotal = p.total;
+            _importProgress = p.total > 0 ? p.processed / p.total : 0;
+          });
+        });
+      }
       if (!mounted) return;
+      await ref.read(libraryProvider.notifier).mergeNew(albums);
       setState(() {
         _view = '全部音声';
         _filter = 'all';
@@ -109,17 +127,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Future<void> _scrapeSelected(Set<String> ids, {required bool force}) async {
     if (ids.isEmpty) return;
+    setState(() {
+      _importing = true;
+      _importLabel = '正在刮削';
+      _importProcessed = 0;
+      _importTotal = 0;
+      _importProgress = 0;
+    });
     final scraper = ref.read(scraperProvider);
-    final result = await scraper.scrape(ids, force: force);
-    if (!mounted) return;
-    if (result.noRj == ids.length) {
-      _showToast('所选专辑均未检测到 RJ 号');
-      return;
+    try {
+      final result = await scraper.scrape(ids, force: force, onProgress: (p, t) {
+        if (!mounted) return;
+        setState(() {
+          _importProcessed = p;
+          _importTotal = t;
+          _importProgress = t > 0 ? p / t : 0;
+        });
+      });
+      if (!mounted) return;
+      await ref.read(libraryProvider.notifier).load();
+      if (result.noRj == ids.length) {
+        _showToast('所选专辑均未检测到 RJ 号');
+        return;
+      }
+      _showToast(
+          '刮削完成：${result.scraped} 张成功，${result.failed} 张失败'
+          '${result.noRj > 0 ? '，${result.noRj} 张无 RJ 号' : ''}'
+          '${result.skipped > 0 ? '，${result.skipped} 张已刮过跳过' : ''}');
+    } catch (e) {
+      _showToast('刮削失败：$e');
+    } finally {
+      if (mounted) setState(() => _importing = false);
     }
-    _showToast(
-        '刮削完成：${result.scraped} 张成功，${result.failed} 张失败'
-        '${result.noRj > 0 ? '，${result.noRj} 张无 RJ 号' : ''}'
-        '${result.skipped > 0 ? '，${result.skipped} 张已刮过跳过' : ''}');
   }
 
   @override
@@ -137,124 +176,212 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final isMobile =
         Platform.isAndroid ? MediaQuery.sizeOf(context).width <= 1000 : false;
 
-    return Scaffold(
-      body: Shortcuts(
-        shortcuts: {
-          // ⌘K / Ctrl+K 聚焦搜索（对应旧版快捷键）
-          const SingleActivator(LogicalKeyboardKey.keyK, meta: true):
-              const _FocusSearchIntent(),
-          const SingleActivator(LogicalKeyboardKey.keyK, control: true):
-              const _FocusSearchIntent(),
-          // ⌘O / Ctrl+O 导入（对应旧版菜单「导入音声文件夹」）
-          const SingleActivator(LogicalKeyboardKey.keyO, meta: true):
-              const _ImportIntent(),
-          const SingleActivator(LogicalKeyboardKey.keyO, control: true):
-              const _ImportIntent(),
-        },
-        child: Actions(
-          actions: {
-            _FocusSearchIntent: CallbackAction<_FocusSearchIntent>(
-              onInvoke: (_) {
-                _searchFocus.requestFocus();
-                return null;
-              },
-            ),
-            _ImportIntent: CallbackAction<_ImportIntent>(
-              onInvoke: (_) {
-                _importFolder();
-                return null;
-              },
-            ),
+    return PopScope(
+      canPop: !isMobile,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || !isMobile) return;
+        // Android 返回键逐层关闭（对应旧版桥接层逻辑）
+        if (_multiMode) {
+          setState(() {
+            _multiMode = false;
+            _multiIds.clear();
+          });
+        } else if (_detailAlbum != null) {
+          setState(() => _detailAlbum = null);
+        } else if (_drawerOpen) {
+          setState(() => _drawerOpen = false);
+        } else if (_view != '全部音声') {
+          setState(() => _view = '全部音声');
+        } else {
+          SystemNavigator.pop(); // 无浮层 → 最小化/退出
+        }
+      },
+      child: Scaffold(
+        body: Shortcuts(
+          shortcuts: {
+            // ⌘K / Ctrl+K 聚焦搜索（对应旧版快捷键）
+            const SingleActivator(LogicalKeyboardKey.keyK, meta: true):
+                const _FocusSearchIntent(),
+            const SingleActivator(LogicalKeyboardKey.keyK, control: true):
+                const _FocusSearchIntent(),
+            // ⌘O / Ctrl+O 导入（对应旧版菜单「导入音声文件夹」）
+            const SingleActivator(LogicalKeyboardKey.keyO, meta: true):
+                const _ImportIntent(),
+            const SingleActivator(LogicalKeyboardKey.keyO, control: true):
+                const _ImportIntent(),
           },
-          child: SafeArea(
-        child: Stack(
-          children: [
-            Column(
-              children: [
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+          child: Actions(
+            actions: {
+              _FocusSearchIntent: CallbackAction<_FocusSearchIntent>(
+                onInvoke: (_) {
+                  _searchFocus.requestFocus();
+                  return null;
+                },
+              ),
+              _ImportIntent: CallbackAction<_ImportIntent>(
+                onInvoke: (_) {
+                  _importFolder();
+                  return null;
+                },
+              ),
+            },
+            child: SafeArea(
+              child: Stack(
+                children: [
+                  Column(
                     children: [
-                      if (!isMobile) ...[
-                        SizedBox(
-                          width: _sidebarCollapsed ? 44 : 240,
-                          child: Sidebar(
-                            activeView: _view,
-                            collapsed: _sidebarCollapsed,
-                            onViewChanged: (view) => setState(() => _view = view),
-                            onOpenSettings: () => _openSettings(context),
-                          ),
+                      Expanded(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (!isMobile) ...[
+                              SizedBox(
+                                width: _sidebarCollapsed ? 44 : 240,
+                                child: Sidebar(
+                                  activeView: _view,
+                                  collapsed: _sidebarCollapsed,
+                                  onViewChanged: (view) => setState(() => _view = view),
+                                  onOpenSettings: () => _openSettings(context),
+                                ),
+                              ),
+                            ],
+                            Expanded(child: _buildMain(filtered, theme, isMobile)),
+                          ],
                         ),
-                      ],
-                      Expanded(child: _buildMain(filtered, theme, isMobile)),
+                      ),
+                      PlayerBar(
+                        compact: isMobile,
+                        onCoverTap: (a) => setState(() => _detailAlbum = a),
+                      ),
                     ],
                   ),
-                ),
-                PlayerBar(
-                  onCoverTap: (a) => setState(() => _detailAlbum = a),
-                ),
-              ],
-            ),
-            // 详情抽屉（桌面右侧滑入）
-            if (_detailAlbum != null && !isMobile)
-              Positioned(
-                right: 0,
-                top: 0,
-                bottom: 0,
-                width: 390,
-                child: DetailDrawer(
-                  album: _detailAlbum!,
-                  onClose: () => setState(() => _detailAlbum = null),
-                ),
-              ),
-            // 导入进度浮条
-            if (_importing)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 92,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF292735),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 34, offset: const Offset(0, 14)),
-                      ],
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '正在导入 $_importProcessed / $_importTotal 张专辑',
-                          style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
-                        ),
-                        const SizedBox(height: 7),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: SizedBox(
-                            width: 280,
-                            height: 4,
-                            child: LinearProgressIndicator(
-                              value: _importProgress,
-                              backgroundColor: Colors.white.withValues(alpha: 0.15),
-                              color: theme.colorScheme.primary,
+                  // 移动端：抽屉侧栏
+                  if (isMobile && _drawerOpen)
+                    Positioned.fill(
+                      child: Stack(
+                        children: [
+                          GestureDetector(
+                            onTap: () => setState(() => _drawerOpen = false),
+                            child: Container(color: Colors.black.withValues(alpha: 0.35)),
+                          ),
+                          Positioned(
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            width: 240,
+                            child: Material(
+                              elevation: 8,
+                              child: Sidebar(
+                                activeView: _view,
+                                onViewChanged: (view) {
+                                  setState(() {
+                                    _view = view;
+                                    _drawerOpen = false;
+                                  });
+                                },
+                                onOpenSettings: () {
+                                  setState(() => _drawerOpen = false);
+                                  _openSettings(context);
+                                },
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ),
+                  // 详情：桌面右侧抽屉 / 移动全屏弹层
+                  if (_detailAlbum != null)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      bottom: isMobile ? 118 : 0,
+                      left: isMobile ? 0 : null,
+                      width: isMobile ? null : 390,
+                      child: DetailDrawer(
+                        album: _detailAlbum!,
+                        onClose: () => setState(() => _detailAlbum = null),
+                      ),
+                    ),
+                  // 导入/刮削进度浮条
+                  if (_importing)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: isMobile ? 178 : 92,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF292735),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 34, offset: const Offset(0, 14)),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '$_importLabel $_importProcessed / $_importTotal 张专辑',
+                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                              ),
+                              const SizedBox(height: 7),
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: SizedBox(
+                                  width: 280,
+                                  height: 4,
+                                  child: LinearProgressIndicator(
+                                    value: _importProgress,
+                                    backgroundColor: Colors.white.withValues(alpha: 0.15),
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
+        // 移动端底部导航（对应旧版 bottom-nav）
+        bottomNavigationBar: isMobile
+            ? BottomNavigationBar(
+                currentIndex: _navIndex,
+                onTap: (i) {
+                  if (i == 4) {
+                    _openSettings(context);
+                    return;
+                  }
+                  setState(() => _view = _navViews[i]);
+                },
+                type: BottomNavigationBarType.fixed,
+                backgroundColor: theme.colorScheme.surface,
+                selectedItemColor: theme.colorScheme.primary,
+                unselectedItemColor: theme.hintColor,
+                items: const [
+                  BottomNavigationBarItem(icon: Icon(Icons.grid_view_rounded), label: '全部'),
+                  BottomNavigationBarItem(icon: Icon(Icons.history_rounded), label: '最近'),
+                  BottomNavigationBarItem(icon: Icon(Icons.play_circle_outline_rounded), label: '播放'),
+                  BottomNavigationBarItem(icon: Icon(Icons.favorite_border_rounded), label: '收藏'),
+                  BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), label: '设置'),
+                ],
+              )
+            : null,
       ),
-    ),
     );
+  }
+
+  static const _navViews = ['全部音声', '最近添加', '正在播放', '收藏夹'];
+
+  int get _navIndex {
+    final i = _navViews.indexOf(_view);
+    return i < 0 ? 0 : i;
   }
 
   Widget _buildMain(List<Album> filtered, ThemeData theme, bool isMobile) {
@@ -262,7 +389,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildTopbar(theme, isMobile),
-        _buildHero(theme, filtered.length),
+        _buildHero(theme, filtered.length, isMobile),
         _buildToolbar(theme, isMobile, filtered),
         _buildResultsLine(theme, filtered.length),
         Expanded(child: _buildGrid(filtered, theme, isMobile)),
@@ -275,20 +402,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 48, vertical: 14),
       child: Row(
         children: [
-          if (!isMobile)
+          if (isMobile)
+            IconButton(
+              icon: const Icon(Icons.menu_rounded, size: 22),
+              tooltip: '侧栏',
+              onPressed: () => setState(() => _drawerOpen = true),
+            )
+          else
             IconButton(
               icon: Icon(_sidebarCollapsed ? Icons.menu_open : Icons.menu, size: 18),
               tooltip: _sidebarCollapsed ? '显示侧栏' : '隐藏侧栏',
               onPressed: () => setState(() => _sidebarCollapsed = !_sidebarCollapsed),
             ),
-          Text(
-            '音声库',
-            style: TextStyle(fontSize: 13, color: theme.hintColor),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Text('/', style: TextStyle(color: theme.hintColor.withValues(alpha: 0.5))),
-          ),
+          if (!isMobile) ...[
+            Text(
+              '音声库',
+              style: TextStyle(fontSize: 13, color: theme.hintColor),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text('/', style: TextStyle(color: theme.hintColor.withValues(alpha: 0.5))),
+            ),
+          ],
           Text(
             _view,
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
@@ -309,17 +444,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           FilledButton.tonalIcon(
             onPressed: _importFolder,
             icon: const Icon(Icons.upload, size: 16),
-            label: const Text('导入'),
+            label: Text(isMobile ? '导入' : '导入'),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildHero(ThemeData theme, int resultCount) {
+  Widget _buildHero(ThemeData theme, int resultCount, bool isMobile) {
     final favCount = ref.watch(libraryProvider).where((a) => a.favorite).length;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(48, 20, 48, 24),
+      padding: EdgeInsets.fromLTRB(isMobile ? 16 : 48, isMobile ? 8 : 20, isMobile ? 16 : 48, isMobile ? 12 : 24),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -339,7 +474,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 const SizedBox(height: 9),
                 Text(
                   _view,
-                  style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w700, letterSpacing: -1.2),
+                  style: TextStyle(fontSize: isMobile ? 24 : 30, fontWeight: FontWeight.w700, letterSpacing: -1.2),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -349,22 +484,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text('已收藏', style: TextStyle(fontSize: 10, color: theme.hintColor)),
-              Text(
-                '$favCount',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w700,
-                  color: theme.colorScheme.primary,
-                  height: 1.1,
+          if (!isMobile)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('已收藏', style: TextStyle(fontSize: 10, color: theme.hintColor)),
+                Text(
+                  '$favCount',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.primary,
+                    height: 1.1,
+                  ),
                 ),
-              ),
-              Text('张专辑', style: TextStyle(fontSize: 10, color: theme.hintColor)),
-            ],
-          ),
+                Text('张专辑', style: TextStyle(fontSize: 10, color: theme.hintColor)),
+              ],
+            ),
         ],
       ),
     );
@@ -458,8 +594,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               // 排序
               Row(
                 children: [
-                  Text('排序', style: TextStyle(fontSize: 11, color: theme.hintColor)),
-                  const SizedBox(width: 8),
+                  if (!isMobile) ...[
+                    Text('排序', style: TextStyle(fontSize: 11, color: theme.hintColor)),
+                    const SizedBox(width: 8),
+                  ],
                   DropdownButton<String>(
                     value: _sort,
                     underline: const SizedBox.shrink(),
@@ -565,17 +703,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Widget _buildGrid(List<Album> filtered, ThemeData theme, bool isMobile) {
     if (filtered.isEmpty) {
+      final empty = ref.watch(libraryProvider).isEmpty;
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              ref.watch(libraryProvider).isEmpty ? '还没有导入任何音声' : '没有找到匹配的音声',
+              empty ? '还没有导入任何音声' : '没有找到匹配的音声',
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: theme.hintColor),
             ),
             const SizedBox(height: 8),
             Text(
-              ref.watch(libraryProvider).isEmpty ? '点击右上角「导入」按钮，选择你的音声文件夹' : '试试其他关键词或清除筛选条件',
+              empty ? '点击右上角「导入」按钮，选择你的音声文件夹' : '试试其他关键词或清除筛选条件',
               style: TextStyle(fontSize: 12, color: theme.hintColor),
             ),
           ],
@@ -585,7 +724,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return GridView.builder(
       padding: EdgeInsets.fromLTRB(isMobile ? 16 : 48, 16, isMobile ? 16 : 48, 24),
       gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 190,
+        maxCrossAxisExtent: isMobile ? 240 : 190,
         mainAxisSpacing: 25,
         crossAxisSpacing: 18,
         childAspectRatio: 0.60,
@@ -645,7 +784,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   RelativeRect get _menuPosition {
-    // 简化：菜单显示在屏幕中央偏下（桌面右键场景可用性足够）
+    // 简化：菜单显示在屏幕中央（右键/长按场景可用性足够）
     final size = MediaQuery.sizeOf(context);
     return RelativeRect.fromLTRB(size.width / 2, size.height / 2, size.width / 2, size.height / 2);
   }

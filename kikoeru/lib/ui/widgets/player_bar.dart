@@ -8,12 +8,16 @@ import '../../playback/playback_rules.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
 
-/// 底部播放条：封面 + 标题/艺人 + 控制 + 进度 + 播放模式 + 音量（对应旧版 footer.player）
+/// 底部播放条：封面 + 标题/艺人 + 控制 + 进度 + 播放模式 + 音量（对应旧版 footer.player）。
+/// compact（移动端）为两行布局：控件在上，全宽进度条下移成一行。
 class PlayerBar extends ConsumerStatefulWidget {
-  const PlayerBar({super.key, this.onCoverTap});
+  const PlayerBar({super.key, this.onCoverTap, this.compact = false});
 
   /// 点击当前封面 → 打开详情
   final void Function(Album album)? onCoverTap;
+
+  /// 移动端紧凑两行布局
+  final bool compact;
 
   @override
   ConsumerState<PlayerBar> createState() => _PlayerBarState();
@@ -35,179 +39,229 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
 
     final position = _dragging ? _dragValue : state.position;
     final duration = state.duration;
-    final pct = duration > 0 ? (position / duration).clamp(0.0, 1.0) : 0.0;
+
+    final topRow = Row(
+      children: [
+        _buildCover(theme, album),
+        const SizedBox(width: 12),
+        _buildMeta(theme, state, album, track),
+        const SizedBox(width: 10),
+        _buildControls(theme, state),
+        const Spacer(),
+        _buildModeButton(theme, state),
+        const SizedBox(width: 12),
+        _buildVolumeButton(theme, settings),
+      ],
+    );
 
     return Container(
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border(top: BorderSide(color: theme.dividerColor)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 10),
-      child: Row(
+      padding: EdgeInsets.symmetric(horizontal: widget.compact ? 12 : 26, vertical: 8),
+      child: widget.compact
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                topRow,
+                _buildTimeline(theme, position, duration),
+              ],
+            )
+          : Row(
+              children: [
+                _buildCover(theme, album),
+                const SizedBox(width: 15),
+                _buildMeta(theme, state, album, track),
+                const SizedBox(width: 18),
+                _buildControls(theme, state),
+                const SizedBox(width: 18),
+                Expanded(child: _buildTimeline(theme, position, duration)),
+                const SizedBox(width: 18),
+                _buildModeButton(theme, state),
+                const SizedBox(width: 16),
+                _buildVolumeButton(theme, settings),
+              ],
+            ),
+    );
+  }
+
+  // ---- 封面 ----
+  Widget _buildCover(ThemeData theme, Album? album) {
+    final size = widget.compact ? 40.0 : 48.0;
+    return InkWell(
+      onTap: album == null ? null : () => widget.onCoverTap?.call(album),
+      borderRadius: BorderRadius.circular(7),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(7),
+          child: album == null
+              ? Container(color: const Color(0xFFD5D1E8))
+              : AlbumCover(album: album),
+        ),
+      ),
+    );
+  }
+
+  // ---- 元信息 ----
+  Widget _buildMeta(ThemeData theme, PlaybackState state, Album? album, track) {
+    return SizedBox(
+      width: widget.compact ? null : 190,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // 封面
-          InkWell(
-            onTap: album == null ? null : () => widget.onCoverTap?.call(album),
-            borderRadius: BorderRadius.circular(7),
-            child: SizedBox(
-              width: 48,
-              height: 48,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(7),
-                child: album == null
-                    ? Container(color: const Color(0xFFD5D1E8))
-                    : AlbumCover(album: album),
+          if (!widget.compact) ...[
+            Text(
+              '正在播放',
+              style: TextStyle(
+                color: theme.colorScheme.primary,
+                fontSize: 9,
+                letterSpacing: 0.8,
+                fontWeight: FontWeight.w700,
               ),
             ),
+            const SizedBox(height: 3),
+          ],
+          Text(
+            album == null
+                ? '未在播放'
+                : '${album.title} · ${state.queueIndex >= 0 ? (state.queueIndex + 1).toString().padLeft(2, '0') : '01'}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
           ),
-          const SizedBox(width: 15),
-          // 元信息
+          Text(
+            track == null ? '' : '${album?.artist ?? ''} · ${track.name}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 10, color: theme.hintColor),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---- 播放控制 ----
+  Widget _buildControls(ThemeData theme, PlaybackState state) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _IconButton(
+          icon: '◀◀',
+          tooltip: '上一首',
+          onPressed: state.album == null ? null : () => ref.read(playbackProvider.notifier).prev(),
+        ),
+        const SizedBox(width: 12),
+        _PlayButton(
+          playing: state.playing,
+          size: widget.compact ? 38 : 32,
+          onPressed: state.album == null ? null : () => ref.read(playbackProvider.notifier).toggle(),
+        ),
+        const SizedBox(width: 12),
+        _IconButton(
+          icon: '▶▶',
+          tooltip: '下一首',
+          onPressed: state.album == null ? null : () => ref.read(playbackProvider.notifier).next(),
+        ),
+      ],
+    );
+  }
+
+  // ---- 时间轴 ----
+  Widget _buildTimeline(ThemeData theme, double position, double duration) {
+    final pct = duration > 0 ? (position / duration).clamp(0.0, 1.0) : 0.0;
+    return Row(
+      children: [
+        _TimeText(formatTime(position)),
+        Expanded(
+          child: Slider(
+            value: pct,
+            onChangeStart: (_) => setState(() => _dragging = true),
+            onChanged: (v) => setState(() => _dragValue = v * duration),
+            onChangeEnd: (v) {
+              setState(() {
+                _dragging = false;
+                _dragValue = 0;
+              });
+              ref.read(playbackProvider.notifier).seek(v * duration);
+            },
+          ),
+        ),
+        _TimeText(formatTime(duration), right: true),
+      ],
+    );
+  }
+
+  // ---- 播放模式按钮 ----
+  Widget _buildModeButton(ThemeData theme, PlaybackState state) {
+    return _Popover(
+      open: _modeOpen,
+      onClose: () => setState(() => _modeOpen = false),
+      button: _ModeButton(
+        mode: state.mode,
+        onTap: () => setState(() => _modeOpen = !_modeOpen),
+      ),
+      child: SizedBox(
+        width: 236,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+              child: Text('播放模式',
+                  style: TextStyle(fontSize: 9, letterSpacing: 1, color: theme.hintColor)),
+            ),
+            for (final m in playModes)
+              _ModeOption(
+                mode: m,
+                active: m.key == state.mode.key,
+                onTap: () {
+                  ref.read(playbackProvider.notifier).setMode(PlaybackModeX.fromKey(m.key));
+                  ref.read(settingsProvider.notifier).setPlayMode(m.key);
+                  setState(() => _modeOpen = false);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---- 音量按钮 ----
+  Widget _buildVolumeButton(ThemeData theme, AppSettings settings) {
+    return _Popover(
+      open: _volumeOpen,
+      onClose: () => setState(() => _volumeOpen = false),
+      button: _IconButton(
+        icon: settings.volume == 0 ? '◖̸' : (settings.volume < 0.5 ? '◔' : '◖'),
+        tooltip: '音量',
+        onPressed: () => setState(() => _volumeOpen = !_volumeOpen),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('音量', style: TextStyle(fontSize: 10)),
+          const SizedBox(width: 8),
           SizedBox(
-            width: 190,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '正在播放',
-                  style: TextStyle(
-                    color: theme.colorScheme.primary,
-                    fontSize: 9,
-                    letterSpacing: 0.8,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  album == null
-                      ? '未在播放'
-                      : '${album.title} · ${state.queueIndex >= 0 ? (state.queueIndex + 1).toString().padLeft(2, '0') : '01'}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-                ),
-                Text(
-                  track == null ? '' : '${album?.artist ?? ''} · ${track.name}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 10, color: theme.hintColor),
-                ),
-              ],
+            width: 105,
+            child: Slider(
+              value: settings.volume,
+              onChanged: (v) {
+                ref.read(playbackProvider.notifier).setVolume(v);
+                ref.read(settingsProvider.notifier).setVolume(v);
+              },
             ),
           ),
-          const SizedBox(width: 18),
-          // 控制
-          Row(
-            children: [
-              _IconButton(
-                icon: '◀◀',
-                tooltip: '上一首',
-                onPressed: state.album == null ? null : () => ref.read(playbackProvider.notifier).prev(),
-              ),
-              const SizedBox(width: 14),
-              _PlayButton(
-                playing: state.playing,
-                onPressed: state.album == null ? null : () => ref.read(playbackProvider.notifier).toggle(),
-              ),
-              const SizedBox(width: 14),
-              _IconButton(
-                icon: '▶▶',
-                tooltip: '下一首',
-                onPressed: state.album == null ? null : () => ref.read(playbackProvider.notifier).next(),
-              ),
-            ],
-          ),
-          const SizedBox(width: 18),
-          // 时间轴
-          Expanded(
-            child: Row(
-              children: [
-                _TimeText(formatTime(position)),
-                Expanded(
-                  child: Slider(
-                    value: pct.clamp(0.0, 1.0),
-                    onChangeStart: (_) => setState(() => _dragging = true),
-                    onChanged: (v) => setState(() => _dragValue = v * duration),
-                    onChangeEnd: (v) {
-                      setState(() {
-                        _dragging = false;
-                        _dragValue = 0;
-                      });
-                      ref.read(playbackProvider.notifier).seek(v * duration);
-                    },
-                  ),
-                ),
-                _TimeText(formatTime(duration), right: true),
-              ],
-            ),
-          ),
-          // 播放模式
-          _Popover(
-            open: _modeOpen,
-            onClose: () => setState(() => _modeOpen = false),
-            button: _ModeButton(
-              mode: state.mode,
-              onTap: () => setState(() => _modeOpen = !_modeOpen),
-            ),
-            child: SizedBox(
-              width: 236,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-                    child: Text('播放模式',
-                        style: TextStyle(fontSize: 9, letterSpacing: 1, color: theme.hintColor)),
-                  ),
-                  for (final m in playModes)
-                    _ModeOption(
-                      mode: m,
-                      active: m.key == state.mode.key,
-                      onTap: () {
-                        ref.read(playbackProvider.notifier).setMode(PlaybackModeX.fromKey(m.key));
-                        ref.read(settingsProvider.notifier).setPlayMode(m.key);
-                        setState(() => _modeOpen = false);
-                      },
-                    ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          // 音量
-          _Popover(
-            open: _volumeOpen,
-            onClose: () => setState(() => _volumeOpen = false),
-            button: _IconButton(
-              icon: settings.volume == 0 ? '◖̸' : (settings.volume < 0.5 ? '◔' : '◖'),
-              tooltip: '音量',
-              onPressed: () => setState(() => _volumeOpen = !_volumeOpen),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('音量', style: TextStyle(fontSize: 10)),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 105,
-                  child: Slider(
-                    value: settings.volume,
-                    onChanged: (v) {
-                      ref.read(playbackProvider.notifier).setVolume(v);
-                      ref.read(settingsProvider.notifier).setVolume(v);
-                    },
-                  ),
-                ),
-                SizedBox(
-                  width: 28,
-                  child: Text(
-                    '${(settings.volume * 100).round()}%',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(fontSize: 10, color: theme.colorScheme.primary),
-                  ),
-                ),
-              ],
+          SizedBox(
+            width: 28,
+            child: Text(
+              '${(settings.volume * 100).round()}%',
+              textAlign: TextAlign.right,
+              style: TextStyle(fontSize: 10, color: theme.colorScheme.primary),
             ),
           ),
         ],
@@ -260,20 +314,21 @@ class _IconButton extends StatelessWidget {
 }
 
 class _PlayButton extends StatelessWidget {
-  const _PlayButton({required this.playing, this.onPressed});
+  const _PlayButton({required this.playing, this.onPressed, this.size = 32});
 
   final bool playing;
   final VoidCallback? onPressed;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return InkWell(
       onTap: onPressed,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(size / 2),
       child: Container(
-        width: 32,
-        height: 32,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           color: theme.colorScheme.primary,
           shape: BoxShape.circle,
