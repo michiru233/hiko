@@ -52,6 +52,23 @@ class DlsiteScraper {
     r'genre/\d+/from/work\.genre/ana_flg/all"[^>]*>([^<]+)</a>',
     caseSensitive: false,
   );
+  static final _titleRegex = RegExp(r'id="work_name"[^>]*>([^<]+)<');
+
+  /// 解析作品页标签（对应旧版 parseDlsiteTags）
+  static List<String> parseTags(String html) {
+    final tags = <String>[];
+    for (final m in _tagRegex.allMatches(html)) {
+      final tag = m.group(1)!.trim();
+      if (tag.isNotEmpty && !tags.contains(tag)) tags.add(tag);
+    }
+    return tags;
+  }
+
+  /// 解析作品页标题（对应旧版 parseDlsiteTitle）
+  static String? parseTitle(String html) {
+    final match = _titleRegex.firstMatch(html);
+    return match?.group(1)?.trim();
+  }
 
   Future<ScrapeResult> scrape(
     Set<String> ids, {
@@ -85,8 +102,8 @@ class DlsiteScraper {
       }
       try {
         final html = await _fetch(album.rjCode!, proxy);
-        final tags = _parseTags(html);
-        final title = _parseTitle(html);
+        final tags = DlsiteScraper.parseTags(html);
+        final title = DlsiteScraper.parseTitle(html);
         results.add(ScrapeDetail(id: album.id, rj: album.rjCode!, tags: tags, title: title));
         if (tags.isNotEmpty) {
           scraped++;
@@ -147,20 +164,6 @@ class DlsiteScraper {
     } finally {
       client.close(force: true);
     }
-  }
-
-  List<String> _parseTags(String html) {
-    final tags = <String>[];
-    for (final m in _tagRegex.allMatches(html)) {
-      final tag = m.group(1)!.trim();
-      if (tag.isNotEmpty && !tags.contains(tag)) tags.add(tag);
-    }
-    return tags;
-  }
-
-  String? _parseTitle(String html) {
-    final match = RegExp(r'id="work_name"[^>]*>([^<]+)<').firstMatch(html);
-    return match?.group(1)?.trim();
   }
 }
 
