@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -85,6 +86,29 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
     expect(container.read(playbackProvider).queueIndex, 1);
+
+    // 6. 右键菜单：应在指针位置附近弹出（而非屏幕中央）
+    // 关闭详情回到网格
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+    // tester.tap 支持 buttons 参数：完整指针生命周期，可靠触发 onSecondaryTapDown
+    await tester.tap(
+      find.text('雨夜耳语'),
+      buttons: kSecondaryMouseButton,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('刮削 DLsite 标签'), findsOneWidget);
+    expect(find.text('打开所在文件夹'), findsOneWidget);
+    // 菜单第一项应靠近指针（不应在屏幕中央）
+    final menuTopLeft = tester.getTopLeft(find.text('刮削 DLsite 标签'));
+    final tapCenter = tester.getCenter(find.text('雨夜耳语'));
+    debugPrint('[test] right-click at $tapCenter, menu top-left $menuTopLeft');
+    expect((menuTopLeft - tapCenter).distance, lessThan(250));
+    expect((menuTopLeft - tapCenter).distance, greaterThan(0));
+    // 关闭菜单（点击角落）
+    await tester.tapAt(const Offset(4, 4));
+    await tester.pumpAndSettle();
+    expect(find.text('刮削 DLsite 标签'), findsNothing);
   });
 }
 

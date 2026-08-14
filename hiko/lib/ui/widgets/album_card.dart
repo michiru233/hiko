@@ -20,17 +20,21 @@ class AlbumCard extends ConsumerWidget {
   final bool multiMode;
   final bool selected;
   final VoidCallback onTap;
-  final VoidCallback? onContextMenu;
+
+  /// 右键（桌面）/长按（移动）菜单回调，携带触发位置
+  final void Function(Offset position)? onContextMenu;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     return GestureDetector(
       onTap: onTap,
-      onLongPress: onContextMenu,
+      onLongPressStart: onContextMenu == null
+          ? null
+          : (d) => onContextMenu!(d.globalPosition),
       onSecondaryTapDown: onContextMenu == null
           ? null
-          : (_) => onContextMenu!(),
+          : (d) => onContextMenu!(d.globalPosition),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

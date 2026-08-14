@@ -746,16 +746,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               setState(() => _detailAlbum = album);
             }
           },
-          onContextMenu: () => _showContextMenu(album),
+          onContextMenu: (position) => _showContextMenu(album, position),
         );
       },
     );
   }
 
-  void _showContextMenu(Album album) {
+  /// 右键/长按菜单：在触发位置（指针/手指）附近弹出，屏幕边缘自动收拢
+  void _showContextMenu(Album album, Offset position) {
+    // 以触发点为锚点（1x1 锚矩形），showMenu 会自动把菜单收在屏幕内
+    final overlay =
+        Overlay.of(context).context.findRenderObject() as RenderBox;
+    final anchor = RelativeRect.fromRect(
+      Rect.fromLTWH(position.dx, position.dy, 1, 1),
+      Offset.zero & overlay.size,
+    );
     showMenu<String>(
       context: context,
-      position: _menuPosition,
+      position: anchor,
       items: [
         if (albumRjCode(album) != null)
           const PopupMenuItem(value: 'scrape', child: Text('刮削 DLsite 标签')),
@@ -781,12 +789,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           _deleteSingle(album, true);
       }
     });
-  }
-
-  RelativeRect get _menuPosition {
-    // 简化：菜单显示在屏幕中央（右键/长按场景可用性足够）
-    final size = MediaQuery.sizeOf(context);
-    return RelativeRect.fromLTRB(size.width / 2, size.height / 2, size.width / 2, size.height / 2);
   }
 
   Future<void> _deleteSingle(Album album, bool deleteFiles) async {
