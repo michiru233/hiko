@@ -4,6 +4,7 @@ import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 
 import 'data/library_provider.dart';
 import 'data/settings_store.dart';
@@ -14,6 +15,10 @@ import 'ui/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Windows 播放：just_audio 官方不支持，经 just_audio_media_kit（libmpv）路由
+  if (Platform.isWindows) {
+    JustAudioMediaKit.ensureInitialized();
+  }
   final container = ProviderContainer();
   // 加载设置与音声库
   await container.read(settingsProvider.notifier).load();
