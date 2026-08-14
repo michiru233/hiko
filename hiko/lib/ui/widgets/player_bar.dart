@@ -230,15 +230,18 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
     );
   }
 
-  // ---- 音量按钮 ----
+  // ---- 音量按钮（纵向弹出滑块与百分比）----
   Widget _buildVolumeButton(ThemeData theme, AppSettings settings) {
     return MenuAnchor(
+      alignmentOffset: const Offset(-4, -12),
       style: MenuStyle(
         backgroundColor: WidgetStatePropertyAll(theme.colorScheme.surface),
         side: WidgetStatePropertyAll(BorderSide(color: theme.dividerColor)),
-        shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-        padding: const WidgetStatePropertyAll(EdgeInsets.all(8)),
-        elevation: WidgetStatePropertyAll(12),
+        shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+        padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(vertical: 10, horizontal: 6)),
+        elevation: const WidgetStatePropertyAll(12),
       ),
       builder: (context, controller, child) => IconButton(
         onPressed: () => controller.isOpen ? controller.close() : controller.open(),
@@ -254,32 +257,48 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
         ),
       ),
       menuChildren: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('音量', style: TextStyle(fontSize: 10)),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 105,
-              child: Slider(
-                key: const ValueKey('volume-slider'),
-                value: settings.volume,
-                onChanged: (v) {
-                  // 先更新 UI 状态（播放器未加载时 setVolume 可能抛错，不能阻断音量反馈）
-                  ref.read(settingsProvider.notifier).setVolume(v);
-                  ref.read(playbackProvider.notifier).setVolume(v);
-                },
-              ),
-            ),
-            SizedBox(
-              width: 28,
-              child: Text(
+        SizedBox(
+          width: 38,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
                 '${(settings.volume * 100).round()}%',
-                textAlign: TextAlign.right,
-                style: TextStyle(fontSize: 10, color: theme.colorScheme.primary),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: theme.colorScheme.primary,
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 6),
+              SizedBox(
+                height: 110,
+                width: 32,
+                child: RotatedBox(
+                  quarterTurns: 3,
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 4,
+                      thumbShape:
+                          const RoundSliderThumbShape(enabledThumbRadius: 6),
+                      overlayShape:
+                          const RoundSliderOverlayShape(overlayRadius: 12),
+                    ),
+                    child: Slider(
+                      key: const ValueKey('volume-slider'),
+                      value: settings.volume,
+                      mouseCursor: SystemMouseCursors.click,
+                      onChanged: (v) {
+                        ref.read(settingsProvider.notifier).setVolume(v);
+                        ref.read(playbackProvider.notifier).setVolume(v);
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
