@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:hiko/data/library_store.dart';
+import 'package:hiko/data/settings_store.dart';
 import 'package:hiko/main.dart' as app;
 import 'package:hiko/models/album.dart';
 import 'package:hiko/models/track.dart';
@@ -50,6 +51,44 @@ void main() {
     // 1. 网格应有专辑卡片
     expect(find.text('雨夜耳语'), findsOneWidget);
 
+    // 1.5 音量调节：打开弹层 → 拖动滑条 → 音量变化（回归修复：弹层点击拦截滑条）
+    await tester.tap(find.byTooltip('音量'));
+    await tester.pumpAndSettle();
+    debugPrint('[test] popover visible: ${find.text('音量').evaluate().isNotEmpty}, '
+        'slider count: ${find.byType(Slider).evaluate().length}');
+    for (final e in find.byType(Slider).evaluate()) {
+      final box = e.renderObject as RenderBox;
+      debugPrint('[test] slider at ${box.localToGlobal(Offset.zero)} size ${box.size}');
+    }
+    expect(find.text('音量'), findsOneWidget, reason: '音量弹层应打开');
+    // 弹层打开后有两个 Slider（进度 + 音量），用唯一 Key 定位音量滑条
+    final volumeSlider = find.byKey(const ValueKey('volume-slider'));
+    // 先验证 provider 链路本身正常
+    await containerOfApp(tester).read(settingsProvider.notifier).setVolume(0.8);
+    // 拖动滑条（手动多步，模拟真实拖动）
+    final sliderCenter = tester.getCenter(volumeSlider);
+    debugPrint('[test] slider center: $sliderCenter, '
+        'window logical: ${tester.view.physicalSize / tester.view.devicePixelRatio}');
+    final hit = HitTestResult();
+    tester.binding.hitTestInView(hit, sliderCenter, tester.view.viewId);
+    debugPrint('[test] hit path: ${hit.path.map((e) => e.target.runtimeType).join(' -> ')}');
+    final g = await tester.startGesture(sliderCenter);
+    await tester.pump(const Duration(milliseconds: 50));
+    for (var i = 1; i <= 2; i++) {
+      await g.moveBy(const Offset(-10, 0));
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await g.up();
+    await tester.pumpAndSettle();
+    final volumeAfterDrag = containerOfApp(tester).read(settingsProvider).volume;
+    debugPrint('[test] volume after drag: $volumeAfterDrag, '
+        'popover open: ${find.text('音量').evaluate().isNotEmpty}');
+    expect(volumeAfterDrag, lessThan(0.7));
+    expect(volumeAfterDrag, greaterThan(0.1));
+    // 再点音量按钮关闭弹层
+    await tester.tap(find.byTooltip('音量'));
+    await tester.pumpAndSettle();
+
     // 2. 打开详情抽屉：点击卡片
     await tester.tap(find.text('雨夜耳语'));
     await tester.pumpAndSettle();
@@ -64,7 +103,7 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
 
-    final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
+    final container = containerOfApp(tester);
     var playback = container.read(playbackProvider);
     debugPrint('[test] after play: album=${playback.album?.title} '
         'queueIndex=${playback.queueIndex} playing=${playback.playing} '
@@ -145,3 +184,7 @@ Uint8List _le16(int v) => Uint8List.fromList([v & 0xFF, (v >> 8) & 0xFF]);
 Uint8List _le32(int v) => Uint8List.fromList([
       v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF,
     ]);
+
+/// 从 app 的 ProviderScope 取容器（main() 里创建的 UncontrolledProviderScope）
+ProviderContainer containerOfApp(WidgetTester tester) =>
+    ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));

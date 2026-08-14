@@ -138,8 +138,14 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     }
   }
 
-  Future<void> setVolume(double volume) =>
-      _player.setVolume(volume.clamp(0.0, 1.0).toDouble());
+  /// 音量设置：播放器未加载/初始化失败时容忍（UI 音量状态仍由 settings 管理）
+  Future<void> setVolume(double volume) async {
+    try {
+      await _player.setVolume(volume.clamp(0.0, 1.0).toDouble());
+    } catch (e) {
+      debugPrint('[playback] setVolume 失败（容忍）: $e');
+    }
+  }
 
   Future<void> setMode(PlaybackMode mode) async {
     state = state.copyWith(mode: mode);

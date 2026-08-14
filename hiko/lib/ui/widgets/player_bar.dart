@@ -26,8 +26,6 @@ class PlayerBar extends ConsumerStatefulWidget {
 class _PlayerBarState extends ConsumerState<PlayerBar> {
   bool _dragging = false;
   double _dragValue = 0;
-  bool _modeOpen = false;
-  bool _volumeOpen = false;
 
   @override
   Widget build(BuildContext context) {
@@ -200,75 +198,89 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
 
   // ---- 播放模式按钮 ----
   Widget _buildModeButton(ThemeData theme, PlaybackState state) {
-    return _Popover(
-      open: _modeOpen,
-      onClose: () => setState(() => _modeOpen = false),
-      button: _ModeButton(
+    return MenuAnchor(
+      style: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(theme.colorScheme.surface),
+        side: WidgetStatePropertyAll(BorderSide(color: theme.dividerColor)),
+        shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+        padding: const WidgetStatePropertyAll(EdgeInsets.all(8)),
+        elevation: WidgetStatePropertyAll(12),
+      ),
+      builder: (context, controller, child) => _ModeButton(
         mode: state.mode,
-        onTap: () => setState(() => _modeOpen = !_modeOpen),
+        onTap: () => controller.isOpen ? controller.close() : controller.open(),
       ),
-      child: SizedBox(
-        width: 236,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-              child: Text('播放模式',
-                  style: TextStyle(fontSize: 9, letterSpacing: 1, color: theme.hintColor)),
-            ),
-            for (final m in playModes)
-              _ModeOption(
-                mode: m,
-                active: m.key == state.mode.key,
-                onTap: () {
-                  ref.read(playbackProvider.notifier).setMode(PlaybackModeX.fromKey(m.key));
-                  ref.read(settingsProvider.notifier).setPlayMode(m.key);
-                  setState(() => _modeOpen = false);
-                },
-              ),
-          ],
+      menuChildren: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+          child: Text('播放模式',
+              style: TextStyle(fontSize: 9, letterSpacing: 1, color: theme.hintColor)),
         ),
-      ),
+        for (final m in playModes)
+          _ModeOption(
+            mode: m,
+            active: m.key == state.mode.key,
+            onTap: () {
+              ref.read(playbackProvider.notifier).setMode(PlaybackModeX.fromKey(m.key));
+              ref.read(settingsProvider.notifier).setPlayMode(m.key);
+            },
+          ),
+      ],
     );
   }
 
   // ---- 音量按钮 ----
   Widget _buildVolumeButton(ThemeData theme, AppSettings settings) {
-    return _Popover(
-      open: _volumeOpen,
-      onClose: () => setState(() => _volumeOpen = false),
-      button: _IconButton(
-        icon: settings.volume == 0 ? '◖̸' : (settings.volume < 0.5 ? '◔' : '◖'),
+    return MenuAnchor(
+      style: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(theme.colorScheme.surface),
+        side: WidgetStatePropertyAll(BorderSide(color: theme.dividerColor)),
+        shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+        padding: const WidgetStatePropertyAll(EdgeInsets.all(8)),
+        elevation: WidgetStatePropertyAll(12),
+      ),
+      builder: (context, controller, child) => IconButton(
+        onPressed: () => controller.isOpen ? controller.close() : controller.open(),
         tooltip: '音量',
-        onPressed: () => setState(() => _volumeOpen = !_volumeOpen),
+        iconSize: 18,
+        color: theme.hintColor,
+        icon: Icon(
+          settings.volume == 0
+              ? Icons.volume_off_rounded
+              : settings.volume < 0.5
+                  ? Icons.volume_down_rounded
+                  : Icons.volume_up_rounded,
+        ),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('音量', style: TextStyle(fontSize: 10)),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 105,
-            child: Slider(
-              value: settings.volume,
-              onChanged: (v) {
-                ref.read(playbackProvider.notifier).setVolume(v);
-                ref.read(settingsProvider.notifier).setVolume(v);
-              },
+      menuChildren: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('音量', style: TextStyle(fontSize: 10)),
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 105,
+              child: Slider(
+                key: const ValueKey('volume-slider'),
+                value: settings.volume,
+                onChanged: (v) {
+                  // 先更新 UI 状态（播放器未加载时 setVolume 可能抛错，不能阻断音量反馈）
+                  ref.read(settingsProvider.notifier).setVolume(v);
+                  ref.read(playbackProvider.notifier).setVolume(v);
+                },
+              ),
             ),
-          ),
-          SizedBox(
-            width: 28,
-            child: Text(
-              '${(settings.volume * 100).round()}%',
-              textAlign: TextAlign.right,
-              style: TextStyle(fontSize: 10, color: theme.colorScheme.primary),
+            SizedBox(
+              width: 28,
+              child: Text(
+                '${(settings.volume * 100).round()}%',
+                textAlign: TextAlign.right,
+                style: TextStyle(fontSize: 10, color: theme.colorScheme.primary),
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -406,52 +418,6 @@ class _ModeOption extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _Popover extends StatelessWidget {
-  const _Popover({
-    required this.open,
-    required this.onClose,
-    required this.button,
-    required this.child,
-  });
-
-  final bool open;
-  final VoidCallback onClose;
-  final Widget button;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        button,
-        if (open)
-          Positioned(
-            right: -10,
-            bottom: 38,
-            child: GestureDetector(
-              onTap: onClose,
-              behavior: HitTestBehavior.translucent,
-              child: Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface,
-                  border: Border.all(color: theme.dividerColor),
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 25, offset: const Offset(0, 10)),
-                  ],
-                ),
-                child: child,
-              ),
-            ),
-          ),
-      ],
     );
   }
 }
