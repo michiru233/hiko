@@ -64,7 +64,7 @@ class Album {
         date: DateTime.fromMillisecondsSinceEpoch(
             (json['date'] as num?)?.toInt() ?? 0),
         tracks: (json['tracks'] as List?)
-                ?.map((t) => Track.fromJson(t as Map<String, dynamic>))
+                ?.map((t) => Track.fromJson(Map<String, dynamic>.from(t as Map)))
                 .toList() ??
             const [],
         localCover: json['localCover'] as String?,

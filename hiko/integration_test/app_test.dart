@@ -138,7 +138,7 @@ void main() {
       await tester.tapAt(const Offset(200, 200)); // 详情遮罩区域关闭
     }
     await tester.pumpAndSettle();
-    await tester.tap(find.text('▶▶'));
+    await tester.tap(find.byIcon(Icons.skip_next_rounded));
     await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
     expect(container.read(playbackProvider).queueIndex, 1);

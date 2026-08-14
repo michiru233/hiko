@@ -75,4 +75,21 @@ void main() {
       expect(updated.totalDuration, 30);
     });
   });
+
+  group('MethodChannel 类型（Map<Object?, Object?>）解析', () {
+    test('通道 Map 泛型不匹配也能解析', () {
+      final raw = <Object?, Object?>{
+        'id': 'local-x',
+        'sourcePath': '',
+        'title': '通道专辑',
+        'date': 0,
+        'tracks': <Object?>[
+          <Object?, Object?>{'index': 0, 'name': '曲目一', 'url': 'content://x/1.mp3'},
+        ],
+      };
+      final album = Album.fromJson(Map<String, dynamic>.from(raw));
+      expect(album.title, '通道专辑');
+      expect(album.tracks.single.name, '曲目一');
+    });
+  });
 }

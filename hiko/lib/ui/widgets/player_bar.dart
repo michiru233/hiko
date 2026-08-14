@@ -145,13 +145,13 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
     );
   }
 
-  // ---- 播放控制 ----
+  // ---- 播放控制（Material 图标，两端视觉统一；文字符号在部分 Android 字体渲染异常）----
   Widget _buildControls(ThemeData theme, PlaybackState state) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         _IconButton(
-          icon: '◀◀',
+          icon: Icons.skip_previous_rounded,
           tooltip: '上一首',
           onPressed: state.album == null ? null : () => ref.read(playbackProvider.notifier).prev(),
         ),
@@ -163,7 +163,7 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
         ),
         const SizedBox(width: 12),
         _IconButton(
-          icon: '▶▶',
+          icon: Icons.skip_next_rounded,
           tooltip: '下一首',
           onPressed: state.album == null ? null : () => ref.read(playbackProvider.notifier).next(),
         ),
@@ -311,7 +311,7 @@ class _TimeText extends StatelessWidget {
 class _IconButton extends StatelessWidget {
   const _IconButton({required this.icon, this.tooltip, this.onPressed});
 
-  final String icon;
+  final IconData icon;
   final String? tooltip;
   final VoidCallback? onPressed;
 
@@ -321,9 +321,9 @@ class _IconButton extends StatelessWidget {
     return IconButton(
       onPressed: onPressed,
       tooltip: tooltip,
-      iconSize: 12,
+      iconSize: 20,
       color: onPressed == null ? theme.disabledColor : theme.hintColor,
-      icon: Text(icon),
+      icon: Icon(icon),
     );
   }
 }
@@ -349,9 +349,10 @@ class _PlayButton extends StatelessWidget {
           shape: BoxShape.circle,
         ),
         child: Center(
-          child: Text(
-            playing ? 'Ⅱ' : '▶',
-            style: TextStyle(color: theme.colorScheme.onPrimary, fontSize: 12),
+          child: Icon(
+            playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            size: size * 0.55,
+            color: theme.colorScheme.onPrimary,
           ),
         ),
       ),

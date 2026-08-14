@@ -8,6 +8,8 @@ import androidx.documentfile.provider.DocumentFile
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 
 /**
@@ -79,30 +81,65 @@ class HikoPlugin : MethodChannel.MethodCallHandler {
         }
         Thread {
             try {
-                scanTree(activity, uri)
-                result.success(mapOf("canceled" to false, "scannedPath" to uri.toString()))
+                val scanError = scanTree(activity, uri)
+                // MethodChannel 的 Result 必须在主线程回调
+                mainHandler.post {
+                    if (scanError == null) {
+                        result.success(mapOf("canceled" to false, "scannedPath" to uri.toString()))
+                    } else {
+                        result.error("scan-failed", scanError, null)
+                    }
+                }
             } catch (e: Exception) {
-                result.error("scan-failed", e.message, null)
+                mainHandler.post { result.error("scan-failed", e.message, null) }
             }
         }.start()
     }
 
-    private fun scanTree(activity: Activity, rootUri: Uri) {
+    /** 主线程 Handler：MethodChannel 的 invokeMethod/Result 均要求主线程 */
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** 后台扫描：事件经主线程回传；返回 null 成功 / 错误消息 */
+    private fun scanTree(activity: Activity, rootUri: Uri): String? {
         val context = activity.applicationContext
-        val root = DocumentFile.fromTreeUri(context, rootUri) ?: return
+        val root = DocumentFile.fromTreeUri(context, rootUri)
+        if (root == null) return "无法打开所选文件夹"
         val groups = ImportScanner.groupByFolder(root)
         var processed = 0
         for ((dir, files) in groups) {
             val album = ImportScanner.scanAlbum(context, dir, files)
             if (album != null) {
-                channel?.invokeMethod("onAlbum", album)
-                processed++
-                channel?.invokeMethod(
-                    "onProgress",
-                    mapOf("processed" to processed, "total" to groups.size)
-                )
+                // JSONObject 不能直接过 MethodChannel（引擎只支持 Map/List/String/num/bool），
+                // 递归转成 Map 后再传，否则抛 "Unsupported value" 导致整次导入失败
+                val bridge = album.toBridge()
+                val now = ++processed
+                val total = groups.size
+                mainHandler.post {
+                    try {
+                        channel?.invokeMethod("onAlbum", bridge)
+                        channel?.invokeMethod(
+                            "onProgress",
+                            mapOf("processed" to now, "total" to total)
+                        )
+                    } catch (e: Exception) {
+                        // 单张专辑事件发送失败不中断扫描；Dart 侧以已收到的专辑为准
+                    }
+                }
             }
         }
+        return null
+    }
+
+    /** org.json 对象 → MethodChannel 可编码的 Map/List（递归） */
+    private fun Any.toBridge(): Any? = when (this) {
+        is JSONObject -> {
+            val map = LinkedHashMap<String, Any?>()
+            keys().forEach { key -> map[key] = get(key).toBridge() }
+            map
+        }
+        is JSONArray -> (0 until length()).map { get(it).toBridge() }
+        JSONObject.NULL -> null
+        else -> this
     }
 
     // ---- 删除源文件（SAF）----
