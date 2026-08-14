@@ -1,0 +1,113 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+/// 应用设置（对应旧版 localStorage 各项 + 刮削代理）
+class AppSettings {
+  final String theme; // light / dark
+  final String accent; // 六色之一
+  final double volume; // 0.0 - 1.0
+  final String playMode; // list / single / shuffle / album
+  final bool sidebarShown;
+  final String scrapeProxy;
+
+  const AppSettings({
+    this.theme = 'light',
+    this.accent = defaultAccent,
+    this.volume = 0.8,
+    this.playMode = 'list',
+    this.sidebarShown = true,
+    this.scrapeProxy = '',
+  });
+
+  static const defaultAccent = '#6559d8';
+  static const accents = [
+    '#6559d8', // 紫
+    '#3b82c4', // 蓝
+    '#2ea8a0', // 青
+    '#4c9f70', // 绿
+    '#d97b4d', // 橙
+    '#c6577e', // 粉
+  ];
+
+  AppSettings copyWith({
+    String? theme,
+    String? accent,
+    double? volume,
+    String? playMode,
+    bool? sidebarShown,
+    String? scrapeProxy,
+  }) =>
+      AppSettings(
+        theme: theme ?? this.theme,
+        accent: accent ?? this.accent,
+        volume: volume ?? this.volume,
+        playMode: playMode ?? this.playMode,
+        sidebarShown: sidebarShown ?? this.sidebarShown,
+        scrapeProxy: scrapeProxy ?? this.scrapeProxy,
+      );
+}
+
+/// 播放模式元数据
+class PlayModeInfo {
+  final String key;
+  final String label; // 按钮文字
+  final String name; // 完整名称
+  final String desc; // 说明
+
+  const PlayModeInfo(this.key, this.label, this.name, this.desc);
+}
+
+const playModes = [
+  PlayModeInfo('list', '列表', '列表循环', '本专辑最后一首播完回到第一首'),
+  PlayModeInfo('single', '单曲', '单曲循环', '当前曲目循环播放'),
+  PlayModeInfo('shuffle', '随机', '随机播放', '当前专辑内随机切曲'),
+  PlayModeInfo('album', '专辑', '专辑循环', '播完当前专辑自动接下一张'),
+];
+
+class SettingsNotifier extends StateNotifier<AppSettings> {
+  SettingsNotifier() : super(const AppSettings());
+
+  static const _kTheme = 'kikoeru-theme';
+  static const _kAccent = 'kikoeru-accent';
+  static const _kVolume = 'kikoeru-volume';
+  static const _kMode = 'kikoeru-mode';
+  static const _kSidebar = 'kikoeru-sidebar';
+  static const _kProxy = 'kikoeru-scrape-proxy';
+
+  Future<void> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    state = AppSettings(
+      theme: prefs.getString(_kTheme) ?? 'light',
+      accent: prefs.getString(_kAccent) ?? AppSettings.defaultAccent,
+      volume: (prefs.getDouble(_kVolume) ?? 0.8).clamp(0.0, 1.0),
+      playMode: prefs.getString(_kMode) ?? 'list',
+      sidebarShown: prefs.getBool(_kSidebar) ?? true,
+      scrapeProxy: prefs.getString(_kProxy) ?? '',
+    );
+  }
+
+  Future<void> setTheme(String theme) => _save(_kTheme, theme, state.copyWith(theme: theme));
+  Future<void> setAccent(String accent) => _save(_kAccent, accent, state.copyWith(accent: accent));
+  Future<void> setVolume(double volume) =>
+      _save(_kVolume, volume.clamp(0.0, 1.0), state.copyWith(volume: volume.clamp(0.0, 1.0)));
+  Future<void> setPlayMode(String mode) => _save(_kMode, mode, state.copyWith(playMode: mode));
+  Future<void> setSidebarShown(bool shown) =>
+      _save(_kSidebar, shown, state.copyWith(sidebarShown: shown));
+  Future<void> setScrapeProxy(String proxy) =>
+      _save(_kProxy, proxy, state.copyWith(scrapeProxy: proxy));
+
+  Future<void> _save<T>(String key, T value, AppSettings next) async {
+    state = next;
+    final prefs = await SharedPreferences.getInstance();
+    if (value is String) {
+      await prefs.setString(key, value);
+    } else if (value is double) {
+      await prefs.setDouble(key, value);
+    } else if (value is bool) {
+      await prefs.setBool(key, value);
+    }
+  }
+}
+
+final settingsProvider =
+    StateNotifierProvider<SettingsNotifier, AppSettings>((ref) => SettingsNotifier());
