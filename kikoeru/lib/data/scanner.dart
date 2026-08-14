@@ -201,3 +201,14 @@ Future<List<String>> collectFiles(String rootPath) async {
   final files = await findFiles(Directory(rootPath));
   return files.map((f) => f.path).toList();
 }
+
+/// compute() 单消息载荷：scanAlbum 的入参（跨 isolate 可序列化）
+class ScanJob {
+  final String albumPath;
+  final List<String> filePaths;
+
+  const ScanJob(this.albumPath, this.filePaths);
+}
+
+/// compute() 入口：包装 [scanAlbum]
+Future<Album?> scanJob(ScanJob job) => scanAlbum(job.albumPath, job.filePaths);
