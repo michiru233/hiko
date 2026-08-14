@@ -1,0 +1,310 @@
+package top.voicehub.hiko
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
+import android.net.Uri
+import android.util.Base64
+import androidx.documentfile.provider.DocumentFile
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.nio.charset.Charset
+import java.security.MessageDigest
+
+/**
+ * 导入扫描：行为对齐 desktop main.js 的 findFiles / groupFilesByFolder / scanAlbum / scanFolder。
+ * 差异：文件访问用 SAF（content:// + DocumentFile），元数据用 MediaMetadataRetriever。
+ */
+object ImportScanner {
+
+    private val AUDIO_EXTS = setOf("mp3", "m4a", "wav", "flac", "ogg", "aac", "opus", "webm")
+    private val IMAGE_EXTS = setOf("jpg", "jpeg", "png", "webp", "gif")
+    private val RJ_REGEX = Regex("RJ\\d{5,}", RegexOption.IGNORE_CASE)
+    // DLsite 下载目录命名约定：RJxxxxxx_作品名（RJ 前缀可能带 _ - 空格）
+    private val RJ_TITLE_REGEX = Regex("""^RJ\d{5,}[_\- ]+(.+)$""", RegexOption.IGNORE_CASE)
+
+    fun isAudio(name: String?): Boolean = name?.substringAfterLast('.', "")?.lowercase() in AUDIO_EXTS
+    fun isImage(name: String?): Boolean = name?.substringAfterLast('.', "")?.lowercase() in IMAGE_EXTS
+
+    /** 与桌面 stableId 同源：sha1(path) 前 16 位十六进制 */
+    fun stableId(value: String): String {
+        val md = MessageDigest.getInstance("SHA-1").digest(value.toByteArray())
+        return md.joinToString("") { "%02x".format(it) }.substring(0, 16)
+    }
+
+    /** 从多个候选中提取第一个 RJ 号（对应桌面 extractRjCode，检查路径全层级） */
+    fun extractRjCode(vararg values: String?): String? {
+        for (v in values) {
+            RJ_REGEX.find(v.orEmpty())?.let { return it.value.uppercase() }
+        }
+        return null
+    }
+
+    /** 与桌面 mostCommon 同语义：取出现最多的值，平局取最先出现者 */
+    fun mostCommon(values: List<String?>): String? {
+        val counts = LinkedHashMap<String, Int>()
+        var best: String? = null
+        var bestCount = 0
+        for (v in values) {
+            if (v.isNullOrBlank()) continue
+            val c = (counts[v] ?: 0) + 1
+            counts[v] = c
+            if (c > bestCount) { best = v; bestCount = c }
+        }
+        return best
+    }
+
+    /** 自然排序（数字感知），对应桌面 localeCompare(..., {numeric:true}) */
+    fun naturalCompare(a: String, b: String): Int {
+        var i = 0
+        var j = 0
+        while (i < a.length && j < b.length) {
+            val ca = a[i]
+            val cb = b[j]
+            if (ca.isDigit() && cb.isDigit()) {
+                var ni = i
+                while (ni < a.length && a[ni].isDigit()) ni++
+                var nj = j
+                while (nj < b.length && b[nj].isDigit()) nj++
+                val na = a.substring(i, ni).trimStart('0').ifEmpty { "0" }.toLongOrNull() ?: 0
+                val nb = b.substring(j, nj).trimStart('0').ifEmpty { "0" }.toLongOrNull() ?: 0
+                if (na != nb) return na.compareTo(nb)
+                i = ni
+                j = nj
+            } else {
+                val cmp = ca.lowercaseChar().compareTo(cb.lowercaseChar())
+                if (cmp != 0) return cmp
+                i++
+                j++
+            }
+        }
+        return a.length - b.length
+    }
+
+    /** 根树下所有「直接包含文件」的目录 → 该目录的直接文件（跳过 . 开头） */
+    fun groupByFolder(root: DocumentFile): Map<DocumentFile, List<DocumentFile>> {
+        val groups = LinkedHashMap<DocumentFile, MutableList<DocumentFile>>()
+        fun walk(dir: DocumentFile) {
+            val files = mutableListOf<DocumentFile>()
+            for (f in dir.listFiles()) {
+                if (f.name?.startsWith(".") == true) continue
+                if (f.isDirectory) walk(f)
+                else if (f.isFile) files.add(f)
+            }
+            if (files.isNotEmpty()) groups[dir] = files
+        }
+        walk(root)
+        return groups
+    }
+
+    /** Android 封面策略：缩放到 ≤300px 转 JPEG 75%，上限 120KB。
+     *  相比桌面（500px/300KB）进一步压缩，因为整份 library.json 要经 native↔JS 桥
+     *  整体传输——90+ 专辑时 500px 封面会产生十几 MB 载荷，实机堆小直接 OOM 崩溃，
+     *  且重进软件解析大 JSON 会"专辑慢慢出现"。300px 在手机屏幕上视觉无损。 */
+    fun coverDataUrl(bytes: ByteArray): String? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+        val max = 300
+        var sample = 1
+        while (bounds.outWidth / sample > max * 2 || bounds.outHeight / sample > max * 2) {
+            sample *= 2
+        }
+        val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sample }
+        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts) ?: return null
+        val w = bmp.width
+        val h = bmp.height
+        if (w == 0 || h == 0) return null
+
+        val scale = if (maxOf(w, h) > max) max.toFloat() / maxOf(w, h) else 1f
+        var out = bmp
+        if (scale < 1f) {
+            out = Bitmap.createScaledBitmap(bmp, (w * scale).toInt().coerceAtLeast(1), (h * scale).toInt().coerceAtLeast(1), true)
+            if (out !== bmp) bmp.recycle()
+        }
+        val stream = ByteArrayOutputStream()
+        if (!out.compress(Bitmap.CompressFormat.JPEG, 75, stream)) return null
+        val data = stream.toByteArray()
+        if (data.isEmpty() || data.size > 120 * 1024) return null
+        out.recycle()
+        return "data:image/jpeg;base64," + Base64.encodeToString(data, Base64.NO_WRAP)
+    }
+
+    /** 文本是否含 CJK 汉字/日文假名（视为正常文本，非乱码） */
+    private fun hasCjkOrKana(s: String): Boolean =
+        s.any { it.code in 0x4E00..0x9FFF || it.code in 0x3040..0x30FF || it.code in 0xFF61..0xFF9F }
+
+    /** 修复 MediaMetadataRetriever 对非 UTF-8 ID3 标签的乱码：
+     *  中文标签字节常被按 ISO-8859-1 解码成拉丁字符（你好 → ÄãºÃ），日文（Shift-JIS）同理。
+     *  用 GB18030 / Shift_JIS 逐一还原并打分（假名 +3、汉字 +2、日文标点 +1），
+     *  取分最高的结果；仅当得分 >0 才采纳，避免误伤正常 Latin-1 文本（如 Cafe）。 */
+    fun repairText(s: String?): String? {
+        if (s.isNullOrBlank()) return s
+        if (hasCjkOrKana(s)) return s   // 已是正常中文/日文，无需修复
+        if (!s.any { it.code in 0xA0..0xFF }) return s  // 无 Latin-1 扩展字符，非乱码特征
+        val bytes = s.toByteArray(Charsets.ISO_8859_1)
+        var best: String? = null
+        var bestScore = 0
+        for (name in listOf("GB18030", "Shift_JIS", "windows-31j")) {
+            try {
+                val candidate = String(bytes, Charset.forName(name))
+                val score = candidate.sumOf { ch ->
+                    when (ch.code) {
+                        in 0x3040..0x30FF, in 0xFF61..0xFF9F -> 3  // 假名
+                        in 0x4E00..0x9FFF -> 2                     // 汉字
+                        in 0x3000..0x303F -> 1                     // 日文标点
+                        else -> 0
+                    }
+                }
+                if (score > bestScore) {
+                    best = candidate
+                    bestScore = score
+                }
+            } catch (_: Exception) { }
+        }
+        return if (bestScore > 0 && best != null) best else s
+    }
+
+    /** 字符串是否仍像乱码（含 Latin-1 扩展字符但无中文/日文），用于回退到文件名 */
+    fun looksGarbled(s: String?): Boolean {
+        if (s.isNullOrBlank()) return false
+        val latinExt = s.count { it.code in 0xA0..0xFF }
+        val good = s.count { it.code in 0x4E00..0x9FFF || it.code in 0x3040..0x30FF || it.code in 0xFF61..0xFF9F }
+        return latinExt > 0 && good == 0
+    }
+
+    /** 文件夹名回退时清理：剥离 DLsite 的 "RJxxxxxx_" 前缀，只留作品名。
+     *  例：RJ123456_雨夜耳语 → 雨夜耳语；无前缀则原样返回。 */
+    fun cleanFolderTitle(name: String?): String? {
+        if (name.isNullOrBlank()) return name
+        val trimmed = name.trim()
+        val match = RJ_TITLE_REGEX.find(trimmed)
+        val clean = match?.groupValues?.get(1)?.trim()
+        return if (!clean.isNullOrEmpty()) clean else name
+    }
+
+    private fun readBytes(context: Context, uri: Uri): ByteArray? {
+        return try {
+            val fd = context.contentResolver.openAssetFileDescriptor(uri, "r") ?: return null
+            fd.use {
+                if (it.length > 15 * 1024 * 1024) return null // 超大连封面直接跳过，避免内存峰值
+                it.createInputStream().use { s -> s.readBytes() }
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** 提取单曲元数据；标签损坏/解析失败返回 null（对应桌面 try/catch 容忍） */
+    private data class TrackMeta(
+        val title: String?,
+        val artist: String?,
+        val album: String?,
+        val albumArtist: String?,
+        val durationMs: Long,
+        val cover: String?
+    )
+
+    private fun readTrackMeta(context: Context, uri: Uri): TrackMeta? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, uri)
+            val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            val picture = retriever.embeddedPicture
+            TrackMeta(
+                title = repairText(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)),
+                artist = repairText(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)),
+                album = repairText(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)),
+                albumArtist = repairText(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)),
+                durationMs = durationMs,
+                cover = picture?.let { coverDataUrl(it) }
+            )
+        } catch (e: Exception) {
+            null
+        } finally {
+            retriever.release()
+        }
+    }
+
+    /** 文件夹封面：优先 (cover|front|folder|album|封面) 命名的图片，否则第一张图 */
+    private fun folderCover(context: Context, files: List<DocumentFile>): String? {
+        val images = files.filter { isImage(it.name) }
+        val pick = images.firstOrNull { Regex("cover|front|folder|album|封面", RegexOption.IGNORE_CASE).containsMatchIn(it.name.orEmpty()) }
+            ?: images.firstOrNull()
+            ?: return null
+        val bytes = readBytes(context, pick.uri) ?: return null
+        return coverDataUrl(bytes)
+    }
+
+    /** 扫描一张专辑（目录 + 其直接文件），无音频返回 null */
+    fun scanAlbum(context: Context, albumDir: DocumentFile, files: List<DocumentFile>): JSONObject? {
+        val audio = files
+            .filter { isAudio(it.name) }
+            .sortedWith(Comparator { a, b -> naturalCompare(a.name.orEmpty(), b.name.orEmpty()) })
+        if (audio.isEmpty()) return null
+
+        val albumNames = mutableListOf<String?>()
+        val artists = mutableListOf<String?>()
+        val albumArtists = mutableListOf<String?>()
+        val tracks = JSONArray()
+        var totalDuration = 0.0
+        var embeddedCover: String? = null
+
+        audio.forEachIndexed { index, file ->
+            val meta = readTrackMeta(context, file.uri)
+            if (meta != null) {
+                albumNames.add(meta.album)
+                artists.add(meta.artist)
+                albumArtists.add(meta.albumArtist)
+            }
+            if (meta?.cover != null && embeddedCover == null) embeddedCover = meta.cover
+            // 标题优先元数据（已做乱码还原），仍像乱码则回退文件名（文件名恒为正确 Unicode）
+            val name = meta?.title?.takeIf { !looksGarbled(it) && it.isNotBlank() }
+                ?: file.name?.substringBeforeLast('.')
+                ?: "Track ${index + 1}"
+            tracks.put(
+                JSONObject()
+                    .put("index", index)
+                    .put("name", name)
+                    .put("url", file.uri.toString())
+                    .put("duration", if (meta != null) meta.durationMs / 1000.0 else 0)
+                    .put("cover", meta?.cover)
+            )
+            totalDuration += if (meta != null) meta.durationMs / 1000.0 else 0.0
+        }
+
+        val albumPath = albumDir.uri.toString()
+        // 专辑名优先元数据 ALBUM（已做乱码还原）；无 ALBUM 标签（DLsite 下载常见）时
+        // 回退文件夹名并剥离 "RJxxxxxx_" 前缀，避免直接显示原始目录名
+        val title = mostCommon(albumNames)?.takeIf { !looksGarbled(it) }
+            ?: cleanFolderTitle(albumDir.name)
+            ?: "本地导入"
+        val artist = mostCommon(artists)?.takeIf { !looksGarbled(it) }
+            ?: mostCommon(albumArtists)?.takeIf { !looksGarbled(it) }
+            ?: "本地导入"
+        val rjCode = extractRjCode(albumPath, albumDir.name, audio.firstOrNull()?.name)
+        val localCover = embeddedCover ?: folderCover(context, files)
+
+        return JSONObject()
+            .put("id", "local-${stableId(albumPath)}")
+            .put("sourcePath", albumPath)
+            .put("title", title)
+            .put("artist", artist)
+            .put("albumArtist", mostCommon(albumArtists)?.takeIf { !looksGarbled(it) } ?: "")
+            .put("rjCode", rjCode)
+            .put("group", "本地文件夹")
+            .put("genre", "未分类")
+            .put("duration", tracks.length())
+            .put("totalDuration", totalDuration)
+            .put("played", 0)
+            .put("favorite", false)
+            .put("date", System.currentTimeMillis())
+            .put("tracks", tracks)
+            .put("localCover", localCover)
+            .put("color", JSONArray().put("#c4b8e8").put("#4b416c"))
+            .put("shape", "radio")
+    }
+}
