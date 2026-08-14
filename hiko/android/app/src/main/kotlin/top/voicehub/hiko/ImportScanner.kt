@@ -12,6 +12,7 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.nio.charset.Charset
 import java.security.MessageDigest
+import java.util.concurrent.Executors
 
 /**
  * 导入扫描：行为对齐 desktop main.js 的 findFiles / groupFilesByFolder / scanAlbum / scanFolder。
@@ -324,5 +325,167 @@ object ImportScanner {
             .put("localCover", localCover)
             .put("color", JSONArray().put("#c4b8e8").put("#4b416c"))
             .put("shape", "radio")
+    }
+
+    // ============ 文件级扫描（v1.11：并行解析 + 标签/文件夹混合分组）============
+
+    /** 单文件解析结果 */
+    class FileMeta(
+        val uri: String,
+        val fileName: String,
+        val dirUri: String,
+        val dirName: String?,
+        val title: String?,
+        val artist: String?,
+        val album: String?,
+        val albumArtist: String?,
+        val trackNumber: Int?,
+        val duration: Double,
+        val cover: String?
+    )
+
+    /** 逐文件解析（与 readTrackMeta 相同结构；单文件失败返回 null） */
+    fun parseFile(context: Context, file: DocumentFile, albumDir: DocumentFile): FileMeta? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, file.uri)
+            val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+            val picture = retriever.embeddedPicture
+            FileMeta(
+                uri = file.uri.toString(),
+                fileName = file.name.orEmpty(),
+                dirUri = albumDir.uri.toString(),
+                dirName = albumDir.name,
+                title = repairText(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)),
+                artist = repairText(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST)),
+                album = repairText(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM)),
+                albumArtist = repairText(retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)),
+                trackNumber = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)?.toIntOrNull(),
+                duration = durationMs / 1000.0,
+                cover = picture?.let { coverDataUrl(it) }
+            )
+        } catch (e: Exception) {
+            null
+        } finally {
+            retriever.release()
+        }
+    }
+
+    /**
+     * 扫描根目录：收集全部音频 → 并行解析 → 混合分组 → 组装专辑。
+     * 有 ALBUM 标签按「专辑艺术家|专辑名」聚合（跨文件夹）；无标签按文件夹。
+     */
+    fun scanAlbums(context: Context, root: DocumentFile): List<JSONObject> {
+        data class Entry(val file: DocumentFile, val dir: DocumentFile)
+        val entries = mutableListOf<Entry>()
+        val dirImages = HashMap<String, MutableList<DocumentFile>>()
+        fun walk(dir: DocumentFile) {
+            for (f in dir.listFiles()) {
+                if (f.name?.startsWith(".") == true) continue
+                if (f.isDirectory) walk(f)
+                else if (f.isFile && isAudio(f.name)) entries.add(Entry(f, dir))
+                else if (f.isFile && isImage(f.name)) {
+                    dirImages.getOrPut(dir.uri.toString()) { mutableListOf() }.add(f)
+                }
+            }
+        }
+        walk(root)
+
+        val executor = Executors.newFixedThreadPool(4)
+        try {
+            val futures = entries.map { e ->
+                executor.submit<FileMeta?> { parseFile(context, e.file, e.dir) }
+            }
+            val metas = futures.mapNotNull { f ->
+                try { f.get() } catch (e: Exception) { null }
+            }
+            val groups = LinkedHashMap<String, MutableList<FileMeta>>()
+            for (m in metas) {
+                val albumKey = m.album?.takeIf { !looksGarbled(it) && it.isNotBlank() }
+                val key = if (albumKey != null) "tag:${m.albumArtist.orEmpty()}|$albumKey" else "dir:${m.dirUri}"
+                groups.getOrPut(key) { mutableListOf() }.add(m)
+            }
+            return groups.mapNotNull { (key, files) -> buildAlbumFromFiles(context, key, files, dirImages) }
+        } finally {
+            executor.shutdown()
+        }
+    }
+
+    private fun buildAlbumFromFiles(
+        context: Context,
+        key: String,
+        files: List<FileMeta>,
+        dirImages: Map<String, MutableList<DocumentFile>>
+    ): JSONObject? {
+        if (files.isEmpty()) return null
+        val sorted = files.sortedWith { a, b ->
+            val ta = a.trackNumber ?: Int.MAX_VALUE
+            val tb = b.trackNumber ?: Int.MAX_VALUE
+            if (ta != tb) ta.compareTo(tb) else naturalCompare(a.fileName, b.fileName)
+        }
+        val isTagGroup = key.startsWith("tag:")
+        val albumName = sorted.firstNotNullOfOrNull { m -> m.album?.takeIf { !looksGarbled(it) && it.isNotBlank() } }
+        val firstDirName = sorted.firstNotNullOfOrNull { it.dirName }
+        val title = if (isTagGroup) {
+            albumName ?: cleanFolderTitle(firstDirName) ?: "本地导入"
+        } else {
+            cleanFolderTitle(firstDirName) ?: "本地导入"
+        }
+        val artist = mostCommon(sorted.map { it.albumArtist })
+            ?.takeIf { !looksGarbled(it) }
+            ?: mostCommon(sorted.map { it.artist })?.takeIf { !looksGarbled(it) }
+            ?: "本地导入"
+        val albumArtist = mostCommon(sorted.map { it.albumArtist })?.takeIf { !looksGarbled(it) } ?: ""
+        val rjCode = extractRjCode(sorted.first().uri, sorted.first().dirUri, title)
+
+        var embeddedCover: String? = null
+        val tracks = JSONArray()
+        var totalDuration = 0.0
+        sorted.forEachIndexed { index, m ->
+            if (embeddedCover == null) embeddedCover = m.cover
+            val name = m.title?.takeIf { !looksGarbled(it) && it.isNotBlank() }
+                ?: m.fileName.substringBeforeLast('.')
+                ?: "Track ${index + 1}"
+            tracks.put(
+                JSONObject()
+                    .put("index", index)
+                    .put("name", name)
+                    .put("url", m.uri)
+                    .put("duration", m.duration)
+                    .put("cover", m.cover)
+            )
+            totalDuration += m.duration
+        }
+        var localCover = embeddedCover
+        if (localCover == null && !isTagGroup) {
+            localCover = folderCoverFromImages(context, dirImages[sorted.first().dirUri] ?: emptyList())
+        }
+        val idValue = if (isTagGroup) "tag:$key" else sorted.first().dirUri
+        return JSONObject()
+            .put("id", "local-${stableId(idValue)}")
+            .put("sourcePath", sorted.first().dirUri)
+            .put("title", title)
+            .put("artist", artist)
+            .put("albumArtist", albumArtist)
+            .put("rjCode", rjCode)
+            .put("group", "本地文件夹")
+            .put("genre", "未分类")
+            .put("duration", tracks.length())
+            .put("totalDuration", totalDuration)
+            .put("played", 0)
+            .put("favorite", false)
+            .put("date", System.currentTimeMillis())
+            .put("tracks", tracks)
+            .put("localCover", localCover)
+            .put("color", JSONArray().put("#c4b8e8").put("#4b416c"))
+            .put("shape", "radio")
+    }
+
+    private fun folderCoverFromImages(context: Context, images: List<DocumentFile>): String? {
+        if (images.isEmpty()) return null
+        val pick = images.firstOrNull { Regex("cover|front|folder|album|封面", RegexOption.IGNORE_CASE).containsMatchIn(it.name.orEmpty()) }
+            ?: images.first()
+        val bytes = readBytes(context, pick.uri) ?: return null
+        return coverDataUrl(bytes)
     }
 }

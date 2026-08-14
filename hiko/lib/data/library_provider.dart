@@ -21,10 +21,22 @@ class LibraryNotifier extends StateNotifier<List<Album>> {
     await _store.save(albums);
   }
 
-  /// 导入合并：新专辑在前，按 id 去重（对应旧版 mergeLibrary）
+  /// 导入合并：新专辑在前，按 id 去重；同时按「曲目 URL」匹配旧专辑并替换
+  /// （解决分组策略变化导致的 id 漂移——同文件换组后不产生重复专辑）
   Future<void> mergeNew(List<Album> incoming) async {
     final importedIds = {for (final a in incoming) a.id};
-    final next = [...incoming, ...state.where((a) => !importedIds.contains(a.id))];
+    // 旧库中「包含与任一新专辑相同曲目文件」的专辑 → 被替换（移除旧条目）
+    final newTrackUrls = {
+      for (final a in incoming) ...a.tracks.map((t) => t.url),
+    };
+    final replacedIds = <String>{
+      for (final a in state)
+        if (a.tracks.any((t) => newTrackUrls.contains(t.url))) a.id,
+    };
+    final next = [
+      ...incoming,
+      ...state.where((a) => !importedIds.contains(a.id) && !replacedIds.contains(a.id)),
+    ];
     state = next;
     await _store.save(next);
   }

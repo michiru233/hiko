@@ -10,6 +10,7 @@ class TrackMetadata {
   final String? title;
   final String? artist;
   final String? album;
+  final int? trackNumber; // TRACKNUMBER（排序用）
   final double duration; // 秒
   final Uint8List? picture;
 
@@ -17,6 +18,7 @@ class TrackMetadata {
     this.title,
     this.artist,
     this.album,
+    this.trackNumber,
     this.duration = 0,
     this.picture,
   });
@@ -30,6 +32,7 @@ Future<TrackMetadata?> readTrackMetadata(String path) async {
       title: repairText(meta.title),
       artist: repairText(meta.artist),
       album: repairText(meta.album),
+      trackNumber: meta.trackNumber,
       duration: (meta.duration?.inMilliseconds ?? 0) / 1000.0,
       picture: meta.pictures.isNotEmpty ? meta.pictures.first.bytes : null,
     );

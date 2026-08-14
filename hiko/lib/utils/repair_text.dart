@@ -9,7 +9,8 @@ import 'package:charset/charset.dart';
 String? repairText(String? s) {
   if (s == null || s.trim().isEmpty) return s;
   if (hasCjkOrKana(s)) return s; // 已是正常中文/日文，无需修复
-  if (!s.codeUnits.any((c) => c >= 0xA0 && c <= 0xFF)) return s; // 无 Latin-1 扩展字符
+  // 含 0x80-0xFF（含 C1 控制区）——Shift-JIS/GBK 双字节高位大量落在 0x80-0x9F
+  if (!s.codeUnits.any((c) => c >= 0x80 && c <= 0xFF)) return s;
 
   final List<int> bytes;
   try {
@@ -24,13 +25,13 @@ String? repairText(String? s) {
     try {
       final candidate = codec.decode(bytes);      var score = 0;
       for (final code in candidate.codeUnits) {
-        if ((code >= 0x3040 && code <= 0x30FF) ||
-            (code >= 0xFF61 && code <= 0xFF9F)) {
-          score += 3; // 假名
+        if (code >= 0x3040 && code <= 0x30FF) {
+          score += 3; // 全角假名
         } else if (code >= 0x4E00 && code <= 0x9FFF) {
           score += 2; // 汉字
-        } else if (code >= 0x3000 && code <= 0x303F) {
-          score += 1; // 日文标点
+        } else if (code >= 0x3000 && code <= 0x303F ||
+            (code >= 0xFF61 && code <= 0xFF9F)) {
+          score += 1; // 日文标点 / 半角假名（GBK 字节常被误解，权重降低）
         }
       }
       if (score > bestScore) {
