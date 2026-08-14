@@ -60,6 +60,19 @@ ThemeData buildHikoTheme(AppSettings settings) {
     dividerColor: line,
     canvasColor: bg,
     cardColor: card,
+    // 桌面端统一点击指针（Material 组件默认 adaptiveClickable，这里显式兜底）
+    filledButtonTheme: FilledButtonThemeData(
+      style: ButtonStyle(mouseCursor: WidgetStatePropertyAll(SystemMouseCursors.click)),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: ButtonStyle(mouseCursor: WidgetStatePropertyAll(SystemMouseCursors.click)),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: ButtonStyle(mouseCursor: WidgetStatePropertyAll(SystemMouseCursors.click)),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: ButtonStyle(mouseCursor: WidgetStatePropertyAll(SystemMouseCursors.click)),
+    ),
     dialogTheme: DialogThemeData(
       backgroundColor: dark ? HikoColors.darkCard : const Color(0xFFFAF9F7),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
