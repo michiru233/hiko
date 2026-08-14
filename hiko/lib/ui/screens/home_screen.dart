@@ -16,6 +16,7 @@ import '../../models/album.dart';
 import '../../platform/platform_service.dart';
 import '../../utils/rj.dart';
 import '../widgets/album_card.dart';
+import '../widgets/category_dialog.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/context_menu.dart';
 import '../widgets/detail_drawer.dart';
@@ -693,6 +694,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   FilledButton.tonal(
                     onPressed: _multiIds.isEmpty
                         ? null
+                        : () => _setCategoryForSelected(Set.of(_multiIds)),
+                    child: const Text('设置分类', style: TextStyle(fontSize: 11)),
+                  ),
+                  FilledButton.tonal(
+                    onPressed: _multiIds.isEmpty
+                        ? null
                         : () => _scrapeSelected(Set.of(_multiIds), force: false),
                     child: const Text('刮削标签', style: TextStyle(fontSize: 11)),
                   ),
@@ -800,6 +807,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       context: context,
       position: position,
       items: [
+        const HikoContextMenuItem(
+          value: 'category',
+          label: '设置分类',
+          icon: Icons.label_outline,
+        ),
         if (albumRjCode(album) != null)
           const HikoContextMenuItem(
             value: 'scrape',
@@ -834,6 +846,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ).then((action) {
       if (action == null) return;
       switch (action) {
+        case 'category':
+          _setCategoryForSingle(album);
         case 'scrape':
           _scrapeSelected({album.id}, force: true);
         case 'reorganize':
@@ -846,6 +860,57 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           _deleteSingle(album, true);
       }
     });
+  }
+
+  Future<void> _setCategoryForSingle(Album album) async {
+    final chosen = await showSelectCategoryDialog(
+      context,
+      currentGenre: album.genre,
+      albumCount: 1,
+    );
+    if (chosen == null || chosen == album.genre) return;
+
+    try {
+      await ref
+          .read(libraryProvider.notifier)
+          .updateAlbum(album.id, (a) => a.copyWith(genre: chosen));
+      if (_detailAlbum?.id == album.id) {
+        setState(() => _detailAlbum = _detailAlbum?.copyWith(genre: chosen));
+      }
+      _showToast(chosen == '未分类'
+          ? '已将「${album.title}」移出分类'
+          : '已将「${album.title}」归入「$chosen」');
+    } catch (e) {
+      _showToast('设置分类失败：$e');
+    }
+  }
+
+  Future<void> _setCategoryForSelected(Set<String> ids) async {
+    if (ids.isEmpty) return;
+    final chosen = await showSelectCategoryDialog(
+      context,
+      currentGenre: '',
+      albumCount: ids.length,
+    );
+    if (chosen == null) return;
+
+    try {
+      await ref
+          .read(libraryProvider.notifier)
+          .updateAlbums(ids, (a) => a.copyWith(genre: chosen));
+      if (_detailAlbum != null && ids.contains(_detailAlbum!.id)) {
+        setState(() => _detailAlbum = _detailAlbum?.copyWith(genre: chosen));
+      }
+      setState(() {
+        _multiMode = false;
+        _multiIds.clear();
+      });
+      _showToast(chosen == '未分类'
+          ? '已将 ${ids.length} 张专辑移出分类'
+          : '已将 ${ids.length} 张专辑批量归入「$chosen」');
+    } catch (e) {
+      _showToast('批量设置分类失败：$e');
+    }
   }
 
   Future<void> _reorganizeSingle(Album album) async {

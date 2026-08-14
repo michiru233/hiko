@@ -282,7 +282,7 @@ class SettingsDialog extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text('Hiko · 音声收藏室', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-                        Text('版本 1.0.0 · 本地优先的音声库管理器', style: TextStyle(fontSize: 11, color: theme.hintColor)),
+                        Text('版本 1.18.0 · 本地优先的音声库管理器', style: TextStyle(fontSize: 11, color: theme.hintColor)),
                       ],
                     ),
                   ),

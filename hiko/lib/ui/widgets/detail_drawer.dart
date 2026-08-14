@@ -9,6 +9,7 @@ import '../../playback/playback_controller.dart';
 import '../../utils/rj.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
+import 'category_dialog.dart';
 
 /// 详情抽屉（对应旧版 aside.details）：封面、标签、RJ 号、曲目列表、进度、收藏、从头播放
 class DetailDrawer extends ConsumerStatefulWidget {
@@ -76,14 +77,43 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                       ),
                     ),
                     const SizedBox(height: 22),
-                    Text(
-                      '${album.genre.toUpperCase()} · ALBUM ${album.id.padLeft(2, '0')}',
-                      style: TextStyle(
-                        fontSize: 10,
-                        letterSpacing: 1.2,
-                        fontWeight: FontWeight.w700,
-                        color: theme.colorScheme.primary,
-                      ),
+                    Row(
+                      children: [
+                        InkWell(
+                          onTap: () async {
+                            final chosen = await showSelectCategoryDialog(
+                              context,
+                              currentGenre: album.genre,
+                              albumCount: 1,
+                            );
+                            if (chosen != null && chosen != album.genre) {
+                              await ref
+                                  .read(libraryProvider.notifier)
+                                  .updateAlbum(album.id, (a) => a.copyWith(genre: chosen));
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(4),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${album.genre.toUpperCase()} · ALBUM ${album.id.padLeft(2, '0')}',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    letterSpacing: 1.2,
+                                    fontWeight: FontWeight.w700,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Icon(Icons.arrow_drop_down, size: 14, color: theme.colorScheme.primary),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 7),
                     Text(

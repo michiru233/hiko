@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 
+import 'data/categories_provider.dart';
 import 'data/library_provider.dart';
 import 'data/settings_store.dart';
 import 'playback/audio_handler.dart';
@@ -20,9 +21,10 @@ Future<void> main() async {
     JustAudioMediaKit.ensureInitialized();
   }
   final container = ProviderContainer();
-  // 加载设置与音声库
+  // 加载设置与音声库与分类
   await container.read(settingsProvider.notifier).load();
   await container.read(libraryProvider.notifier).load();
+  await container.read(categoriesProvider.notifier).load();
 
   // 音频会话（Android 焦点管理）
   final session = await AudioSession.instance;

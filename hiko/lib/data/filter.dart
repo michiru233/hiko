@@ -12,8 +12,9 @@ List<Album> filterAlbums({
   final q = query.trim().toLowerCase();
   final result = albums.where((a) {
     if (view == '收藏夹' && !a.favorite) return false;
-    if (const ['ASMR', '剧情向', '治愈系', '环境音'].contains(view) && a.genre != view) {
-      return false;
+    // 内置视图（全部音声 / 最近添加 / 正在播放 / 收藏夹）之外，所有其它名称均视为分类视图，按 genre 匹配
+    if (view != '全部音声' && view != '最近添加' && view != '正在播放' && view != '收藏夹') {
+      if (a.genre != view) return false;
     }
     if (filter == 'unplayed' && a.played >= a.totalDuration) return false;
     if (filter == 'favorite' && !a.favorite) return false;
