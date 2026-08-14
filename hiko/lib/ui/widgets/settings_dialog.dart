@@ -144,14 +144,23 @@ class SettingsDialog extends ConsumerWidget {
                   _ActionButton(
                     label: '立即重新扫描',
                     onTap: () async {
-                      final added = await ref
-                          .read(musicFolderScannerProvider)
-                          .scanAll(silent: false);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                          content: Text(added > 0 ? '扫描完成，新增 $added 张专辑' : '扫描完成，没有新内容'),
-                          behavior: SnackBarBehavior.floating,
-                        ));
+                      try {
+                        final added = await ref
+                            .read(musicFolderScannerProvider)
+                            .scanAll(silent: false);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text(added > 0 ? '扫描完成，新增 $added 张专辑' : '扫描完成，没有新内容'),
+                            behavior: SnackBarBehavior.floating,
+                          ));
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content: Text('扫描失败：$e'),
+                            behavior: SnackBarBehavior.floating,
+                          ));
+                        }
                       }
                     },
                   ),

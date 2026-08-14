@@ -99,39 +99,56 @@ object ImportScanner {
         return groups
     }
 
-    /** Android 封面策略：缩放到 ≤600px 转 JPEG 82%，上限 500KB。
-     *  与桌面端 Dart cover.dart 一致——详情页封面在手机全屏下需要更高分辨率。
-     *  相比桌面（500px/300KB）进一步压缩，因为整份 library.json 要经 native↔JS 桥
-     *  整体传输——90+ 专辑时 500px 封面会产生十几 MB 载荷，实机堆小直接 OOM 崩溃，
-     *  且重进软件解析大 JSON 会"专辑慢慢出现"。300px 在手机屏幕上视觉无损。 */
+    /** Android 封面策略：缩放到 ≤600px 转 JPEG，上限 500KB。
+     *  超限时逐级降质（82→70→60→50）再降尺寸（600→400→300）重试，避免封面丢失；
+     *  整链 try-catch（含 OOM）——单张封面失败绝不影响专辑导入。 */
     fun coverDataUrl(bytes: ByteArray): String? {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        return try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
-        val max = 600
-        var sample = 1
-        while (bounds.outWidth / sample > max * 2 || bounds.outHeight / sample > max * 2) {
-            sample *= 2
-        }
-        val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sample }
-        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts) ?: return null
-        val w = bmp.width
-        val h = bmp.height
-        if (w == 0 || h == 0) return null
+            val qualities = intArrayOf(82, 70, 60, 50)
+            val maxSizes = intArrayOf(600, 400, 300)
+            for (max in maxSizes) {
+                var sample = 1
+                while (bounds.outWidth / sample > max * 2 || bounds.outHeight / sample > max * 2) {
+                    sample *= 2
+                }
+                val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sample }
+                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts) ?: return null
+                val w = bmp.width
+                val h = bmp.height
+                if (w == 0 || h == 0) return null
 
-        val scale = if (maxOf(w, h) > max) max.toFloat() / maxOf(w, h) else 1f
-        var out = bmp
-        if (scale < 1f) {
-            out = Bitmap.createScaledBitmap(bmp, (w * scale).toInt().coerceAtLeast(1), (h * scale).toInt().coerceAtLeast(1), true)
-            if (out !== bmp) bmp.recycle()
+                val scale = if (maxOf(w, h) > max) max.toFloat() / maxOf(w, h) else 1f
+                var out = bmp
+                if (scale < 1f) {
+                    out = Bitmap.createScaledBitmap(
+                        bmp,
+                        (w * scale).toInt().coerceAtLeast(1),
+                        (h * scale).toInt().coerceAtLeast(1),
+                        true
+                    )
+                    if (out !== bmp) bmp.recycle()
+                }
+                for (quality in qualities) {
+                    val stream = ByteArrayOutputStream()
+                    if (out.compress(Bitmap.CompressFormat.JPEG, quality, stream)) {
+                        val data = stream.toByteArray()
+                        if (data.isNotEmpty() && data.size <= 500 * 1024) {
+                            out.recycle()
+                            return "data:image/jpeg;base64," + Base64.encodeToString(data, Base64.NO_WRAP)
+                        }
+                    }
+                }
+                out.recycle()
+            }
+            null
+        } catch (e: Throwable) {
+            // 解码/压缩异常（含 OOM）直接放弃封面，不影响专辑导入
+            null
         }
-        val stream = ByteArrayOutputStream()
-        if (!out.compress(Bitmap.CompressFormat.JPEG, 82, stream)) return null
-        val data = stream.toByteArray()
-        if (data.isEmpty() || data.size > 500 * 1024) return null
-        out.recycle()
-        return "data:image/jpeg;base64," + Base64.encodeToString(data, Base64.NO_WRAP)
     }
 
     /** 文本是否含 CJK 汉字/日文假名（视为正常文本，非乱码） */
@@ -149,7 +166,7 @@ object ImportScanner {
         val bytes = s.toByteArray(Charsets.ISO_8859_1)
         var best: String? = null
         var bestScore = 0
-        for (name in listOf("GB18030", "Shift_JIS", "windows-31j")) {
+        for (name in listOf("GB18030", "Shift_JIS", "windows-31j", "EUC-JP")) {
             try {
                 val candidate = String(bytes, Charset.forName(name))
                 val score = candidate.sumOf { ch ->

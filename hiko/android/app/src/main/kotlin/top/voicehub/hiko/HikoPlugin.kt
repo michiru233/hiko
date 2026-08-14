@@ -134,10 +134,20 @@ class HikoPlugin : MethodChannel.MethodCallHandler {
         val context = activity.applicationContext
         val root = DocumentFile.fromTreeUri(context, rootUri)
         if (root == null) return "无法打开所选文件夹"
-        val groups = ImportScanner.groupByFolder(root)
+        val groups = try {
+            ImportScanner.groupByFolder(root)
+        } catch (e: SecurityException) {
+            // 授权已失效（App 重装/系统清理后常驻目录 URI 失效）
+            return "目录访问权限已失效，请重新导入该目录"
+        }
         var processed = 0
         for ((dir, files) in groups) {
-            val album = ImportScanner.scanAlbum(context, dir, files)
+            val album = try {
+                ImportScanner.scanAlbum(context, dir, files)
+            } catch (e: Exception) {
+                // 单张专辑扫描失败（坏文件/内存波动）不中断整个导入（与桌面端一致）
+                null
+            }
             if (album != null) {
                 // JSONObject 不能直接过 MethodChannel（引擎只支持 Map/List/String/num/bool），
                 // 递归转成 Map 后再传，否则抛 "Unsupported value" 导致整次导入失败

@@ -43,7 +43,7 @@ String? repairText(String? s) {
 }
 
 /// 字符集候选：GBK 覆盖 GB18030 的 CJK 常见范围；Shift_JIS 覆盖日文
-final _candidates = <Encoding>[gbk, shiftJis];
+final _candidates = <Encoding>[gbk, shiftJis, eucJp];
 
 /// 文本是否含 CJK 汉字/日文假名（视为正常文本，非乱码）
 bool hasCjkOrKana(String s) => s.codeUnits.any((code) =>

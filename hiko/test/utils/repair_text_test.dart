@@ -18,6 +18,11 @@ void main() {
       expect(repairText(mojibake), '雨夜の耳語');
     });
 
+    test('还原 EUC-JP 日文乱码（老式标签）', () {
+      final mojibake = latin1.decode(eucJp.encode('プロローグ'));
+      expect(repairText(mojibake), 'プロローグ');
+    });
+
     test('正常文本不动（Latin-1 无高字节）', () {
       expect(repairText('Cafe'), 'Cafe');
       expect(repairText('Hello'), 'Hello');
