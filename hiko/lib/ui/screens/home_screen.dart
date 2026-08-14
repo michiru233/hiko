@@ -9,6 +9,7 @@ import '../../data/dlsite_scraper.dart';
 import '../../data/filter.dart';
 import '../../data/import_service.dart';
 import '../../data/library_provider.dart';
+import '../../data/music_folder_scanner.dart';
 import '../../data/settings_store.dart';
 import '../../models/album.dart';
 import '../../platform/platform_service.dart';
@@ -46,6 +47,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _importTotal = 0;
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    // 启动后自动扫描常驻音乐目录（静默，新专辑自动入库）
+    Future.microtask(() async {
+      final scanner = ref.read(musicFolderScannerProvider);
+      final added = await scanner.scanAll(silent: true);
+      if (!mounted) return;
+      if (added > 0) {
+        _showToast('已自动扫描，发现 $added 张新专辑');
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -87,7 +102,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       List<Album> albums;
       if (isAndroid) {
         final android = platform as dynamic;
-        albums = await android.importAudioFolder(onProgress: (p, t) {
+        final result = await android.importAudioFolder(onProgress: (p, t) {
           if (!mounted) return;
           setState(() {
             _importProcessed = p;
@@ -95,6 +110,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             _importProgress = t > 0 ? p / t : 0;
           });
         });
+        albums = result.albums as List<Album>;
+        // 记住所选目录 → 常驻自动扫描
+        final treeUri = result.treeUri as String?;
+        if (treeUri != null) {
+          await ref.read(settingsProvider.notifier).addMusicFolder(treeUri);
+        }
       } else {
         // 桌面：批量选择多个文件夹导入（macOS 原生多选；Windows 单选降级）
         final paths = await platform.pickDirectories();
@@ -107,6 +128,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             _importProgress = p.total > 0 ? p.processed / p.total : 0;
           });
         });
+        // 记住所选目录 → 常驻自动扫描
+        for (final path in paths) {
+          await ref.read(settingsProvider.notifier).addMusicFolder(path);
+        }
       }
       if (!mounted) return;
       await ref.read(libraryProvider.notifier).mergeNew(albums);

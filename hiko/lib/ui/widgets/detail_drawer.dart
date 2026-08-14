@@ -243,12 +243,11 @@ class _TrackRow extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: Center(
-                  child: Text(
-                    playing ? 'Ⅱ' : '▶',
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: active ? theme.colorScheme.onPrimary : theme.hintColor,
-                    ),
+                  // Material 图标：与播放条统一，避免文字符号在 Android 字体渲染异常
+                  child: Icon(
+                    playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    size: 12,
+                    color: active ? theme.colorScheme.onPrimary : theme.hintColor,
                   ),
                 ),
               ),

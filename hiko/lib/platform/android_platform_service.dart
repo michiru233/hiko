@@ -8,8 +8,8 @@ import 'platform_service.dart';
 class AndroidPlatformService implements PlatformService {
   static const _channel = MethodChannel('top.voicehub.hiko/plugin');
 
-  /// SAF 目录选择 + 扫描；返回新专辑列表（未落盘，由调用方 merge+save）
-  Future<List<Album>> importAudioFolder({
+  /// SAF 目录选择 + 扫描；返回新专辑列表与所选目录 tree URI（未落盘，由调用方 merge+save）
+  Future<({List<Album> albums, String? treeUri})> importAudioFolder({
     void Function(int processed, int total)? onProgress,
   }) async {
     final albums = <Album>[];
@@ -32,7 +32,33 @@ class AndroidPlatformService implements PlatformService {
         await _channel.invokeMethod('importAudioFolder') as Map,
       );
       final canceled = result['canceled'] as bool? ?? false;
-      return canceled ? [] : albums;
+      return (
+        albums: canceled ? <Album>[] : albums,
+        treeUri: result['scannedPath'] as String?,
+      );
+    } finally {
+      _channel.setMethodCallHandler(null);
+    }
+  }
+
+  /// 扫描已授权的常驻音乐目录（SAF tree URI），事件流与导入一致，不弹选择器
+  Future<List<Album>> scanSavedFolder(String treeUri,
+      {void Function(int processed, int total)? onProgress}) async {
+    final albums = <Album>[];
+    _channel.setMethodCallHandler((call) async {
+      switch (call.method) {
+        case 'onAlbum':
+          final json = Map<String, dynamic>.from(call.arguments as Map);
+          albums.add(Album.fromJson(json));
+        case 'onProgress':
+          final args = Map<String, dynamic>.from(call.arguments as Map);
+          onProgress?.call((args['processed'] as num).toInt(), (args['total'] as num).toInt());
+      }
+      return null;
+    });
+    try {
+      await _channel.invokeMethod('scanFolder', {'uri': treeUri});
+      return albums;
     } finally {
       _channel.setMethodCallHandler(null);
     }

@@ -9,6 +9,7 @@ class AppSettings {
   final String playMode; // list / single / shuffle / album
   final bool sidebarShown;
   final String scrapeProxy;
+  final List<String> musicFolders; // 常驻音乐目录（桌面：路径；Android：SAF tree URI）
 
   const AppSettings({
     this.theme = 'light',
@@ -17,6 +18,7 @@ class AppSettings {
     this.playMode = 'list',
     this.sidebarShown = true,
     this.scrapeProxy = '',
+    this.musicFolders = const [],
   });
 
   static const defaultAccent = '#6559d8';
@@ -36,6 +38,7 @@ class AppSettings {
     String? playMode,
     bool? sidebarShown,
     String? scrapeProxy,
+    List<String>? musicFolders,
   }) =>
       AppSettings(
         theme: theme ?? this.theme,
@@ -44,6 +47,7 @@ class AppSettings {
         playMode: playMode ?? this.playMode,
         sidebarShown: sidebarShown ?? this.sidebarShown,
         scrapeProxy: scrapeProxy ?? this.scrapeProxy,
+        musicFolders: musicFolders ?? this.musicFolders,
       );
 }
 
@@ -73,6 +77,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kMode = 'hiko-mode';
   static const _kSidebar = 'hiko-sidebar';
   static const _kProxy = 'hiko-scrape-proxy';
+  static const _kMusicFolders = 'hiko-music-folders';
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -83,6 +88,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       playMode: prefs.getString(_kMode) ?? 'list',
       sidebarShown: prefs.getBool(_kSidebar) ?? true,
       scrapeProxy: prefs.getString(_kProxy) ?? '',
+      musicFolders: prefs.getStringList(_kMusicFolders) ?? const [],
     );
   }
 
@@ -96,10 +102,29 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   Future<void> setScrapeProxy(String proxy) =>
       _save(_kProxy, proxy, state.copyWith(scrapeProxy: proxy));
 
+  /// 添加音乐目录（去重）并持久化
+  Future<void> addMusicFolder(String path) {
+    if (state.musicFolders.contains(path)) return Future.value();
+    return _save(
+      _kMusicFolders,
+      [...state.musicFolders, path],
+      state.copyWith(musicFolders: [...state.musicFolders, path]),
+    );
+  }
+
+  Future<void> removeMusicFolder(String path) => _save(
+        _kMusicFolders,
+        state.musicFolders.where((p) => p != path).toList(),
+        state.copyWith(
+            musicFolders: state.musicFolders.where((p) => p != path).toList()),
+      );
+
   Future<void> _save<T>(String key, T value, AppSettings next) async {
     state = next;
     final prefs = await SharedPreferences.getInstance();
-    if (value is String) {
+    if (value is List<String>) {
+      await prefs.setStringList(key, value);
+    } else if (value is String) {
       await prefs.setString(key, value);
     } else if (value is double) {
       await prefs.setDouble(key, value);

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/library_provider.dart';
+import '../../data/music_folder_scanner.dart';
 import '../../data/settings_store.dart';
 import '../../platform/platform_service.dart';
 
@@ -102,6 +103,64 @@ class SettingsDialog extends ConsumerWidget {
                   label: '导入文件夹',
                   onTap: () => onImportRequested?.call(),
                 ),
+              ),
+              // ---- 音乐目录（常驻自动扫描）----
+              _SectionTitle('音乐目录'),
+              if (settings.musicFolders.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(
+                    '尚未设置音乐目录。导入音声文件夹时会自动记住；之后每次启动自动扫描新增内容。',
+                    style: TextStyle(fontSize: 11, height: 1.6, color: theme.hintColor),
+                  ),
+                ),
+              for (final folder in settings.musicFolders)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Icon(Icons.folder_outlined, size: 15, color: theme.hintColor),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          _displayFolder(folder),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 14),
+                        tooltip: '移除目录',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () =>
+                            ref.read(settingsProvider.notifier).removeMusicFolder(folder),
+                      ),
+                    ],
+                  ),
+                ),
+              Row(
+                children: [
+                  _ActionButton(
+                    label: '立即重新扫描',
+                    onTap: () async {
+                      final added = await ref
+                          .read(musicFolderScannerProvider)
+                          .scanAll(silent: false);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                          content: Text(added > 0 ? '扫描完成，新增 $added 张专辑' : '扫描完成，没有新内容'),
+                          behavior: SnackBarBehavior.floating,
+                        ));
+                      }
+                    },
+                  ),
+                  if (settings.musicFolders.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Text('共 ${settings.musicFolders.length} 个目录',
+                        style: TextStyle(fontSize: 10, color: theme.hintColor)),
+                  ],
+                ],
               ),
               _SettingRow(
                 label: '库文件位置',
@@ -244,4 +303,17 @@ class _ActionButton extends StatelessWidget {
       child: Text(label, style: const TextStyle(fontSize: 11)),
     );
   }
+}
+
+/// 音乐目录展示名：SAF tree URI 取最后一段，路径取文件名
+String _displayFolder(String folder) {
+  if (folder.startsWith('content://')) {
+    final idx = folder.lastIndexOf('%2F');
+    if (idx >= 0) {
+      return Uri.decodeComponent(folder.substring(idx + 3));
+    }
+    return folder;
+  }
+  final parts = folder.split(RegExp(r'[/\\]'));
+  return parts.where((p) => p.isNotEmpty).lastOrNull ?? folder;
 }

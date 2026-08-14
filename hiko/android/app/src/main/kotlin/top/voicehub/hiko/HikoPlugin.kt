@@ -39,12 +39,42 @@ class HikoPlugin : MethodChannel.MethodCallHandler {
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "importAudioFolder" -> startImport(result)
+            // 常驻音乐目录扫描：按已授权 tree URI 直接扫描（不弹选择器），事件流与导入一致
+            "scanFolder" -> scanFolder(call, result)
             "deleteFiles" -> deleteFiles(call, result)
             "probeUris" -> probeUris(call, result)
             "revealInFolder" -> revealInFolder(call, result)
             "shareLibrary" -> shareLibrary(result)
             else -> result.notImplemented()
         }
+    }
+
+    /** 扫描已授权的音乐目录（常驻目录自动扫描用） */
+    private fun scanFolder(call: MethodCall, result: MethodChannel.Result) {
+        val activity = activity
+        if (activity == null) {
+            result.error("no-activity", "Activity 未就绪", null)
+            return
+        }
+        val uri = call.argument<String>("uri")?.let(Uri::parse)
+        if (uri == null) {
+            result.error("bad-uri", "目录 URI 无效", null)
+            return
+        }
+        Thread {
+            try {
+                val scanError = scanTree(activity, uri)
+                mainHandler.post {
+                    if (scanError == null) {
+                        result.success(mapOf("ok" to true))
+                    } else {
+                        result.error("scan-failed", scanError, null)
+                    }
+                }
+            } catch (e: Exception) {
+                mainHandler.post { result.error("scan-failed", e.message, null) }
+            }
+        }.start()
     }
 
     // ---- 导入（SAF）----
