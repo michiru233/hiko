@@ -1,10 +1,10 @@
 package top.voicehub.kikoeru
 
 import android.content.Intent
-import io.flutter.embedding.android.FlutterActivity
+import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
 
-class MainActivity : FlutterActivity() {
+class MainActivity : AudioServiceActivity() {
     private lateinit var plugin: KikoeruPlugin
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {

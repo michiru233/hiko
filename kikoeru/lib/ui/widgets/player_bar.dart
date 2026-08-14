@@ -44,7 +44,10 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
       children: [
         _buildCover(theme, album),
         const SizedBox(width: 12),
-        _buildMeta(theme, state, album, track),
+        // compact 窄屏：meta 必须弹性收缩，否则溢出
+        widget.compact
+            ? Expanded(child: _buildMeta(theme, state, album, track))
+            : _buildMeta(theme, state, album, track),
         const SizedBox(width: 10),
         _buildControls(theme, state),
         const Spacer(),
