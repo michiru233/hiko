@@ -68,6 +68,10 @@ class AndroidPlatformService implements PlatformService {
     await _channel.invokeMethod('shareLibrary');
   }
 
+  /// Android 走 SAF 单树导入（树内递归多专辑），无需目录多选
+  @override
+  Future<List<String>?> pickDirectories() async => null;
+
   @override
   Future<List<Album>> cleanMissing(List<Album> albums) async {
     final allTracks = [for (final a in albums) for (final t in a.tracks) t];

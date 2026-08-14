@@ -53,6 +53,7 @@ class LibraryStore {
   Future<void> _writeAtomic(String json) async {
     final file = await _file();
     final tmp = File('${file.path}.tmp');
+    await tmp.parent.create(recursive: true); // 数据目录可能尚不存在
     await tmp.writeAsString(json);
     try {
       await tmp.rename(file.path);

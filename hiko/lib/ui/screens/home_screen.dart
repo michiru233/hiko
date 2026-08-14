@@ -96,9 +96,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           });
         });
       } else {
-        final path = await getDirectoryPath();
-        if (path == null) return;
-        albums = await service.importFolders([path], onProgress: (p) {
+        // 桌面：批量选择多个文件夹导入（macOS 原生多选；Windows 单选降级）
+        final paths = await platform.pickDirectories();
+        if (paths == null || paths.isEmpty) return;
+        albums = await service.importFolders(paths, onProgress: (p) {
           if (!mounted) return;
           setState(() {
             _importProcessed = p.processed;

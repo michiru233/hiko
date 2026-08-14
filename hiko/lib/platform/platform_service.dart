@@ -1,6 +1,8 @@
 import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -21,6 +23,10 @@ abstract class PlatformService {
 
   /// 清理失效记录：返回仍存活的有效专辑列表（整张失效的专辑已被剔除）
   Future<List<Album>> cleanMissing(List<Album> albums);
+
+  /// 批量选择导入文件夹（桌面多选 / Android 返回 null 走 SAF 单树导入）。
+  /// 返回 null 表示用户取消。
+  Future<List<String>?> pickDirectories();
 }
 
 class DesktopPlatformService implements PlatformService {
@@ -136,6 +142,25 @@ class DesktopPlatformService implements PlatformService {
       }
     }
     return null;
+  }
+
+  /// 批量选择导入文件夹：
+  /// - macOS：原生 NSOpenPanel 多选（通道 top.voicehub.hiko/picker）
+  /// - Windows：file_selector 单目录降级（返回单元素列表）
+  @override
+  Future<List<String>?> pickDirectories() async {
+    if (Platform.isMacOS) {
+      try {
+        const channel = MethodChannel('top.voicehub.hiko/picker');
+        final paths = await channel.invokeMethod<List<dynamic>>('pickDirectories');
+        if (paths == null) return null;
+        return paths.cast<String>();
+      } catch (e) {
+        debugPrint('[picker] macOS 通道不可用，降级单选: $e');
+      }
+    }
+    final path = await getDirectoryPath();
+    return path == null ? null : [path];
   }
 }
 
