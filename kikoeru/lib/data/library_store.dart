@@ -37,19 +37,29 @@ class LibraryStore {
     }
   }
 
-  /// 原子写：先写临时文件再 rename，避免写入中断损坏库
-  Future<void> save(List<Album> albums) async {
+  /// 原子写：先写临时文件再 rename（POSIX 原子替换，Windows 失败时先删目标）。
+  /// 写操作串行化：播放进度等高频落盘与导入保存并发时不会互相踩踏。
+  Future<void> _writeQueue = Future.value();
+
+  Future<void> save(List<Album> albums) {
+    final json = jsonEncode({
+      'version': 1,
+      'albums': albums.map((a) => a.toJson()).toList(),
+    });
+    _writeQueue = _writeQueue.then((_) => _writeAtomic(json));
+    return _writeQueue;
+  }
+
+  Future<void> _writeAtomic(String json) async {
     final file = await _file();
     final tmp = File('${file.path}.tmp');
-    await tmp.writeAsString(
-      jsonEncode({
-        'version': 1,
-        'albums': albums.map((a) => a.toJson()).toList(),
-      }),
-    );
-    if (await file.exists()) {
-      await file.delete();
+    await tmp.writeAsString(json);
+    try {
+      await tmp.rename(file.path);
+    } on FileSystemException {
+      // Windows 上 rename 无法覆盖已存在目标：先删再改名
+      if (await file.exists()) await file.delete();
+      await tmp.rename(file.path);
     }
-    await tmp.rename(file.path);
   }
 }

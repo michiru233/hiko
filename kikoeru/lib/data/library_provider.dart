@@ -15,6 +15,12 @@ class LibraryNotifier extends StateNotifier<List<Album>> {
     state = await _store.load();
   }
 
+  /// 整体替换（清理失效记录后使用）
+  Future<void> replaceAll(List<Album> albums) async {
+    state = albums;
+    await _store.save(albums);
+  }
+
   /// 导入合并：新专辑在前，按 id 去重（对应旧版 mergeLibrary）
   Future<void> mergeNew(List<Album> incoming) async {
     final importedIds = {for (final a in incoming) a.id};
@@ -49,6 +55,20 @@ class LibraryNotifier extends StateNotifier<List<Album>> {
   }
 
   /// 播放进度等运行时变化落盘（不改变列表顺序）
+  Future<void> updatePlayed(String id, double played) async {
+    state = [
+      for (final a in state) a.id == id ? a.copyWith(played: played) : a,
+    ];
+    await _store.save(state);
+  }
+
+  /// 不落盘的纯内存更新（避免高频位置更新反复写盘）
+  void updatePlayedInMemory(String id, double played) {
+    state = [
+      for (final a in state) a.id == id ? a.copyWith(played: played) : a,
+    ];
+  }
+
   Future<void> persist() => _store.save(state);
 }
 
