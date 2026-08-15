@@ -8,73 +8,134 @@ import '../../data/settings_store.dart';
 import '../../platform/platform_service.dart';
 
 /// 偏好设置弹窗（对应旧版 settings-overlay）
-class SettingsDialog extends ConsumerWidget {
+class SettingsDialog extends ConsumerStatefulWidget {
   const SettingsDialog({super.key, this.onImportRequested});
 
   /// 数据区「导入音声」入口
   final VoidCallback? onImportRequested;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SettingsDialog> createState() => _SettingsDialogState();
+}
+
+class _SettingsDialogState extends ConsumerState<SettingsDialog> {
+  bool _isScanning = false;
+  double? _scanProgress;
+  String? _scanStatusText;
+
+  Future<void> _cleanMissing() async {
+    final albums = ref.read(libraryProvider);
+    final kept = await ref.read(platformServiceProvider).cleanMissing(albums);
+    final removed = albums.length - kept.length;
+    await ref.read(libraryProvider.notifier).replaceAll(kept);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(removed > 0 ? '已清理 $removed 张失效专辑' : '库中暂无失效记录'),
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
+  }
+
+  Future<void> _reorganizeLibrary() async {
+    try {
+      final result = await ref.read(libraryReorganizerProvider).reorganizeAll();
+      final stats = result.stats;
+      if (!mounted) return;
+      if (!stats.hasChanges) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('已检查全部专辑，元数据与曲目均与本地文件一致'),
+          behavior: SnackBarBehavior.floating,
+        ));
+        return;
+      }
+
+      final parts = <String>[];
+      if (stats.updatedAlbums > 0) {
+        parts.add('更新 ${stats.updatedAlbums} 张专辑');
+      }
+      if (stats.removedAlbums > 0) {
+        parts.add('清理 ${stats.removedAlbums} 张空专辑');
+      }
+      if (stats.tracksAdded > 0) {
+        parts.add('+${stats.tracksAdded} 首新增');
+      }
+      if (stats.tracksRemoved > 0) {
+        parts.add('-${stats.tracksRemoved} 首删除');
+      }
+      if (stats.tracksModified > 0) {
+        parts.add('${stats.tracksModified} 首标签/信息更新');
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('整理完成：${parts.join('，')}'),
+        behavior: SnackBarBehavior.floating,
+      ));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('整理失败：$e'),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    }
+  }
+
+  Future<void> _startRescan() async {
+    if (_isScanning) return;
+    setState(() {
+      _isScanning = true;
+      _scanProgress = null;
+      _scanStatusText = '准备扫描...';
+    });
+
+    try {
+      final added = await ref.read(musicFolderScannerProvider).scanAll(
+        silent: false,
+        onProgress: (p) {
+          if (!mounted) return;
+          setState(() {
+            if (p.total > 0) {
+              _scanProgress = (p.processed / p.total).clamp(0.0, 1.0);
+            } else {
+              _scanProgress = null;
+            }
+            final folderInfo = p.folderTotal > 1 ? ' [目录 ${p.folderIndex}/${p.folderTotal}]' : '';
+            if (p.phase == 'files') {
+              _scanStatusText = '正在扫描音频文件: ${p.processed} / ${p.total}$folderInfo';
+            } else {
+              _scanStatusText = '正在解析组装专辑: ${p.processed} / ${p.total}$folderInfo';
+            }
+          });
+        },
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(added > 0 ? '扫描完成，新增 $added 张专辑' : '扫描完成，没有新内容'),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('扫描失败：$e'),
+          behavior: SnackBarBehavior.floating,
+        ));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isScanning = false;
+          _scanProgress = null;
+          _scanStatusText = null;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final settings = ref.watch(settingsProvider);
-
-    Future<void> cleanMissing() async {
-      final albums = ref.read(libraryProvider);
-      final kept = await ref.read(platformServiceProvider).cleanMissing(albums);
-      final removed = albums.length - kept.length;
-      await ref.read(libraryProvider.notifier).replaceAll(kept);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(removed > 0 ? '已清理 $removed 张失效专辑' : '库中暂无失效记录'),
-          behavior: SnackBarBehavior.floating,
-        ));
-      }
-    }
-
-    Future<void> reorganizeLibrary() async {
-      try {
-        final result = await ref.read(libraryReorganizerProvider).reorganizeAll();
-        final stats = result.stats;
-        if (!context.mounted) return;
-        if (!stats.hasChanges) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('已检查全部专辑，元数据与曲目均与本地文件一致'),
-            behavior: SnackBarBehavior.floating,
-          ));
-          return;
-        }
-
-        final parts = <String>[];
-        if (stats.updatedAlbums > 0) {
-          parts.add('更新 ${stats.updatedAlbums} 张专辑');
-        }
-        if (stats.removedAlbums > 0) {
-          parts.add('清理 ${stats.removedAlbums} 张空专辑');
-        }
-        if (stats.tracksAdded > 0) {
-          parts.add('+${stats.tracksAdded} 首新增');
-        }
-        if (stats.tracksRemoved > 0) {
-          parts.add('-${stats.tracksRemoved} 首删除');
-        }
-        if (stats.tracksModified > 0) {
-          parts.add('${stats.tracksModified} 首标签/信息更新');
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('整理完成：${parts.join('，')}'),
-          behavior: SnackBarBehavior.floating,
-        ));
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('整理失败：$e'),
-            behavior: SnackBarBehavior.floating,
-          ));
-        }
-      }
-    }
 
     return AlertDialog(
       titlePadding: const EdgeInsets.fromLTRB(24, 22, 16, 0),
@@ -148,7 +209,7 @@ class SettingsDialog extends ConsumerWidget {
                 label: '导入音声',
                 trailing: _ActionButton(
                   label: '导入文件夹',
-                  onTap: () => onImportRequested?.call(),
+                  onTap: () => widget.onImportRequested?.call(),
                 ),
               ),
               // ---- 音乐目录（常驻自动扫描）----
@@ -180,8 +241,10 @@ class SettingsDialog extends ConsumerWidget {
                         icon: const Icon(Icons.close, size: 14),
                         tooltip: '移除目录',
                         visualDensity: VisualDensity.compact,
-                        onPressed: () =>
-                            ref.read(settingsProvider.notifier).removeMusicFolder(folder),
+                        onPressed: _isScanning
+                            ? null
+                            : () =>
+                                ref.read(settingsProvider.notifier).removeMusicFolder(folder),
                       ),
                     ],
                   ),
@@ -189,27 +252,9 @@ class SettingsDialog extends ConsumerWidget {
               Row(
                 children: [
                   _ActionButton(
-                    label: '立即重新扫描',
-                    onTap: () async {
-                      try {
-                        final added = await ref
-                            .read(musicFolderScannerProvider)
-                            .scanAll(silent: false);
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                            content: Text(added > 0 ? '扫描完成，新增 $added 张专辑' : '扫描完成，没有新内容'),
-                            behavior: SnackBarBehavior.floating,
-                          ));
-                        }
-                      } catch (e) {
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                            content: Text('扫描失败：$e'),
-                            behavior: SnackBarBehavior.floating,
-                          ));
-                        }
-                      }
-                    },
+                    label: _isScanning ? '扫描中...' : '立即重新扫描',
+                    loading: _isScanning,
+                    onTap: _isScanning ? null : _startRescan,
                   ),
                   if (settings.musicFolders.isNotEmpty) ...[
                     const SizedBox(width: 8),
@@ -218,6 +263,28 @@ class SettingsDialog extends ConsumerWidget {
                   ],
                 ],
               ),
+              if (_isScanning) ...[
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: _scanProgress,
+                    minHeight: 4,
+                    backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                  ),
+                ),
+                if (_scanStatusText != null) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    _scanStatusText!,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ],
               _SettingRow(
                 label: '库文件位置',
                 trailing: _ActionButton(
@@ -229,12 +296,15 @@ class SettingsDialog extends ConsumerWidget {
                 label: '整理当前专辑',
                 trailing: _ActionButton(
                   label: '整理专辑元数据',
-                  onTap: reorganizeLibrary,
+                  onTap: _isScanning ? null : _reorganizeLibrary,
                 ),
               ),
               _SettingRow(
                 label: '失效记录',
-                trailing: _ActionButton(label: '清理失效记录', onTap: cleanMissing),
+                trailing: _ActionButton(
+                  label: '清理失效记录',
+                  onTap: _isScanning ? null : _cleanMissing,
+                ),
               ),
               _SettingRow(
                 label: '刮削代理',
@@ -282,7 +352,7 @@ class SettingsDialog extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text('Hiko · 音声收藏室', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-                        Text('版本 1.18.0 · 本地优先的音声库管理器', style: TextStyle(fontSize: 11, color: theme.hintColor)),
+                        Text('版本 1.20.1 · 本地优先的音声库管理器', style: TextStyle(fontSize: 11, color: theme.hintColor)),
                       ],
                     ),
                   ),
@@ -347,10 +417,15 @@ class _SettingRow extends StatelessWidget {
 }
 
 class _ActionButton extends StatelessWidget {
-  const _ActionButton({required this.label, required this.onTap});
+  const _ActionButton({
+    required this.label,
+    required this.onTap,
+    this.loading = false,
+  });
 
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -363,7 +438,23 @@ class _ActionButton extends StatelessWidget {
         foregroundColor: theme.colorScheme.onSurface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
       ),
-      child: Text(label, style: const TextStyle(fontSize: 11)),
+      child: loading
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 11,
+                  height: 11,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.8,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(label, style: const TextStyle(fontSize: 11)),
+              ],
+            )
+          : Text(label, style: const TextStyle(fontSize: 11)),
     );
   }
 }

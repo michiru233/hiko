@@ -31,15 +31,22 @@ String stableId(String value) =>
     sha1.convert(utf8.encode(value)).toString().substring(0, 16);
 
 /// 递归收集目录下所有文件（跳过 . 开头条目）
+/// 在后台 Isolate 中同步执行文件系统扫描，主 UI 线程零 I/O 停顿
 Future<List<String>> collectFiles(String rootPath) async {
+  return compute(_collectFilesSync, rootPath);
+}
+
+List<String> _collectFilesSync(String rootPath) {
   final out = <String>[];
-  Future<void> walk(String dirPath) async {
+  void walk(String dirPath) {
     try {
-      await for (final e in Directory(dirPath).list(followLinks: false)) {
+      final dir = Directory(dirPath);
+      final entries = dir.listSync(followLinks: false);
+      for (final e in entries) {
         final name = e.path.split(Platform.pathSeparator).last;
         if (name.startsWith('.')) continue;
         if (e is Directory) {
-          await walk(e.path);
+          walk(e.path);
         } else if (e is File) {
           out.add(e.path);
         }
@@ -47,7 +54,7 @@ Future<List<String>> collectFiles(String rootPath) async {
     } catch (_) {}
   }
 
-  await walk(rootPath);
+  walk(rootPath);
   return out;
 }
 
@@ -146,7 +153,7 @@ Future<String?> _groupDirCover(List<String> dirs) async {
   pick ??= images.first;
   try {
     if (await pick.length() > 15 * 1024 * 1024) return null;
-    return coverDataUrl(await pick.readAsBytes());
+    return await coverDataUrlAsync(await pick.readAsBytes());
   } catch (_) {
     return null;
   }
@@ -303,7 +310,7 @@ Future<Album?> _buildAlbum(String key, List<FileMeta> files) async {
     for (final m in sorted) {
       final picBytes = await readEmbeddedPicture(m.path);
       if (picBytes != null) {
-        localCover = coverDataUrl(picBytes);
+        localCover = await coverDataUrlAsync(picBytes);
         if (localCover != null) break;
       }
     }

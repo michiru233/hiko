@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 
 /// 封面压缩策略：缩放到 ≤600px，JPEG 82%，≤500KB。
@@ -11,7 +12,7 @@ const int coverMaxSize = 600;
 const int coverMaxBytes = 500 * 1024;
 const int coverQuality = 82;
 
-/// 图片字节 → 压缩后的 dataURL；失败/超限返回 null
+/// 图片字节 → 压缩后的 dataURL；失败/超限返回 null（在调用线程直接执行，适合已在 Isolate 中的场景）
 String? coverDataUrl(Uint8List bytes) {
   try {
     final decoded = img.decodeImage(bytes);
@@ -30,4 +31,9 @@ String? coverDataUrl(Uint8List bytes) {
   } catch (_) {
     return null;
   }
+}
+
+/// 异步调用封面压缩（通过 compute 调度到后台 Isolate，避免主 UI 线程解码大图掉帧）
+Future<String?> coverDataUrlAsync(Uint8List bytes) {
+  return compute(coverDataUrl, bytes);
 }
