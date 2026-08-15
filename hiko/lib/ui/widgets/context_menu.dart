@@ -87,7 +87,7 @@ class _HikoContextMenuOverlay<T> extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     // 菜单尺寸与边距计算
-    const menuWidth = 176.0;
+    const menuWidth = 190.0;
     const padding = 12.0;
     final estimatedHeight = items.length * 36.0 + 12.0;
 

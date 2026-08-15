@@ -1005,16 +1005,33 @@ class _SortSelector extends StatelessWidget {
   final ValueChanged<String> onSelected;
 
   static const _sortOptions = [
-    ('recent', '最近添加', Icons.schedule_outlined),
-    ('title', '标题 A-Z', Icons.sort_by_alpha_outlined),
-    ('duration', '时长', Icons.hourglass_bottom_outlined),
+    ('recent_desc', '最近添加（新到旧）', Icons.schedule_outlined),
+    ('recent_asc', '最早添加（旧到新）', Icons.history_rounded),
+    ('title_asc', '标题 A → Z', Icons.sort_by_alpha_outlined),
+    ('title_desc', '标题 Z → A', Icons.sort_by_alpha_outlined),
+    ('duration_desc', '时长（长到短）', Icons.hourglass_bottom_outlined),
+    ('duration_asc', '时长（短到长）', Icons.hourglass_top_outlined),
   ];
 
   String get _currentLabel {
-    for (final opt in _sortOptions) {
-      if (opt.$1 == currentSort) return opt.$2;
+    switch (currentSort) {
+      case 'recent_asc':
+        return '最早添加';
+      case 'title':
+      case 'title_asc':
+        return '标题 A-Z';
+      case 'title_desc':
+        return '标题 Z-A';
+      case 'duration':
+      case 'duration_desc':
+        return '时长 (长→短)';
+      case 'duration_asc':
+        return '时长 (短→长)';
+      case 'recent':
+      case 'recent_desc':
+      default:
+        return '最近添加';
     }
-    return '最近添加';
   }
 
   void _openSortMenu(BuildContext context) {

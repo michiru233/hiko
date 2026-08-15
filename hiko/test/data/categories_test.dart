@@ -208,10 +208,94 @@ void main() {
         view: '全部音声',
         filter: 'all',
         query: '',
-        sort: 'duration',
+        sort: 'duration_desc',
       );
 
       expect(res.map((a) => a.id).toList(), ['long', 'medium', 'short']);
+
+      final resAsc = filterAlbums(
+        albums: [albShortManyTracks, albLongFewTracks, albMedium],
+        view: '全部音声',
+        filter: 'all',
+        query: '',
+        sort: 'duration_asc',
+      );
+
+      expect(resAsc.map((a) => a.id).toList(), ['short', 'medium', 'long']);
+    });
+
+    test('标题 A-Z 正序与 Z-A 倒序排序测试', () {
+      final a = Album(
+        id: 'a',
+        sourcePath: '/tmp/a',
+        title: 'A 音声',
+        artist: '社团',
+        genre: '未分类',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+      final b = Album(
+        id: 'b',
+        sourcePath: '/tmp/b',
+        title: 'B 音声',
+        artist: '社团',
+        genre: '未分类',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+
+      final resAsc = filterAlbums(
+        albums: [b, a],
+        view: '全部音声',
+        filter: 'all',
+        query: '',
+        sort: 'title_asc',
+      );
+      expect(resAsc.map((x) => x.id).toList(), ['a', 'b']);
+
+      final resDesc = filterAlbums(
+        albums: [a, b],
+        view: '全部音声',
+        filter: 'all',
+        query: '',
+        sort: 'title_desc',
+      );
+      expect(resDesc.map((x) => x.id).toList(), ['b', 'a']);
+    });
+
+    test('最近添加（新到旧）与最早添加（旧到新）排序测试', () {
+      final a1 = Album(
+        id: 'first',
+        sourcePath: '/tmp/1',
+        title: '第1张',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+      final a2 = Album(
+        id: 'second',
+        sourcePath: '/tmp/2',
+        title: '第2张',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+
+      final resRecent = filterAlbums(
+        albums: [a1, a2],
+        view: '全部音声',
+        filter: 'all',
+        query: '',
+        sort: 'recent_desc',
+      );
+      expect(resRecent.map((x) => x.id).toList(), ['first', 'second']);
+
+      final resOldest = filterAlbums(
+        albums: [a1, a2],
+        view: '全部音声',
+        filter: 'all',
+        query: '',
+        sort: 'recent_asc',
+      );
+      expect(resOldest.map((x) => x.id).toList(), ['second', 'first']);
     });
   });
 }

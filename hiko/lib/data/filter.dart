@@ -8,7 +8,7 @@ List<Album> filterAlbums({
   required String view, // 全部音声 / 最近添加 / 正在播放 / 收藏夹 / 分类名
   required String filter, // all / unplayed / favorite
   required String query,
-  required String sort, // recent / title / duration
+  required String sort, // recent_desc / recent_asc / title_asc / title_desc / duration_desc / duration_asc
 }) {
   final q = query.trim().toLowerCase();
   final result = albums.where((a) {
@@ -26,16 +26,42 @@ List<Album> filterAlbums({
     return true;
   }).toList();
 
-  if (sort == 'title') {
-    result.sort((a, b) => naturalCompare(a.title, b.title));
-  } else if (sort == 'duration') {
-    // 优先按真实音频总时长（秒数）降序排列；总时长相同时按曲目数量降序
-    result.sort((a, b) {
-      final cmp = b.totalDuration.compareTo(a.totalDuration);
-      if (cmp != 0) return cmp;
-      return b.duration.compareTo(a.duration);
-    });
+  switch (sort) {
+    case 'title':
+    case 'title_asc':
+      // 标题 A-Z 正序
+      result.sort((a, b) => naturalCompare(a.title, b.title));
+      break;
+    case 'title_desc':
+      // 标题 Z-A 倒序
+      result.sort((a, b) => naturalCompare(b.title, a.title));
+      break;
+    case 'duration':
+    case 'duration_desc':
+      // 时长由长到短（降序）：总时长秒数降序；相同按曲目数降序
+      result.sort((a, b) {
+        final cmp = b.totalDuration.compareTo(a.totalDuration);
+        if (cmp != 0) return cmp;
+        return b.duration.compareTo(a.duration);
+      });
+      break;
+    case 'duration_asc':
+      // 时长由短到长（升序）：总时长秒数升序；相同按曲目数升序
+      result.sort((a, b) {
+        final cmp = a.totalDuration.compareTo(b.totalDuration);
+        if (cmp != 0) return cmp;
+        return a.duration.compareTo(b.duration);
+      });
+      break;
+    case 'recent_asc':
+      // 最早添加在前（列表倒序）
+      return result.reversed.toList();
+    case 'recent':
+    case 'recent_desc':
+    default:
+      // 最近添加在前：保持库原有顺序
+      break;
   }
-  // recent：保持插入序（列表序即最近添加在前）
+
   return result;
 }
