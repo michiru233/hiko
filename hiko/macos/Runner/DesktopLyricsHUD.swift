@@ -20,9 +20,11 @@ class DesktopLyricsHUDController: NSObject {
         
         hudState.onClose = { [weak self] in
             self?.hide()
+            self?.channel?.invokeMethod("onVisibilityChanged", arguments: false)
         }
         hudState.onToggleLock = { [weak self] locked in
             self?.setLocked(locked)
+            self?.channel?.invokeMethod("onLockChanged", arguments: locked)
         }
     }
 
@@ -54,6 +56,9 @@ class DesktopLyricsHUDController: NSObject {
     }
 
     private func show() {
+        // 重新开启悬浮歌词时，默认自动解除锁定状态，确保用户始终能正常交互
+        setLocked(false)
+        
         if panel == nil {
             let p = NSPanel(
                 contentRect: NSRect(x: 200, y: 120, width: 680, height: 95),
@@ -86,6 +91,14 @@ class DesktopLyricsHUDController: NSObject {
     private func setLocked(_ locked: Bool) {
         hudState.isLocked = locked
         panel?.ignoresMouseEvents = locked
+        if locked {
+            hudState.showLockTip = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                self?.hudState.showLockTip = false
+            }
+        } else {
+            hudState.showLockTip = false
+        }
     }
 }
 
@@ -95,6 +108,7 @@ class LyricsHUDState: ObservableObject {
     @Published var translation: String? = nil
     @Published var isLocked: Bool = false
     @Published var isHovered: Bool = false
+    @Published var showLockTip: Bool = false
 
     var onClose: (() -> Void)?
     var onToggleLock: ((Bool) -> Void)?
@@ -114,7 +128,10 @@ struct LyricsHUDView: View {
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                        .stroke(
+                            state.isLocked ? Color.teal.opacity(0.4) : Color.white.opacity(0.18),
+                            lineWidth: 1
+                        )
                 )
                 .shadow(color: Color.black.opacity(0.28), radius: 12, x: 0, y: 6)
 
@@ -143,13 +160,29 @@ struct LyricsHUDView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .padding(.vertical, 10)
 
+            // 锁定成功提示横幅
+            if state.showLockTip {
+                HStack(spacing: 4) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 10, weight: .bold))
+                    Text("已锁定 · 可在底栏点击解锁")
+                        .font(.system(size: 10, weight: .medium))
+                }
+                .foregroundColor(.white.opacity(0.9))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Color.black.opacity(0.55)))
+                .padding(8)
+                .transition(.opacity)
+            }
+
             // 右上角浮动工具条（锁定 / 关闭）
             if state.isHovered && !state.isLocked {
                 HStack(spacing: 6) {
                     Button(action: {
-                        state.onToggleLock?(!state.isLocked)
+                        state.onToggleLock?(true)
                     }) {
-                        Image(systemName: state.isLocked ? "lock.fill" : "lock.open")
+                        Image(systemName: "lock.open")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(.white.opacity(0.8))
                             .padding(5)
@@ -175,8 +208,10 @@ struct LyricsHUDView: View {
             }
         }
         .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) {
-                state.isHovered = hovering
+            if !state.isLocked {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    state.isHovered = hovering
+                }
             }
         }
     }

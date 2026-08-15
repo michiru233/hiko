@@ -316,29 +316,122 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
   }
   // ---- 桌面置顶歌词按钮 ----
   Widget _buildDesktopLyricsButton(ThemeData theme) {
-    final desktopLyrics = ref.watch(desktopLyricsServiceProvider);
-    final isShowing = desktopLyrics.isShowing;
+    final status = ref.watch(desktopLyricsProvider);
+    final notifier = ref.read(desktopLyricsProvider.notifier);
+    final isShowing = status.isShowing;
+    final isLocked = status.isLocked;
 
-    return IconButton(
-      onPressed: () async {
-        final active = await desktopLyrics.toggle();
-        setState(() {});
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(active ? '已开启桌面置顶悬浮歌词' : '已关闭桌面置顶悬浮歌词'),
-              duration: const Duration(seconds: 1),
-              behavior: SnackBarBehavior.floating,
+    // 组合 Tooltip 提示
+    final tooltip = !isShowing
+        ? '开启桌面置顶悬浮歌词'
+        : isLocked
+            ? '桌面歌词已锁定 (点击解锁 / 右键菜单)'
+            : '关闭桌面悬浮歌词 (右键可锁定)';
+
+    return MenuAnchor(
+      builder: (context, controller, child) => GestureDetector(
+        onSecondaryTapDown: (details) {
+          if (isShowing) {
+            controller.open(position: details.localPosition);
+          }
+        },
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            IconButton(
+              onPressed: () async {
+                if (isLocked) {
+                  // 如果处于锁定状态，点击图标直接解锁
+                  await notifier.setLocked(false);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('已解除桌面歌词鼠标锁定'),
+                        duration: Duration(seconds: 1),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                } else {
+                  final active = await notifier.toggle();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(active ? '已开启桌面置顶悬浮歌词' : '已关闭桌面置顶悬浮歌词'),
+                        duration: const Duration(seconds: 1),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  }
+                }
+              },
+              tooltip: tooltip,
+              iconSize: 18,
+              color: isShowing ? theme.colorScheme.primary : theme.hintColor,
+              icon: Icon(
+                isShowing ? Icons.chat_bubble_rounded : Icons.chat_bubble_outline_rounded,
+              ),
             ),
-          );
-        }
-      },
-      tooltip: isShowing ? '关闭桌面悬浮歌词' : '开启桌面置顶悬浮歌词',
-      iconSize: 18,
-      color: isShowing ? theme.colorScheme.primary : theme.hintColor,
-      icon: Icon(
-        isShowing ? Icons.chat_bubble_rounded : Icons.chat_bubble_outline_rounded,
+            if (isShowing && isLocked)
+              Positioned(
+                right: 6,
+                bottom: 6,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.lock_rounded,
+                    size: 9,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
+      menuChildren: [
+        MenuItemButton(
+          leadingIcon: Icon(
+            isLocked ? Icons.lock_open_rounded : Icons.lock_rounded,
+            size: 16,
+          ),
+          onPressed: () async {
+            await notifier.setLocked(!isLocked);
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(!isLocked ? '已锁定桌面歌词（鼠标点击穿透）' : '已解除桌面歌词锁定'),
+                  duration: const Duration(seconds: 1),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          },
+          child: Text(
+            isLocked ? '解除悬浮窗锁定' : '锁定悬浮窗（穿透鼠标）',
+            style: const TextStyle(fontSize: 12),
+          ),
+        ),
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.close_rounded, size: 16),
+          onPressed: () async {
+            await notifier.hide();
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('已关闭桌面悬浮歌词'),
+                  duration: Duration(seconds: 1),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          },
+          child: const Text('关闭桌面歌词', style: TextStyle(fontSize: 12)),
+        ),
+      ],
     );
   }
 }

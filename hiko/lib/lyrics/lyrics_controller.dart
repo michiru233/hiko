@@ -176,7 +176,7 @@ class LyricsController extends StateNotifier<LyricsState> {
 
     if (_lastEmittedLineText != lineText) {
       _lastEmittedLineText = lineText;
-      _ref.read(desktopLyricsServiceProvider).updateLyrics(
+      _ref.read(desktopLyricsProvider.notifier).updateLyrics(
             currentLine: lineText,
             speaker: currentLine?.speaker,
             translation: currentLine?.translation,
