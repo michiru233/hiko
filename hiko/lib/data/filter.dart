@@ -1,4 +1,5 @@
 import '../models/album.dart';
+import '../utils/natural_compare.dart';
 
 /// 搜索/筛选/排序（对应旧版 app.js filtered()）。
 /// 纯函数便于单测；「未听完」用累计进度 < 总时长判定（修正旧版用曲目数比较的怪癖）。
@@ -26,9 +27,14 @@ List<Album> filterAlbums({
   }).toList();
 
   if (sort == 'title') {
-    result.sort((a, b) => a.title.compareTo(b.title));
+    result.sort((a, b) => naturalCompare(a.title, b.title));
   } else if (sort == 'duration') {
-    result.sort((a, b) => b.duration.compareTo(a.duration));
+    // 优先按真实音频总时长（秒数）降序排列；总时长相同时按曲目数量降序
+    result.sort((a, b) {
+      final cmp = b.totalDuration.compareTo(a.totalDuration);
+      if (cmp != 0) return cmp;
+      return b.duration.compareTo(a.duration);
+    });
   }
   // recent：保持插入序（列表序即最近添加在前）
   return result;

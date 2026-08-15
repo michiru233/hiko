@@ -165,5 +165,53 @@ void main() {
       expect(res.length, 1);
       expect(res.single.id, '3');
     });
+
+    test('按 duration 排序时基于真实 totalDuration（秒）降序排列', () {
+      final albShortManyTracks = Album(
+        id: 'short',
+        sourcePath: '/tmp/short',
+        title: '短音声多音轨',
+        artist: '社团 1',
+        genre: '未分类',
+        duration: 20, // 20 首
+        totalDuration: 1800, // 30 分钟 (1800 秒)
+        date: DateTime.now(),
+        tracks: const [],
+      );
+
+      final albLongFewTracks = Album(
+        id: 'long',
+        sourcePath: '/tmp/long',
+        title: '长音声单音轨',
+        artist: '社团 2',
+        genre: '未分类',
+        duration: 1, // 1 首
+        totalDuration: 36000, // 10 小时 (36000 秒)
+        date: DateTime.now(),
+        tracks: const [],
+      );
+
+      final albMedium = Album(
+        id: 'medium',
+        sourcePath: '/tmp/medium',
+        title: '中等时长',
+        artist: '社团 3',
+        genre: '未分类',
+        duration: 5,
+        totalDuration: 7200, // 2 小时 (7200 秒)
+        date: DateTime.now(),
+        tracks: const [],
+      );
+
+      final res = filterAlbums(
+        albums: [albShortManyTracks, albLongFewTracks, albMedium],
+        view: '全部音声',
+        filter: 'all',
+        query: '',
+        sort: 'duration',
+      );
+
+      expect(res.map((a) => a.id).toList(), ['long', 'medium', 'short']);
+    });
   });
 }

@@ -159,6 +159,16 @@ hiko/                          # flutter create --org top.voicehub --platforms m
   - `filterAlbums` (`lib/data/filter.dart`) 升级为通用分类过滤，精准支持任意自定义分类筛选。
 - **验证**：全部 76 个单元测试全绿通过。
 
+### 1.19.0 专辑时长排序修复与排序选择器 UI 统一优化
+
+- **时长排序准确性修复**：
+  - 修复 `filterAlbums` (`lib/data/filter.dart`) 在 `sort == 'duration'` 时错误按曲目数量 `album.duration` 排序的问题，改为优先按真实音频累计总时长 `album.totalDuration`（秒数）降序排列，时长相同时按曲目数降序。
+  - 补充时长排序单元测试 (`hiko/test/data/categories_test.dart`)，验证长音声/短音声/多音轨混合场景下的精准排序。
+- **排序选择器 UI 统一升级**：
+  - 移除原生粗糙灰底的 `DropdownButton`，新增与筛选胶囊组 (`_FilterSegment`)、多选按钮风格完全一致的 `_SortSelector` 胶囊组件。
+  - 接入应用全局风格统一的 `showHikoContextMenu` 悬浮菜单，带柔和圆角阴影、毛玻璃模糊滤镜、微缩弹性淡入动画与优雅选项图标（`Icons.schedule_outlined` / `Icons.sort_by_alpha_outlined` / `Icons.hourglass_bottom_outlined`）。
+- **验证**：全部 77 个单元测试全绿通过。
+
 ### 1.17.0 全新 App 图标焕新 & 音量调节交互优化
 
 - **全新 App 品牌图标**：

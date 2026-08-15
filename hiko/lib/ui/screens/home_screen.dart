@@ -635,24 +635,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               const SizedBox(width: 14),
               // 排序
-              Row(
-                children: [
-                  if (!isMobile) ...[
-                    Text('排序', style: TextStyle(fontSize: 11, color: theme.hintColor)),
-                    const SizedBox(width: 8),
-                  ],
-                  DropdownButton<String>(
-                    value: _sort,
-                    underline: const SizedBox.shrink(),
-                    style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurface),
-                    items: const [
-                      DropdownMenuItem(value: 'recent', child: Text('最近添加')),
-                      DropdownMenuItem(value: 'title', child: Text('标题 A-Z')),
-                      DropdownMenuItem(value: 'duration', child: Text('时长')),
-                    ],
-                    onChanged: (v) => setState(() => _sort = v ?? 'recent'),
-                  ),
-                ],
+              _SortSelector(
+                currentSort: _sort,
+                isMobile: isMobile,
+                onSelected: (val) => setState(() => _sort = val),
               ),
               const SizedBox(width: 14),
               // 多选
@@ -1005,3 +991,103 @@ class _FocusSearchIntent extends Intent {
 class _ImportIntent extends Intent {
   const _ImportIntent();
 }
+
+/// 与筛选栏视觉一致的精致排序下拉组件
+class _SortSelector extends StatelessWidget {
+  const _SortSelector({
+    required this.currentSort,
+    required this.isMobile,
+    required this.onSelected,
+  });
+
+  final String currentSort;
+  final bool isMobile;
+  final ValueChanged<String> onSelected;
+
+  static const _sortOptions = [
+    ('recent', '最近添加', Icons.schedule_outlined),
+    ('title', '标题 A-Z', Icons.sort_by_alpha_outlined),
+    ('duration', '时长', Icons.hourglass_bottom_outlined),
+  ];
+
+  String get _currentLabel {
+    for (final opt in _sortOptions) {
+      if (opt.$1 == currentSort) return opt.$2;
+    }
+    return '最近添加';
+  }
+
+  void _openSortMenu(BuildContext context) {
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+    final offset = renderBox.localToGlobal(Offset.zero);
+    final size = renderBox.size;
+    final position = Offset(offset.dx, offset.dy + size.height + 4);
+
+    showHikoContextMenu<String>(
+      context: context,
+      position: position,
+      items: [
+        for (final opt in _sortOptions)
+          HikoContextMenuItem(
+            value: opt.$1,
+            label: opt.$2,
+            icon: opt.$3,
+          ),
+      ],
+    ).then((val) {
+      if (val != null && val != currentSort) {
+        onSelected(val);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return InkWell(
+      onTap: () => _openSortMenu(context),
+      mouseCursor: SystemMouseCursors.click,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!isMobile) ...[
+              Text(
+                '排序',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: theme.hintColor,
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              _currentLabel,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 15,
+              color: theme.hintColor,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
