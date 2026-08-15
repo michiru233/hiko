@@ -2,6 +2,8 @@ import Cocoa
 import FlutterMacOS
 
 class MainFlutterWindow: NSWindow {
+  private var lyricsHUDController: DesktopLyricsHUDController?
+
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
@@ -13,6 +15,11 @@ class MainFlutterWindow: NSWindow {
     self.minSize = NSSize(width: 960, height: 640)
 
     registerPickerChannel(flutterViewController)
+
+    // 注册桌面悬浮歌词 HUD 控制器
+    let hudController = DesktopLyricsHUDController()
+    hudController.setup(messenger: flutterViewController.engine.binaryMessenger)
+    self.lyricsHUDController = hudController
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 

@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/settings_store.dart';
+import '../../lyrics/desktop_lyrics_service.dart';
 import '../../models/album.dart';
 import '../../playback/playback_controller.dart';
 import '../../playback/playback_rules.dart';
@@ -51,6 +54,10 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
         const Spacer(),
         _buildModeButton(theme, state),
         const SizedBox(width: 12),
+        if (Platform.isMacOS) ...[
+          _buildDesktopLyricsButton(theme),
+          const SizedBox(width: 12),
+        ],
         _buildVolumeButton(theme, settings),
       ],
     );
@@ -80,7 +87,11 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
                 Expanded(child: _buildTimeline(theme, position, duration)),
                 const SizedBox(width: 18),
                 _buildModeButton(theme, state),
-                const SizedBox(width: 16),
+                if (Platform.isMacOS) ...[
+                  const SizedBox(width: 14),
+                  _buildDesktopLyricsButton(theme),
+                ],
+                const SizedBox(width: 14),
                 _buildVolumeButton(theme, settings),
               ],
             ),
@@ -301,6 +312,33 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
           ),
         ),
       ],
+    );
+  }
+  // ---- 桌面置顶歌词按钮 ----
+  Widget _buildDesktopLyricsButton(ThemeData theme) {
+    final desktopLyrics = ref.watch(desktopLyricsServiceProvider);
+    final isShowing = desktopLyrics.isShowing;
+
+    return IconButton(
+      onPressed: () async {
+        final active = await desktopLyrics.toggle();
+        setState(() {});
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(active ? '已开启桌面置顶悬浮歌词' : '已关闭桌面置顶悬浮歌词'),
+              duration: const Duration(seconds: 1),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      },
+      tooltip: isShowing ? '关闭桌面悬浮歌词' : '开启桌面置顶悬浮歌词',
+      iconSize: 18,
+      color: isShowing ? theme.colorScheme.primary : theme.hintColor,
+      icon: Icon(
+        isShowing ? Icons.chat_bubble_rounded : Icons.chat_bubble_outline_rounded,
+      ),
     );
   }
 }

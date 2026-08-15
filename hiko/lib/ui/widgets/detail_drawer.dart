@@ -3,12 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/library_provider.dart';
 import '../../data/library_reorganizer.dart';
+import '../../lyrics/lyrics_controller.dart';
 import '../../models/album.dart';
 import '../../models/track.dart';
 import '../../playback/playback_controller.dart';
 import '../../utils/rj.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
+import '../lyrics/drawer_lyrics_view.dart';
 import 'category_dialog.dart';
 
 /// 详情抽屉（对应旧版 aside.details）：封面、标签、RJ 号、曲目列表、进度、收藏、从头播放
@@ -23,9 +25,13 @@ class DetailDrawer extends ConsumerStatefulWidget {
 }
 
 class _DetailDrawerState extends ConsumerState<DetailDrawer> {
+  int _selectedTabIndex = 0; // 0: 曲目列表, 1: 歌词字幕
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primaryColor = theme.colorScheme.primary;
     final album = ref.watch(
       libraryProvider.select(
         (list) => list.firstWhere(
@@ -44,6 +50,10 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
     );
     final isPlaying = ref.watch(
       playbackProvider.select((p) => isCurrentAlbum && p.playing),
+    );
+
+    final hasLyrics = ref.watch(
+      lyricsProvider.select((l) => l.hasLyrics),
     );
 
     final progress = album.totalDuration > 0
@@ -215,23 +225,61 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                         style: TextStyle(fontSize: 10, color: theme.hintColor),
                       ),
                     ],
-                    const SizedBox(height: 16),
-                    // 曲目列表
-                    for (var i = 0; i < album.tracks.length; i++)
-                      _TrackRow(
-                        track: album.tracks[i],
-                        index: i,
-                        active: isCurrentAlbum && currentIndex == i,
-                        playing: isCurrentAlbum && currentIndex == i && isPlaying,
-                        onTap: () {
-                          final controller = ref.read(playbackProvider.notifier);
-                          if (isCurrentAlbum && currentIndex == i && isPlaying) {
-                            controller.pause();
-                          } else {
-                            controller.playAlbum(album, index: i);
-                          }
-                        },
+                    const SizedBox(height: 18),
+                    // 双 Tab 导航：曲目列表 vs 歌词字幕
+                    Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(8),
                       ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _TabButton(
+                              label: '曲目列表 (${album.tracks.length})',
+                              icon: Icons.format_list_bulleted_rounded,
+                              selected: _selectedTabIndex == 0,
+                              onTap: () => setState(() => _selectedTabIndex = 0),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: _TabButton(
+                              label: '歌词字幕',
+                              icon: Icons.subtitles_rounded,
+                              hasBadge: isCurrentAlbum && hasLyrics,
+                              selected: _selectedTabIndex == 1,
+                              onTap: () => setState(() => _selectedTabIndex = 1),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Tab 内容切换
+                    if (_selectedTabIndex == 0) ...[
+                      for (var i = 0; i < album.tracks.length; i++)
+                        _TrackRow(
+                          track: album.tracks[i],
+                          index: i,
+                          active: isCurrentAlbum && currentIndex == i,
+                          playing: isCurrentAlbum && currentIndex == i && isPlaying,
+                          onTap: () {
+                            final controller = ref.read(playbackProvider.notifier);
+                            if (isCurrentAlbum && currentIndex == i && isPlaying) {
+                              controller.pause();
+                            } else {
+                              controller.playAlbum(album, index: i);
+                            }
+                          },
+                        ),
+                    ] else ...[
+                      const SizedBox(
+                        height: 380,
+                        child: DrawerLyricsView(),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -250,6 +298,85 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _TabButton extends StatelessWidget {
+  const _TabButton({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+    this.hasBadge = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final bool hasBadge;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primaryColor = theme.colorScheme.primary;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        decoration: BoxDecoration(
+          color: selected
+              ? (isDark ? Colors.white.withValues(alpha: 0.12) : Colors.white)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          boxShadow: selected
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 13,
+              color: selected ? primaryColor : (isDark ? Colors.white60 : Colors.black54),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected
+                    ? (isDark ? Colors.white : primaryColor)
+                    : (isDark ? Colors.white60 : Colors.black54),
+              ),
+            ),
+            if (hasBadge) ...[
+              const SizedBox(width: 4),
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: primaryColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

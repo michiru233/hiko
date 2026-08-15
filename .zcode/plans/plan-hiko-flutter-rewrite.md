@@ -181,7 +181,23 @@ hiko/                          # flutter create --org top.voicehub --platforms m
   - 音量按钮改为纵向弹出式滑块卡片，紧凑精致，带百分比实时数字提示与平滑滑块。
 - **验证**：全部 70 个单元测试通过。
 
-### 1.14.0 整理当前专辑、元数据同步与桌面扫描性能大幅加速
+### 1.20.0 歌词与字幕系统（同目录 LRC/VTT 自动加载 + 抽屉双 Tab 联动 + macOS 系统级置顶桌面悬浮窗 HUD）
+
+- **核心解析与多编码探测层 (`lib/lyrics/`)**：
+  - `LrcParser`：支持标准时间戳、多时间戳行合并、`[offset:+/-ms]` 偏移量补偿、说话人前缀提取（`【角色】` / `角色:` / `[speaker:xxx]`）。
+  - `VttParser`：支持 WebVTT/SRT 时间跨度、`<v 角色名>` 说话人标签提取与样式标签（`<b>`, `<i>`, `<c.color>`）、HTML 实体自动清洗还原。
+  - `LyricsResolver`：自动扫描音频同级目录及 `lyrics/`, `lrc/`, `sub/`, `subtitles/` 子目录，支持同名匹配、音轨编号模糊匹配、按自然序匹配；集成 UTF-8 BOM $\to$ 严格 UTF-8 $\to$ Shift-JIS / GBK / EUC-JP 字符集打分自适应解码，彻底避免日文和中文台词乱码。
+  - `LyricsController`：监听播放进度与曲目切换，采用 $O(\log N)$ 二分查找毫秒级计算高亮行；支持用户手动滑动防抖（暂停跟随 3 秒后平滑恢复）与点击跳转播放（Seek）。
+- **右侧抽屉双 Tab 联动 (`DetailDrawer` & `DrawerLyricsView`)**：
+  - 详情抽屉顶部升级为精致 Segmented Tab：`曲目列表 (N)` | `歌词字幕`（有歌词时附带高亮提示点）。
+  - 歌词视图支持垂直自动平滑滚动居中、活跃行强调高亮与呼吸指示条、说话人角色 Badge、鼠标悬停时间戳提示、点击整行即时跳转。
+- **macOS 系统级置顶桌面悬浮歌词 HUD (`DesktopLyricsHUD.swift` + `desktop_lyrics_service.dart`)**：
+  - 原生 AppKit `NSPanel` + SwiftUI 毛玻璃视图，层级为 `.floating`，支持跨全屏桌面（`.canJoinAllSpaces` / `.fullScreenAuxiliary`）漫游。
+  - 支持直接按住拖拽移动至屏幕任意角落，提供悬停工具栏（锁定穿透 / 关闭）。
+  - 底部播控栏 `PlayerBar` 增加「桌面悬浮歌词」一键呼出与状态同步开关。
+- **验证**：全部 83 个单元测试通过，版本升级为 1.20.0+21。
+
+### 1.19.0 修复专辑时长排序准确性（基于 totalDuration 秒数排序）+ 统一优化排序选择器 UI 交互风格
 
 - **扫描器吞吐大幅提升（10x+ 加速）**：
   - `scanner.dart` / `metadata.dart`：
