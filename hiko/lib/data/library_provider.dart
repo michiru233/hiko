@@ -21,29 +21,53 @@ class LibraryNotifier extends StateNotifier<List<Album>> {
     await _store.save(albums);
   }
 
-  /// 导入合并：新专辑在前，按 id 去重；同时按「曲目 URL」匹配旧专辑并替换
-  /// （解决分组策略变化导致的 id 漂移——同文件换组后不产生重复专辑）
+  /// 导入合并：新专辑在前，按 id 去重；同时按「曲目 URL」匹配旧专辑并继承已有元数据
+  /// （解决分组策略变化导致的 id 漂移——同文件换组后不产生重复专辑，并完整保留分类、收藏、刮削标签与播放进度）
   Future<void> mergeNew(List<Album> incoming) async {
     if (incoming.isEmpty) return;
 
-    final importedIds = {for (final a in incoming) a.id};
-    // 旧库中「包含与任一新专辑相同曲目文件」的专辑 → 被替换（移除旧条目）
-    final newTrackUrls = {
-      for (final a in incoming) ...a.tracks.map((t) => t.url),
-    };
-    final replacedIds = <String>{
+    final oldById = {for (final a in state) a.id: a};
+    final oldByTrackUrl = <String, Album>{
       for (final a in state)
-        if (a.tracks.any((t) => newTrackUrls.contains(t.url))) a.id,
+        for (final t in a.tracks) t.url: a,
     };
-    final kept = state.where((a) => !importedIds.contains(a.id) && !replacedIds.contains(a.id)).toList();
 
-    // 检查是否有实质变动（若全部已存在且没有替换/新加入项，直接返回，避免无谓触发重渲染与整库序列化写盘）
-    if (kept.length == state.length && incoming.every((inc) => state.any((s) => s.id == inc.id))) {
-      return;
+    final mergedIncoming = <Album>[];
+    final replacedIds = <String>{};
+
+    for (final fresh in incoming) {
+      Album? matchedOld = oldById[fresh.id];
+      if (matchedOld == null) {
+        for (final t in fresh.tracks) {
+          if (oldByTrackUrl.containsKey(t.url)) {
+            matchedOld = oldByTrackUrl[t.url];
+            break;
+          }
+        }
+      }
+
+      if (matchedOld != null) {
+        replacedIds.add(matchedOld.id);
+      }
+      mergedIncoming.add(fresh.mergeWith(matchedOld));
     }
 
+    final importedIds = {for (final a in mergedIncoming) a.id};
+    final newTrackUrls = {
+      for (final a in mergedIncoming) ...a.tracks.map((t) => t.url),
+    };
+    for (final a in state) {
+      if (a.tracks.any((t) => newTrackUrls.contains(t.url))) {
+        replacedIds.add(a.id);
+      }
+    }
+
+    final kept = state
+        .where((a) => !importedIds.contains(a.id) && !replacedIds.contains(a.id))
+        .toList();
+
     final next = [
-      ...incoming,
+      ...mergedIncoming,
       ...kept,
     ];
     state = next;

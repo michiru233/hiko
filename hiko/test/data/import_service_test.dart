@@ -36,9 +36,21 @@ void main() {
     final loaded = await store.load();
     expect(loaded.length, 2);
 
-    // 重复导入同一目录：id 相同覆盖，不产生重复
+    // 修改其中一张专辑的分类与收藏
+    final updated = loaded.map((a) {
+      if (a.rjCode == 'RJ11111') {
+        return a.copyWith(genre: '催眠治愈', favorite: true);
+      }
+      return a;
+    }).toList();
+    await store.save(updated);
+
+    // 重复导入同一目录：id 相同合并，继承已有分类与收藏，不产生重复
     final again = await service.importFolders(['${tmp.path}/src1']);
     expect(again.length, 2);
+    final a1 = again.firstWhere((a) => a.rjCode == 'RJ11111');
+    expect(a1.genre, '催眠治愈');
+    expect(a1.favorite, isTrue);
   });
 }
 

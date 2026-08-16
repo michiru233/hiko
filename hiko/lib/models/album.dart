@@ -102,12 +102,16 @@ class Album {
     String? rjCode,
     String? dlsiteTitle,
     List<String>? tags,
+    String? group,
     String? genre,
     double? played,
     bool? favorite,
+    DateTime? date,
     List<Track>? tracks,
     String? localCover,
     String? currentCover,
+    List<String>? color,
+    String? shape,
   }) =>
       Album(
         id: id,
@@ -118,20 +122,63 @@ class Album {
         rjCode: rjCode ?? this.rjCode,
         dlsiteTitle: dlsiteTitle ?? this.dlsiteTitle,
         tags: tags ?? this.tags,
-        group: group,
+        group: group ?? this.group,
         genre: genre ?? this.genre,
         duration: (tracks ?? this.tracks).length,
         totalDuration: (tracks ?? this.tracks)
             .fold<double>(0, (sum, t) => sum + t.duration),
         played: played ?? this.played,
         favorite: favorite ?? this.favorite,
-        date: date,
+        date: date ?? this.date,
         tracks: tracks ?? this.tracks,
         localCover: localCover ?? this.localCover,
         currentCover: currentCover ?? this.currentCover,
-        color: color,
-        shape: shape,
+        color: color ?? this.color,
+        shape: shape ?? this.shape,
       );
+
+  /// 与旧版本专辑数据智能合并（保留用户的分类、收藏、播放进度、DLsite 刮削信息、添加时间等）
+  Album mergeWith(Album? oldAlbum) {
+    if (oldAlbum == null) return this;
+
+    final hasDlsite =
+        oldAlbum.dlsiteTitle != null && oldAlbum.dlsiteTitle!.isNotEmpty;
+
+    return Album(
+      id: id,
+      sourcePath: sourcePath.isNotEmpty ? sourcePath : oldAlbum.sourcePath,
+      title: (hasDlsite || (oldAlbum.title.isNotEmpty && oldAlbum.title != '未命名' && oldAlbum.title != '本地导入'))
+          ? oldAlbum.title
+          : title,
+      artist: (hasDlsite && oldAlbum.artist != '本地导入')
+          ? oldAlbum.artist
+          : (artist != '本地导入' ? artist : oldAlbum.artist),
+      albumArtist: (hasDlsite && oldAlbum.albumArtist.isNotEmpty)
+          ? oldAlbum.albumArtist
+          : (albumArtist.isNotEmpty ? albumArtist : oldAlbum.albumArtist),
+      rjCode: oldAlbum.rjCode ?? rjCode,
+      dlsiteTitle: oldAlbum.dlsiteTitle ?? dlsiteTitle,
+      tags: oldAlbum.tags.isNotEmpty ? oldAlbum.tags : tags,
+      group: oldAlbum.group.isNotEmpty ? oldAlbum.group : group,
+      genre: oldAlbum.genre != '未分类' ? oldAlbum.genre : genre,
+      duration: tracks.length,
+      totalDuration: totalDuration > 0
+          ? totalDuration
+          : tracks.fold<double>(0, (sum, t) => sum + t.duration),
+      played: oldAlbum.played > 0
+          ? (totalDuration > 0
+              ? oldAlbum.played.clamp(0.0, totalDuration)
+              : oldAlbum.played)
+          : 0.0,
+      favorite: oldAlbum.favorite,
+      date: oldAlbum.date.millisecondsSinceEpoch > 0 ? oldAlbum.date : date,
+      tracks: tracks,
+      localCover: localCover ?? oldAlbum.localCover,
+      currentCover: currentCover ?? oldAlbum.currentCover,
+      color: oldAlbum.color.isNotEmpty ? oldAlbum.color : color,
+      shape: oldAlbum.shape.isNotEmpty ? oldAlbum.shape : shape,
+    );
+  }
 
   /// 是否关联本地文件（桌面 file:// 或 Android content://）
   bool get hasLocalFiles =>

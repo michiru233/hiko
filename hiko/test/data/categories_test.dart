@@ -8,6 +8,7 @@ import 'package:hiko/data/library_provider.dart';
 import 'package:hiko/data/library_store.dart';
 import 'package:hiko/models/album.dart';
 import 'package:hiko/models/category.dart';
+import 'package:hiko/models/track.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -81,6 +82,93 @@ void main() {
       await catNotifier.removeCategory('极致耳骚');
       expect(container.read(categoriesProvider).any((c) => c.name == '极致耳骚'), isFalse);
       expect(container.read(libraryProvider).single.genre, '未分类');
+    });
+
+    test('mergeNew 扫描新专辑时保留已有专辑的分类、收藏、播放进度与刮削元数据', () async {
+      final tmp = Directory.systemTemp.createTempSync('hiko-merge-test');
+      addTearDown(() => tmp.deleteSync(recursive: true));
+
+      final store = LibraryStore(overrideDir: Directory('${tmp.path}/data'));
+      final container = ProviderContainer(
+        overrides: [
+          libraryStoreProvider.overrideWithValue(store),
+        ],
+      );
+      final libNotifier = container.read(libraryProvider.notifier);
+
+      final originalDate = DateTime(2025, 1, 1);
+      final oldAlbum = Album(
+        id: 'local-123456',
+        sourcePath: '/path/to/RJ123456',
+        title: '已刮削中文译名',
+        artist: '知名社团',
+        albumArtist: '知名社团',
+        rjCode: 'RJ123456',
+        dlsiteTitle: '【原版日文】タイトル',
+        tags: ['治愈', '催眠', '耳骚'],
+        genre: 'ASMR',
+        favorite: true,
+        played: 450.0,
+        date: originalDate,
+        tracks: [
+          Track(index: 1, name: '01.mp3', url: 'file:///path/to/RJ123456/01.mp3', duration: 300),
+          Track(index: 2, name: '02.mp3', url: 'file:///path/to/RJ123456/02.mp3', duration: 300),
+        ],
+      );
+
+      await libNotifier.mergeNew([oldAlbum]);
+      expect(container.read(libraryProvider).single.genre, 'ASMR');
+      expect(container.read(libraryProvider).single.favorite, isTrue);
+
+      // 模拟重新扫描该目录（或扫描包含此专辑的父目录），扫描器生成初始状态的 fresh 专辑（genre 默认为未分类）
+      final scannedFreshAlbum = Album(
+        id: 'local-123456',
+        sourcePath: '/path/to/RJ123456',
+        title: 'RJ123456',
+        artist: '本地导入',
+        genre: '未分类',
+        favorite: false,
+        played: 0,
+        date: DateTime.now(),
+        tracks: [
+          Track(index: 1, name: '01.mp3', url: 'file:///path/to/RJ123456/01.mp3', duration: 300),
+          Track(index: 2, name: '02.mp3', url: 'file:///path/to/RJ123456/02.mp3', duration: 300),
+          Track(index: 3, name: '03.mp3', url: 'file:///path/to/RJ123456/03.mp3', duration: 300),
+        ],
+      );
+
+      // 另外有一张纯新专辑
+      final brandNewAlbum = Album(
+        id: 'local-999999',
+        sourcePath: '/path/to/RJ999999',
+        title: '新导入专辑',
+        genre: '未分类',
+        date: DateTime.now(),
+        tracks: [
+          Track(index: 1, name: 'track.mp3', url: 'file:///path/to/RJ999999/track.mp3', duration: 200),
+        ],
+      );
+
+      await libNotifier.mergeNew([scannedFreshAlbum, brandNewAlbum]);
+
+      final albums = container.read(libraryProvider);
+      expect(albums.length, 2);
+
+      final merged = albums.firstWhere((a) => a.id == 'local-123456');
+      // 验证分类完全保留，没有丢失变为「未分类」
+      expect(merged.genre, 'ASMR');
+      // 验证收藏、播放进度、刮削标题与标签、添加时间保留
+      expect(merged.favorite, isTrue);
+      expect(merged.played, 450.0);
+      expect(merged.title, '已刮削中文译名');
+      expect(merged.dlsiteTitle, '【原版日文】タイトル');
+      expect(merged.tags, ['治愈', '催眠', '耳骚']);
+      expect(merged.date, originalDate);
+      // 验证新音轨已正常加入
+      expect(merged.tracks.length, 3);
+
+      final brandNew = albums.firstWhere((a) => a.id == 'local-999999');
+      expect(brandNew.genre, '未分类');
     });
   });
 

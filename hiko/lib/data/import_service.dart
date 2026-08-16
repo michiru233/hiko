@@ -50,7 +50,7 @@ class ImportService {
     return albums;
   }
 
-  /// 导入多个目录：逐目录扫描 → 与现有库合并（新专辑在前）→ 保存。
+  /// 导入多个目录：逐目录扫描 → 与现有库合并（继承已有分类/收藏/进度等）→ 保存。
   /// 每 5 张增量保存一次防崩溃丢失（对应旧版 Android scanTree 策略）。
   Future<List<Album>> importFolders(
     List<String> paths, {
@@ -69,7 +69,8 @@ class ImportService {
         onProgress: onProgress,
       );
       for (final album in albums) {
-        merged[album.id] = album;
+        final oldAlbum = merged[album.id];
+        merged[album.id] = album.mergeWith(oldAlbum);
         newCount++;
         if (newCount % 5 == 0) {
           await store.save(merged.values.toList());

@@ -181,31 +181,8 @@ class LibraryReorganizer {
         }
       }
 
-      final hasDlsite =
-          oldAlbum.dlsiteTitle != null && oldAlbum.dlsiteTitle!.isNotEmpty;
-
-      // 合并用户已有状态：收藏、播放进度、刮削标签、DLsite标题等
-      final merged = fresh.copyWith(
-        title: hasDlsite ? oldAlbum.title : fresh.title,
-        artist: (hasDlsite && oldAlbum.artist != '本地导入')
-            ? oldAlbum.artist
-            : fresh.artist,
-        albumArtist: (hasDlsite && oldAlbum.albumArtist.isNotEmpty)
-            ? oldAlbum.albumArtist
-            : fresh.albumArtist,
-        rjCode: oldAlbum.rjCode ?? fresh.rjCode,
-        dlsiteTitle: oldAlbum.dlsiteTitle ?? fresh.dlsiteTitle,
-        tags: oldAlbum.tags.isNotEmpty ? oldAlbum.tags : fresh.tags,
-        genre: oldAlbum.genre != '未分类' ? oldAlbum.genre : fresh.genre,
-        played: oldAlbum.played > 0
-            ? oldAlbum.played.clamp(
-                0.0,
-                fresh.totalDuration > 0 ? fresh.totalDuration : oldAlbum.played,
-              )
-            : 0.0,
-        favorite: oldAlbum.favorite,
-        localCover: fresh.localCover ?? oldAlbum.localCover,
-      );
+      // 合并用户已有状态：收藏、播放进度、分类、刮削标签、DLsite标题、添加时间等
+      final merged = fresh.mergeWith(oldAlbum);
 
       final isDifferent = added > 0 ||
           removed > 0 ||
