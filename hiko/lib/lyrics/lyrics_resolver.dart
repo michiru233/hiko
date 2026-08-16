@@ -16,7 +16,7 @@ import 'parsers/vtt_parser.dart';
 
 /// 歌词解析与多编码扫描器
 class LyricsResolver {
-  static const lyricExtensions = {'.lrc', '.vtt', '.srt', '.txt'};
+  static const lyricExtensions = {'.lrc', '.vtt', '.srt'};
   static const subfolderNames = {'lyrics', 'lyric', 'lrc', 'sub', 'subs', 'subtitles', 'vtt'};
 
   /// 为指定音轨和专辑解析歌词

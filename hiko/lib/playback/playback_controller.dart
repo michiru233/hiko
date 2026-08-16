@@ -82,6 +82,8 @@ class PlaybackController extends StateNotifier<PlaybackState> {
   final AudioPlayer _player = AudioPlayer();
   double? _pendingSeek;
   double _lastPersistAt = 0;
+  bool _isSwitching = false;
+  int _playSessionId = 0;
 
   AudioPlayer get player => _player;
 
@@ -90,6 +92,10 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     final queue = album.tracks;
     if (queue.isEmpty) return;
     final idx = index.clamp(0, queue.length - 1);
+    
+    final currentSession = ++_playSessionId;
+    _isSwitching = true;
+
     state = PlaybackState(
       album: album,
       queue: queue,
@@ -97,15 +103,35 @@ class PlaybackController extends StateNotifier<PlaybackState> {
       playing: true,
       mode: state.mode,
     );
-    _persistProgress(0);
+
+    // 内存中更新进度，避免切歌时主线程被全量写盘阻塞
+    final played = QueueRules.cumulativePlayed(
+      albums: _ref.read(libraryProvider),
+      album: album,
+      queueIndex: idx,
+      position: 0,
+    );
+    _ref.read(libraryProvider.notifier).updatePlayedInMemory(album.id, played);
+
     try {
+      await _player.stop();
+      if (_playSessionId != currentSession) return;
       await _player.setUrl(queue[idx].url);
+      if (_playSessionId != currentSession) return;
       await syncVolume();
+      if (_playSessionId != currentSession) return;
       await _player.play();
     } catch (e) {
       debugPrint('[playback] 播放失败，跳过此曲: $e');
-      state = state.copyWith(playing: false);
-      _step(1);
+      if (_playSessionId == currentSession) {
+        state = state.copyWith(playing: false);
+        // 单次向后跳过，避免无限循环
+        _step(1);
+      }
+    } finally {
+      if (_playSessionId == currentSession) {
+        _isSwitching = false;
+      }
     }
   }
 
@@ -186,6 +212,9 @@ class PlaybackController extends StateNotifier<PlaybackState> {
   }
 
   void _onPlaybackEvent(PlaybackEvent event) {
+    // 正在切换曲目过程中，忽略旧音频流上报的 completed 事件，避免重入并发调用
+    if (_isSwitching) return;
+
     // 播放完成：单曲循环重播，否则按模式切下一首（对应旧版 ended 处理）
     if (event.processingState == ProcessingState.completed) {
       if (state.mode == PlaybackMode.single) {

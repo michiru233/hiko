@@ -181,6 +181,18 @@ hiko/                          # flutter create --org top.voicehub --platforms m
   - 音量按钮改为纵向弹出式滑块卡片，紧凑精致，带百分比实时数字提示与平滑滑块。
 - **验证**：全部 70 个单元测试通过。
 
+### 1.24.0 修复音轨自然连播/自动切歌卡死与重入死锁问题
+
+- **播放器切歌防重入与 Session Gating 机制 (`PlaybackController`)**：
+  - **根因分析**：音频播放即将结束或完成时，底层的 `just_audio` / `media_kit`（libmpv）会触发 `ProcessingState.completed` 事件并调度 `_step(1)`。在异步加载新曲目（`setUrl`/`play`）过程中，旧音频流未彻底销毁前再次触发 completed 或状态变更事件，导致并发重入调用 `playAlbum`，造成底层播放管道死锁、主线程阻塞、软件无响应卡死。
+  - **引入 Session ID 与切换状态锁**：新增 `_isSwitching` 标志位与递增 `_playSessionId`。切歌期间自动屏蔽过时的 completed 事件；异步切轨步骤间进行 Session 校验，若产生新会话则平滑丢弃旧会话的回调，彻底杜绝并发竞态与死锁。
+  - **平滑释放旧音轨**：在设置新 URL 前显式执行 `await _player.stop()`，确保 libmpv 播放管线完全复位。
+- **解耦切歌瞬时 I/O 阻塞**：
+  - 将切歌时的进度落盘改为内存级 `updatePlayedInMemory`，避免每次切歌瞬间在主线程对几兆~数十兆的 `library.json` 执行同步序列化与磁盘写入，消除卡顿掉帧。
+- **歌词解析器优化 (`LyricsResolver`)**：
+  - 规范字幕文件扫描扩展名（`.lrc`, `.vtt`, `.srt`），避免将音声附带的数万字大型 `説明書.txt` 误当字幕文件全量解析与打分。
+- **验证**：全部 87 个单元测试通过，版本升级为 1.24.0+27。
+
 ### 1.23.0 音频增益放大（Audio Gain Boost）与 64-bit 浮点软增益渲染
 
 - **音频引擎升级（统一 macOS & Windows libmpv 软增益）**：
