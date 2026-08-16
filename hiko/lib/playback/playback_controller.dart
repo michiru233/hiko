@@ -57,7 +57,7 @@ class PlaybackState {
 /// 纯逻辑可单测部分在 [QueueRules]；本类只做 just_audio 接线。
 class PlaybackController extends StateNotifier<PlaybackState> {
   PlaybackController(this._ref) : super(const PlaybackState()) {
-    _player.playbackEventStream.listen(_onPlaybackEvent);
+    _player.processingStateStream.listen(_onProcessingStateChanged);
     _player.playerStateStream.listen((ps) {
       if (ps.playing != state.playing) {
         state = state.copyWith(playing: ps.playing);
@@ -114,7 +114,6 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     _ref.read(libraryProvider.notifier).updatePlayedInMemory(album.id, played);
 
     try {
-      await _player.stop();
       if (_playSessionId != currentSession) return;
       await _player.setUrl(queue[idx].url);
       if (_playSessionId != currentSession) return;
@@ -125,8 +124,6 @@ class PlaybackController extends StateNotifier<PlaybackState> {
       debugPrint('[playback] 播放失败，跳过此曲: $e');
       if (_playSessionId == currentSession) {
         state = state.copyWith(playing: false);
-        // 单次向后跳过，避免无限循环
-        _step(1);
       }
     } finally {
       if (_playSessionId == currentSession) {
@@ -211,12 +208,12 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     await playAlbum(target.$1, index: target.$2);
   }
 
-  void _onPlaybackEvent(PlaybackEvent event) {
-    // 正在切换曲目过程中，忽略旧音频流上报的 completed 事件，避免重入并发调用
+  void _onProcessingStateChanged(ProcessingState ps) {
+    // 正在切换曲目过程中，忽略过时的 completed 事件，避免重入并发调用
     if (_isSwitching) return;
 
     // 播放完成：单曲循环重播，否则按模式切下一首（对应旧版 ended 处理）
-    if (event.processingState == ProcessingState.completed) {
+    if (ps == ProcessingState.completed) {
       if (state.mode == PlaybackMode.single) {
         _player.seek(Duration.zero);
         _player.play();

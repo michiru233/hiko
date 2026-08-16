@@ -181,6 +181,16 @@ hiko/                          # flutter create --org top.voicehub --platforms m
   - 音量按钮改为纵向弹出式滑块卡片，紧凑精致，带百分比实时数字提示与平滑滑块。
 - **验证**：全部 70 个单元测试通过。
 
+### 1.25.0 彻底修复音频播放结束自动连播时跳曲（误跳 2 首）问题
+
+- **根因分析与状态机修正 (`PlaybackController`)**：
+  - 在底层 libmpv/just_audio 架构中，`playbackEventStream` 是原始底层事件流，包含 `position`、`buffering`、`volume` 等多个子事件，每个子事件均会携带当前的 `processingState` 属性重放分发。当音轨结束时，多次高频的底层事件均带有 `ProcessingState.completed`。
+  - 此前版本在错误异常处理中若发生非预期调用，且 `_player.stop()` 重新激发布尔状态变化，导致 `_step(1)` 被连续调度 2 次，第一首播放完毕后从 index 0 直接跳跃到 index 2（跳过第 2 首）。
+  - **核心修复**：
+    1. 改为监听经过去重状态机收敛的 `_player.processingStateStream`，确保每次由 ready 变迁到 completed 只会触发一次状态通知。
+    2. 移除切歌前不必要的重复 `stop()` 调用（`setUrl` 会由 just_audio 内部标准生命周期安全复位并加载），消除了切轨过程中产生的虚假状态抖动。
+- **验证**：全部 87 个单元测试通过，版本升级为 1.25.0+28。
+
 ### 1.24.0 修复音轨自然连播/自动切歌卡死与重入死锁问题
 
 - **播放器切歌防重入与 Session Gating 机制 (`PlaybackController`)**：
