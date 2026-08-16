@@ -16,9 +16,9 @@ import 'ui/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Windows 播放：just_audio 官方不支持，经 just_audio_media_kit（libmpv）路由
-  if (Platform.isWindows) {
-    JustAudioMediaKit.ensureInitialized();
+  // 桌面端播放（macOS & Windows）：经 just_audio_media_kit（libmpv）路由以支持 64-bit 软增益与高质量渲染
+  if (Platform.isWindows || Platform.isMacOS) {
+    JustAudioMediaKit.ensureInitialized(macOS: true, windows: true);
   }
   final container = ProviderContainer();
   // 加载设置与音声库与分类

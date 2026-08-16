@@ -27,4 +27,26 @@ void main() {
     await reloaded.removeMusicFolder('/music/dir1');
     expect(reloaded.state.musicFolders, ['/music/dir2']);
   });
+
+  test('音频增益：默认 1.0 + 设置范围限制与持久化往返', () async {
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.audioGain, 1.0);
+
+    // 设置增益 2.0x
+    await notifier.setAudioGain(2.0);
+    expect(notifier.state.audioGain, 2.0);
+
+    // 重新加载（模拟重启）
+    final reloaded = SettingsNotifier();
+    await reloaded.load();
+    expect(reloaded.state.audioGain, 2.0);
+
+    // 边界限制 1.0 ~ 3.0
+    await notifier.setAudioGain(0.5);
+    expect(notifier.state.audioGain, 1.0);
+
+    await notifier.setAudioGain(5.0);
+    expect(notifier.state.audioGain, 3.0);
+  });
 }

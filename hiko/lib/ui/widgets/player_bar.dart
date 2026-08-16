@@ -241,35 +241,65 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
     );
   }
 
-  // ---- 音量按钮（纵向弹出滑块与百分比）----
+  // ---- 音量与增益控制按钮（纵向弹出滑块与增益档位）----
   Widget _buildVolumeButton(ThemeData theme, AppSettings settings) {
+    final isBoosted = settings.audioGain > 1.0;
     return MenuAnchor(
-      alignmentOffset: const Offset(-4, -12),
+      alignmentOffset: const Offset(-20, -12),
       style: MenuStyle(
         backgroundColor: WidgetStatePropertyAll(theme.colorScheme.surface),
         side: WidgetStatePropertyAll(BorderSide(color: theme.dividerColor)),
         shape: WidgetStatePropertyAll(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
         padding: const WidgetStatePropertyAll(
-            EdgeInsets.symmetric(vertical: 10, horizontal: 6)),
-        elevation: const WidgetStatePropertyAll(12),
+            EdgeInsets.symmetric(vertical: 12, horizontal: 10)),
+        elevation: const WidgetStatePropertyAll(14),
       ),
       builder: (context, controller, child) => IconButton(
         onPressed: () => controller.isOpen ? controller.close() : controller.open(),
-        tooltip: '音量',
+        tooltip: isBoosted
+            ? '音量 ${(settings.volume * 100).round()}% · 增益 ${settings.audioGain.toStringAsFixed(1)}x'
+            : '音量 ${(settings.volume * 100).round()}%',
         iconSize: 18,
-        color: theme.hintColor,
-        icon: Icon(
-          settings.volume == 0
-              ? Icons.volume_off_rounded
-              : settings.volume < 0.5
-                  ? Icons.volume_down_rounded
-                  : Icons.volume_up_rounded,
+        color: isBoosted ? theme.colorScheme.primary : theme.hintColor,
+        icon: Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: [
+            Icon(
+              settings.volume == 0
+                  ? Icons.volume_off_rounded
+                  : settings.volume < 0.5
+                      ? Icons.volume_down_rounded
+                      : Icons.volume_up_rounded,
+            ),
+            if (isBoosted)
+              Positioned(
+                right: -4,
+                top: -3,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 2.5, vertical: 0.5),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '${settings.audioGain.toStringAsFixed(1)}x',
+                    style: const TextStyle(
+                      fontSize: 7.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      height: 1.0,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
       menuChildren: [
         SizedBox(
-          width: 38,
+          width: 76,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -277,8 +307,8 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
                 '${(settings.volume * 100).round()}%',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
                   color: theme.colorScheme.primary,
                 ),
               ),
@@ -307,6 +337,63 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
                     ),
                   ),
                 ),
+              ),
+              const SizedBox(height: 8),
+              Divider(height: 1, color: theme.dividerColor.withValues(alpha: 0.6)),
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.bolt_rounded,
+                    size: 11,
+                    color: isBoosted ? theme.colorScheme.primary : theme.hintColor,
+                  ),
+                  const SizedBox(width: 2),
+                  Text(
+                    '增益放大',
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w600,
+                      color: isBoosted ? theme.colorScheme.primary : theme.hintColor,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 3,
+                runSpacing: 3,
+                alignment: WrapAlignment.center,
+                children: [
+                  for (final g in [1.0, 1.5, 2.0, 3.0])
+                    InkWell(
+                      borderRadius: BorderRadius.circular(4),
+                      onTap: () {
+                        ref.read(settingsProvider.notifier).setAudioGain(g);
+                        ref.read(playbackProvider.notifier).setAudioGain(g);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: (settings.audioGain - g).abs() < 0.05
+                              ? theme.colorScheme.primary
+                              : theme.dividerColor.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          g == 1.0 ? '1.0x' : '${g.toStringAsFixed(1)}x',
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w600,
+                            color: (settings.audioGain - g).abs() < 0.05
+                                ? Colors.white
+                                : theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.8),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ],
           ),

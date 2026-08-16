@@ -181,6 +181,21 @@ hiko/                          # flutter create --org top.voicehub --platforms m
   - 音量按钮改为纵向弹出式滑块卡片，紧凑精致，带百分比实时数字提示与平滑滑块。
 - **验证**：全部 70 个单元测试通过。
 
+### 1.23.0 音频增益放大（Audio Gain Boost）与 64-bit 浮点软增益渲染
+
+- **音频引擎升级（统一 macOS & Windows libmpv 软增益）**：
+  - 解决 macOS 原生 `AVPlayer` 音量参数被严格限制在 1.0 (100%) 导致小声音频无法放大的痛点。
+  - 引入 `media_kit_libs_macos_audio`，在 macOS 与 Windows 端统一接入 `libmpv` 64-bit 浮点音频混音架构。
+  - 原生支持 `softvol` 浮点增益与平滑限幅（Soft-clipping），在放大微弱耳语/人声的同时最大程度避免削波失真与爆音。
+- **数据与播放控制层**：
+  - `AppSettings` 新增 `audioGain`（1.0x ~ 3.0x，对应 0dB ~ +9.5dB），持久化存储。
+  - `PlaybackController` 实现有效音量动态合成：$\text{EffectiveVolume} = \text{Volume} \times \text{AudioGain}$，在切曲、音量调节、增益调节时实时生效。
+- **UI 交互与视觉指示**：
+  - 底部播控栏 `PlayerBar` 音量弹窗新增「增益放大」快捷档位切换（`1.0x 标准`、`1.5x`、`2.0x 翻倍`、`3.0x 极限`）。
+  - 增益开启（>1.0x）时，底栏音量图标增加主色高亮与醒目角标徽章，Tooltip 实时展示合成状态。
+  - 偏好设置 `SettingsDialog` 新增「音频与增益」配置卡片与说明文案。
+- **验证与发布**：全量 87 个单元测试全绿通过，版本升级为 1.23.0+26。
+
 ### 1.20.0 歌词与字幕系统（同目录 LRC/VTT 自动加载 + 抽屉双 Tab 联动 + macOS 系统级置顶桌面悬浮窗 HUD）
 
 - **核心解析与多编码探测层 (`lib/lyrics/`)**：

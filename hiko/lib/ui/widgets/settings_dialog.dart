@@ -5,6 +5,7 @@ import '../../data/library_provider.dart';
 import '../../data/library_reorganizer.dart';
 import '../../data/music_folder_scanner.dart';
 import '../../data/settings_store.dart';
+import '../../playback/playback_controller.dart';
 import '../../platform/platform_service.dart';
 
 /// 偏好设置弹窗（对应旧版 settings-overlay）
@@ -201,6 +202,65 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                         ),
                       ),
                   ],
+                ),
+              ),
+              // ---- 音频与增益 ----
+              _SectionTitle('音频与增益'),
+              _SettingRow(
+                label: '默认增益放大',
+                trailing: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final (gain, label) in [
+                        (1.0, '1.0x 标准'),
+                        (1.5, '1.5x'),
+                        (2.0, '2.0x 翻倍'),
+                        (3.0, '3.0x 极限'),
+                      ])
+                        InkWell(
+                          onTap: () {
+                            ref.read(settingsProvider.notifier).setAudioGain(gain);
+                            ref.read(playbackProvider.notifier).setAudioGain(gain);
+                          },
+                          mouseCursor: SystemMouseCursors.click,
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: (settings.audioGain - gain).abs() < 0.05
+                                  ? theme.colorScheme.surface
+                                  : null,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: (settings.audioGain - gain).abs() < 0.05
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                                color: (settings.audioGain - gain).abs() < 0.05
+                                    ? theme.colorScheme.primary
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  '采用 64-bit 浮点软增益与平滑限幅，在放大微弱音频音量的同时最大程度避免爆音与削波失真。亦可在播放底栏音量图标处快捷调节。',
+                  style: TextStyle(fontSize: 10.5, height: 1.5, color: theme.hintColor),
                 ),
               ),
               // ---- 数据 ----

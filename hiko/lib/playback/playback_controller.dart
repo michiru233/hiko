@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../data/library_provider.dart';
+import '../data/settings_store.dart';
 import '../models/album.dart';
 import '../models/track.dart';
 import 'playback_rules.dart';
@@ -99,6 +100,7 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     _persistProgress(0);
     try {
       await _player.setUrl(queue[idx].url);
+      await syncVolume();
       await _player.play();
     } catch (e) {
       debugPrint('[playback] 播放失败，跳过此曲: $e');
@@ -138,13 +140,28 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     }
   }
 
+  /// 音量与增益同步：根据 baseVolume 与 gain 计算有效合成音量
+  /// libmpv 引擎支持超过 1.0 的浮点软增益（1.0 ~ 3.0x）
+  Future<void> syncVolume({double? baseVolume, double? gain}) async {
+    final settings = _ref.read(settingsProvider);
+    final vol = (baseVolume ?? settings.volume).clamp(0.0, 1.0);
+    final g = (gain ?? settings.audioGain).clamp(1.0, 3.0);
+    final effective = (vol * g).toDouble();
+    try {
+      await _player.setVolume(effective);
+    } catch (e) {
+      debugPrint('[playback] syncVolume 失败（容忍）: $e');
+    }
+  }
+
   /// 音量设置：播放器未加载/初始化失败时容忍（UI 音量状态仍由 settings 管理）
   Future<void> setVolume(double volume) async {
-    try {
-      await _player.setVolume(volume.clamp(0.0, 1.0).toDouble());
-    } catch (e) {
-      debugPrint('[playback] setVolume 失败（容忍）: $e');
-    }
+    await syncVolume(baseVolume: volume);
+  }
+
+  /// 增益设置：动态应用增益倍率
+  Future<void> setAudioGain(double gain) async {
+    await syncVolume(gain: gain);
   }
 
   Future<void> setMode(PlaybackMode mode) async {
