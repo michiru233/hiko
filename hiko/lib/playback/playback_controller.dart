@@ -92,15 +92,19 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     final queue = album.tracks;
     if (queue.isEmpty) return;
     final idx = index.clamp(0, queue.length - 1);
+    final track = queue[idx];
     
     final currentSession = ++_playSessionId;
     _isSwitching = true;
 
+    // 先带入 Track 元数据中的 duration，杜绝 0:00 闪烁，并先设为 playing: true
     state = PlaybackState(
       album: album,
       queue: queue,
       queueIndex: idx,
       playing: true,
+      duration: track.duration > 0 ? track.duration : 0.0,
+      position: 0.0,
       mode: state.mode,
     );
 
@@ -115,13 +119,15 @@ class PlaybackController extends StateNotifier<PlaybackState> {
 
     try {
       if (_playSessionId != currentSession) return;
-      await _player.setUrl(queue[idx].url);
+      await _player
+          .setUrl(track.url)
+          .timeout(const Duration(seconds: 8));
       if (_playSessionId != currentSession) return;
       await syncVolume();
       if (_playSessionId != currentSession) return;
       await _player.play();
     } catch (e) {
-      debugPrint('[playback] 播放失败，跳过此曲: $e');
+      debugPrint('[playback] 播放失败: $e');
       if (_playSessionId == currentSession) {
         state = state.copyWith(playing: false);
       }

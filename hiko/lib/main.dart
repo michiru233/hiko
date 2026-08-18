@@ -4,21 +4,21 @@ import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 
 import 'data/categories_provider.dart';
 import 'data/library_provider.dart';
 import 'data/settings_store.dart';
 import 'playback/audio_handler.dart';
+import 'playback/hiko_media_kit_player.dart';
 import 'playback/playback_controller.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // 桌面端播放（macOS & Windows）：经 just_audio_media_kit（libmpv）路由以支持 64-bit 软增益与高质量渲染
+  // 桌面端播放（macOS & Windows）：经 HikoJustAudioMediaKit（libmpv）路由以支持 64-bit 软增益与防死锁高质量渲染
   if (Platform.isWindows || Platform.isMacOS) {
-    JustAudioMediaKit.ensureInitialized(macOS: true, windows: true);
+    HikoJustAudioMediaKit.ensureInitialized(macOS: true, windows: true);
   }
   final container = ProviderContainer();
   // 加载设置与音声库与分类

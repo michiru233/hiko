@@ -181,6 +181,18 @@ hiko/                          # flutter create --org top.voicehub --platforms m
   - 音量按钮改为纵向弹出式滑块卡片，紧凑精致，带百分比实时数字提示与平滑滑块。
 - **验证**：全部 70 个单元测试通过。
 
+### 1.27.0 修复 macOS 桌面端特定专辑/音频播放卡在 0:00 无法播放的问题
+
+- **根因修复（`HikoJustAudioMediaKit` / `HikoMediaKitPlayer`）**：
+  - **问题分析**：macOS 桌面端在切换曲目（尤其在快速 SSD 磁盘读取本地大文件）时，底层 `just_audio_media_kit`（libmpv）在 `open()` 尚未完全返回（`_mediaOpened == false`）前就极速完成了文件缓冲并发送了 `buffering: false`。导致其内部的 `_loadCompleter` 无法被 complete，`_player.setUrl()` 永久挂起，播放器底栏卡在 `0:00 / 0:00` 且无声音输出。
+  - **定制强化版音频后端**：实现 `HikoJustAudioMediaKit`，接管桌面播放引擎。在 `_player.open()` 结束后主动检测底层播放器状态；在时长流更新时推进加载态；同时增加 6 秒防死锁超时兜底，彻底解决音频加载死锁挂起问题。
+- **播放与状态调度层优化 (`PlaybackController`)**：
+  - 切歌与初始化时，优先填充 Track 已有的元数据时长，杜绝切歌时 UI 进度条与底栏出现 `0:00` 闪烁。
+  - 为 `_player.setUrl()` 增加保护性超时机制（8s timeout），发生异常时安全复位。
+- **macOS 系统控制中心与媒体键桥接 (`HikoAudioHandler`)**：
+  - 精细化同步 `playbackState`，修复 Base64 封面磁盘缓存与系统控制中心（Now Playing）进度条同步。
+- **验证**：全部 87 个单元测试通过，版本升级为 1.27.0+30。
+
 ### 1.26.0 macOS 控制中心 / 状态栏「正在播放（Now Playing）」组件与媒体按键原生控制
 
 - **macOS 系统媒体控制（MPNowPlayingInfoCenter & MPRemoteCommandCenter）打通**：
