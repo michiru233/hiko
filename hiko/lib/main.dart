@@ -26,12 +26,12 @@ Future<void> main() async {
   await container.read(libraryProvider.notifier).load();
   await container.read(categoriesProvider.notifier).load();
 
-  // 音频会话（Android 焦点管理）
+  // 音频会话（焦点管理）
   final session = await AudioSession.instance;
   await session.configure(const AudioSessionConfiguration.music());
 
-  // Android：audio_service 前台服务 + 通知 + 锁屏（对应旧版 KikoeruPlaybackService）
-  if (Platform.isAndroid) {
+  // Android & macOS：audio_service 系统通知、锁屏与右上角控制中心（Now Playing）桥接
+  if (Platform.isAndroid || Platform.isMacOS) {
     final handler = HikoAudioHandler(container.read(playbackProvider.notifier));
     await AudioService.init(
       builder: () => handler,

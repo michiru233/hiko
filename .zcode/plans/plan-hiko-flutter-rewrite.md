@@ -181,6 +181,16 @@ hiko/                          # flutter create --org top.voicehub --platforms m
   - 音量按钮改为纵向弹出式滑块卡片，紧凑精致，带百分比实时数字提示与平滑滑块。
 - **验证**：全部 70 个单元测试通过。
 
+### 1.26.0 macOS 控制中心 / 状态栏「正在播放（Now Playing）」组件与媒体按键原生控制
+
+- **macOS 系统媒体控制（MPNowPlayingInfoCenter & MPRemoteCommandCenter）打通**：
+  - `lib/main.dart`：拓展 `AudioService.init` 同时在 `Platform.isMacOS` 平台下激活运行。
+  - `lib/playback/audio_handler.dart`：
+    - **专辑封面本地异步缓存**：hiko 内置的 Base64 Data URL 封面在内存中解码并写入应用临时目录（`hiko_art_cache/<album_id>.jpg`），生成 `Uri.file(...)`，使 macOS 控制中心及锁屏小组件能够完美渲染专辑封面图；同时支持 `file://` 与 `http(s)://` 原生透传。
+    - **系统动作与控制按钮状态动态同步**：支持播放/暂停动态切换、上一首、下一首、拖动进度条（`MediaAction.seek`）与快进快退。
+    - **按键与控制中心指令响应**：完整实现 `play()`, `pause()`, `click()`, `skipToNext()`, `skipToPrevious()`, `seek()`, `stop()`, `fastForward()`, `rewind()`，与 `PlaybackController` 双向联动。
+- **验证**：全部 87 个单元测试通过，版本升级为 1.26.0+29。
+
 ### 1.25.0 彻底修复音频播放结束自动连播时跳曲（误跳 2 首）问题
 
 - **根因分析与状态机修正 (`PlaybackController`)**：
