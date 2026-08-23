@@ -1,12 +1,10 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:hiko/data/update_checker.dart';
 import 'package:hiko/main.dart' as app;
-import 'package:hiko/platform/platform_service.dart';
+import 'package:hiko/platform/android_platform_service.dart';
 
 /// 应用内更新全链端到端(模拟器):
 /// 启动 → 拉 GitHub 最新 Release → 以旧版本号判定「有更新」→
@@ -41,9 +39,8 @@ void main() {
         reason: '下载字节数应与 GitHub 资产 size 一致');
 
     // 4. 原生 installApk:FileProvider + ACTION_VIEW 调起安装器(返回 ok 即成功调起)
-    final container =
-        ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
-    await container.read(platformServiceProvider).openDownloadedUpdate(dest);
+    // (直接实例化通道服务,不依赖 widget 树查找)
+    await AndroidPlatformService().openDownloadedUpdate(dest);
 
     // 清理:删除已验证的下载文件(安装器已通过 uri 授权读取)
     await file.delete();

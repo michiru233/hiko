@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 
 /// GitHub Release 资产
 class GithubAsset {
@@ -141,11 +142,14 @@ class UpdateChecker {
     }
   }
 
-  /// 更新包下载落点:macOS → ~/Downloads;Android → 应用 cache 目录(安装后由系统清理)
+  /// 更新包下载落点:
+  /// - Android:应用 cache 目录(getTemporaryDirectory = getCacheDir,
+  ///   处于 FileProvider cache-path 覆盖范围,可直接调起安装器;code_cache 不行);
+  /// - 桌面:~/Downloads(macOS 解压拖入 /Applications 由用户完成)。
   static Future<String> suggestDestPath(GithubAsset asset) async {
     if (Platform.isAndroid) {
-      final dir = Directory.systemTemp;
-      return p.join(dir.path, asset.name);
+      final dir = await getTemporaryDirectory();
+      return p.join(dir.path, 'hiko_update_${asset.name}');
     }
     final home = Platform.environment['HOME'] ?? Directory.systemTemp.path;
     final downloads = Directory(p.join(home, 'Downloads'));
