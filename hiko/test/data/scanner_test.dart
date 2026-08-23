@@ -212,6 +212,46 @@ void main() {
         reason: '标签组跨目录封面回退');
   });
 
+  test('专辑元数据取首个含 ALBUM 标签音轨 + metaFromFolder 标志（1.32）', () async {
+    // 有标签：第 1 首（TRCK=1）的 TPE2 决定艺术家；title 来自 ALBUM 标签
+    final dirTagged = Directory('${root.path}/tagged');
+    dirTagged.createSync();
+    createTaggedMp3('${dirTagged.path}/01.mp3',
+        title: '第一首', album: '标签专辑名', artist: '艺人A', albumArtist: '社团甲', trackNumber: 1);
+    createTaggedMp3('${dirTagged.path}/02.mp3',
+        title: '第二首', album: '标签专辑名', artist: '艺人B', albumArtist: '社团甲', trackNumber: 2);
+    // 无标签：标题回退文件夹名，metaFromFolder=true（供 DLsite 兜底）
+    final dirPlain = Directory('${root.path}/RJ0399999');
+    dirPlain.createSync();
+    createWav('${dirPlain.path}/01.wav', 440, 2);
+
+    final albums = await scanPath(root.path);
+
+    final tagged = albums.singleWhere((a) => a.tracks.length == 2);
+    expect(tagged.title, '标签专辑名');
+    expect(tagged.artist, '社团甲', reason: '首个含标签音轨的专辑艺术家优先');
+    expect(tagged.metaFromFolder, isFalse, reason: '标题来自标签，不需要兜底');
+
+    final plain = albums.singleWhere((a) => a.tracks.length == 1);
+    expect(plain.title, 'RJ0399999', reason: '无标签回退文件夹名');
+    expect(plain.rjCode, 'RJ0399999');
+    expect(plain.metaFromFolder, isTrue, reason: '标题来自文件夹回退，标记待 DLsite 兜底');
+  });
+
+  test('封面查找扩到父目录（1.32：图在 RJ 目录、音频在其子目录）', () async {
+    // DLsite 常见结构：RJ 目录放封面，音频在「音声」子目录 → 旧版只查组内目录丢封面
+    final rj = Directory('${root.path}/RJ0555555_父目录封面作品');
+    final inner = Directory('${rj.path}/音声');
+    inner.createSync(recursive: true);
+    createWav('${inner.path}/01.wav', 440, 2);
+    createPngCover('${rj.path}/cover.png');
+
+    final albums = await scanPath(root.path);
+
+    expect(albums.single.localCover, startsWith('data:image/jpeg'),
+        reason: '封面在专辑目录的父目录也要能找到');
+  });
+
   test('导入进度分阶段实时回调（files → albums）', () async {
     // 3 个文件分布在 2 个目录 → files 阶段 total=3，albums 阶段 total=2
     final dirA = Directory('${root.path}/folderA/RJ11111_作品甲');

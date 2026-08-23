@@ -11,6 +11,7 @@ import '../../playback/playback_rules.dart';
 import '../../playback/sleep_timer.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
+import 'toast.dart';
 
 /// 底部播放条：封面 + 标题/艺人 + 控制 + 进度 + 播放模式 + 音量（对应旧版 footer.player）。
 /// compact（移动端）为两行布局：控件在上，全宽进度条下移成一行。
@@ -632,24 +633,15 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
                   // 如果处于锁定状态，点击图标直接解锁
                   await notifier.setLocked(false);
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('已解除桌面歌词鼠标锁定'),
-                        duration: Duration(seconds: 1),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
+                    showHikoToast(context, '已解除桌面歌词鼠标锁定',
+                        duration: const Duration(seconds: 1));
                   }
                 } else {
                   final active = await notifier.toggle();
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(active ? '已开启桌面置顶悬浮歌词' : '已关闭桌面置顶悬浮歌词'),
-                        duration: const Duration(seconds: 1),
-                        behavior: SnackBarBehavior.floating,
-                      ),
-                    );
+                    showHikoToast(
+                        context, active ? '已开启桌面置顶悬浮歌词' : '已关闭桌面置顶悬浮歌词',
+                        duration: const Duration(seconds: 1));
                   }
                 }
               },
@@ -689,13 +681,8 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
           onPressed: () async {
             await notifier.setLocked(!isLocked);
             if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(!isLocked ? '已锁定桌面歌词（鼠标点击穿透）' : '已解除桌面歌词锁定'),
-                  duration: const Duration(seconds: 1),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
+              showHikoToast(context, !isLocked ? '已锁定桌面歌词（鼠标点击穿透）' : '已解除桌面歌词锁定',
+                  duration: const Duration(seconds: 1));
             }
           },
           child: Text(
@@ -708,13 +695,8 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
           onPressed: () async {
             await notifier.hide();
             if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('已关闭桌面悬浮歌词'),
-                  duration: Duration(seconds: 1),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
+              showHikoToast(context, '已关闭桌面悬浮歌词',
+                  duration: const Duration(seconds: 1));
             }
           },
           child: const Text('关闭桌面歌词', style: TextStyle(fontSize: 12)),

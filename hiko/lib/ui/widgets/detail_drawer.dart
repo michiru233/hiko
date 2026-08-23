@@ -12,6 +12,7 @@ import '../../utils/time.dart';
 import '../covers/cover_art.dart';
 import '../lyrics/drawer_lyrics_view.dart';
 import 'category_dialog.dart';
+import 'toast.dart';
 
 /// 详情抽屉（对应旧版 aside.details）：封面、标签、RJ 号、曲目列表、进度、收藏、从头播放
 class DetailDrawer extends ConsumerStatefulWidget {
@@ -176,17 +177,11 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                                 final msg = stats.hasChanges
                                     ? '专辑已整理完成（变动已同步）'
                                     : '专辑文件与元数据已是最新';
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                  content: Text(msg),
-                                  behavior: SnackBarBehavior.floating,
-                                ));
+                                showHikoToast(context, msg);
                               }
                             } catch (e) {
                               if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                  content: Text('整理失败：$e'),
-                                  behavior: SnackBarBehavior.floating,
-                                ));
+                                showHikoToast(context, '整理失败：$e');
                               }
                             }
                           },

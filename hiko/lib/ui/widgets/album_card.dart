@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -27,18 +28,28 @@ class AlbumCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    // 桌面端悬停显示点击指针（GestureDetector 默认不切换光标）
+    // 桌面端悬停显示点击指针；Ink 水波纹按压反馈（圆角对齐封面）。
+    // 长按/右键菜单位置用 Listener 原始指针记录（InkWell 无 onLongPressStart），
+    // Listener 不参与手势竞技场，不影响水波纹。
+    Offset? pointerPosition;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        onLongPressStart: onContextMenu == null
-            ? null
-            : (d) => onContextMenu!(d.globalPosition),
-        onSecondaryTapDown: onContextMenu == null
-            ? null
-            : (d) => onContextMenu!(d.globalPosition),
-        child: Column(
+      child: Listener(
+        onPointerDown: (e) {
+          pointerPosition = e.position;
+          if (onContextMenu != null && e.buttons == kSecondaryButton) {
+            onContextMenu!(e.position);
+          }
+        },
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            onLongPress: onContextMenu == null
+                ? null
+                : () => onContextMenu!(pointerPosition ?? Offset.zero),
+            borderRadius: BorderRadius.circular(10),
+            child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 封面 + 多选勾选（固定正方形，占卡片上部）
@@ -59,9 +70,12 @@ class AlbumCard extends ConsumerWidget {
                         top: 10,
                         child: MouseRegion(
                           cursor: SystemMouseCursors.click,
-                          child: GestureDetector(
-                            onTap: onTap,
-                            child: Container(
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: onTap,
+                              customBorder: const CircleBorder(),
+                              child: Container(
                               width: 22,
                               height: 22,
                               decoration: BoxDecoration(
@@ -88,6 +102,7 @@ class AlbumCard extends ConsumerWidget {
                             ),
                           ),
                         ),
+                      ),
                       ),
                     if (selected)
                       Positioned.fill(
@@ -184,6 +199,8 @@ class AlbumCard extends ConsumerWidget {
               ),
             ),
           ],
+        ),
+        ),
         ),
       ),
     );

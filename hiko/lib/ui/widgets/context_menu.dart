@@ -124,11 +124,16 @@ class _HikoContextMenuOverlay<T> extends StatelessWidget {
 
     return Stack(
       children: [
-        // 外部点击遮罩
+        // 外部点击遮罩（非按钮：NoSplash 防全屏水波纹，点击即关菜单已是反馈）
         Positioned.fill(
-          child: GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
-            behavior: HitTestBehavior.translucent,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => Navigator.of(context).pop(),
+              splashFactory: NoSplash.splashFactory,
+              highlightColor: Colors.transparent,
+              hoverColor: Colors.transparent,
+            ),
           ),
         ),
         Positioned(
@@ -242,42 +247,45 @@ class _HikoMenuItemWidgetState<T> extends State<_HikoMenuItemWidget<T>> {
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        behavior: HitTestBehavior.opaque,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 90),
-          height: 32,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          decoration: BoxDecoration(
-            color: _hovered ? hoverBg : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              if (widget.item.icon != null) ...[
-                Icon(
-                  widget.item.icon,
-                  size: 14,
-                  color: textColor.withValues(alpha: 0.85),
-                ),
-                const SizedBox(width: 8),
-              ],
-              Expanded(
-                child: Text(
-                  widget.item.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w500,
-                    color: textColor,
-                    decoration: TextDecoration.none,
-                    letterSpacing: -0.1,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: widget.onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 90),
+            height: 32,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              color: _hovered ? hoverBg : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                if (widget.item.icon != null) ...[
+                  Icon(
+                    widget.item.icon,
+                    size: 14,
+                    color: textColor.withValues(alpha: 0.85),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Expanded(
+                  child: Text(
+                    widget.item.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w500,
+                      color: textColor,
+                      decoration: TextDecoration.none,
+                      letterSpacing: -0.1,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

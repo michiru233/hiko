@@ -50,6 +50,24 @@ ThemeData buildHikoTheme(AppSettings settings) {
     scaffoldBackgroundColor: bg,
   );
 
+  // 全局 Ink 按压反馈（1.32）：M3 水波纹 + 按压 overlay ≥0.12 alpha
+  // （splash 为扩散波纹略强以保证深色背景可见；highlight 为按压持续 overlay）
+  final pressedOverlay = accent.withValues(alpha: 0.12);
+  final inkOverlay = WidgetStateProperty.resolveWith<Color?>((states) {
+    if (states.contains(WidgetState.pressed)) return pressedOverlay;
+    if (states.contains(WidgetState.hovered)) {
+      return accent.withValues(alpha: 0.06);
+    }
+    return null;
+  });
+
+  // 桌面端统一点击指针（Material 组件默认 adaptiveClickable，这里显式兜底）；
+  // 按钮类 overlay 压到 ≥0.12（M3 默认 0.08~0.10 偏弱，实机观感"没反馈"）
+  ButtonStyle inkButtonStyle() => ButtonStyle(
+        mouseCursor: const WidgetStatePropertyAll(SystemMouseCursors.click),
+        overlayColor: inkOverlay,
+      );
+
   return base.copyWith(
     textTheme: base.textTheme.apply(
       bodyColor: ink,
@@ -60,19 +78,13 @@ ThemeData buildHikoTheme(AppSettings settings) {
     dividerColor: line,
     canvasColor: bg,
     cardColor: card,
-    // 桌面端统一点击指针（Material 组件默认 adaptiveClickable，这里显式兜底）
-    filledButtonTheme: FilledButtonThemeData(
-      style: ButtonStyle(mouseCursor: WidgetStatePropertyAll(SystemMouseCursors.click)),
-    ),
-    outlinedButtonTheme: OutlinedButtonThemeData(
-      style: ButtonStyle(mouseCursor: WidgetStatePropertyAll(SystemMouseCursors.click)),
-    ),
-    textButtonTheme: TextButtonThemeData(
-      style: ButtonStyle(mouseCursor: WidgetStatePropertyAll(SystemMouseCursors.click)),
-    ),
-    iconButtonTheme: IconButtonThemeData(
-      style: ButtonStyle(mouseCursor: WidgetStatePropertyAll(SystemMouseCursors.click)),
-    ),
+    splashFactory: InkRipple.splashFactory,
+    splashColor: accent.withValues(alpha: dark ? 0.28 : 0.18),
+    highlightColor: pressedOverlay,
+    filledButtonTheme: FilledButtonThemeData(style: inkButtonStyle()),
+    outlinedButtonTheme: OutlinedButtonThemeData(style: inkButtonStyle()),
+    textButtonTheme: TextButtonThemeData(style: inkButtonStyle()),
+    iconButtonTheme: IconButtonThemeData(style: inkButtonStyle()),
     dialogTheme: DialogThemeData(
       backgroundColor: dark ? HikoColors.darkCard : const Color(0xFFFAF9F7),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),

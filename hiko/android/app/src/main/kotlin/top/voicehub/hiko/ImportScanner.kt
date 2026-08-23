@@ -107,16 +107,17 @@ object ImportScanner {
     }
 
     /** Android 封面策略：缩放到 ≤600px 转 JPEG，上限 500KB。
-     *  超限时逐级降质（82→70→60→50）再降尺寸（600→400→300）重试，避免封面丢失；
-     *  整链 try-catch（含 OOM）——单张封面失败绝不影响专辑导入。 */
+     *  超限时逐级降质（82→30）再降尺寸（600→400→300）重试；全档耗尽也不静默丢封面，
+     *  返回能压出的最小产物（1.32）；整链 try-catch（含 OOM）——单张封面失败绝不影响专辑导入。 */
     fun coverDataUrl(bytes: ByteArray): String? {
         return try {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
-            val qualities = intArrayOf(82, 70, 60, 50)
+            val qualities = intArrayOf(82, 70, 60, 50, 40, 30)
             val maxSizes = intArrayOf(600, 400, 300)
+            var smallest: ByteArray? = null
             for (max in maxSizes) {
                 var sample = 1
                 while (bounds.outWidth / sample > max * 2 || bounds.outHeight / sample > max * 2) {
@@ -143,15 +144,19 @@ object ImportScanner {
                     val stream = ByteArrayOutputStream()
                     if (out.compress(Bitmap.CompressFormat.JPEG, quality, stream)) {
                         val data = stream.toByteArray()
-                        if (data.isNotEmpty() && data.size <= 500 * 1024) {
+                        if (data.isEmpty()) continue
+                        if (data.size <= 500 * 1024) {
                             out.recycle()
                             return "data:image/jpeg;base64," + Base64.encodeToString(data, Base64.NO_WRAP)
+                        }
+                        if (smallest == null || data.size < smallest!!.size) {
+                            smallest = data
                         }
                     }
                 }
                 out.recycle()
             }
-            null
+            smallest?.let { "data:image/jpeg;base64," + Base64.encodeToString(it, Base64.NO_WRAP) }
         } catch (e: Throwable) {
             // 解码/压缩异常（含 OOM）直接放弃封面，不影响专辑导入
             null
@@ -165,17 +170,24 @@ object ImportScanner {
     /** 修复 MediaMetadataRetriever 对非 UTF-8 ID3 标签的乱码：
      *  中文标签字节常被按 ISO-8859-1 解码成拉丁字符（你好 → ÄãºÃ），日文（Shift-JIS）同理。
      *  用 GB18030 / Shift_JIS 逐一还原并打分（假名 +3、汉字 +2、日文标点 +1），
-     *  取分最高的结果；仅当得分 >0 才采纳，避免误伤正常 Latin-1 文本（如 Cafe）。 */
+     *  取分最高的结果；仅当得分 >0 才采纳，避免误伤正常 Latin-1 文本（如 Cafe）。
+     *  对齐 Dart 版 repair_text.dart：触发范围 0x80..0xFF（Shift-JIS 首字节 0x81-0x9F
+     *  解码后落在 C1 控制区，0xA0 起会漏掉片假名乱码）；候选解码必须严格（非法字节序列
+     *  抛异常跳过该字符集），否则 GB18030 会把合法重音 Latin 文本"修复"成替换符垃圾。 */
     fun repairText(s: String?): String? {
         if (s.isNullOrBlank()) return s
         if (hasCjkOrKana(s)) return s   // 已是正常中文/日文，无需修复
-        if (!s.any { it.code in 0xA0..0xFF }) return s  // 无 Latin-1 扩展字符，非乱码特征
+        if (s.any { it.code > 0xFF }) return s  // 含 Latin-1 范围外字符，非可还原的乱码特征
+        if (!s.any { it.code in 0x80..0xFF }) return s  // 无高位字节，非乱码特征
         val bytes = s.toByteArray(Charsets.ISO_8859_1)
         var best: String? = null
         var bestScore = 0
         for (name in listOf("GB18030", "Shift_JIS", "windows-31j", "EUC-JP")) {
             try {
-                val candidate = String(bytes, Charset.forName(name))
+                val decoder = Charset.forName(name).newDecoder()
+                    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                val candidate = decoder.decode(java.nio.ByteBuffer.wrap(bytes)).toString()
                 val score = candidate.sumOf { ch ->
                     when (ch.code) {
                         in 0x3040..0x30FF, in 0xFF61..0xFF9F -> 3  // 假名
@@ -212,12 +224,41 @@ object ImportScanner {
         return if (!clean.isNullOrEmpty()) clean else name
     }
 
-    private fun readBytes(context: Context, uri: Uri): ByteArray? {
+    /** 降采样倍率：2 的幂，保证解码后长边 ≤ maxDim×2（纯函数，可单测） */
+    fun sampleSizeFor(width: Int, height: Int, maxDim: Int): Int {
+        var sample = 1
+        while (width / sample > maxDim * 2 || height / sample > maxDim * 2) {
+            sample *= 2
+        }
+        return sample
+    }
+
+    /** 读取封面图片字节；≤15MB 原样读取，超限（或长度不可知）用 BitmapFactory
+     *  inSampleSize 降采样解码后重编码——超大封面不再静默跳过（1.32）。 */
+    private fun readImageBytes(context: Context, uri: Uri): ByteArray? {
         return try {
-            val fd = context.contentResolver.openAssetFileDescriptor(uri, "r") ?: return null
-            fd.use {
-                if (it.length > 15 * 1024 * 1024) return null // 超大连封面直接跳过，避免内存峰值
-                it.createInputStream().use { s -> s.readBytes() }
+            val length = context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: return null
+            if (length in 1..15 * 1024 * 1024) {
+                context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { fd ->
+                    fd.createInputStream().use { it.readBytes() }
+                }
+            } else {
+                // >15MB / length 未知：先探边界算 inSampleSize，另开 fd 降采样解码
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { fd ->
+                    fd.createInputStream().use { BitmapFactory.decodeStream(it, null, bounds) }
+                }
+                if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+                val opts = BitmapFactory.Options().apply {
+                    inSampleSize = sampleSizeFor(bounds.outWidth, bounds.outHeight, 2048)
+                }
+                context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { fd ->
+                    val bmp = BitmapFactory.decodeStream(fd.createInputStream(), null, opts) ?: return null
+                    val stream = ByteArrayOutputStream()
+                    bmp.compress(Bitmap.CompressFormat.JPEG, 90, stream)
+                    bmp.recycle()
+                    stream.toByteArray()
+                }
             }
         } catch (e: Exception) {
             null
@@ -274,7 +315,7 @@ object ImportScanner {
         val pick = images.firstOrNull { Regex("cover|front|folder|album|封面", RegexOption.IGNORE_CASE).containsMatchIn(it.name.orEmpty()) }
             ?: images.firstOrNull()
             ?: return null
-        val bytes = readBytes(context, pick.uri) ?: return null
+        val bytes = readImageBytes(context, pick.uri) ?: return null
         return coverDataUrl(bytes)
     }
 
@@ -459,10 +500,14 @@ object ImportScanner {
         val entries = mutableListOf<Entry>()
         val dirImages = HashMap<String, MutableList<DocumentFile>>()
         val dirLyrics = HashMap<String, MutableList<DocumentFile>>()
+        val parentDirs = HashMap<String, String>() // 子目录 uri → 父目录 uri（封面回退到父目录用）
         fun walk(dir: DocumentFile) {
             for (f in dir.listFiles()) {
                 if (f.name?.startsWith(".") == true) continue
-                if (f.isDirectory) walk(f)
+                if (f.isDirectory) {
+                    parentDirs[f.uri.toString()] = dir.uri.toString()
+                    walk(f)
+                }
                 else if (f.isFile && isAudio(f.name)) entries.add(Entry(f, dir))
                 else if (f.isFile && isImage(f.name)) {
                     dirImages.getOrPut(dir.uri.toString()) { mutableListOf() }.add(f)
@@ -500,7 +545,7 @@ object ImportScanner {
             val built = mutableListOf<JSONObject>()
             val groupEntries = groups.entries.toList()
             groupEntries.forEachIndexed { index, (key, files) ->
-                buildAlbumFromFiles(context, key, files, dirImages, dirLyrics)?.let {
+                buildAlbumFromFiles(context, key, files, dirImages, dirLyrics, parentDirs)?.let {
                     built.add(it)
                     onProgress(index + 1, groupEntries.size, "albums", it)
                 }
@@ -511,12 +556,47 @@ object ImportScanner {
         }
     }
 
+    /** 专辑级元数据决策（领导定调：名称/专辑艺术家以第一个含可用 ALBUM 标签的音轨为准） */
+    data class AlbumMetaDecision(
+        val title: String,
+        val artist: String,
+        val albumArtist: String,
+        /** 标题是否来自 ALBUM 标签（false = 文件夹回退，供 Dart 侧 DLsite 兜底） */
+        val titleFromTags: Boolean
+    )
+
+    /** 纯函数：由排序后的文件元数据决定专辑 title/artist/albumArtist。
+     *  [sorted] 已按 TRCK+文件名排序；[isTagGroup] 分组键是否 tag: 前缀。 */
+    fun decideAlbumMeta(sorted: List<FileMeta>, isTagGroup: Boolean): AlbumMetaDecision {
+        val firstTagged = sorted.firstOrNull { m ->
+            !m.album.isNullOrBlank() && !looksGarbled(m.album)
+        }
+        val firstDirName = sorted.firstNotNullOfOrNull { it.dirName }
+        val titleFromTags = firstTagged != null && isTagGroup
+        val title = if (isTagGroup) {
+            firstTagged?.album ?: cleanFolderTitle(firstDirName) ?: "本地导入"
+        } else {
+            cleanFolderTitle(firstDirName) ?: "本地导入"
+        }
+        val firstTagAlbumArtist = firstTagged?.albumArtist?.takeIf { !looksGarbled(it) && it.isNotBlank() }
+        val firstTagArtist = firstTagged?.artist?.takeIf { !looksGarbled(it) && it.isNotBlank() }
+        val artist = firstTagAlbumArtist
+            ?: firstTagArtist
+            ?: mostCommon(sorted.map { it.artist })?.takeIf { !looksGarbled(it) }
+            ?: "本地导入"
+        val albumArtist = firstTagAlbumArtist
+            ?: sorted.firstNotNullOfOrNull { it.albumArtist?.takeIf { v -> !looksGarbled(v) && v.isNotBlank() } }
+            ?: ""
+        return AlbumMetaDecision(title, artist, albumArtist, titleFromTags)
+    }
+
     private fun buildAlbumFromFiles(
         context: Context,
         key: String,
         files: List<FileMeta>,
         dirImages: Map<String, MutableList<DocumentFile>>,
-        dirLyrics: Map<String, MutableList<DocumentFile>> = emptyMap()
+        dirLyrics: Map<String, MutableList<DocumentFile>> = emptyMap(),
+        parentDirs: Map<String, String> = emptyMap(),
     ): JSONObject? {
         if (files.isEmpty()) return null
         val sorted = files.sortedWith { a, b ->
@@ -525,18 +605,10 @@ object ImportScanner {
             if (ta != tb) ta.compareTo(tb) else naturalCompare(a.fileName, b.fileName)
         }
         val isTagGroup = key.startsWith("tag:")
-        val albumName = sorted.firstNotNullOfOrNull { m -> m.album?.takeIf { !looksGarbled(it) && it.isNotBlank() } }
-        val firstDirName = sorted.firstNotNullOfOrNull { it.dirName }
-        val title = if (isTagGroup) {
-            albumName ?: cleanFolderTitle(firstDirName) ?: "本地导入"
-        } else {
-            cleanFolderTitle(firstDirName) ?: "本地导入"
-        }
-        val artist = mostCommon(sorted.map { it.albumArtist })
-            ?.takeIf { !looksGarbled(it) }
-            ?: mostCommon(sorted.map { it.artist })?.takeIf { !looksGarbled(it) }
-            ?: "本地导入"
-        val albumArtist = mostCommon(sorted.map { it.albumArtist })?.takeIf { !looksGarbled(it) } ?: ""
+        val decision = decideAlbumMeta(sorted, isTagGroup)
+        val title = decision.title
+        val artist = decision.artist
+        val albumArtist = decision.albumArtist
         val rjCode = extractRjCode(sorted.first().uri, sorted.first().dirUri, title)
 
         var embeddedCover: String? = null
@@ -570,7 +642,11 @@ object ImportScanner {
         }
         var localCover = embeddedCover
         if (localCover == null) {
-            val candidates = sorted.flatMap { dirImages[it.dirUri].orEmpty() }.distinctBy { it.uri }
+            // 组内目录 + 各自父目录（一层）：DLsite 常见结构封面在 RJ 目录、音频在其子目录
+            val candidates = sorted.flatMap { m ->
+                dirImages[m.dirUri].orEmpty() +
+                    (parentDirs[m.dirUri]?.let { dirImages[it] } ?: emptyList())
+            }.distinctBy { it.uri }
             localCover = folderCoverFromImages(context, candidates)
         }
         val idValue = if (isTagGroup) "tag:$key" else sorted.first().dirUri
@@ -590,6 +666,7 @@ object ImportScanner {
             .put("date", System.currentTimeMillis())
             .put("tracks", tracks)
             .put("localCover", localCover)
+            .put("metaFromFolder", !decision.titleFromTags)
             .put("color", JSONArray().put("#c4b8e8").put("#4b416c"))
             .put("shape", "radio")
     }
@@ -601,7 +678,7 @@ object ImportScanner {
         if (images.isEmpty()) return null
         val pick = images.firstOrNull { Regex("cover|front|folder|album|封面", RegexOption.IGNORE_CASE).containsMatchIn(it.name.orEmpty()) }
             ?: images.first()
-        val bytes = readBytes(context, pick.uri) ?: return null
+        val bytes = readImageBytes(context, pick.uri) ?: return null
         return coverDataUrl(bytes)
     }
 }

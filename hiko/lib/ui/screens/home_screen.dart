@@ -20,6 +20,7 @@ import '../widgets/category_dialog.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/context_menu.dart';
 import '../widgets/detail_drawer.dart';
+import '../widgets/toast.dart';
 import '../widgets/player_bar.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/sidebar.dart';
@@ -97,13 +98,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _showToast(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(
-        content: Text(message),
-        duration: const Duration(milliseconds: 3200),
-        margin: const EdgeInsets.only(bottom: 96, left: 24, right: 24),
-      ));
+    // 根 Overlay toast：不会被打开中的对话框盖住（1.32）
+    showHikoToast(context, message);
   }
 
   Future<void> _importFolder() async {
@@ -156,6 +152,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
       if (!mounted) return;
       await ref.read(libraryProvider.notifier).mergeNew(albums);
+      // 全轨无可用标签的专辑（metaFromFolder）：串行查 DLsite 补标题（失败维持文件夹名）
+      if (ref.read(libraryProvider).any(DlsiteScraper.shouldBackfillTitle)) {
+        if (mounted) {
+          setState(() => _importLabel = '正在查询 DLsite 补全标题');
+        }
+        final fixed =
+            await ref.read(scraperProvider).backfillTitles(ref.read(libraryProvider));
+        if (fixed > 0) {
+          await ref.read(libraryProvider.notifier).load();
+        }
+      }
       setState(() {
         _view = '全部音声';
         _filter = 'all';
@@ -307,9 +314,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     Positioned.fill(
                       child: Stack(
                         children: [
-                          GestureDetector(
-                            onTap: () => setState(() => _drawerOpen = false),
-                            child: Container(color: Colors.black.withValues(alpha: 0.35)),
+                          // 遮罩非按钮：NoSplash 防全屏水波纹（关抽屉本身即反馈）
+                          Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () => setState(() => _drawerOpen = false),
+                              splashFactory: NoSplash.splashFactory,
+                              highlightColor: Colors.transparent,
+                              hoverColor: Colors.transparent,
+                              child: Container(
+                                  color: Colors.black.withValues(alpha: 0.35)),
+                            ),
                           ),
                           Positioned(
                             left: 0,
@@ -337,12 +352,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ),
                     ),
                   // 详情遮罩（桌面）：点击抽屉外区域关闭（不阻断抽屉内交互，
-                  // Stack hit test 短路保证上层抽屉命中时遮罩不参与）
+                  // Stack hit test 短路保证上层抽屉命中时遮罩不参与）；遮罩非按钮不加水波纹
                   if (_detailAlbum != null && !isMobile)
                     Positioned.fill(
-                      child: GestureDetector(
-                        onTap: () => setState(() => _detailAlbum = null),
-                        behavior: HitTestBehavior.opaque,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => setState(() => _detailAlbum = null),
+                          splashFactory: NoSplash.splashFactory,
+                          highlightColor: Colors.transparent,
+                          hoverColor: Colors.transparent,
+                        ),
                       ),
                     ),
                   // 详情：桌面右侧抽屉 / 移动全屏弹层

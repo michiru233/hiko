@@ -12,22 +12,47 @@ const int coverMaxSize = 600;
 const int coverMaxBytes = 500 * 1024;
 const int coverQuality = 82;
 
-/// 图片字节 → 压缩后的 dataURL；失败/超限返回 null（在调用线程直接执行，适合已在 Isolate 中的场景）
-String? coverDataUrl(Uint8List bytes) {
+/// 压缩阶梯（1.32）：尺寸 600→400→300 × 质量 82→30 逐级降档；
+/// 全档耗尽也不静默丢封面，返回最小产物（封面缺失比 library.json 偏大更伤）。
+const List<int> _ladderSizes = [coverMaxSize, 400, 300];
+const List<int> _ladderQualities = [coverQuality, 70, 60, 50, 40, 30];
+
+/// 图片字节 → 压缩后的 dataURL；失败返回 null；压缩超限走降级阶梯，
+/// [maxBytes] 仅供测试注入更小上限（默认 500KB，生产行为不变）。
+String? coverDataUrl(Uint8List bytes, {int maxBytes = coverMaxBytes}) {
   try {
     final decoded = img.decodeImage(bytes);
     if (decoded == null) return null;
-    var out = decoded;
-    if (decoded.width > coverMaxSize || decoded.height > coverMaxSize) {
-      out = img.copyResize(
-        decoded,
-        width: coverMaxSize,
-        interpolation: img.Interpolation.average,
-      );
+
+    Uint8List? smallest;
+    for (final maxSize in _ladderSizes) {
+      var out = decoded;
+      final longSide = decoded.width > decoded.height ? decoded.width : decoded.height;
+      if (longSide > maxSize) {
+        // 按长边等比缩放（竖图高度为长边时也必须落进方形上限）
+        final scale = maxSize / longSide;
+        out = img.copyResize(
+          decoded,
+          width: (decoded.width * scale).round(),
+          height: (decoded.height * scale).round(),
+          interpolation: img.Interpolation.average,
+        );
+      }
+      for (final quality in _ladderQualities) {
+        final jpeg = img.encodeJpg(out, quality: quality);
+        if (jpeg.isEmpty) continue;
+        if (jpeg.length <= maxBytes) {
+          return 'data:image/jpeg;base64,${base64Encode(jpeg)}';
+        }
+        if (smallest == null || jpeg.length < smallest.length) {
+          smallest = jpeg;
+        }
+      }
     }
-    final jpeg = img.encodeJpg(out, quality: coverQuality);
-    if (jpeg.isEmpty || jpeg.length > coverMaxBytes) return null;
-    return 'data:image/jpeg;base64,${base64Encode(jpeg)}';
+    // 阶梯全耗尽：返回能压出的最小产物，绝不因超限静默丢封面
+    return smallest == null
+        ? null
+        : 'data:image/jpeg;base64,${base64Encode(smallest)}';
   } catch (_) {
     return null;
   }

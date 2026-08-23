@@ -70,6 +70,69 @@ class DlsiteScraper {
     return match?.group(1)?.trim();
   }
 
+  /// 是否需要 DLsite 兜底补标题：标题来自文件夹回退（全轨无可用标签）+ 有 RJ 号 + 尚未刮削
+  static bool shouldBackfillTitle(Album a) =>
+      a.metaFromFolder &&
+      a.rjCode != null &&
+      a.rjCode!.isNotEmpty &&
+      (a.dlsiteTitle == null || a.dlsiteTitle!.isEmpty);
+
+  /// 把刮削结果应用到专辑列表（纯函数，便于离线测试）：
+  /// 刮到标题时同时回写 dlsiteTitle 与 title（列表显示立即更新）并清掉文件夹回退标记。
+  static List<Album> applyResults(List<Album> albums, List<ScrapeDetail> results) {
+    final byId = {for (final d in results) d.id: d};
+    return [
+      for (final a in albums)
+        byId.containsKey(a.id)
+            ? a.copyWith(
+                rjCode: byId[a.id]!.rj,
+                tags: byId[a.id]!.tags ?? a.tags,
+                dlsiteTitle: byId[a.id]!.title ?? a.dlsiteTitle,
+                title: byId[a.id]!.title ?? a.title,
+                metaFromFolder: byId[a.id]!.title != null ? false : null,
+              )
+            : a,
+    ];
+  }
+
+  /// 兜底补标题：全轨无可用标签（metaFromFolder）且能提取 RJ 号的专辑，
+  /// 串行查询 DLsite 作品页标题回写 title + dlsiteTitle（领导定调的兜底路径）。
+  /// 沿用 400ms 限速；连续 3 次网络异常提前结束本轮（离线时不拖垮导入）；
+  /// DLsite 也失败则维持文件夹名，不算失败。返回补到标题的专辑数。
+  Future<int> backfillTitles(List<Album> albums) async {
+    final targets = albums.where(shouldBackfillTitle).toList();
+    if (targets.isEmpty) return 0;
+
+    final proxy = _settingsRef().scrapeProxy;
+    final byId = {for (final a in albums) a.id: a};
+    var fixed = 0;
+    var consecutiveErrors = 0;
+    for (final album in targets) {
+      try {
+        final html = await _fetch(album.rjCode!, proxy);
+        final title = DlsiteScraper.parseTitle(html);
+        if (title != null && title.isNotEmpty) {
+          byId[album.id] = album.copyWith(
+            title: title,
+            dlsiteTitle: title,
+            metaFromFolder: false,
+          );
+          fixed++;
+        }
+        consecutiveErrors = 0;
+      } catch (_) {
+        // 单张失败维持文件夹名；连续失败视为离线，跳过剩余
+        consecutiveErrors++;
+        if (consecutiveErrors >= 3) break;
+      }
+      await Future.delayed(const Duration(milliseconds: 400)); // 礼貌限速
+    }
+    if (fixed > 0) {
+      await _store.save([for (final a in albums) byId[a.id] ?? a]);
+    }
+    return fixed;
+  }
+
   Future<ScrapeResult> scrape(
     Set<String> ids, {
     required bool force,
@@ -117,19 +180,9 @@ class DlsiteScraper {
       await Future.delayed(const Duration(milliseconds: 400)); // 礼貌限速
     }
 
-    // 回写刮削结果并落盘
+    // 回写刮削结果并落盘（title 同步更新，列表显示立即生效）
     if (results.isNotEmpty || noRj > 0) {
-      final byId = {for (final d in results) d.id: d};
-      final updated = [
-        for (final a in albums)
-          byId.containsKey(a.id)
-              ? a.copyWith(
-                  rjCode: byId[a.id]!.rj,
-                  tags: byId[a.id]!.tags ?? a.tags,
-                  dlsiteTitle: byId[a.id]!.title ?? a.dlsiteTitle,
-                )
-              : a,
-      ];
+      final updated = DlsiteScraper.applyResults(albums, results);
       await _store.save(updated);
     }
 

@@ -53,13 +53,16 @@ class Sidebar extends ConsumerWidget {
       final active = activeView == view;
       return MouseRegion(
         cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: onTap ?? () => onViewChanged(view),
-          onSecondaryTapDown: onContextMenu == null
-              ? null
-              : (d) => onContextMenu(d.globalPosition),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap ?? () => onViewChanged(view),
+            onSecondaryTapDown: onContextMenu == null
+                ? null
+                : (d) => onContextMenu(d.globalPosition),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
             decoration: BoxDecoration(
               color: active
                   ? theme.colorScheme.surface
@@ -114,6 +117,7 @@ class Sidebar extends ConsumerWidget {
                 ],
               ],
             ),
+          ),
           ),
         ),
       );

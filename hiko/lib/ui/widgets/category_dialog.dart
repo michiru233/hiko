@@ -144,38 +144,42 @@ class _CategoryEditDialogState extends ConsumerState<_CategoryEditDialog> {
               runSpacing: 10,
               children: [
                 for (final colorVal in CategoryItem.palette)
-                  GestureDetector(
-                    onTap: () => setState(() => _selectedColor = colorVal),
-                    child: MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: Color(colorVal),
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: _selectedColor == colorVal
-                                ? (isDark ? Colors.white : Colors.black87)
-                                : Colors.transparent,
-                            width: 2.2,
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => setState(() => _selectedColor = colorVal),
+                      customBorder: const CircleBorder(),
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: Color(colorVal),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: _selectedColor == colorVal
+                                  ? (isDark ? Colors.white : Colors.black87)
+                                  : Colors.transparent,
+                              width: 2.2,
+                            ),
+                            boxShadow: _selectedColor == colorVal
+                                ? [
+                                    BoxShadow(
+                                      color: Color(colorVal).withValues(alpha: 0.45),
+                                      blurRadius: 8,
+                                      spreadRadius: 1,
+                                    )
+                                  ]
+                                : null,
                           ),
-                          boxShadow: _selectedColor == colorVal
-                              ? [
-                                  BoxShadow(
-                                    color: Color(colorVal).withValues(alpha: 0.45),
-                                    blurRadius: 8,
-                                    spreadRadius: 1,
-                                  )
-                                ]
+                          child: _selectedColor == colorVal
+                              ? const Center(
+                                  child: Icon(Icons.check, size: 14, color: Colors.white),
+                                )
                               : null,
                         ),
-                        child: _selectedColor == colorVal
-                            ? const Center(
-                                child: Icon(Icons.check, size: 14, color: Colors.white),
-                              )
-                            : null,
                       ),
                     ),
                   ),

@@ -348,3 +348,21 @@ Android 端 1.13.0 落地后，桌面（macOS/Windows）扫描器同步对齐：
 
 **已知差异**：桌面 `Album.albumArtist` 仍为空串——audio_metadata_reader 未单独暴露 TPE2（其 artist 已优先取 TPE2），
 Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；分组键已用 artist（TPE2 优先）保证聚合一致。
+
+### 1.32.0 三抱怨修复：点击反馈 / toast 置顶 / 元数据与封面保全（2026-08-24）
+
+领导实测三个抱怨：①按钮按下无反馈；②提示被对话框挡住；③导入后专辑名退化为文件夹名/乱码、封面不显示。本次 Android 为主、桌面顺手对齐，双端验收。
+
+- **点击反馈（M3 水波纹 + 按压 overlay ≥0.12）**：lib/ui 九处带 onTap 的 GestureDetector 全转 Material+InkWell（专辑卡片/多选勾选/侧栏项/右键菜单项/分类色点/歌词行/两处遮罩用 NoSplash）；专辑卡片长按菜单改 Listener 原始指针记位置 + InkWell.onLongPress（InkWell 无 onLongPressStart）；主题补 splashColor 0.18/0.28（浅/深）+ highlightColor 0.12 + InkRipple.splashFactory + 按钮 overlayColor ≥0.12。验收 grep -A6 GestureDetector 输出 onTap=0；唯一剩余 GestureDetector 为 player_bar 右键菜单专用（onSecondaryTapDown）。
+- **全局 toast（根 Overlay 永置顶）**：新建 lib/ui/widgets/toast.dart showHikoToast——Overlay.of(context, rootOverlay: true) 插 OverlayEntry、180ms 淡入、3.2s 自动消失、同刻仅一条顶替；替换全部 14 处 SnackBar 调用。验收 grep ScaffoldMessenger lib = 0；widget 测试：对话框打开时 toast findsOneWidget。
+- **专辑元数据（标题/艺术家取音轨标签）**：
+  - Android ImportScanner.repairText 触发范围 0xA0..0xFF → 0x80..0xFF（对齐 Dart），补 strict 解码候选（REPORT，非法序列跳过该字符集）+ Latin-1 外字符保护——乱码标签不再被判不可用而弃用。
+  - decideAlbumMeta 纯函数：首个含可用 ALBUM 标签音轨决定 title/artist/albumArtist；桌面 scanner.dart 对齐。
+  - Album 模型加 metaFromFolder；mergeWith 自愈：纯 RJ 号/乱码旧标题允许被新标题替换（_isDegradedTitle），重导入不再粘滞。
+  - DLsite 兜底：全轨无可用标签且能提取 RJ 号 → DlsiteScraper.backfillTitles 串行刮削（沿用 400ms 限速、连续 3 次网络异常提前终止），刮到标题同时更新 title+dlsiteTitle 并清 metaFromFolder；常驻目录自动扫描不触发兜底（避免启动联网）。
+- **封面保全**：
+  - Kotlin：>15MB 图不再静默跳过，两次开 fd 用 BitmapFactory inSampleSize 降采样解码（sampleSizeFor 纯函数）重编码 JPEG90；coverDataUrl 压缩阶梯（82→30 质量档）耗尽返最小产物不返 null；封面候选扩到父目录一层。
+  - 桌面：cover.dart 补 600→400→300 × 82→30 阶梯 + 全耗尽返最小产物 + maxBytes 可注入（仅测试）+ 修竖图长边缩放缺陷；scanner.dart 封面查找扩父目录、去 >15MB 静默跳过。
+- **测试**：Dart +130 ~1（基线 110，~1 为既有网络测试 skip）、Kotlin 19/19（ImportScanner 11 + Id3v2Parser 8，任务 0 修好 AGP9 built-in Kotlin 源集装配——迁移 src/test/java 后 XML 落盘）。全部红→绿反向验证已在 PROGRESS.md 留档。
+- **模拟器端到端（AVD kikoeru_test）**：release APK 装机 + SAF 导入实测，四点全中——标题为元数据名非 RJ 号（はだか抱きまくら係/RJ01655831、るんりーわん/RJ01257775、被绿咨询/バイコーンの森）、封面在（真实插画非占位符）、按钮按下水波纹可见、设置弹窗内触发 toast 浮于弹窗之上。
+- **版本**：1.32.0+35（pubspec + build.gradle.kts 同步）。发布：hiko-v1.32.0-macos.zip + app-release.apk（versionCode 35）。

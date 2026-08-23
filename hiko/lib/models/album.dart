@@ -1,4 +1,5 @@
 import 'track.dart';
+import '../utils/repair_text.dart';
 
 /// 专辑（作品）数据模型，字段对齐旧版 library.json 已验证 schema
 class Album {
@@ -22,6 +23,7 @@ class Album {
   String? currentCover; // 运行时字段：当前轨内嵌封面
   List<String> color; // [c1, c2] 渐变兜底封面
   String shape; // 12 种之一
+  bool metaFromFolder; // 标题来自文件夹回退（全轨无可用标签），供 DLsite 兜底补标题
 
   Album({
     required this.id,
@@ -44,6 +46,7 @@ class Album {
     this.currentCover,
     this.color = const ['#c4b8e8', '#4b416c'],
     this.shape = 'radio',
+    this.metaFromFolder = false,
   });
 
   factory Album.fromJson(Map<String, dynamic> json) => Album(
@@ -71,6 +74,7 @@ class Album {
         color: (json['color'] as List?)?.cast<String>() ??
             const ['#c4b8e8', '#4b416c'],
         shape: json['shape'] as String? ?? 'radio',
+        metaFromFolder: json['metaFromFolder'] as bool? ?? false,
       );
 
   Map<String, dynamic> toJson() => {
@@ -93,6 +97,7 @@ class Album {
         if (localCover != null) 'localCover': localCover,
         'color': color,
         'shape': shape,
+        if (metaFromFolder) 'metaFromFolder': true,
       };
 
   Album copyWith({
@@ -112,6 +117,7 @@ class Album {
     String? currentCover,
     List<String>? color,
     String? shape,
+    bool? metaFromFolder,
   }) =>
       Album(
         id: id,
@@ -135,7 +141,17 @@ class Album {
         currentCover: currentCover ?? this.currentCover,
         color: color ?? this.color,
         shape: shape ?? this.shape,
+        metaFromFolder: metaFromFolder ?? this.metaFromFolder,
       );
+
+  /// 旧标题是否为「退化标题」：纯 RJ 号或乱码——这类标题没有信息量，
+  /// 重导入拿到更好的标题（标签/DLsite）时应允许被替换，修复历史粘滞。
+  static bool _isDegradedTitle(String title) {
+    final trimmed = title.trim();
+    if (trimmed.isEmpty) return true;
+    if (RegExp(r'^RJ\d{5,}$', caseSensitive: false).hasMatch(trimmed)) return true;
+    return looksGarbled(trimmed);
+  }
 
   /// 与旧版本专辑数据智能合并（保留用户的分类、收藏、播放进度、DLsite 刮削信息、添加时间等）
   Album mergeWith(Album? oldAlbum) {
@@ -147,7 +163,11 @@ class Album {
     return Album(
       id: id,
       sourcePath: sourcePath.isNotEmpty ? sourcePath : oldAlbum.sourcePath,
-      title: (hasDlsite || (oldAlbum.title.isNotEmpty && oldAlbum.title != '未命名' && oldAlbum.title != '本地导入'))
+      title: (hasDlsite ||
+              (oldAlbum.title.isNotEmpty &&
+                  oldAlbum.title != '未命名' &&
+                  oldAlbum.title != '本地导入' &&
+                  !_isDegradedTitle(oldAlbum.title)))
           ? oldAlbum.title
           : title,
       artist: (hasDlsite && oldAlbum.artist != '本地导入')
@@ -177,6 +197,8 @@ class Album {
       currentCover: currentCover ?? oldAlbum.currentCover,
       color: oldAlbum.color.isNotEmpty ? oldAlbum.color : color,
       shape: oldAlbum.shape.isNotEmpty ? oldAlbum.shape : shape,
+      // 标题来源以本次扫描为准：仍在文件夹回退则保留兜底标记，待 DLsite 补标题
+      metaFromFolder: metaFromFolder,
     );
   }
 

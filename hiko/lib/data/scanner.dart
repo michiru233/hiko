@@ -152,11 +152,19 @@ Future<String?> _groupDirCover(List<String> dirs) async {
   }
   pick ??= images.first;
   try {
-    if (await pick.length() > 15 * 1024 * 1024) return null;
+    // 大图不再因 >15MB 静默跳过：封面在 Isolate 内解码压缩（1.32 对齐 Android 降采样）
     return await coverDataUrlAsync(await pick.readAsBytes());
   } catch (_) {
     return null;
   }
+}
+
+/// 目录的父目录路径（根/异常返回 null）
+String? _parentDir(String dirPath) {
+  final parts = dirPath.split(Platform.pathSeparator)..removeLast();
+  if (parts.isEmpty) return null;
+  final parent = parts.join(Platform.pathSeparator);
+  return parent.isEmpty ? null : parent;
 }
 
 /// 扫描根目录：文件级解析 + 混合分组 → 专辑列表。
@@ -273,10 +281,12 @@ Future<Album?> _buildAlbum(String key, List<FileMeta> files) async {
   final title = isTagGroup
       ? (albumName ?? cleanFolderTitle(sorted.first.dirName) ?? '本地导入')
       : (cleanFolderTitle(sorted.first.dirName) ?? '本地导入');
-  final artistValue = mostCommon(sorted.map((m) => m.artist).toList());
-  final artist = (artistValue != null && !looksGarbled(artistValue))
-      ? artistValue
-      : '本地导入';
+  // 艺术家取首个含可用标签音轨（对齐 Android decideAlbumMeta 的首个标签优先）
+  final firstArtist = sorted
+      .map((m) => m.artist)
+      .where((v) => v != null && v.trim().isNotEmpty && !looksGarbled(v))
+      .firstOrNull;
+  final artist = firstArtist ?? '本地导入';
   final rjCode = extractRjCode([
     sorted.first.path,
     sorted.first.dirPath,
@@ -303,8 +313,12 @@ Future<Album?> _buildAlbum(String key, List<FileMeta> files) async {
     totalDuration += m.duration;
   }
 
-  // 封面获取：优先外置图片（无需读取大音频），无外置图片时按需从第一轨提取内嵌封面
-  final dirs = <String>{for (final m in sorted) m.dirPath}.toList();
+  // 封面获取：优先外置图片（无需读取大音频），查找范围含父目录
+  // （DLsite 常见结构：封面在 RJ 目录、音频在其子目录）；无外置图片时按需从第一轨提取内嵌封面
+  final dirs = <String>{
+    ...sorted.map((m) => m.dirPath),
+    ...sorted.map((m) => _parentDir(m.dirPath)).whereType<String>(),
+  }.toList();
   var localCover = await _groupDirCover(dirs);
   if (localCover == null) {
     for (final m in sorted) {
@@ -335,6 +349,7 @@ Future<Album?> _buildAlbum(String key, List<FileMeta> files) async {
     localCover: localCover,
     color: const ['#c4b8e8', '#4b416c'],
     shape: 'radio',
+    metaFromFolder: albumName == null, // 标题来自文件夹回退 → 待 DLsite 兜底
   );
 }
 

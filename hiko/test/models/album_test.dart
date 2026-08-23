@@ -92,4 +92,79 @@ void main() {
       expect(album.tracks.single.name, '曲目一');
     });
   });
+
+  group('mergeWith 标题自愈（1.32：纯 RJ 号/乱码旧标题允许被替换）', () {
+    Album freshAlbum(String title) => Album(
+          id: 'a',
+          sourcePath: '/x',
+          title: title,
+          artist: '新社团',
+          albumArtist: '新社团',
+          date: DateTime.now(),
+        );
+
+    test('纯 RJ 号旧标题被新标签标题替换', () {
+      final merged = freshAlbum('雨夜の耳語').mergeWith(
+        Album(id: 'a', sourcePath: '/x', title: 'RJ123456', date: DateTime.now()),
+      );
+      expect(merged.title, '雨夜の耳語');
+    });
+
+    test('乱码旧标题被替换', () {
+      final merged = freshAlbum('正常标题').mergeWith(
+        Album(id: 'a', sourcePath: '/x', title: 'ãƒã‚¯ãƒˆã®è³', date: DateTime.now()),
+      );
+      expect(merged.title, '正常标题');
+    });
+
+    test('正常旧标题保留（用户数据粘滞保护仍有效）', () {
+      final merged = freshAlbum('新扫描标题').mergeWith(
+        Album(id: 'a', sourcePath: '/x', title: '用户认可的旧标题', date: DateTime.now()),
+      );
+      expect(merged.title, '用户认可的旧标题');
+    });
+
+    test('已刮削（hasDlsite）旧标题保留', () {
+      final merged = freshAlbum('新扫描标题').mergeWith(
+        Album(
+          id: 'a',
+          sourcePath: '/x',
+          title: 'DLsite 标题',
+          dlsiteTitle: 'DLsite 标题',
+          date: DateTime.now(),
+        ),
+      );
+      expect(merged.title, 'DLsite 标题');
+    });
+  });
+
+  group('metaFromFolder 标志（1.32：标记标题来自文件夹回退，供 DLsite 兜底）', () {
+    test('JSON 往返保留 true', () {
+      final album = Album(
+        id: 'a',
+        sourcePath: '/x',
+        title: 'RJ123456',
+        metaFromFolder: true,
+        date: DateTime.now(),
+      );
+      expect(Album.fromJson(album.toJson()).metaFromFolder, isTrue);
+    });
+
+    test('缺省 false 且不出现在 JSON', () {
+      final album = Album(id: 'a', sourcePath: '/x', title: 'T', date: DateTime.now());
+      expect(album.metaFromFolder, isFalse);
+      expect(album.toJson().containsKey('metaFromFolder'), isFalse);
+    });
+
+    test('copyWith 可清除', () {
+      final album = Album(
+        id: 'a',
+        sourcePath: '/x',
+        title: 'T',
+        metaFromFolder: true,
+        date: DateTime.now(),
+      );
+      expect(album.copyWith(metaFromFolder: false).metaFromFolder, isFalse);
+    });
+  });
 }

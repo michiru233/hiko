@@ -11,6 +11,7 @@ import '../../data/settings_store.dart';
 import '../../data/update_checker.dart';
 import '../../playback/playback_controller.dart';
 import '../../platform/platform_service.dart';
+import 'toast.dart';
 
 /// 偏好设置弹窗（对应旧版 settings-overlay）
 class SettingsDialog extends ConsumerStatefulWidget {
@@ -108,10 +109,8 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   }
 
   void _toast(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(message),
-      behavior: SnackBarBehavior.floating,
-    ));
+    // 根 Overlay toast：设置弹窗内触发的提示浮于弹窗之上（1.32）
+    showHikoToast(context, message);
   }
 
   /// 归一到一位小数并夹在 1.0~4.0，避免 divisions 步进的浮点尾差
@@ -123,10 +122,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     final removed = albums.length - kept.length;
     await ref.read(libraryProvider.notifier).replaceAll(kept);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(removed > 0 ? '已清理 $removed 张失效专辑' : '库中暂无失效记录'),
-        behavior: SnackBarBehavior.floating,
-      ));
+      _toast(removed > 0 ? '已清理 $removed 张失效专辑' : '库中暂无失效记录');
     }
   }
 
@@ -136,10 +132,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       final stats = result.stats;
       if (!mounted) return;
       if (!stats.hasChanges) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('已检查全部专辑，元数据与曲目均与本地文件一致'),
-          behavior: SnackBarBehavior.floating,
-        ));
+        _toast('已检查全部专辑，元数据与曲目均与本地文件一致');
         return;
       }
 
@@ -160,16 +153,10 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
         parts.add('${stats.tracksModified} 首标签/信息更新');
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('整理完成：${parts.join('，')}'),
-        behavior: SnackBarBehavior.floating,
-      ));
+      _toast('整理完成：${parts.join('，')}');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('整理失败：$e'),
-          behavior: SnackBarBehavior.floating,
-        ));
+        _toast('整理失败：$e');
       }
     }
   }
@@ -203,17 +190,11 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
         },
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(added > 0 ? '扫描完成，新增 $added 张专辑' : '扫描完成，没有新内容'),
-          behavior: SnackBarBehavior.floating,
-        ));
+        _toast(added > 0 ? '扫描完成，新增 $added 张专辑' : '扫描完成，没有新内容');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('扫描失败：$e'),
-          behavior: SnackBarBehavior.floating,
-        ));
+        _toast('扫描失败：$e');
       }
     } finally {
       if (mounted) {
