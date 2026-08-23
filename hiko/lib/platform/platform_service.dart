@@ -47,6 +47,11 @@ abstract class PlatformService {
     String folder, {
     void Function(int processed, int total, String phase, String unit)? onProgress,
   });
+
+  /// 更新包下载完成后的落地动作：
+  /// - Android：调起系统安装器（APK）；
+  /// - 桌面：在 Finder / 资源管理器中定位文件，由用户手动替换应用。
+  Future<void> openDownloadedUpdate(String filePath);
 }
 
 class DesktopPlatformService implements PlatformService {
@@ -198,6 +203,16 @@ class DesktopPlatformService implements PlatformService {
     return ImportService(LibraryStore()).scanPath(folder, onProgress: onProgress == null
         ? null
         : (p) => onProgress(p.processed, p.total, p.phase, p.unit));
+  }
+
+  /// 桌面更新落地:Finder 定位(macOS)/ 资源管理器选中(Windows),由用户手动替换应用
+  @override
+  Future<void> openDownloadedUpdate(String filePath) async {
+    if (Platform.isMacOS) {
+      await Process.run('open', ['-R', filePath]);
+    } else if (Platform.isWindows) {
+      await Process.run('explorer', ['/select,', filePath]);
+    }
   }
 }
 

@@ -181,6 +181,14 @@ hiko/                          # flutter create --org top.voicehub --platforms m
   - 音量按钮改为纵向弹出式滑块卡片，紧凑精致，带百分比实时数字提示与平滑滑块。
 - **验证**：全部 70 个单元测试通过。
 
+### 1.30.0 应用内「从 GitHub 获得更新」（macOS + Android）
+
+- **数据层（`lib/data/update_checker.dart`）**：GitHub Releases API 拉最新版（10s 超时）；semver 纯函数比较（容忍 `v` 前缀与 `+build` 后缀）；按平台选资产（macOS `*-macos.zip` / Android `.apk`，排除 `.aab`）；流式下载带字节进度；落点 Android→cache、桌面→~/Downloads。
+- **平台落地**：`PlatformService.openDownloadedUpdate(path)`——Android HikoPlugin `installApk`（FileProvider cache-path URI + ACTION_VIEW 调起系统安装器，manifest 增 REQUEST_INSTALL_PACKAGES）；macOS/Windows 用 `open -R` / `explorer /select` 定位下载文件。
+- **UI（SettingsDialog「关于」区）**：版本号动态化（package_info_plus，修掉硬编码 1.21.0 过期文案）；「检查更新」→ 发现新版卡片（tag + 发布说明 + 下载按钮 + 进度条）；Android 一键「下载并安装」，桌面「下载更新包」后 Finder 定位手动替换。
+- **测试**：单测 6（版本比较/资产选择）+ 实网 network 测试 1（真实 API、双平台资产）；flutter test 110+1 全绿；模拟器 `update_test` 集成验证更新全链（fetch → 比较 → 下载 → 调起安装器）。
+- 版本 1.30.0+33；gh release v1.30.0。
+
 ### 1.29.0 Android 版恢复开发（睡眠定时 / 倍速 / Android 增益与歌词 / 正式签名发版）
 
 - **睡眠定时（全平台，`lib/playback/sleep_timer.dart`）**：

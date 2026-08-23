@@ -1,10 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../data/library_provider.dart';
 import '../../data/library_reorganizer.dart';
 import '../../data/music_folder_scanner.dart';
 import '../../data/settings_store.dart';
+import '../../data/update_checker.dart';
 import '../../playback/playback_controller.dart';
 import '../../platform/platform_service.dart';
 
@@ -24,6 +28,91 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   double? _scanProgress;
   String? _scanStatusText;
   double? _gainDrag; // 增益滑动条拖动中的临时值（松手才提交）
+
+  // ---- 软件更新状态 ----
+  String? _appVersion; // PackageInfo 异步加载
+  bool _updateChecking = false;
+  GithubRelease? _latestRelease; // 检查到的新版本(null=未检查/已是最新)
+  bool _updateDownloading = false;
+  double _downloadProgress = 0;
+  int _downloadReceived = 0;
+  int _downloadTotal = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) setState(() => _appVersion = info.version);
+  }
+
+  /// 检查 GitHub 最新 Release
+  Future<void> _checkUpdate() async {
+    if (_updateChecking) return;
+    setState(() => _updateChecking = true);
+    try {
+      final current = _appVersion ?? (await PackageInfo.fromPlatform()).version;
+      final release = await UpdateChecker.fetchLatestRelease();
+      if (!mounted) return;
+      if (UpdateChecker.isNewer(current, release.tagName)) {
+        setState(() => _latestRelease = release);
+      } else {
+        setState(() => _latestRelease = null);
+        _toast('已是最新版本($current)');
+      }
+    } catch (e) {
+      if (mounted) _toast('检查更新失败:$e');
+    } finally {
+      if (mounted) setState(() => _updateChecking = false);
+    }
+  }
+
+  /// 下载更新包并落地(Android 调起安装器 / 桌面定位到下载文件)
+  Future<void> _downloadUpdate() async {
+    final release = _latestRelease;
+    if (release == null || _updateDownloading) return;
+    final asset = UpdateChecker.pickAsset(release, Platform.operatingSystem);
+    if (asset == null) {
+      _toast('未找到适用于本平台的安装包,请前往 GitHub Releases 手动下载');
+      return;
+    }
+    setState(() {
+      _updateDownloading = true;
+      _downloadProgress = 0;
+      _downloadReceived = 0;
+      _downloadTotal = asset.size;
+    });
+    try {
+      final dest = await UpdateChecker.suggestDestPath(asset);
+      await UpdateChecker.downloadAsset(asset, dest, onProgress: (received, total) {
+        if (!mounted) return;
+        setState(() {
+          _downloadReceived = received;
+          _downloadTotal = total > 0 ? total : asset.size;
+          _downloadProgress = total > 0 ? (received / total).clamp(0.0, 1.0) : 0;
+        });
+      });
+      await ref.read(platformServiceProvider).openDownloadedUpdate(dest);
+      if (!mounted) return;
+      _toast(Platform.isAndroid
+          ? '下载完成,已调起系统安装器'
+          : '已下载到 ${asset.name},请在文件管理器中解压并替换应用');
+    } catch (e) {
+      if (mounted) _toast('下载失败:$e');
+    } finally {
+      if (mounted) setState(() => _updateDownloading = false);
+    }
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(message),
+      behavior: SnackBarBehavior.floating,
+    ));
+  }
 
   /// 归一到一位小数并夹在 1.0~4.0，避免 divisions 步进的浮点尾差
   double _snapGain(double v) => ((v * 10).round() / 10).clamp(1.0, 4.0).toDouble();
@@ -406,12 +495,104 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text('Hiko · 音声收藏室', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-                        Text('版本 1.21.0 · 本地优先的音声库管理器', style: TextStyle(fontSize: 11, color: theme.hintColor)),
+                        Text('版本 ${_appVersion ?? '…'} · 本地优先的音声库管理器',
+                            style: TextStyle(fontSize: 11, color: theme.hintColor)),
                       ],
                     ),
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              // 软件更新(两端):检查 GitHub 最新 Release → 一键下载安装
+              if (_latestRelease == null && !_updateDownloading)
+                _SettingRow(
+                  label: '软件更新',
+                  trailing: _ActionButton(
+                    label: _updateChecking ? '检查中...' : '检查更新',
+                    loading: _updateChecking,
+                    onTap: _updateChecking ? null : _checkUpdate,
+                  ),
+                ),
+              if (_latestRelease != null) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer.withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.4)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.system_update_alt_rounded,
+                              size: 14, color: theme.colorScheme.primary),
+                          const SizedBox(width: 6),
+                          Text(
+                            '发现新版本 ${_latestRelease!.tagName}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_latestRelease!.body.trim().isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 110),
+                          child: SingleChildScrollView(
+                            child: Text(
+                              _latestRelease!.body.trim(),
+                              style: TextStyle(fontSize: 10.5, height: 1.5, color: theme.hintColor),
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      if (_updateDownloading)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: _downloadProgress > 0 ? _downloadProgress : null,
+                                minHeight: 4,
+                                backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              '正在下载 ${_formatBytes(_downloadReceived)}'
+                              '${_downloadTotal > 0 ? ' / ${_formatBytes(_downloadTotal)}' : ''}',
+                              style: TextStyle(fontSize: 10, color: theme.hintColor),
+                            ),
+                          ],
+                        )
+                      else
+                        Row(
+                          children: [
+                            _ActionButton(
+                              label: Platform.isAndroid ? '下载并安装' : '下载更新包',
+                              onTap: _downloadUpdate,
+                            ),
+                            const SizedBox(width: 8),
+                            TextButton(
+                              onPressed: () => setState(() => _latestRelease = null),
+                              child: Text('暂不更新',
+                                  style: TextStyle(fontSize: 11, color: theme.hintColor)),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
             ],
           ),
         ),
@@ -524,4 +705,11 @@ String _displayFolder(String folder) {
   }
   final parts = folder.split(RegExp(r'[/\\]'));
   return parts.where((p) => p.isNotEmpty).lastOrNull ?? folder;
+}
+
+/// 字节数人性化显示(下载进度)
+String _formatBytes(int bytes) {
+  if (bytes >= 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+  return '$bytes B';
 }

@@ -159,4 +159,10 @@ class AndroidPlatformService implements PlatformService {
   /// 可探测的 URI 形态:SAF content:// 与本地 file://;dataURL 无磁盘实体
   static bool _probeableUri(String uri) =>
       uri.startsWith('content://') || uri.startsWith('file://');
+
+  /// 更新落地:调起系统安装器安装已下载的 APK
+  @override
+  Future<void> openDownloadedUpdate(String filePath) async {
+    await _channel.invokeMethod('installApk', {'path': filePath});
+  }
 }

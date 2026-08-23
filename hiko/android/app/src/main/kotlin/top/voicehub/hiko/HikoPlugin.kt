@@ -53,6 +53,7 @@ class HikoPlugin : MethodChannel.MethodCallHandler {
             "revealInFolder" -> revealInFolder(call, result)
             "shareLibrary" -> shareLibrary(result)
             "requestNotificationPermission" -> requestNotificationPermission(result)
+            "installApk" -> installApk(call, result)
             else -> result.notImplemented()
         }
     }
@@ -288,6 +289,41 @@ class HikoPlugin : MethodChannel.MethodCallHandler {
             result.success(mapOf("ok" to true))
         } catch (e: Exception) {
             result.success(mapOf("ok" to false, "error" to e.message))
+        }
+    }
+
+    // ---- 下载更新包落地(Android:调起系统安装器;桌面:Finder/资源管理器定位)----
+
+    /** 调起系统安装器安装已下载的 APK(cache 目录经 FileProvider 分享) */
+    private fun installApk(call: MethodCall, result: MethodChannel.Result) {
+        val context = activity?.applicationContext
+        if (context == null) {
+            result.error("no-activity", "Activity 未就绪", null)
+            return
+        }
+        val path = call.argument<String>("path")
+        if (path.isNullOrBlank()) {
+            result.error("bad-path", "安装包路径无效", null)
+            return
+        }
+        try {
+            val file = File(path)
+            if (!file.exists()) {
+                result.error("not-found", "安装包不存在", null)
+                return
+            }
+            val uri = FileProvider.getUriForFile(
+                context, "${context.packageName}.fileprovider", file
+            )
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            result.success(mapOf("ok" to true))
+        } catch (e: Exception) {
+            result.error("install-failed", e.message, null)
         }
     }
 
