@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:collection';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:just_audio_platform_interface/just_audio_platform_interface.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:universal_platform/universal_platform.dart';
+
+import 'gain_chain.dart';
 
 /// 桌面端（macOS & Windows）增强版 MediaKit 音频播放引擎：
 /// 1. 彻底解决原版 just_audio_media_kit 在高速本地文件 open 时的 load Completer 竞争死锁问题（导致卡在 0:00）；
@@ -15,6 +18,21 @@ class HikoJustAudioMediaKit extends JustAudioPlatform {
 
   static final _players = HashMap<String, HikoMediaKitPlayer>();
   static final _disposingPlayers = HashMap<String, Future<void>>();
+
+  /// 全局增益当前值：af 链软增益 + 软限幅（mpv volume 属性 clamp 130，
+  /// >1.3x 硬削波，增益必须走 af 浮点域；volume 属性只留 0~1 常规音量）。
+  static double _globalGain = 1.0;
+
+  /// 设置全局增益并应用到当前所有实例；之后 init 的实例也会补挂。
+  /// 相同值幂等跳过；单实例失败容忍（风格同 syncVolume）。
+  static Future<void> setGlobalGain(double gain) async {
+    final g = gain.clamp(1.0, 4.0).toDouble();
+    if (g == _globalGain) return;
+    _globalGain = g;
+    for (final player in _players.values.toList()) {
+      await player.applyGain(g);
+    }
+  }
 
   /// 平台初始化注册
   static void ensureInitialized({
@@ -38,6 +56,9 @@ class HikoJustAudioMediaKit extends JustAudioPlatform {
     final player = HikoMediaKitPlayer(request.id);
     _players[request.id] = player;
     await player.ready();
+    if (_globalGain != 1.0) {
+      await player.applyGain(_globalGain);
+    }
     return player;
   }
 
@@ -78,7 +99,9 @@ class HikoMediaKitPlayer extends AudioPlayerPlatform {
   HikoMediaKitPlayer(super.id) {
     _player = Player(
       configuration: const PlayerConfiguration(
-        pitch: true,
+        // pitch:true 时 media_kit setRate 会整体覆盖 af 滤镜链（含增益）；
+        // 本应用不用变速播放，改 false 根除隐患
+        pitch: false,
         protocolWhitelist: [
           'udp',
           'rtp',
@@ -288,9 +311,24 @@ class HikoMediaKitPlayer extends AudioPlayerPlatform {
 
   @override
   Future<SetVolumeResponse> setVolume(SetVolumeRequest request) async {
-    // request.volume 传递的是 0.0~3.0（已包含增益）
+    // request.volume 只传 0.0~1.0 常规音量；增益已整体搬进 af 链（见 setGlobalGain）
     await _player.setVolume(request.volume * 100.0);
     return SetVolumeResponse();
+  }
+
+  /// 应用 af 增益链并读回验证；失败容忍（引擎不可用时静默降级为直通）。
+  /// 同时读回 mpv volume，验证增益改动不影响常规音量通道。
+  Future<void> applyGain(double gain) async {
+    try {
+      final platform = _player.platform;
+      if (platform is! NativePlayer) return;
+      await platform.setProperty('af', gainAfChain(gain));
+      final readBack = await platform.getProperty('af');
+      final volume = await platform.getProperty('volume');
+      debugPrint('[gain] af=$readBack (mpv volume=$volume)');
+    } catch (e) {
+      debugPrint('[gain] 应用增益失败（容忍）: $e');
+    }
   }
 
   @override

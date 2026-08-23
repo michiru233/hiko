@@ -6,7 +6,7 @@ class AppSettings {
   final String theme; // light / dark
   final String accent; // 六色之一
   final double volume; // 0.0 - 1.0
-  final double audioGain; // 1.0 - 3.0（音频增益倍率，默认 1.0 即 100% 不放大，最高 3.0x / +9.5dB）
+  final double audioGain; // 1.0 - 4.0（音频增益倍率，默认 1.0 即 100% 不放大，最高 4.0x，经 af 链软限幅防破音）
   final String playMode; // list / single / shuffle / album
   final bool sidebarShown;
   final String scrapeProxy;
@@ -90,7 +90,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       theme: prefs.getString(_kTheme) ?? 'light',
       accent: prefs.getString(_kAccent) ?? AppSettings.defaultAccent,
       volume: (prefs.getDouble(_kVolume) ?? 0.8).clamp(0.0, 1.0),
-      audioGain: (prefs.getDouble(_kAudioGain) ?? 1.0).clamp(1.0, 3.0),
+      audioGain: (prefs.getDouble(_kAudioGain) ?? 1.0).clamp(1.0, 4.0),
       playMode: prefs.getString(_kMode) ?? 'list',
       sidebarShown: prefs.getBool(_kSidebar) ?? true,
       scrapeProxy: prefs.getString(_kProxy) ?? '',
@@ -103,7 +103,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   Future<void> setVolume(double volume) =>
       _save(_kVolume, volume.clamp(0.0, 1.0), state.copyWith(volume: volume.clamp(0.0, 1.0)));
   Future<void> setAudioGain(double gain) =>
-      _save(_kAudioGain, gain.clamp(1.0, 3.0), state.copyWith(audioGain: gain.clamp(1.0, 3.0)));
+      _save(_kAudioGain, gain.clamp(1.0, 4.0), state.copyWith(audioGain: gain.clamp(1.0, 4.0)));
   Future<void> setPlayMode(String mode) => _save(_kMode, mode, state.copyWith(playMode: mode));
   Future<void> setSidebarShown(bool shown) =>
       _save(_kSidebar, shown, state.copyWith(sidebarShown: shown));

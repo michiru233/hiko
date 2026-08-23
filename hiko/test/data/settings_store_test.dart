@@ -42,11 +42,11 @@ void main() {
     await reloaded.load();
     expect(reloaded.state.audioGain, 2.0);
 
-    // 边界限制 1.0 ~ 3.0
+    // 边界限制 1.0 ~ 4.0
     await notifier.setAudioGain(0.5);
     expect(notifier.state.audioGain, 1.0);
 
     await notifier.setAudioGain(5.0);
-    expect(notifier.state.audioGain, 3.0);
+    expect(notifier.state.audioGain, 4.0);
   });
 }

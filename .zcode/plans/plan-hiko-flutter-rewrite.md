@@ -181,6 +181,21 @@ hiko/                          # flutter create --org top.voicehub --platforms m
   - 音量按钮改为纵向弹出式滑块卡片，紧凑精致，带百分比实时数字提示与平滑滑块。
 - **验证**：全部 70 个单元测试通过。
 
+### 1.28.0 滑动条无级增益 + af 链浮点软增益与软限幅（根治高增益破音）
+
+- **破音根因与修复（`gain_chain.dart` / `HikoJustAudioMediaKit`）**：
+  - **根因**：原实现把 `volume×gain` 相乘传 mpv `volume` 属性（×100）。libmpv 默认 `volume-max=130`，2.0x/3.0x 实际被 clamp 到 1.3x，超出部分硬削波即破音，且无任何限幅器。
+  - **通道拆分**：增益整体搬进 mpv `af` 音频滤镜链（`lavfi=[volume=volume=<g>,alimiter=level=false:limit=-1dB:attack=5:release=50:asc=1:asc_level=0.5]`），64-bit 浮点域放大 + ffmpeg alimiter 软限幅兜底（level=false 不做响度归一，保留动态感）；mpv `volume` 属性只承担 0~1 常规音量，不再相乘。
+  - 新增纯函数 `gainAfChain()`（≤1.0 返回空串清除滤镜链直通）+ 单测；`HikoJustAudioMediaKit.setGlobalGain()` 静态入口：相同值幂等跳过，对已注册及后续惰性激活的每个 native player 实例 `setProperty('af')` 后 `getProperty('af')` 读回验证并输出 `[gain]` 日志，失败容忍（风格同 syncVolume）。
+  - `PlayerConfiguration.pitch` 改 `false`：根除 media_kit `setRate` 整体覆盖 af 链的隐患（本应用无变速播放）。
+  - 运行时实测（macOS）：mpv 完整接受该滤镜串，2.0x 读回 `lavfi=graph=%89%volume=volume=2.0,alimiter=level=false:limit=-1dB:...`，恢复 1.0x 读回空串，两次增益切换间 `mpv volume` 读数不变（常规音量通道隔离）。
+- **增益范围与 UI（`settings_dialog` / `player_bar` / `settings_store`）**：
+  - 上限 3.0x → 4.0x（settings_store 三处 clamp 同步）。
+  - 设置弹窗与播放底栏音量弹窗的档位组（1.0/1.5/2.0/3.0）全部替换为无级横向 `Slider`（1.0~4.0，divisions=30 步进 0.1），拖动中仅更新 `x1.0` 格式实时显示，`onChangeEnd` 才提交 settings+playback 两处；底栏弹窗宽度 76→150，角标/tooltip 沿用原有格式。
+  - 设置页增益说明文案改为如实描述（滤镜链浮点增益 + -1dB 软限幅防削波，替换原「平滑限幅」失实文案）。
+- **验收自检（可选）**：`flutter run -d macos --dart-define=HIKO_GAIN_SELFTEST=1` 启动后自动加载 0.2s 静音激活引擎并依次应用 2.0x/1.0x 增益，输出 `[gain] af=… (mpv volume=…)` 读回日志（默认 define 关闭时不生效，不进正常流程）。
+- **验证**：flutter test 90 passed +1 skipped 全绿（新增 gain_chain 3 测）；版本升级为 1.28.0+31。
+
 ### 1.27.0 修复 macOS 桌面端特定专辑/音频播放卡在 0:00 无法播放的问题
 
 - **根因修复（`HikoJustAudioMediaKit` / `HikoMediaKitPlayer`）**：

@@ -23,6 +23,10 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   bool _isScanning = false;
   double? _scanProgress;
   String? _scanStatusText;
+  double? _gainDrag; // 增益滑动条拖动中的临时值（松手才提交）
+
+  /// 归一到一位小数并夹在 1.0~4.0，避免 divisions 步进的浮点尾差
+  double _snapGain(double v) => ((v * 10).round() / 10).clamp(1.0, 4.0).toDouble();
 
   Future<void> _cleanMissing() async {
     final albums = ref.read(libraryProvider);
@@ -208,58 +212,48 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
               _SectionTitle('音频与增益'),
               _SettingRow(
                 label: '默认增益放大',
-                trailing: Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final (gain, label) in [
-                        (1.0, '1.0x 标准'),
-                        (1.5, '1.5x'),
-                        (2.0, '2.0x 翻倍'),
-                        (3.0, '3.0x 极限'),
-                      ])
-                        InkWell(
-                          onTap: () {
-                            ref.read(settingsProvider.notifier).setAudioGain(gain);
-                            ref.read(playbackProvider.notifier).setAudioGain(gain);
-                          },
-                          mouseCursor: SystemMouseCursors.click,
-                          borderRadius: BorderRadius.circular(6),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: (settings.audioGain - gain).abs() < 0.05
-                                  ? theme.colorScheme.surface
-                                  : null,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              label,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: (settings.audioGain - gain).abs() < 0.05
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
-                                color: (settings.audioGain - gain).abs() < 0.05
-                                    ? theme.colorScheme.primary
-                                    : null,
-                              ),
-                            ),
-                          ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 180,
+                      child: Slider(
+                        min: 1.0,
+                        max: 4.0,
+                        divisions: 30,
+                        value: (_gainDrag ?? settings.audioGain).clamp(1.0, 4.0),
+                        label: 'x${(_gainDrag ?? settings.audioGain).toStringAsFixed(1)}',
+                        mouseCursor: SystemMouseCursors.click,
+                        onChanged: (v) => setState(() => _gainDrag = _snapGain(v)),
+                        onChangeEnd: (v) {
+                          final g = _snapGain(v);
+                          setState(() => _gainDrag = null);
+                          ref.read(settingsProvider.notifier).setAudioGain(g);
+                          ref.read(playbackProvider.notifier).setAudioGain(g);
+                        },
+                      ),
+                    ),
+                    SizedBox(
+                      width: 42,
+                      child: Text(
+                        'x${(_gainDrag ?? settings.audioGain).toStringAsFixed(1)}',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: (_gainDrag ?? settings.audioGain) > 1.0
+                              ? theme.colorScheme.primary
+                              : theme.hintColor,
                         ),
-                    ],
-                  ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Text(
-                  '采用 64-bit 浮点软增益与平滑限幅，在放大微弱音频音量的同时最大程度避免爆音与削波失真。亦可在播放底栏音量图标处快捷调节。',
+                  '增益在音频滤镜链内以浮点精度放大，并经 -1dB 软限幅器兜底，高增益下不会削波破音。亦可在播放底栏音量图标处快捷调节。',
                   style: TextStyle(fontSize: 10.5, height: 1.5, color: theme.hintColor),
                 ),
               ),

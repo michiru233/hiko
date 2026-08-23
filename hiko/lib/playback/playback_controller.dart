@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -8,6 +9,7 @@ import '../data/library_provider.dart';
 import '../data/settings_store.dart';
 import '../models/album.dart';
 import '../models/track.dart';
+import 'hiko_media_kit_player.dart';
 import 'playback_rules.dart';
 
 /// 播放器状态（UI 直接消费）
@@ -76,6 +78,61 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     _player.durationStream.listen((d) {
       if (d != null) state = state.copyWith(duration: d.inMilliseconds / 1000.0);
     });
+    unawaited(_gainSelfTest());
+  }
+
+  /// 发布验收自检（仅 --dart-define=HIKO_GAIN_SELFTEST=1 时运行，默认不生效）：
+  /// 先加载 0.2s 静音激活引擎（just_audio 惰性创建 native player），
+  /// 再依次应用 2.0x / 1.0x 增益，用 [gain] 日志验证 af 链读回与常规音量隔离。
+  Future<void> _gainSelfTest() async {
+    if (const String.fromEnvironment('HIKO_GAIN_SELFTEST') != '1') return;
+    await Future<void>.delayed(const Duration(seconds: 6));
+    try {
+      final wav =
+          File('${Directory.systemTemp.path}/hiko_gain_selftest.wav');
+      await wav.writeAsBytes(_silentWav());
+      await _player.setUrl(wav.uri.toString()).timeout(
+            const Duration(seconds: 8),
+          );
+      debugPrint('[gain-selftest] 引擎已激活，应用常规音量 + 2.0x 增益');
+      await syncVolume(gain: 2.0);
+      await Future<void>.delayed(const Duration(seconds: 2));
+      debugPrint('[gain-selftest] 恢复 1.0x（应清除 af 链）');
+      await syncVolume(gain: 1.0);
+    } catch (e) {
+      debugPrint('[gain-selftest] 失败: $e');
+    }
+    debugPrint('[gain-selftest] 完成');
+  }
+
+  /// 8-bit PCM 单声道 8kHz 0.2s 静音 WAV（自检激活引擎用）
+  static Uint8List _silentWav() {
+    const rate = 8000;
+    const samples = 1600;
+    final b = ByteData(44 + samples);
+    void str(int offset, String s) {
+      for (var i = 0; i < s.length; i++) {
+        b.setUint8(offset + i, s.codeUnitAt(i));
+      }
+    }
+
+    str(0, 'RIFF');
+    b.setUint32(4, 36 + samples, Endian.little);
+    str(8, 'WAVE');
+    str(12, 'fmt ');
+    b.setUint32(16, 16, Endian.little); // fmt 块长度
+    b.setUint16(20, 1, Endian.little); // PCM
+    b.setUint16(22, 1, Endian.little); // 单声道
+    b.setUint32(24, rate, Endian.little);
+    b.setUint32(28, rate, Endian.little); // byte rate
+    b.setUint16(32, 1, Endian.little); // block align
+    b.setUint16(34, 8, Endian.little); // 位深
+    str(36, 'data');
+    b.setUint32(40, samples, Endian.little);
+    for (var i = 0; i < samples; i++) {
+      b.setUint8(44 + i, 128); // 静音
+    }
+    return b.buffer.asUint8List();
   }
 
   final Ref _ref;
@@ -169,18 +226,19 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     }
   }
 
-  /// 音量与增益同步：根据 baseVolume 与 gain 计算有效合成音量
-  /// libmpv 引擎支持超过 1.0 的浮点软增益（1.0 ~ 3.0x）
+  /// 音量与增益同步（两者通道分离）：
+  /// - 常规音量走 just_audio setVolume（0~1，映射 mpv volume 0~100）；
+  /// - 增益走 af 链浮点软增益 + 软限幅（mpv volume clamp 130 会硬削波，不再相乘）
   Future<void> syncVolume({double? baseVolume, double? gain}) async {
     final settings = _ref.read(settingsProvider);
     final vol = (baseVolume ?? settings.volume).clamp(0.0, 1.0);
-    final g = (gain ?? settings.audioGain).clamp(1.0, 3.0);
-    final effective = (vol * g).toDouble();
+    final g = (gain ?? settings.audioGain).clamp(1.0, 4.0);
     try {
-      await _player.setVolume(effective);
+      await _player.setVolume(vol);
     } catch (e) {
       debugPrint('[playback] syncVolume 失败（容忍）: $e');
     }
+    await HikoJustAudioMediaKit.setGlobalGain(g);
   }
 
   /// 音量设置：播放器未加载/初始化失败时容忍（UI 音量状态仍由 settings 管理）

@@ -29,6 +29,10 @@ class PlayerBar extends ConsumerStatefulWidget {
 class _PlayerBarState extends ConsumerState<PlayerBar> {
   bool _dragging = false;
   double _dragValue = 0;
+  double? _gainDrag; // 增益滑动条拖动中的临时值（松手才提交）
+
+  /// 归一到一位小数并夹在 1.0~4.0，避免 divisions 步进的浮点尾差
+  double _snapGain(double v) => ((v * 10).round() / 10).clamp(1.0, 4.0).toDouble();
 
   @override
   Widget build(BuildContext context) {
@@ -299,7 +303,7 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
       ),
       menuChildren: [
         SizedBox(
-          width: 76,
+          width: 150,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -342,58 +346,59 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
               Divider(height: 1, color: theme.dividerColor.withValues(alpha: 0.6)),
               const SizedBox(height: 6),
               Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Icon(
-                    Icons.bolt_rounded,
-                    size: 11,
-                    color: isBoosted ? theme.colorScheme.primary : theme.hintColor,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.bolt_rounded,
+                        size: 11,
+                        color: isBoosted ? theme.colorScheme.primary : theme.hintColor,
+                      ),
+                      const SizedBox(width: 2),
+                      Text(
+                        '增益放大',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          fontWeight: FontWeight.w600,
+                          color: isBoosted ? theme.colorScheme.primary : theme.hintColor,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 2),
                   Text(
-                    '增益放大',
+                    'x${(_gainDrag ?? settings.audioGain).toStringAsFixed(1)}',
                     style: TextStyle(
                       fontSize: 9.5,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                       color: isBoosted ? theme.colorScheme.primary : theme.hintColor,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 3,
-                runSpacing: 3,
-                alignment: WrapAlignment.center,
-                children: [
-                  for (final g in [1.0, 1.5, 2.0, 3.0])
-                    InkWell(
-                      borderRadius: BorderRadius.circular(4),
-                      onTap: () {
-                        ref.read(settingsProvider.notifier).setAudioGain(g);
-                        ref.read(playbackProvider.notifier).setAudioGain(g);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: (settings.audioGain - g).abs() < 0.05
-                              ? theme.colorScheme.primary
-                              : theme.dividerColor.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          g == 1.0 ? '1.0x' : '${g.toStringAsFixed(1)}x',
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w600,
-                            color: (settings.audioGain - g).abs() < 0.05
-                                ? Colors.white
-                                : theme.textTheme.bodyMedium?.color?.withValues(alpha: 0.8),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 4,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                ),
+                child: Slider(
+                  key: const ValueKey('gain-slider-player-bar'),
+                  min: 1.0,
+                  max: 4.0,
+                  divisions: 30,
+                  value: (_gainDrag ?? settings.audioGain).clamp(1.0, 4.0),
+                  label: 'x${(_gainDrag ?? settings.audioGain).toStringAsFixed(1)}',
+                  mouseCursor: SystemMouseCursors.click,
+                  onChanged: (v) => setState(() => _gainDrag = _snapGain(v)),
+                  onChangeEnd: (v) {
+                    final g = _snapGain(v);
+                    setState(() => _gainDrag = null);
+                    ref.read(settingsProvider.notifier).setAudioGain(g);
+                    ref.read(playbackProvider.notifier).setAudioGain(g);
+                  },
+                ),
               ),
             ],
           ),
