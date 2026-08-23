@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/album.dart';
-import '../platform/android_platform_service.dart';
 import '../platform/platform_service.dart';
 import 'import_service.dart';
 import 'library_provider.dart';
@@ -38,7 +37,8 @@ class MusicFolderScanner {
       final folder = folders[i];
       try {
         final platform = _ref.read(platformServiceProvider);
-        if (platform is AndroidPlatformService) {
+        if (Platform.isAndroid) {
+          // Android:SAF tree URI 经接口方法(原生插件事件流式)
           final albums = await platform.scanSavedFolder(folder);
           final before = _ref.read(libraryProvider).length;
           await _ref.read(libraryProvider.notifier).mergeNew(albums);
@@ -83,7 +83,7 @@ class MusicFolderScanner {
     void Function(ImportProgress)? onProgress,
   }) async {
     final platform = _ref.read(platformServiceProvider);
-    if (platform is AndroidPlatformService) {
+    if (Platform.isAndroid) {
       return platform.scanSavedFolder(folder);
     }
     final service = ImportService(_ref.read(libraryStoreProvider));

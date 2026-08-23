@@ -118,23 +118,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final service = ImportService(ref.read(libraryStoreProvider));
     try {
       final platform = ref.read(platformServiceProvider);
-      final isAndroid = Platform.isAndroid;
       List<Album> albums;
-      if (isAndroid) {
-        final android = platform as dynamic;
-        final result = await android.importAudioFolder(onProgress: (p, t, phase, unit) {
-          if (!mounted) return;
-          setState(() {
-            _importLabel = phase == 'files' ? '正在扫描音频文件' : '正在导入专辑';
-            _importProcessed = p;
-            _importTotal = t;
-            _importProgress = t > 0 ? p / t : 0;
-          });
+      // Android:SAF 单树导入(接口方法,事件流式);桌面:返回 null 走批量多选
+      final saf = await platform.importAudioFolder(onProgress: (p, t, phase, unit) {
+        if (!mounted) return;
+        setState(() {
+          _importLabel = phase == 'files' ? '正在扫描音频文件' : '正在导入专辑';
+          _importProcessed = p;
+          _importTotal = t;
+          _importProgress = t > 0 ? p / t : 0;
         });
-
-        albums = result.albums as List<Album>;
+      });
+      if (saf != null) {
+        albums = saf.albums;
         // 记住所选目录 → 常驻自动扫描
-        final treeUri = result.treeUri as String?;
+        final treeUri = saf.treeUri;
         if (treeUri != null) {
           await ref.read(settingsProvider.notifier).addMusicFolder(treeUri);
         }

@@ -181,6 +181,27 @@ hiko/                          # flutter create --org top.voicehub --platforms m
   - 音量按钮改为纵向弹出式滑块卡片，紧凑精致，带百分比实时数字提示与平滑滑块。
 - **验证**：全部 70 个单元测试通过。
 
+### 1.29.0 Android 版恢复开发（睡眠定时 / 倍速 / Android 增益与歌词 / 正式签名发版）
+
+- **睡眠定时（全平台，`lib/playback/sleep_timer.dart`）**：
+  - `SleepTimerLogic` 纯函数（倒计时 / 10 秒线性淡出 / 曲终拦截判定）+ `SleepTimerEngine` Timer 驱动引擎；
+  - 「播完当前曲停」拦在 `PlaybackController._step` 切歌路径与 `completed` 事件处，下一首绝不起播；
+  - 15/30/60 分钟模式到期前 10 秒线性淡出（压常规音量，不动增益通道），到点暂停并恢复音量；不跨会话持久化；
+  - 播放条新增入口（compact + desktop 双布局），激活态高亮 + 剩余时间 tooltip。
+- **播放倍速（全平台）**：settings 增 `playbackRate`（0.5~2.0 步进 0.1 持久化）；`playAlbum` 换源后自动应用；播放条新增倍速滑条入口（divisions=15 + 恢复 1.0x 快捷键）。
+- **Android 增益真生效（`playback_controller.dart` / `gain_chain.dart`）**：
+  - Android 分支注入 just_audio `AndroidLoudnessEnhancer`（浮点增益域），`dB = 20×log10(g)`（`gainToDb` 纯函数）；
+  - g ≤ 1.0 旁路 `setEnabled(false)`；初始化失败回退 `volume×gain` clamp ≤ 1.0 防削波；
+  - `[gain]` 自检日志仅 `--dart-define=HIKO_GAIN_SELFTEST=1` 门控（模拟器验证：2.0x → db=6.02、1.0x → db=0.00 恰两行；不带 define 计数 0）。
+- **Android 歌词真生效（`Track.lyricsText` / `ImportScanner.kt` / `LyricsResolver`）**：
+  - `Track` 增 `lyricsText` 字段（旧 JSON 无字段 → null，往返兼容）；
+  - `ImportScanner` 导入时读同名 `.lrc/.vtt/.srt`（≤64KB 超限跳过；UTF-8 BOM → UTF-8 → Shift_JIS/GB18030/EUC-JP CJK 评分解码）随专辑事件回传；
+  - `LyricsResolver.resolve` 优先级 0 读 `track.lyricsText`（字段命中不碰磁盘；含 `-->` 判 VTT/SRT 否则 LRC），content:// 音轨从此有歌词。
+- **平台质量**：Android 13+ 首启申请 POST_NOTIFICATIONS（HikoPlugin + main.dart）；cleanMissing 封面 URI 一并探测失效置空（对齐桌面）；importAudioFolder/scanSavedFolder 收进 PlatformService 接口（删 home_screen 的 `as dynamic`）；AGENTS.md 解除 Android 暂停开发。
+- **发版工程**：`~/.hiko/hiko-release.jks` 正式 keystore（随机密码仅存 `android/local.properties`，git 忽略）；release signingConfig；版本 1.29.0+32；apksigner 验证 DN=CN=Hiko。
+- **测试**：flutter test 103 passed + 1 skipped（睡眠定时 fake_async 6 + 倍速往返 1 + gainToDb 3 + 歌词 3）；gradle testDebugUnitTest 12 个（ImportScannerTest 4 新增）；模拟器 app_test / background_test 集成全绿。
+- pubspec 显式声明 `clock`/`fake_async`（均为 flutter_test 已有传递依赖，lock 零变化）。
+
 ### 1.28.0 滑动条无级增益 + af 链浮点软增益与软限幅（根治高增益破音）
 
 - **破音根因与修复（`gain_chain.dart` / `HikoJustAudioMediaKit`）**：

@@ -52,7 +52,10 @@ void main() {
     expect(find.text('雨夜耳语'), findsOneWidget);
 
     // 1.5 音量调节：打开弹层 → 拖动滑条 → 音量变化（回归修复：弹层点击拦截滑条）
-    await tester.tap(find.byTooltip('音量'));
+    // （音量按钮 tooltip 随音量/增益动态变化「音量 80%」等，用前缀匹配定位）
+    final volumeButton = find.byWidgetPredicate(
+        (w) => w is Tooltip && (w.message?.startsWith('音量') ?? false));
+    await tester.tap(volumeButton);
     await tester.pumpAndSettle();
     debugPrint('[test] popover visible: ${find.text('音量').evaluate().isNotEmpty}, '
         'slider count: ${find.byType(Slider).evaluate().length}');
@@ -60,8 +63,9 @@ void main() {
       final box = e.renderObject as RenderBox;
       debugPrint('[test] slider at ${box.localToGlobal(Offset.zero)} size ${box.size}');
     }
-    expect(find.text('音量'), findsOneWidget, reason: '音量弹层应打开');
-    // 弹层打开后有两个 Slider（进度 + 音量），用唯一 Key 定位音量滑条
+    // 弹层打开后有三个 Slider（进度 + 音量 + 增益），用唯一 Key 定位音量滑条
+    expect(find.byKey(const ValueKey('volume-slider')), findsOneWidget,
+        reason: '音量弹层应打开');
     final volumeSlider = find.byKey(const ValueKey('volume-slider'));
     // 先验证 provider 链路本身正常
     await containerOfApp(tester).read(settingsProvider.notifier).setVolume(0.8);
@@ -86,7 +90,7 @@ void main() {
     expect(volumeAfterDrag, lessThan(0.7));
     expect(volumeAfterDrag, greaterThan(0.1));
     // 再点音量按钮关闭弹层
-    await tester.tap(find.byTooltip('音量'));
+    await tester.tap(volumeButton);
     await tester.pumpAndSettle();
 
     // 2. 打开详情抽屉：点击卡片
@@ -94,8 +98,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // 详情应显示：从头播放按钮、RJ 号、曲目
+    // （Android 移动布局中专辑卡片与抽屉同时可见,RJ 号会出现多处）
     expect(find.text('从头播放'), findsOneWidget);
-    expect(find.textContaining('RJ01000112'), findsOneWidget);
+    expect(find.textContaining('RJ01000112'), findsWidgets);
     expect(find.text('01 プロローグ'), findsWidgets);
 
     // 2.5 点击抽屉外区域（主界面）应关闭详情（桌面端遮罩）

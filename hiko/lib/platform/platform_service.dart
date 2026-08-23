@@ -6,9 +6,14 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../data/import_service.dart';
+import '../data/library_store.dart';
 import '../models/album.dart';
 import '../models/track.dart';
 import 'android_platform_service.dart';
+
+/// Android SAF 单树导入结果:事件流式回传的专辑 + 所选 tree URI
+typedef ImportScanResult = ({List<Album> albums, String? treeUri});
 
 /// 平台操作抽象：桌面（macOS/Windows）路径实现；Android 由插件通道实现（M6）。
 abstract class PlatformService {
@@ -27,6 +32,21 @@ abstract class PlatformService {
   /// 批量选择导入文件夹（桌面多选 / Android 返回 null 走 SAF 单树导入）。
   /// 返回 null 表示用户取消。
   Future<List<String>?> pickDirectories();
+
+  /// 导入音频文件夹：
+  /// - Android：SAF 单树导入（事件流式回传），返回专辑与所选 tree URI；
+  /// - 桌面：返回 null（调用方走 [pickDirectories] 多选 + ImportService）。
+  Future<ImportScanResult?> importAudioFolder({
+    void Function(int processed, int total, String phase, String unit)? onProgress,
+  });
+
+  /// 扫描常驻音乐目录：
+  /// - Android：SAF tree URI 经原生插件（事件流式）；
+  /// - 桌面：本地路径文件解析。
+  Future<List<Album>> scanSavedFolder(
+    String folder, {
+    void Function(int processed, int total, String phase, String unit)? onProgress,
+  });
 }
 
 class DesktopPlatformService implements PlatformService {
@@ -161,6 +181,23 @@ class DesktopPlatformService implements PlatformService {
     }
     final path = await getDirectoryPath();
     return path == null ? null : [path];
+  }
+
+  /// 桌面无 SAF:返回 null,调用方走 pickDirectories + ImportService
+  @override
+  Future<ImportScanResult?> importAudioFolder({
+    void Function(int processed, int total, String phase, String unit)? onProgress,
+  }) async => null;
+
+  /// 桌面常驻目录扫描:本地路径文件解析(等价 ImportService.scanPath)
+  @override
+  Future<List<Album>> scanSavedFolder(
+    String folder, {
+    void Function(int processed, int total, String phase, String unit)? onProgress,
+  }) {
+    return ImportService(LibraryStore()).scanPath(folder, onProgress: onProgress == null
+        ? null
+        : (p) => onProgress(p.processed, p.total, p.phase, p.unit));
   }
 }
 

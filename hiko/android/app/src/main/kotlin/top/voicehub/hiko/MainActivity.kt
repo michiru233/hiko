@@ -17,4 +17,13 @@ class MainActivity : AudioServiceActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         plugin.onImportTreeResult(requestCode, resultCode, data)
     }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        plugin.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
 }

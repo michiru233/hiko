@@ -19,4 +19,21 @@ void main() {
       expect(gainAfChain(2.5), contains('volume=volume=2.5'));
     });
   });
+
+  group('gainToDb（Android LoudnessEnhancer 目标增益）', () {
+    test('g ≤ 1.0 返回 0 dB（旁路直通）', () {
+      expect(gainToDb(1.0), 0.0);
+      expect(gainToDb(0.5), 0.0);
+    });
+
+    test('2.0x → 6.02dB、4.0x → 12.04dB（20×log10）', () {
+      expect(gainToDb(2.0), closeTo(6.0206, 0.001));
+      expect(gainToDb(4.0), closeTo(12.0412, 0.001));
+    });
+
+    test('1.0x 与 2.0x 的 dB 差恰为 20×log10(2)≈6.02', () {
+      final diff = gainToDb(2.0) - gainToDb(1.0);
+      expect(diff, closeTo(6.0206, 0.001));
+    });
+  });
 }

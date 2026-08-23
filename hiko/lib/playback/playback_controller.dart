@@ -9,8 +9,10 @@ import '../data/library_provider.dart';
 import '../data/settings_store.dart';
 import '../models/album.dart';
 import '../models/track.dart';
+import 'gain_chain.dart';
 import 'hiko_media_kit_player.dart';
 import 'playback_rules.dart';
+import 'sleep_timer.dart';
 
 /// 播放器状态（UI 直接消费）
 class PlaybackState {
@@ -21,6 +23,8 @@ class PlaybackState {
   final double position; // 秒（当前曲）
   final double duration; // 秒（当前曲）
   final PlaybackMode mode;
+  final SleepTimerMode sleepMode; // 睡眠定时模式（仅内存，不持久化）
+  final Duration? sleepRemaining; // 倒计时剩余（timed 模式）
 
   const PlaybackState({
     this.album,
@@ -30,6 +34,8 @@ class PlaybackState {
     this.position = 0,
     this.duration = 0,
     this.mode = PlaybackMode.list,
+    this.sleepMode = SleepTimerMode.off,
+    this.sleepRemaining,
   });
 
   Track? get currentTrack =>
@@ -43,6 +49,8 @@ class PlaybackState {
     double? position,
     double? duration,
     PlaybackMode? mode,
+    SleepTimerMode? sleepMode,
+    Duration? sleepRemaining,
   }) =>
       PlaybackState(
         album: album ?? this.album,
@@ -52,6 +60,8 @@ class PlaybackState {
         position: position ?? this.position,
         duration: duration ?? this.duration,
         mode: mode ?? this.mode,
+        sleepMode: sleepMode ?? this.sleepMode,
+        sleepRemaining: sleepRemaining ?? this.sleepRemaining,
       );
 }
 
@@ -80,7 +90,6 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     });
     unawaited(_gainSelfTest());
   }
-
   /// 发布验收自检（仅 --dart-define=HIKO_GAIN_SELFTEST=1 时运行，默认不生效）：
   /// 先加载 0.2s 静音激活引擎（just_audio 惰性创建 native player），
   /// 再依次应用 2.0x / 1.0x 增益，用 [gain] 日志验证 af 链读回与常规音量隔离。
@@ -136,13 +145,65 @@ class PlaybackController extends StateNotifier<PlaybackState> {
   }
 
   final Ref _ref;
-  final AudioPlayer _player = AudioPlayer();
+  /// Android 端增益:just_audio AndroidLoudnessEnhancer(浮点增益域);
+  /// 桌面端走 HikoJustAudioMediaKit af 链,不注入该效果。
+  final AndroidLoudnessEnhancer _loudness = AndroidLoudnessEnhancer();
+  late final AudioPlayer _player = Platform.isAndroid
+      ? AudioPlayer(audioPipeline: AudioPipeline(androidAudioEffects: [_loudness]))
+      : AudioPlayer();
+  final SleepTimerEngine _sleep = SleepTimerEngine();
   double? _pendingSeek;
   double _lastPersistAt = 0;
   bool _isSwitching = false;
   int _playSessionId = 0;
+  bool _androidEnhancerUsable = true; // LoudnessEnhancer 初始化失败后置 false 走回退
 
   AudioPlayer get player => _player;
+
+  /// 睡眠定时淡出:剩余时间与淡出系数 → 压低常规音量(不动增益通道)
+  void _onSleepTick(Duration remaining, double fadeFactor) {
+    state = state.copyWith(
+      sleepMode: _sleep.state.mode,
+      sleepRemaining: remaining,
+    );
+    final vol =
+        (_ref.read(settingsProvider).volume * fadeFactor).clamp(0.0, 1.0);
+    _player.setVolume(vol).catchError((Object e) {
+      debugPrint('[sleep] 淡出设置音量失败（容忍）: $e');
+      return;
+    });
+  }
+
+  /// 睡眠定时到点:暂停并恢复常规音量
+  Future<void> _onSleepExpired() async {
+    await pause();
+    await syncVolume();
+    state = state.copyWith(sleepMode: SleepTimerMode.off, sleepRemaining: null);
+  }
+
+  /// 启动睡眠定时(分钟数:15/30/60);到期前 10 秒淡出,到点暂停
+  Future<void> setSleepMinutes(int minutes) async {
+    _sleep.onTick = _onSleepTick;
+    _sleep.onExpired = _onSleepExpired;
+    _sleep.startTimed(minutes);
+    state = state.copyWith(sleepMode: SleepTimerMode.timed);
+  }
+
+  /// 播完当前曲停:拦截在切歌路径,下一首绝不起播
+  void setSleepEndOfTrack() {
+    _sleep.startEndOfTrack();
+    state = state.copyWith(
+      sleepMode: SleepTimerMode.endOfTrack,
+      sleepRemaining: null,
+    );
+  }
+
+  /// 关闭睡眠定时并恢复常规音量
+  Future<void> setSleepOff() async {
+    _sleep.cancel();
+    state = state.copyWith(sleepMode: SleepTimerMode.off, sleepRemaining: null);
+    await syncVolume();
+  }
 
   /// 播放指定专辑的第 index 首（对应旧版 chooseImported）
   Future<void> playAlbum(Album album, {int index = 0}) async {
@@ -181,6 +242,8 @@ class PlaybackController extends StateNotifier<PlaybackState> {
           .timeout(const Duration(seconds: 8));
       if (_playSessionId != currentSession) return;
       await syncVolume();
+      if (_playSessionId != currentSession) return;
+      await _applyPlaybackRate();
       if (_playSessionId != currentSession) return;
       await _player.play();
     } catch (e) {
@@ -227,18 +290,59 @@ class PlaybackController extends StateNotifier<PlaybackState> {
   }
 
   /// 音量与增益同步（两者通道分离）：
-  /// - 常规音量走 just_audio setVolume（0~1，映射 mpv volume 0~100）；
-  /// - 增益走 af 链浮点软增益 + 软限幅（mpv volume clamp 130 会硬削波，不再相乘）
+  /// - 桌面：常规音量走 just_audio setVolume（0~1）；增益走 af 链浮点软增益 + 软限幅
+  /// - Android：增益首选 AndroidLoudnessEnhancer（dB=20×log10(g)，浮点域无削波）；
+  ///   不可用时回退 volume×gain 且 clamp≤1.0 防削波；g=1.0 旁路（禁用效果器）
   Future<void> syncVolume({double? baseVolume, double? gain}) async {
     final settings = _ref.read(settingsProvider);
     final vol = (baseVolume ?? settings.volume).clamp(0.0, 1.0);
     final g = (gain ?? settings.audioGain).clamp(1.0, 4.0);
+    if (Platform.isAndroid) {
+      await _syncVolumeAndroid(vol, g);
+      return;
+    }
     try {
       await _player.setVolume(vol);
     } catch (e) {
       debugPrint('[playback] syncVolume 失败（容忍）: $e');
     }
     await HikoJustAudioMediaKit.setGlobalGain(g);
+  }
+
+  /// Android 音量+增益：LoudnessEnhancer 成功路径打 [gain] 自检日志（仅 define 门控）
+  Future<void> _syncVolumeAndroid(double vol, double g) async {
+    if (_androidEnhancerUsable) {
+      try {
+        if (g <= 1.0) {
+          await _loudness.setEnabled(false); // 旁路直通
+        } else {
+          await _loudness.setEnabled(true);
+          await _loudness.setTargetGain(gainToDb(g));
+        }
+        await _player.setVolume(vol);
+        _logGainSelftest(
+            'via=loudness gain=${g.toStringAsFixed(1)}x db=${gainToDb(g).toStringAsFixed(2)} volume=${vol.toStringAsFixed(2)}');
+        return;
+      } catch (e) {
+        _androidEnhancerUsable = false;
+        debugPrint('[playback] AndroidLoudnessEnhancer 不可用,回退 volume×gain clamp: $e');
+      }
+    }
+    // 回退路径:常规音量与增益相乘后 clamp 0~1,宁可压顶也不硬削波
+    final effective = (vol * g).clamp(0.0, 1.0);
+    try {
+      await _player.setVolume(effective);
+    } catch (e) {
+      debugPrint('[playback] syncVolume 回退失败（容忍）: $e');
+    }
+    _logGainSelftest(
+        'via=fallback gain=${g.toStringAsFixed(1)}x effective=${effective.toStringAsFixed(2)}');
+  }
+
+  /// 增益自检日志：仅 --dart-define=HIKO_GAIN_SELFTEST=1 时输出（非常驻打印）
+  void _logGainSelftest(String message) {
+    if (const String.fromEnvironment('HIKO_GAIN_SELFTEST') != '1') return;
+    debugPrint('[gain] $message');
   }
 
   /// 音量设置：播放器未加载/初始化失败时容忍（UI 音量状态仍由 settings 管理）
@@ -251,12 +355,39 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     await syncVolume(gain: gain);
   }
 
+  /// 播放倍速（0.5~2.0）：持久化到 settings 并立即应用
+  Future<void> setPlaybackRate(double rate) async {
+    await _ref.read(settingsProvider.notifier).setPlaybackRate(rate);
+    await _applyPlaybackRate();
+  }
+
+  /// 应用当前设置中的倍速到引擎（换源/设置变更后调用）
+  Future<void> _applyPlaybackRate() async {
+    final rate = _ref.read(settingsProvider).playbackRate;
+    try {
+      await _player.setSpeed(rate);
+    } catch (e) {
+      debugPrint('[playback] 设置倍速失败（容忍）: $e');
+    }
+  }
+
   Future<void> setMode(PlaybackMode mode) async {
     state = state.copyWith(mode: mode);
   }
 
   /// 切曲（对应旧版 stepTrack 逻辑）
   Future<void> _step(int dir) async {
+    // 睡眠定时拦截在切歌路径：「播完当前曲停」/ 倒计时已到点 → 停止,下一首绝不起播
+    if (SleepTimerLogic.shouldBlockTrackSwitch(_sleep.state)) {
+      _sleep.cancel();
+      state = state.copyWith(
+        sleepMode: SleepTimerMode.off,
+        sleepRemaining: null,
+      );
+      await pause();
+      await syncVolume();
+      return;
+    }
     final s = state;
     final album = s.album;
     if (album == null) return;
@@ -278,6 +409,11 @@ class PlaybackController extends StateNotifier<PlaybackState> {
 
     // 播放完成：单曲循环重播，否则按模式切下一首（对应旧版 ended 处理）
     if (ps == ProcessingState.completed) {
+      if (SleepTimerLogic.shouldBlockTrackSwitch(_sleep.state)) {
+        // 睡眠定时(曲终停/已到点):拦在切歌前,当前曲播完即停
+        _step(0);
+        return;
+      }
       if (state.mode == PlaybackMode.single) {
         _player.seek(Duration.zero);
         _player.play();
@@ -310,6 +446,7 @@ class PlaybackController extends StateNotifier<PlaybackState> {
 
   @override
   void dispose() {
+    _sleep.dispose();
     _player.dispose();
     super.dispose();
   }

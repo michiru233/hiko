@@ -3,8 +3,6 @@
 本仓库是 Kikoeru 音声管理器。**当前主线：Flutter 重写（`hiko/` 子目录，覆盖 macOS + Android + Windows）**。
 仓库根目录保留旧版 Electron + Capacitor 共享 UI 代码（macOS/Web + Android），仅作参考，**新功能一律写进 `hiko/`**。
 
-> **⚠️ Android 端暂停开发**：在用户明确声明恢复之前，**不要做任何 Android 端的改动**，包括 `hiko/android/`、`hiko/lib/platform/android_platform_service.dart`、旧版 Android Capacitor 代码（`android/` `bridge/`）。新任务默认只关注 macOS 桌面端（及 Windows 兼容代码）。
-
 ## Flutter 版（当前主线）
 
 ```bash

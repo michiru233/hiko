@@ -1,7 +1,15 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// local.properties（不进 git）：sdk.dir / flutter.sdk / hiko 发布签名信息
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
 }
 
 android {
@@ -29,11 +37,27 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            val ksPath = keystoreProps.getProperty("hiko.keystore.path")
+            if (ksPath != null) {
+                storeFile = file(ksPath)
+                storePassword = keystoreProps.getProperty("hiko.keystore.password")
+                keyAlias = keystoreProps.getProperty("hiko.key.alias")
+                keyPassword = keystoreProps.getProperty("hiko.key.password")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // 发布签名：keystore 在 ~/.hiko/hiko-release.jks，凭据存 local.properties（git 忽略）。
+            // 未配置时回退 debug 签名（仅本地开发兜底，Release 发版必须有正式签名）。
+            signingConfig = if (keystoreProps.getProperty("hiko.keystore.path") != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

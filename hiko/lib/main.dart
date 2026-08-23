@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/categories_provider.dart';
@@ -44,10 +46,25 @@ Future<void> main() async {
     );
   }
 
+  // Android 13+：首启申请通知权限（已授予/低版本为 no-op,不阻塞启动）
+  if (Platform.isAndroid) {
+    unawaited(_requestNotificationPermission());
+  }
+
   runApp(UncontrolledProviderScope(
     container: container,
     child: const HikoApp(),
   ));
+}
+
+/// 播放通知权限（Android 13+ 运行时申请;移植旧版 KikoeruPlugin 行为）
+Future<void> _requestNotificationPermission() async {
+  try {
+    await const MethodChannel('top.voicehub.hiko/plugin')
+        .invokeMethod('requestNotificationPermission');
+  } catch (e) {
+    debugPrint('[permission] 通知权限申请失败（容忍）: $e');
+  }
 }
 
 class HikoApp extends ConsumerWidget {

@@ -10,6 +10,7 @@ import androidx.documentfile.provider.DocumentFile
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.nio.charset.Charset
 import java.security.MessageDigest
 import java.util.concurrent.Executors
@@ -22,12 +23,17 @@ object ImportScanner {
 
     private val AUDIO_EXTS = setOf("mp3", "m4a", "wav", "flac", "ogg", "aac", "opus", "webm")
     private val IMAGE_EXTS = setOf("jpg", "jpeg", "png", "webp", "gif")
+    private val LYRIC_EXTS = setOf("lrc", "vtt", "srt")
     private val RJ_REGEX = Regex("RJ\\d{5,}", RegexOption.IGNORE_CASE)
     // DLsite 下载目录命名约定：RJxxxxxx_作品名（RJ 前缀可能带 _ - 空格）
     private val RJ_TITLE_REGEX = Regex("""^RJ\d{5,}[_\- ]+(.+)$""", RegexOption.IGNORE_CASE)
 
+    /** 单曲歌词文本上限:64KB,超限直接跳过(防巨型文件拖垮导入) */
+    const val LYRIC_MAX_BYTES = 64L * 1024
+
     fun isAudio(name: String?): Boolean = name?.substringAfterLast('.', "")?.lowercase() in AUDIO_EXTS
     fun isImage(name: String?): Boolean = name?.substringAfterLast('.', "")?.lowercase() in IMAGE_EXTS
+    fun isLyric(name: String?): Boolean = name?.substringAfterLast('.', "")?.lowercase() in LYRIC_EXTS
 
     /** 与桌面 stableId 同源：sha1(path) 前 16 位十六进制 */
     fun stableId(value: String): String {
@@ -343,6 +349,58 @@ object ImportScanner {
 
     // ============ 文件级扫描（v1.11：并行解析 + 标签/文件夹混合分组）============
 
+    // ============ 歌词 sidecar 读取(v1.29:同名 .lrc/.vtt/.srt ≤64KB,随专辑事件回传)============
+
+    /** 读取歌词流:超 64KB 跳过;多编码还原(UTF-8 → Shift_JIS/GB18030/EUC-JP 评分) */
+    fun readLyricText(input: InputStream, length: Long): String? {
+        if (length > LYRIC_MAX_BYTES) return null
+        val bytes = try {
+            input.readBytes()
+        } catch (_: Exception) {
+            return null
+        }
+        if (bytes.isEmpty() || bytes.size > LYRIC_MAX_BYTES) return null
+        return decodeLyricText(bytes)
+    }
+
+    /** 歌词文本多编码解码:UTF-8 BOM → UTF-8(合法即用) → 候选字符集按 CJK 评分 */
+    fun decodeLyricText(bytes: ByteArray): String? {
+        if (bytes.size >= 3 &&
+            bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()
+        ) {
+            return String(bytes, 3, bytes.size - 3, Charsets.UTF_8)
+        }
+        val utf8 = String(bytes, Charsets.UTF_8) // JVM 默认 REPLACE 容错
+        if (!utf8.contains('�')) return utf8
+        var best: String? = null
+        var bestScore = 0
+        for (name in listOf("Shift_JIS", "GB18030", "EUC-JP")) {
+            val candidate = String(bytes, Charset.forName(name))
+            var score = 0
+            for (ch in candidate) {
+                score += when (ch.code) {
+                    in 0x3040..0x30FF, in 0xFF61..0xFF9F -> 3  // 假名
+                    in 0x4E00..0x9FFF -> 2                     // 汉字
+                    0xFFFD -> -5                               // 替换符 = 解码劣迹
+                    else -> 0
+                }
+            }
+            if (score > bestScore) {
+                best = candidate
+                bestScore = score
+            }
+        }
+        return best ?: utf8
+    }
+
+    /** 目录内查找与音频同名的歌词文件(01.mp3 → 01.lrc/01.vtt/01.srt,大小写不敏感) */
+    fun findLyricFor(files: List<DocumentFile>?, audioName: String): DocumentFile? {
+        val stem = audioName.substringBeforeLast('.').lowercase()
+        return files?.firstOrNull { doc ->
+            doc.name?.substringBeforeLast('.')?.lowercase() == stem && isLyric(doc.name)
+        }
+    }
+
     /** 单文件解析结果 */
     class FileMeta(
         val uri: String,
@@ -400,6 +458,7 @@ object ImportScanner {
         data class Entry(val file: DocumentFile, val dir: DocumentFile)
         val entries = mutableListOf<Entry>()
         val dirImages = HashMap<String, MutableList<DocumentFile>>()
+        val dirLyrics = HashMap<String, MutableList<DocumentFile>>()
         fun walk(dir: DocumentFile) {
             for (f in dir.listFiles()) {
                 if (f.name?.startsWith(".") == true) continue
@@ -407,6 +466,8 @@ object ImportScanner {
                 else if (f.isFile && isAudio(f.name)) entries.add(Entry(f, dir))
                 else if (f.isFile && isImage(f.name)) {
                     dirImages.getOrPut(dir.uri.toString()) { mutableListOf() }.add(f)
+                } else if (f.isFile && isLyric(f.name)) {
+                    dirLyrics.getOrPut(dir.uri.toString()) { mutableListOf() }.add(f)
                 }
             }
         }
@@ -439,7 +500,7 @@ object ImportScanner {
             val built = mutableListOf<JSONObject>()
             val groupEntries = groups.entries.toList()
             groupEntries.forEachIndexed { index, (key, files) ->
-                buildAlbumFromFiles(context, key, files, dirImages)?.let {
+                buildAlbumFromFiles(context, key, files, dirImages, dirLyrics)?.let {
                     built.add(it)
                     onProgress(index + 1, groupEntries.size, "albums", it)
                 }
@@ -454,7 +515,8 @@ object ImportScanner {
         context: Context,
         key: String,
         files: List<FileMeta>,
-        dirImages: Map<String, MutableList<DocumentFile>>
+        dirImages: Map<String, MutableList<DocumentFile>>,
+        dirLyrics: Map<String, MutableList<DocumentFile>> = emptyMap()
     ): JSONObject? {
         if (files.isEmpty()) return null
         val sorted = files.sortedWith { a, b ->
@@ -485,6 +547,16 @@ object ImportScanner {
             val name = m.title?.takeIf { !looksGarbled(it) && it.isNotBlank() }
                 ?: m.fileName.substringBeforeLast('.')
                 ?: "Track ${index + 1}"
+            // 同名歌词 sidecar(≤64KB,超限/损坏跳过,绝不影响导入)
+            val lyricText = try {
+                findLyricFor(dirLyrics[m.dirUri], m.fileName)?.let { doc ->
+                    context.contentResolver.openInputStream(doc.uri)?.use {
+                        readLyricText(it, doc.length())
+                    }
+                }
+            } catch (_: Exception) {
+                null
+            }
             tracks.put(
                 JSONObject()
                     .put("index", index)
@@ -492,6 +564,7 @@ object ImportScanner {
                     .put("url", m.uri)
                     .put("duration", m.duration)
                     .put("cover", m.cover)
+                    .put("lyricsText", lyricText)
             )
             totalDuration += m.duration
         }

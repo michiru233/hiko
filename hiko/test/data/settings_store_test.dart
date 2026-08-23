@@ -49,4 +49,25 @@ void main() {
     await notifier.setAudioGain(5.0);
     expect(notifier.state.audioGain, 4.0);
   });
+
+  test('播放倍速:默认 1.0 + 0.5/1.0/2.0 持久化往返 + 范围限制', () async {
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.playbackRate, 1.0);
+
+    // 0.5 / 1.0 / 2.0 依次设置并逐一验证重启往返
+    for (final rate in [0.5, 1.0, 2.0]) {
+      await notifier.setPlaybackRate(rate);
+      expect(notifier.state.playbackRate, rate);
+      final reloaded = SettingsNotifier();
+      await reloaded.load();
+      expect(reloaded.state.playbackRate, rate);
+    }
+
+    // 边界限制 0.5 ~ 2.0
+    await notifier.setPlaybackRate(0.2);
+    expect(notifier.state.playbackRate, 0.5);
+    await notifier.setPlaybackRate(3.0);
+    expect(notifier.state.playbackRate, 2.0);
+  });
 }

@@ -10,7 +10,8 @@ class AndroidPlatformService implements PlatformService {
   static const _channel = MethodChannel('top.voicehub.hiko/plugin');
 
   /// SAF 目录选择 + 扫描；返回新专辑列表与所选目录 tree URI（未落盘，由调用方 merge+save）
-  Future<({List<Album> albums, String? treeUri})> importAudioFolder({
+  @override
+  Future<ImportScanResult> importAudioFolder({
     void Function(int processed, int total, String phase, String unit)? onProgress,
   }) async {
     final albums = <Album>[];
@@ -48,6 +49,7 @@ class AndroidPlatformService implements PlatformService {
   }
 
   /// 扫描已授权的常驻音乐目录（SAF tree URI），事件流与导入一致，不弹选择器
+  @override
   Future<List<Album>> scanSavedFolder(String treeUri,
       {void Function(int processed, int total, String phase, String unit)? onProgress}) async {
     final albums = <Album>[];
@@ -112,25 +114,49 @@ class AndroidPlatformService implements PlatformService {
   @override
   Future<List<Album>> cleanMissing(List<Album> albums) async {
     final allTracks = [for (final a in albums) for (final t in a.tracks) t];
-    if (allTracks.isEmpty) return albums;
+    // 封面 URI 一并探测(对齐桌面:file://content:// 可探测,dataURL 内嵌永不失效不探测)
+    final coverUris = [
+      for (final a in albums)
+        if (a.localCover != null && _probeableUri(a.localCover!)) a.localCover!,
+    ];
+    if (allTracks.isEmpty && coverUris.isEmpty) return albums;
     final result = Map<String, dynamic>.from(await _channel.invokeMethod(
       'probeUris',
-      {'uris': [for (final t in allTracks) t.url]},
+      {
+        'uris': [
+          for (final t in allTracks) t.url,
+          ...coverUris,
+        ],
+      },
     ) as Map);
     final aliveFlags = (result['alive'] as List).cast<bool>();
+    final probeList = [for (final t in allTracks) t.url, ...coverUris];
     final aliveByUrl = <String, bool>{
-      for (var i = 0; i < allTracks.length; i++) allTracks[i].url: aliveFlags[i],
+      for (var i = 0; i < probeList.length; i++) probeList[i]: aliveFlags[i],
     };
     final kept = <Album>[];
     for (final album in albums) {
       final alive = album.tracks
           .where((t) => aliveByUrl[t.url] ?? true)
           .toList();
+      // 封面失效 → 置空(与音轨探测同一批返回,对齐 desktop platform_service 行为)
+      var localCover = album.localCover;
+      if (localCover != null &&
+          _probeableUri(localCover) &&
+          !(aliveByUrl[localCover] ?? true)) {
+        localCover = null;
+      }
       if (alive.isEmpty && album.tracks.isNotEmpty) continue; // 整张失效
-      kept.add(alive.length == album.tracks.length
-          ? album
-          : album.copyWith(tracks: alive));
+      if (alive.length == album.tracks.length && localCover == album.localCover) {
+        kept.add(album);
+      } else {
+        kept.add(album.copyWith(tracks: alive, localCover: localCover));
+      }
     }
     return kept;
   }
+
+  /// 可探测的 URI 形态:SAF content:// 与本地 file://;dataURL 无磁盘实体
+  static bool _probeableUri(String uri) =>
+      uri.startsWith('content://') || uri.startsWith('file://');
 }

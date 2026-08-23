@@ -8,6 +8,7 @@ import '../../lyrics/desktop_lyrics_service.dart';
 import '../../models/album.dart';
 import '../../playback/playback_controller.dart';
 import '../../playback/playback_rules.dart';
+import '../../playback/sleep_timer.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
 
@@ -30,9 +31,13 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
   bool _dragging = false;
   double _dragValue = 0;
   double? _gainDrag; // 增益滑动条拖动中的临时值（松手才提交）
+  double? _rateDrag; // 倍速滑动条拖动中的临时值（松手才提交）
 
   /// 归一到一位小数并夹在 1.0~4.0，避免 divisions 步进的浮点尾差
   double _snapGain(double v) => ((v * 10).round() / 10).clamp(1.0, 4.0).toDouble();
+
+  /// 倍速归一位小数并夹在 0.5~2.0
+  double _snapRate(double v) => ((v * 10).round() / 10).clamp(0.5, 2.0).toDouble();
 
   @override
   Widget build(BuildContext context) {
@@ -44,24 +49,30 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
 
     final position = _dragging ? _dragValue : state.position;
     final duration = state.duration;
+    // compact(移动端窄屏)压缩间距与按钮密度,容纳睡眠定时/倍速两个新入口
+    final gap = widget.compact ? 6.0 : 12.0;
 
     final topRow = Row(
       children: [
         _buildCover(theme, album),
-        const SizedBox(width: 12),
+        SizedBox(width: widget.compact ? 8 : 12),
         // compact 窄屏：meta 必须弹性收缩，否则溢出
         widget.compact
             ? Expanded(child: _buildMeta(theme, state, album, track))
             : _buildMeta(theme, state, album, track),
-        const SizedBox(width: 10),
+        SizedBox(width: widget.compact ? 8 : 10),
         _buildControls(theme, state),
         const Spacer(),
         _buildModeButton(theme, state),
-        const SizedBox(width: 12),
+        SizedBox(width: gap),
+        _buildSleepButton(theme, state),
+        SizedBox(width: gap),
+        _buildSpeedButton(theme, settings),
         if (Platform.isMacOS) ...[
+          SizedBox(width: widget.compact ? 6 : 12),
           _buildDesktopLyricsButton(theme),
-          const SizedBox(width: 12),
         ],
+        SizedBox(width: gap),
         _buildVolumeButton(theme, settings),
       ],
     );
@@ -91,6 +102,10 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
                 Expanded(child: _buildTimeline(theme, position, duration)),
                 const SizedBox(width: 18),
                 _buildModeButton(theme, state),
+                const SizedBox(width: 14),
+                _buildSleepButton(theme, state),
+                const SizedBox(width: 14),
+                _buildSpeedButton(theme, settings),
                 if (Platform.isMacOS) ...[
                   const SizedBox(width: 14),
                   _buildDesktopLyricsButton(theme),
@@ -163,6 +178,7 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
 
   // ---- 播放控制（Material 图标，两端视觉统一；文字符号在部分 Android 字体渲染异常）----
   Widget _buildControls(ThemeData theme, PlaybackState state) {
+    final gap = widget.compact ? 8.0 : 12.0;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -171,13 +187,13 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
           tooltip: '上一首',
           onPressed: state.album == null ? null : () => ref.read(playbackProvider.notifier).prev(),
         ),
-        const SizedBox(width: 12),
+        SizedBox(width: gap),
         _PlayButton(
           playing: state.playing,
           size: widget.compact ? 38 : 32,
           onPressed: state.album == null ? null : () => ref.read(playbackProvider.notifier).toggle(),
         ),
-        const SizedBox(width: 12),
+        SizedBox(width: gap),
         _IconButton(
           icon: Icons.skip_next_rounded,
           tooltip: '下一首',
@@ -265,6 +281,7 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
             ? '音量 ${(settings.volume * 100).round()}% · 增益 ${settings.audioGain.toStringAsFixed(1)}x'
             : '音量 ${(settings.volume * 100).round()}%',
         iconSize: 18,
+        visualDensity: widget.compact ? VisualDensity.compact : null,
         color: isBoosted ? theme.colorScheme.primary : theme.hintColor,
         icon: Stack(
           alignment: Alignment.center,
@@ -406,6 +423,185 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
       ],
     );
   }
+  // ---- 睡眠定时按钮（菜单：关闭 / 15/30/60 分钟 / 播完当前曲）----
+  Widget _buildSleepButton(ThemeData theme, PlaybackState state) {
+    final active = state.sleepMode != SleepTimerMode.off;
+    final remainingLabel = state.sleepRemaining == null
+        ? null
+        : formatTime(state.sleepRemaining!.inSeconds.toDouble());
+    final tooltip = switch (state.sleepMode) {
+      SleepTimerMode.off => '睡眠定时（关闭）',
+      SleepTimerMode.timed =>
+        '睡眠定时：剩余 ${remainingLabel ?? '--'}（到期淡出停止）',
+      SleepTimerMode.endOfTrack => '睡眠定时：播完当前曲停止',
+    };
+    return MenuAnchor(
+      style: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(theme.colorScheme.surface),
+        side: WidgetStatePropertyAll(BorderSide(color: theme.dividerColor)),
+        shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+        padding: const WidgetStatePropertyAll(EdgeInsets.all(8)),
+        elevation: const WidgetStatePropertyAll(12),
+      ),
+      builder: (context, controller, child) => IconButton(
+        onPressed: () => controller.isOpen ? controller.close() : controller.open(),
+        tooltip: tooltip,
+        iconSize: 18,
+        visualDensity: widget.compact ? VisualDensity.compact : null,
+        color: active ? theme.colorScheme.primary : theme.hintColor,
+        icon: const Icon(Icons.bedtime_rounded),
+      ),
+      menuChildren: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+          child: Text('睡眠定时',
+              style: TextStyle(fontSize: 9, letterSpacing: 1, color: theme.hintColor)),
+        ),
+        if (state.sleepMode == SleepTimerMode.timed && remainingLabel != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+            child: Text(
+              '剩余 $remainingLabel，到期前 10 秒淡出',
+              style: TextStyle(fontSize: 9, color: theme.colorScheme.primary),
+            ),
+          ),
+        _sleepOption(theme, '关闭', state.sleepMode == SleepTimerMode.off, () {
+          ref.read(playbackProvider.notifier).setSleepOff();
+        }),
+        for (final m in const [15, 30, 60])
+          _sleepOption(
+            theme,
+            '$m 分钟',
+            state.sleepMode == SleepTimerMode.timed,
+            () => ref.read(playbackProvider.notifier).setSleepMinutes(m),
+          ),
+        _sleepOption(theme, '播完当前曲', state.sleepMode == SleepTimerMode.endOfTrack, () {
+          ref.read(playbackProvider.notifier).setSleepEndOfTrack();
+        }),
+      ],
+    );
+  }
+
+  Widget _sleepOption(ThemeData theme, String label, bool active, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      mouseCursor: SystemMouseCursors.click,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        decoration: BoxDecoration(
+          color: active ? theme.colorScheme.primaryContainer : null,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: active ? theme.colorScheme.primary : theme.colorScheme.onSurface)),
+      ),
+    );
+  }
+
+  // ---- 倍速按钮（0.5~2.0 步进 0.1，持久化）----
+  Widget _buildSpeedButton(ThemeData theme, AppSettings settings) {
+    final active = settings.playbackRate != 1.0;
+    return MenuAnchor(
+      alignmentOffset: const Offset(-12, -8),
+      style: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(theme.colorScheme.surface),
+        side: WidgetStatePropertyAll(BorderSide(color: theme.dividerColor)),
+        shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+        padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(vertical: 10, horizontal: 12)),
+        elevation: const WidgetStatePropertyAll(14),
+      ),
+      builder: (context, controller, child) => IconButton(
+        onPressed: () => controller.isOpen ? controller.close() : controller.open(),
+        tooltip: '播放倍速 ${settings.playbackRate.toStringAsFixed(1)}x',
+        iconSize: 18,
+        visualDensity: widget.compact ? VisualDensity.compact : null,
+        color: active ? theme.colorScheme.primary : theme.hintColor,
+        icon: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            const Icon(Icons.speed_rounded),
+            if (active)
+              Positioned(
+                right: -6,
+                bottom: -3,
+                child: Text(
+                  '${settings.playbackRate.toStringAsFixed(1)}x',
+                  style: TextStyle(
+                    fontSize: 7,
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.primary,
+                    height: 1.0,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+      menuChildren: [
+        SizedBox(
+          width: 170,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '播放倍速 x${(_rateDrag ?? settings.playbackRate).toStringAsFixed(1)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 4,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                ),
+                child: Slider(
+                  key: const ValueKey('rate-slider-player-bar'),
+                  min: 0.5,
+                  max: 2.0,
+                  divisions: 15,
+                  value: (_rateDrag ?? settings.playbackRate).clamp(0.5, 2.0),
+                  label: 'x${(_rateDrag ?? settings.playbackRate).toStringAsFixed(1)}',
+                  onChanged: (v) => setState(() => _rateDrag = _snapRate(v)),
+                  onChangeEnd: (v) {
+                    final r = _snapRate(v);
+                    setState(() => _rateDrag = null);
+                    ref.read(playbackProvider.notifier).setPlaybackRate(r);
+                  },
+                ),
+              ),
+              const SizedBox(height: 2),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('0.5x', style: TextStyle(fontSize: 9, color: theme.hintColor)),
+                  InkWell(
+                    onTap: () => ref.read(playbackProvider.notifier).setPlaybackRate(1.0),
+                    mouseCursor: SystemMouseCursors.click,
+                    child: Text('恢复 1.0x',
+                        style: TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.primary)),
+                  ),
+                  Text('2.0x', style: TextStyle(fontSize: 9, color: theme.hintColor)),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   // ---- 桌面置顶歌词按钮 ----
   Widget _buildDesktopLyricsButton(ThemeData theme) {
     final status = ref.watch(desktopLyricsProvider);

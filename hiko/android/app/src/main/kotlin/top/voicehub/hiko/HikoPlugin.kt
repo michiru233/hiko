@@ -1,8 +1,13 @@
 package top.voicehub.hiko
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
 import io.flutter.embedding.engine.FlutterEngine
@@ -23,11 +28,13 @@ class HikoPlugin : MethodChannel.MethodCallHandler {
     companion object {
         const val CHANNEL = "top.voicehub.hiko/plugin"
         private const val REQ_IMPORT_TREE = 1001
+        private const val REQ_POST_NOTIFICATIONS = 1002
     }
 
     private var channel: MethodChannel? = null
     private var activity: Activity? = null
     private var pendingImport: MethodChannel.Result? = null
+    private var pendingPermission: MethodChannel.Result? = null
 
     fun register(activity: Activity, engine: FlutterEngine) {
         this.activity = activity
@@ -45,8 +52,51 @@ class HikoPlugin : MethodChannel.MethodCallHandler {
             "probeUris" -> probeUris(call, result)
             "revealInFolder" -> revealInFolder(call, result)
             "shareLibrary" -> shareLibrary(result)
+            "requestNotificationPermission" -> requestNotificationPermission(result)
             else -> result.notImplemented()
         }
+    }
+
+    // ---- 通知权限（Android 13+ 运行时申请,移植旧版 KikoeruPlugin 行为）----
+
+    /** 申请 POST_NOTIFICATIONS:已授予/低版本直接回 true,否则弹系统对话框 */
+    private fun requestNotificationPermission(result: MethodChannel.Result) {
+        val activity = activity
+        if (activity == null) {
+            result.error("no-activity", "Activity 未就绪", null)
+            return
+        }
+        if (Build.VERSION.SDK_INT < 33) {
+            result.success(mapOf("granted" to true, "skipped" to true))
+            return
+        }
+        val granted = ContextCompat.checkSelfPermission(
+            activity, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            result.success(mapOf("granted" to true))
+            return
+        }
+        pendingPermission = result
+        ActivityCompat.requestPermissions(
+            activity,
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            REQ_POST_NOTIFICATIONS,
+        )
+    }
+
+    /** MainActivity.onRequestPermissionsResult 转发 */
+    fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        if (requestCode != REQ_POST_NOTIFICATIONS) return
+        val result = pendingPermission ?: return
+        pendingPermission = null
+        val granted = grantResults.isNotEmpty() &&
+            grantResults[0] == PackageManager.PERMISSION_GRANTED
+        result.success(mapOf("granted" to granted))
     }
 
     /** 扫描已授权的音乐目录（常驻目录自动扫描用） */

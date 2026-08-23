@@ -21,6 +21,13 @@ class LyricsResolver {
 
   /// 为指定音轨和专辑解析歌词
   static Future<ParsedLyrics?> resolve(Track track, {Album? album}) async {
+    // 优先级 0:导入时随专辑事件回传的歌词全文(Android SAF 场景,content:// URL
+    // 无法映射到本地路径)。字段命中不碰磁盘。
+    final embedded = track.lyricsText;
+    if (embedded != null && embedded.trim().isNotEmpty) {
+      return _parseLyricContent(embedded);
+    }
+
     final trackPath = _resolveLocalFilePath(track.url);
     if (trackPath == null) return null;
 
@@ -31,17 +38,20 @@ class LyricsResolver {
       final bytes = await lyricFile.readAsBytes();
       final decodedText = decodeBytesSafely(bytes);
       if (decodedText == null || decodedText.trim().isEmpty) return null;
-
-      final ext = p.extension(lyricFile.path).toLowerCase();
-      if (ext == '.vtt' || ext == '.srt') {
-        return VttParser.parse(decodedText, sourceFilePath: lyricFile.path);
-      } else {
-        return LrcParser.parse(decodedText, sourceFilePath: lyricFile.path);
-      }
+      return _parseLyricContent(decodedText, sourceFilePath: lyricFile.path);
     } catch (e) {
       debugPrint('[LyricsResolver] 解析歌词失败 ${lyricFile.path}: $e');
       return null;
     }
+  }
+
+  /// 按内容形态分派解析器:含 '-->' 时间轴行为 VTT/SRT,否则按 LRC
+  static ParsedLyrics? _parseLyricContent(String text, {String? sourceFilePath}) {
+    if (text.trim().isEmpty) return null;
+    if (text.contains('-->')) {
+      return VttParser.parse(text, sourceFilePath: sourceFilePath);
+    }
+    return LrcParser.parse(text, sourceFilePath: sourceFilePath);
   }
 
   /// 寻找同目录或子目录下的匹配歌词文件
