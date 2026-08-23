@@ -181,6 +181,16 @@ hiko/                          # flutter create --org top.voicehub --platforms m
   - 音量按钮改为纵向弹出式滑块卡片，紧凑精致，带百分比实时数字提示与平滑滑块。
 - **验证**：全部 70 个单元测试通过。
 
+### 1.31.0 Android 启动器图标焕新（与 macOS 品牌图标统一）
+
+- **问题**：1.17.0 品牌图标焕新时只替换了 `assets/icon.png` 源图与 macOS/Windows 图标，未重跑 `flutter_launcher_icons`，Android 仍是旧版「深紫月亮」启动图标；自适应图标背景色也停留在旧紫 `#4b416c`。
+- **修复**：
+  - `pubspec.yaml` 的 `adaptive_icon_background` 改为图标实际浅粉底色 `#FCF6F9`（对源图边缘像素采样）；
+  - 重跑 `dart run flutter_launcher_icons`，全密度重生成 `mipmap-*/ic_launcher.png`（48~192px 传统图标）与 `drawable-*/ic_launcher_foreground.png`（108dp@1x~4x 自适应前景），`colors.xml` 同步新背景色；
+  - 保留 `mipmap-anydpi-v26/ic_launcher.xml` 的自定义 16% inset——源图主体最大半径占半宽 94.5%，16% 内缩后主体落在 32.1dp < 33dp 安全区内，圆形遮罩不裁字/不裁花。
+- **验证**：PIL 合成圆形遮罩预览 + 视觉助手确认新图标（樱花+播放键+书本+Hiko 字样）无裁切；flutter test 110+1 全绿。
+- 版本 1.31.0+34；gh release v1.31.0（macOS zip + app-release.apk）。
+
 ### 1.30.0 应用内「从 GitHub 获得更新」（macOS + Android）
 
 - **数据层（`lib/data/update_checker.dart`）**：GitHub Releases API 拉最新版（10s 超时）；semver 纯函数比较（容忍 `v` 前缀与 `+build` 后缀）；按平台选资产（macOS `*-macos.zip` / Android `.apk`，排除 `.aab`）；流式下载带字节进度；落点 Android→cache、桌面→~/Downloads。
