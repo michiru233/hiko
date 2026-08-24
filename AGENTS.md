@@ -1,7 +1,10 @@
 # Kikoeru 仓库约定（AGENTS）
 
-本仓库是 Kikoeru 音声管理器。**当前主线：Flutter 重写（`hiko/` 子目录，覆盖 macOS + Android + Windows）**。
+本仓库是 Kikoeru 音声管理器。**当前主线：Flutter 重写（`hiko/` 子目录，专注 macOS + Windows 桌面版）**。
 仓库根目录保留旧版 Electron + Capacitor 共享 UI 代码（macOS/Web + Android），仅作参考，**新功能一律写进 `hiko/`**。
+
+## ⚠️ 核心开发红线（严格遵守）
+- **暂停 Android 版本开发**：**除非用户在后续对话中明确且主动要求开发/适配安卓版本，否则绝对不要主动去碰、去修改任何 Android 相关的代码或配置文件**（包括 `hiko/android/`、Kotlin 原生插件、SAF 导入适配、Android 模拟器测试等）。所有开发、优化、测试与发版工作均全神贯注于 **macOS / Windows 桌面端**。
 
 ## Flutter 版（当前主线）
 
@@ -12,9 +15,8 @@ flutter run -d windows    # Windows（需 Windows 机器）
 flutter test              # 单测（RJ 提取/自然排序/repairText/模型往返/播放模式队列）
 ```
 
-- **版本号与封包规则（重要）**：每次修复 bug / 发新功能必须 bump `hiko/pubspec.yaml` 的 `version`（1.x.0），并同步 `hiko/android/app/build.gradle.kts` 的 `versionCode`（+1）/`versionName`。**改动完成后必须自动执行 Release 封包构建（macOS: `flutter build macos --release`），并在交付时明确提供 App 所在路径**。
-- **架构**：`lib/models/` 数据模型；`lib/data/` 存储与扫描（library.json 原子写 + 每 5 张增量保存）；`lib/playback/` just_audio + audio_service（Android 后台播放/通知/锁屏）；`lib/ui/` 共享 UI（桌面三栏布局 / 移动端底部导航按宽度自适应）。
-- **Android 原生**：`lib/platform/` 调 MethodChannel（android/ 内 Kotlin 插件，移植自旧版 ImportScanner.kt / KikoeruPlugin.kt）：SAF 导入（content://）、删除、cleanMissing、revealInFolder、openDataDir（分享导出 library.json）。**封面统一 ≤300px/120KB**，标签乱码用 repairText 多字符集打分还原（中文 GBK / 日文 Shift-JIS）。
+- **版本号与封包规则（重要）**：每次修复 bug / 发新功能必须 bump `hiko/pubspec.yaml` 的 `version`（1.x.0）。**改动完成后必须自动执行 Release 封包构建（macOS: `flutter build macos --release`），并在交付时明确提供 App 所在路径**。
+- **架构**：`lib/models/` 数据模型；`lib/data/` 存储与扫描（library.json 原子写 + 每 5 张增量保存）；`lib/playback/` 桌面播放引擎；`lib/ui/` 桌面 UI（三栏布局、侧边栏、播放条等）。
 - **播放模式**：列表循环/单曲循环/随机（专辑内避免连播）/专辑循环（跨专辑接续）。
 - **GitHub 自动备份与 Release 发布（强制）**：每次完成代码更新、bug 修复或新功能开发并验证通过后：
   1. 自动执行 git add/commit 并推送至 GitHub（`git push origin main`）。
