@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -293,7 +292,6 @@ Future<Album?> _buildAlbum(String key, List<FileMeta> files) async {
     title,
   ]);
 
-  String? embeddedCover;
   final tracks = <Track>[];
   var totalDuration = 0.0;
   for (var i = 0; i < sorted.length; i++) {

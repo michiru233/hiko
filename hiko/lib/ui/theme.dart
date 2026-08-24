@@ -40,7 +40,6 @@ ThemeData buildHikoTheme(AppSettings settings) {
   );
   final bg = dark ? HikoColors.darkBg : HikoColors.lightBg;
   final ink = dark ? HikoColors.darkInk : HikoColors.lightInk;
-  final muted = dark ? HikoColors.darkMuted : HikoColors.lightMuted;
   final line = dark ? HikoColors.darkLine : HikoColors.lightLine;
   final card = dark ? HikoColors.darkCard : HikoColors.lightCard;
 

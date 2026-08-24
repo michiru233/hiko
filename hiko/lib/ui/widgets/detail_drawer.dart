@@ -32,7 +32,6 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final primaryColor = theme.colorScheme.primary;
     final album = ref.watch(
       libraryProvider.select(
         (list) => list.firstWhere(

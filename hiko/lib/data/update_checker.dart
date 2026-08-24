@@ -102,7 +102,7 @@ class UpdateChecker {
         throw HttpException('GitHub API ${resp.statusCode}');
       }
       return parseRelease(
-        (await compute(_decodeJson, resp.bodyBytes)) as Map<String, dynamic>,
+        await compute(_decodeJson, resp.bodyBytes),
       );
     } finally {
       if (client == null) c.close();
