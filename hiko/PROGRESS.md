@@ -16,8 +16,13 @@
 - [x] 反向验证：临时改 `TextDecoration.none` 为 `underline`，`flutter test test/ui/toast_test.dart` 在无下划线断言处红（`Expected none / Actual underline`）；恢复后同命令 3 passed，目标组最终 8 passed。中途两次设置测试失败均为测试等待未关闭对话框/不确定动画导致，修正测试时未放宽断言。
 - [x] analyzer：最终 32 issues，与任务 0 基线一致；全量测试最终 `134 passed、1 skipped、1 failed`，唯一失败为既有 `update_checker_network_test.dart`（GitHub API 403），未新增失败/跳过。
 
-## 任务 3 发布记录（进行中）
-- [x] 版本更新为 `1.33.0+37`；待 release 构建、zip、git push 与 GitHub Release。
+## 任务 3 发布记录
+- [x] macOS release 构建成功：`build/macos/Build/Products/Release/Hiko.app`（70MB）。
+- [x] zip：`hiko/dist/hiko-v1.33.0-macos.zip`（31MB）。
+- [x] git 提交 `6c8a3df` 并推送 `origin/main`（`8dd673e..6c8a3df`）。
+- [x] GitHub Release：`v1.33.0`，资产 `hiko-v1.33.0-macos.zip` 上传成功（sha256 `d030b708…`）。
+- [x] Release 链接：https://github.com/michiru233/hiko/releases/tag/v1.33.0
+- [x] 完成审计：改动仅限白名单文件；`flutter analyze` 32 issues（基线）；目标 UI 测试 8 passed；全量测试 134+1-1（唯一失败为既有 GitHub 网络测试）；未构建 Android。
 
 
 > 上一期 1.29.0(Android 恢复开发)已完成发版,实施细节见
