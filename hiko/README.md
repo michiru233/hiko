@@ -1,8 +1,8 @@
-# Kikoeru · 音声收藏室
+# Hiko · 音声收藏室
 
 本地优先的音声库管理器（DLsite 音声作品），**Flutter 重写版**，覆盖 **macOS + Android + Windows**。
 
-> 仓库根目录保留旧版 Electron + Capacitor 代码（参考用）；当前主线在 `kikoeru/`。
+> 仓库根目录保留旧版 Electron + Capacitor 代码（参考用）；当前主线在 `hiko/`。
 
 ## 功能
 
@@ -32,27 +32,27 @@
 ## 开发
 
 ```bash
-cd kikoeru
+cd hiko
 flutter run -d macos      # macOS 桌面
 flutter run -d windows    # Windows（需 Windows 机器）
 flutter run               # 已连接 Android 设备/模拟器
 flutter test              # 单测（RJ/自然排序/repairText/模型往返/播放模式/刮削解析/平台操作）
 flutter test integration_test -d macos        # macOS 端到端（真实播放）
 flutter test integration_test -d emulator-5554 # Android 端到端
-KIKOERU_NETWORK_TESTS=1 flutter test test/data/dlsite_scraper_network_test.dart  # 实网刮削
+HIKO_NETWORK_TESTS=1 flutter test test/data/dlsite_scraper_network_test.dart  # 实网刮削
 flutter build apk --debug  # Android debug APK
 ```
 
 ## 打包
 
 ```bash
-cd kikoeru
+cd hiko
 scripts/build-macos-dmg.sh   # macOS：release 构建 + dmg
 flutter build apk --release  # Android：release APK（当前 debug 签名）
 flutter build windows        # Windows：需 Windows 机器
 ```
 
-产物：`dist/Kikoeru-<version>.dmg`、`build/app/outputs/flutter-apk/app-release.apk`
+产物：`dist/Hiko-<version>.dmg`、`dist/hiko-v<version>-macos.zip`、`build/app/outputs/flutter-apk/app-release.apk`
 
 ## 数据
 
