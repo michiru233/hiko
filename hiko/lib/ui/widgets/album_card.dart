@@ -76,6 +76,74 @@ class AlbumCard extends ConsumerWidget {
                               onTap: onTap,
                               customBorder: const CircleBorder(),
                               child: Container(
+                                width: 22,
+                                height: 22,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: selected
+                                      ? theme.colorScheme.primary
+                                      : Colors.black.withValues(alpha: 0.4),
+                                  border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.85),
+                                      width: 2),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    selected ? '✓' : '',
+                                    style: TextStyle(
+                                      color: selected
+                                          ? theme.colorScheme.onPrimary
+                                          : Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (selected)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                  color: theme.colorScheme.primary, width: 2),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+            // 封面 + 多选勾选（固定正方形，占卡片上部）
+            LayoutBuilder(
+              builder: (context, constraints) {
+                return Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: AspectRatio(
+                        aspectRatio: 1,
+                        child: AlbumCover(album: album),
+                      ),
+                    ),
+                    if (multiMode)
+                      Positioned(
+                        left: 10,
+                        top: 10,
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: onTap,
+                              customBorder: const CircleBorder(),
+                              child: Container(
                               width: 22,
                               height: 22,
                               decoration: BoxDecoration(
@@ -148,6 +216,7 @@ class AlbumCard extends ConsumerWidget {
                                   fontSize: 10, color: theme.hintColor),
                             ),
                           ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 5),
