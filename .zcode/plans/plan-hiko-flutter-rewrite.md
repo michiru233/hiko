@@ -372,3 +372,16 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 - **测试**：Dart +130 ~1（基线 110，~1 为既有网络测试 skip）、Kotlin 19/19（ImportScanner 11 + Id3v2Parser 8，任务 0 修好 AGP9 built-in Kotlin 源集装配——迁移 src/test/java 后 XML 落盘）。全部红→绿反向验证已在 PROGRESS.md 留档。
 - **模拟器端到端（AVD kikoeru_test）**：release APK 装机 + SAF 导入实测，四点全中——标题为元数据名非 RJ 号（はだか抱きまくら係/RJ01655831、るんりーわん/RJ01257775、被绿咨询/バイコーンの森）、封面在（真实插画非占位符）、按钮按下水波纹可见、设置弹窗内触发 toast 浮于弹窗之上。
 - **版本**：1.32.0+35（pubspec + build.gradle.kts 同步）。发布：hiko-v1.32.0-macos.zip + app-release.apk（versionCode 35）。
+
+### 1.34.0 专辑封面按「第一首元数据」提取 + albumArtist 补全 + 标题清洗（2026-08-24）
+
+领导实测 RJ01257775 / RJ01579153 两个作品专辑封面显示错误——封面被「曲目列表图」顶替、`albumArtist` 恒为空、标题带换行重复。要求「专辑封面/名称/专辑艺术家均按专辑内第一首的元数据」。
+
+- **根因（实地验证）**：`audio_metadata_reader` 对 MP3 把 TPE2(专辑艺术家) > TPE1(曲目艺术家) 映射进 `meta.artist`（parser.dart `bandOrOrchestra ?? leadPerformer`），项目只读 `meta.artist` 所以 artist 已是专辑艺术家、正确；但 `scanner.dart` 封面逻辑「外置图优先（仅回溯一层父目录）」在目录含 `トラックリスト.jpg`/`キャラクター.png` 等功能图时误当封面（RJ01257775 的 `RJ01257775/トラックリスト.jpg` 被 `images.first` 选中），`albumArtist` 被硬编码 `''`，TALB 标题未做换行清洗。
+- **修复**（`scanner.dart` `_buildAlbum`）：
+  - 封面优先级反转：新增 `_firstEmbeddedCover`，取 TRACK 排序后首条音轨的内嵌 APIC（前 3 首内首个存在即用），失败才回退外置图（仍含父目录）——对齐「第一首元数据作封面」。
+  - `albumArtist` 不再硬编码空：与 `artist` 同源（首个含可用标签音轨），仅 `本地导入` 时留空，补上 1.13.0 留的「已知差异」。
+  - 标题清洗：新增 `_sanityTitle`，剥离 TALB 换行/重复/多余空行。
+- **测试**：`scanner_test.dart` +2（封面取第一首内嵌 APIC 优先于外置功能图 + albumArtist 补全；标题换行清洗），新增 `createTaggedMp3WithCover`(写 APIC)。
+- **验收**：`flutter analyze` 32 issues（基线一致）；`flutter test` 137 passed、1 skipped、1 failed（唯一失败为既有 `update_checker_network_test` GitHub 403）；实扫两个真实目录，RJ01257775 `localCover` 103KB(曲目列表图)→99KB(封面插画)、RJ01579153 97KB(功能图)→105KB(封面插画)，二者 `albumArtist` 由空变为 `ろんりーわん`/`恋楽屋`，标题去换行。视觉核验（vision-helper）：新封面均为正规人物插画。
+- **版本**：1.34.0+38。发布：hiko-v1.34.0-macos.zip（sha256 fcda477d…）。

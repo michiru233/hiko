@@ -166,6 +166,34 @@ String? _parentDir(String dirPath) {
   return parent.isEmpty ? null : parent;
 }
 
+/// 按「第一首元数据」规则取专辑封面：从 TRACKNUMBER 排序后的首几条音轨提取内嵌封面。
+/// 只对 TRACKNUMBER 最靠前（或未标号按文件名自然排序在前）的音轨尝试，前 3 首内首张存在即返回，
+/// 避免极端序号的最后一轨内嵌图被误当封面；返回压缩后的 dataURL。
+Future<String?> _firstEmbeddedCover(List<FileMeta> sorted) async {
+  // 取排序最靠前的 ≤3 首；若本组不足 3 首则全量尝试
+  final candidates = sorted.take(3).toList();
+  for (final m in candidates) {
+    final picBytes = await readEmbeddedPicture(m.path);
+    if (picBytes != null && picBytes.isNotEmpty) {
+      final cover = await coverDataUrlAsync(picBytes);
+      if (cover != null) return cover;
+    }
+  }
+  return null;
+}
+
+/// 标题清洗：替换换行；以换行/空白截断为单一标题，去掉多余空行与首尾空白。
+/// 对齐旧版 sanityTitle：DLsite 的 TALB 标签常写入带重复/换行的冗长文本。
+String _sanityTitle(String? title) {
+  if (title == null) return '';
+  final lines = title
+      .split('\n')
+      .map((l) => l.trim())
+      .where((l) => l.isNotEmpty)
+      .toList();
+  return lines.isEmpty ? title.trim() : lines.first;
+}
+
 /// 扫描根目录：文件级解析 + 混合分组 → 专辑列表。
 /// [onProgress] 分两阶段实时回传（对齐 Android）：'files' 按文件计数，
 /// 'albums' 按已组装专辑计数。
@@ -277,15 +305,20 @@ Future<Album?> _buildAlbum(String key, List<FileMeta> files) async {
       .where((a) => a != null && a.trim().isNotEmpty && !looksGarbled(a))
       .firstOrNull;
 
-  final title = isTagGroup
-      ? (albumName ?? cleanFolderTitle(sorted.first.dirName) ?? '本地导入')
-      : (cleanFolderTitle(sorted.first.dirName) ?? '本地导入');
-  // 艺术家取首个含可用标签音轨（对齐 Android decideAlbumMeta 的首个标签优先）
+  final rawTitle = isTagGroup
+      ? (albumName ?? cleanFolderTitle(sorted.first.dirName))
+      : cleanFolderTitle(sorted.first.dirName);
+  final clean = _sanityTitle(rawTitle);
+  final title = clean.isNotEmpty ? clean : '本地导入';
+  // 艺术家取首个含可用标签音轨（对齐 Android decideAlbumMeta 的首个标签优先）。
+  // 注：audio_metadata_reader 对 MP3 把 TPE2(专辑艺术家) 优先于 TPE1(曲目艺术家) 映射进 artist，
+  // 因此多数情况下 artist 已是专辑艺术家；这里同时用同一值补全 albumArtist，避免其恒为空。
   final firstArtist = sorted
       .map((m) => m.artist)
       .where((v) => v != null && v.trim().isNotEmpty && !looksGarbled(v))
       .firstOrNull;
   final artist = firstArtist ?? '本地导入';
+  final albumArtist = (artist != '本地导入') ? artist : '';
   final rjCode = extractRjCode([
     sorted.first.path,
     sorted.first.dirPath,
@@ -311,21 +344,16 @@ Future<Album?> _buildAlbum(String key, List<FileMeta> files) async {
     totalDuration += m.duration;
   }
 
-  // 封面获取：优先外置图片（无需读取大音频），查找范围含父目录
-  // （DLsite 常见结构：封面在 RJ 目录、音频在其子目录）；无外置图片时按需从第一轨提取内嵌封面
-  final dirs = <String>{
-    ...sorted.map((m) => m.dirPath),
-    ...sorted.map((m) => _parentDir(m.dirPath)).whereType<String>(),
-  }.toList();
-  var localCover = await _groupDirCover(dirs);
+  // 封面获取：按「专辑内第一首元数据」要求，优先取第一轨内嵌封面（DLsite 作品
+  // 常把封面写进音频 APIC/内嵌图，外置图却常是曲目列表/角色介绍等功能图）。
+  // 内嵌图失败才回退到外置图片（含父目录，DLsite 常见结构：封面在 RJ 目录、音频在其子目录）。
+  var localCover = await _firstEmbeddedCover(sorted);
   if (localCover == null) {
-    for (final m in sorted) {
-      final picBytes = await readEmbeddedPicture(m.path);
-      if (picBytes != null) {
-        localCover = await coverDataUrlAsync(picBytes);
-        if (localCover != null) break;
-      }
-    }
+    final dirs = <String>{
+      ...sorted.map((m) => m.dirPath),
+      ...sorted.map((m) => _parentDir(m.dirPath)).whereType<String>(),
+    }.toList();
+    localCover = await _groupDirCover(dirs);
   }
 
   final idValue = isTagGroup ? key : sorted.first.dirPath;
@@ -334,7 +362,7 @@ Future<Album?> _buildAlbum(String key, List<FileMeta> files) async {
     sourcePath: sorted.first.dirPath,
     title: title,
     artist: artist,
-    albumArtist: '',
+    albumArtist: albumArtist,
     rjCode: rjCode,
     group: '本地文件夹',
     genre: '未分类',

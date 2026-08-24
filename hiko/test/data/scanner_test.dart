@@ -95,6 +95,63 @@ void main() {
     File(path).writeAsBytesSync([...header.toBytes(), ...mpeg.toBytes()]);
   }
 
+  /// 构造带内嵌封面（APIC）的 MP3：在 createTaggedMp3 基础上追加 APIC 帧。
+  /// APIC 帧体 = [encoding=0x03][mime\0][pictureType=0x03][desc\0][png bytes]。
+  void createTaggedMp3WithCover(
+    String path, {
+    required String title,
+    String? album,
+    String artist = '某社团',
+    String? albumArtist,
+    int? trackNumber,
+  }) {
+    // 先复用普通标签构造，但要在贴头上多写一个 APIC 帧，这里单独重写帧序列
+    Uint8List encText(String s) => Uint8List.fromList(gbk.encode(s));
+
+    final frames = BytesBuilder();
+    void addFrame(String fid, String text) {
+      final payload = BytesBuilder()..addByte(0x00)..add(encText(text));
+      frames
+        ..add(Uint8List.fromList(fid.codeUnits))
+        ..add(_be32(payload.length))
+        ..add([0x00, 0x00])
+        ..add(payload.toBytes());
+    }
+
+    final pngBytes = img.encodePng(img.fill(
+        img.Image(width: 200, height: 200), color: img.ColorRgb8(120, 80, 60)));
+
+    addFrame('TIT2', title);
+    if (album != null) addFrame('TALB', album);
+    addFrame('TPE1', artist);
+    if (albumArtist != null) addFrame('TPE2', albumArtist);
+    if (trackNumber != null) addFrame('TRCK', '$trackNumber');
+
+    // APIC 帧
+    final apicPayload = BytesBuilder()
+      ..addByte(0x03) // encoding: UTF-8
+      ..add(Uint8List.fromList('image/png'.codeUnits))
+      ..addByte(0x00)
+      ..addByte(0x03) // picture type: 3 (front cover)
+      ..addByte(0x00) // 描述为空
+      ..add(pngBytes);
+    frames
+      ..add(Uint8List.fromList('APIC'.codeUnits))
+      ..add(_be32(apicPayload.length))
+      ..add([0x00, 0x00])
+      ..add(apicPayload.toBytes());
+
+    final header = BytesBuilder()
+      ..add(Uint8List.fromList([0x49, 0x44, 0x33]))
+      ..add([0x03, 0x00, 0x00])
+      ..add(_syncsafe(frames.length))
+      ..add(frames.toBytes());
+    final mpeg = BytesBuilder()
+      ..add([0xFF, 0xFB, 0x90, 0x00])
+      ..add(List.filled(413, 0));
+    File(path).writeAsBytesSync([...header.toBytes(), ...mpeg.toBytes()]);
+  }
+
   test('混合分组：跨文件夹同 ALBUM 标签聚合 + TRACKNUMBER 排序', () async {
     // 两个文件夹各一首，ALBUM 标签相同 → 聚合成一张专辑
     final dirA = Directory('${root.path}/folderA/RJ11111_作品甲');
@@ -281,6 +338,51 @@ void main() {
     // 阶段顺序：全部 files 事件先于 albums 事件
     final firstAlbumEvent = events.indexWhere((e) => e.$3 == 'albums');
     expect(events.take(firstAlbumEvent).every((e) => e.$3 == 'files'), isTrue);
+  });
+
+  test('封面取第一首内嵌 APIC（优先于外置功能图）→ 元数据第一首优先', () async {
+    // DLsite 常见坑：音频内嵌了真实封面 APIC，外层目录却放着一张「曲目列表/角色图」。
+    // 本次修复：内嵌封面优先，避免外置功能图顶替真封面。
+    final dir = Directory('${root.path}/RJ5555666_内嵌封面作品');
+    dir.createSync(recursive: true);
+    // 外层目录放一张与封面无关的功能图（命名不含 cover/front/album）
+    createPngCover('${dir.path}/トラックリスト.png');
+    // 第一首带内嵌封面 APIC + 专辑艺术家（TPE2）；第二首仅文本标签
+    createTaggedMp3WithCover('${dir.path}/01 第一首.mp3',
+        title: '第一首',
+        album: '内嵌封面专辑',
+        artist: '曲目艺人A',
+        albumArtist: '社团甲',
+        trackNumber: 1);
+    createTaggedMp3('${dir.path}/02 第二首.mp3',
+        title: '第二首',
+        album: '内嵌封面专辑',
+        artist: '曲目艺人B',
+        albumArtist: '社团甲',
+        trackNumber: 2);
+
+    final albums = await scanPath(root.path);
+
+    expect(albums.single.localCover, startsWith('data:image/jpeg'),
+        reason: '第一首内嵌封面优先于外置功能图');
+    // 艺术家与会同 albumArtist 均来自首个含标签音轨（TPE2 优先）
+    expect(albums.single.artist, '社团甲', reason: '专辑艺术家(TPE2)优先于曲目艺人');
+    expect(albums.single.albumArtist, '社团甲', reason: 'albumArtist 不应再恒为空');
+  });
+
+  test('标题清洗：TALB 带换行/重复 → 只取首行并去空白', () async {
+    final dir = Directory('${root.path}/tagged_title');
+    dir.createSync();
+    // 模拟 DLsite 常见 TALB 写入重复 + 换行
+    createTaggedMp3('${dir.path}/01.mp3',
+        title: '第一首',
+        album: '懒散插入。Checkmate\n懒散插入。Checkmate\n\n\n',
+        artist: '社团X');
+
+    final albums = await scanPath(root.path);
+    expect(albums.single.title, '懒散插入。Checkmate',
+        reason: '标题应清洗掉换行与重复，只保留首行');
+    expect(albums.single.title.contains('\n'), isFalse);
   });
 }
 

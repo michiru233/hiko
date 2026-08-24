@@ -1,6 +1,24 @@
-# PROGRESS — 1.33.0 通知层级与扫描进度修复（macOS + Windows）
+# PROGRESS — 1.34.0 专辑封面按第一首元数据提取（macOS + Windows）
 
 ## 开工回执（2026-08-24）
+- 目标：修复 RJ01257775 / RJ01579153 两个作品专辑封面显示错误——之前封面被「曲目列表图」顶替，`albumArtist` 恒为空，标题带换行重复。
+- 根因（实地验证）：`audio_metadata_reader` 对 MP3 把 TPE2(专辑艺术家) > TPE1(曲目艺术家) 映射进 `meta.artist`，项目只读 `meta.artist` 所以 artist 正确；但 `_buildAlbum` 封面逻辑「外置图优先（只回溯一层父目录）」在有曲目列表图时抢走封面，且 `albumArtist` 被硬编码 `''`，标题未做换行清洗。
+- 顺序：修复 `_buildAlbum` → 补测试（内嵌优先/albumArtist/标题清洗）→ 全量测试 → release 构建发布。
+- 基线：`flutter analyze` 32 既有 issues；`flutter test` 134 passed、1 skipped、1 failed（更新检查网络失败）。实扫 RJ01257775/RJ01579153 两目录验证 `localCover` 从曲目列表图变为第一首内嵌封面插画。
+
+## 实施记录（2026-08-24）
+- [x] `scanner.dart` `_buildAlbum`：封面优先级反转——先取 TRACK 排序后首条音轨的内嵌 APIC（新增 `_firstEmbeddedCover`，前 3 首内首个存在即用），失败才回退外置图（仍含父目录）。对齐「第一首元数据作为封面」要求。
+- [x] `albumArtist` 不再硬编码为空：用与 `artist` 同一来源（首个含可用标签音轨）补全，仅当 artist 为 `本地导入` 时留空；贴合 TPE2 映射语义。
+- [x] 标题清洗：新增 `_sanityTitle`，去掉 TALB 标签中的换行/重复/多余空行（RJ01257775 的标题从「`懒散插入…\n懒散插入…\n\n\n`」清理为单行）。
+- [x] 测试：`scanner_test.dart` 新增 2 用例（封面取第一首内嵌 APIC 优先于外置功能图 + albumArtist 补全；标题换行清洗），并为辅助库新增 `createTaggedMp3WithCover`(写 APIC)。origin 11 个 scanner 测试全过。
+- [x] 全量测试：`flutter analyze` 32 issues（基线一致）；`flutter test` 137 passed、1 skipped、1 failed（唯一失败为既有 `update_checker_network_test` GitHub 403，未新增失败/跳过）。
+- [x] 实地验证：用 `scanPath` 重扫两个真实目录，RJ01257775 `localCover` 由 103KB(曲目列表图) 变为 99KB(封面插画)、RJ01579153 由 97KB(功能图) 变为 105KB(封面插画)；二者 `albumArtist` 从空变为 `ろんりーわん`/`恋楽屋`，标题去掉换行。
+- [x] release：`flutter build macos --release` 成功，产出 `build/macos/Build/Products/Release/Hiko.app`（73.2MB）；zip `hiko/dist/hiko-v1.34.0-macos.zip`（88MB）。
+
+## 发布记录
+- git 提交 / 推送 origin main；GitHub Release `v1.34.0`，资产 `hiko-v1.34.0-macos.zip`（sha256 `fcda477d…`）。
+
+
 - 目标：统一根通知层，修复 Toast 下划线/整行宽，并让设置触发任务回到主界面后持续显示进度。
 - 顺序：任务 0 基线 → 根通知层与 Toast → 设置回调/任务进度统一 → UI 测试 → 回归、release 构建与发布。
 - 基线：`flutter analyze` 32 条既有问题；`flutter test` 129 passed、1 skipped、1 failed（GitHub `.apk` 资产网络失败）。
