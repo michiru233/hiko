@@ -11,10 +11,12 @@ import '../../data/library_provider.dart';
 import '../../data/library_reorganizer.dart';
 import '../../data/music_folder_scanner.dart';
 import '../../data/settings_store.dart';
+import '../../data/update_checker.dart';
 import '../../models/album.dart';
 import '../../platform/platform_service.dart';
 import '../../utils/rj.dart';
 import '../widgets/album_card.dart';
+import '../widgets/activity_overlay.dart';
 import '../widgets/category_dialog.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/context_menu.dart';
@@ -44,10 +46,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _sidebarCollapsed = false;
   bool _drawerOpen = false;
   bool _importing = false;
-  String _importLabel = '正在导入';
-  double _importProgress = 0;
-  int _importProcessed = 0;
-  int _importTotal = 0;
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
 
@@ -63,19 +61,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         silent: true,
         onProgress: (p) {
           if (!mounted) return;
-          setState(() {
-            _importing = true;
-            _importLabel = p.phase == 'files' ? '正在快速同步音乐目录' : '正在导入新增专辑';
-            _importProcessed = p.processed;
-            _importTotal = p.total;
-            _importProgress = p.total > 0 ? p.processed / p.total : 0;
-          });
+          activityOverlayController.start(
+            label: p.phase == 'files' ? '正在快速同步音乐目录' : '正在导入新增专辑',
+            processed: p.processed,
+            total: p.total,
+            progress: p.total > 0 ? p.processed / p.total : null,
+          );
         },
       );
       if (!mounted) return;
-      if (_importing) {
-        setState(() => _importing = false);
-      }
+      activityOverlayController.finish();
       if (added > 0) {
         _showToast('已自动同步，发现 $added 张新专辑');
       }
@@ -92,7 +87,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _openSettings(BuildContext context) {
     showDialog<void>(
       context: context,
-      builder: (context) => SettingsDialog(onImportRequested: _importFolder),
+      builder: (context) => SettingsDialog(
+        onImportRequested: () {
+          Navigator.pop(context);
+          _importFolder();
+        },
+        onRescanRequested: () {
+          Navigator.pop(context);
+          _startRescan();
+        },
+        onReorganizeRequested: () {
+          Navigator.pop(context);
+          _reorganizeLibrary();
+        },
+        onCleanMissingRequested: () {
+          Navigator.pop(context);
+          _cleanMissing();
+        },
+        onDownloadUpdateRequested: (release) {
+          _downloadUpdate(release);
+        },
+      ),
     );
   }
 
@@ -102,28 +117,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _importFolder() async {
-    if (_importing) return;
-    setState(() {
-      _importing = true;
-      _importLabel = '正在导入';
-      _importProcessed = 0;
-      _importTotal = 0;
-      _importProgress = 0;
-    });
+    if (_importing || activityOverlayController.isActive) return;
+    setState(() => _importing = true);
+    activityOverlayController.start(label: '正在导入');
     final service = ImportService(ref.read(libraryStoreProvider));
     try {
       final platform = ref.read(platformServiceProvider);
       List<Album> albums;
       // Android:SAF 单树导入(接口方法,事件流式);桌面:返回 null 走批量多选
-      final saf = await platform.importAudioFolder(onProgress: (p, t, phase, unit) {
-        if (!mounted) return;
-        setState(() {
-          _importLabel = phase == 'files' ? '正在扫描音频文件' : '正在导入专辑';
-          _importProcessed = p;
-          _importTotal = t;
-          _importProgress = t > 0 ? p / t : 0;
-        });
-      });
+      final saf = await platform.importAudioFolder(
+        onProgress: (p, t, phase, unit) {
+          activityOverlayController.update(
+            label: phase == 'files' ? '正在扫描音频文件' : '正在导入专辑',
+            processed: p,
+            total: t,
+            progress: t > 0 ? p / t : null,
+          );
+        },
+      );
       if (saf != null) {
         albums = saf.albums;
         // 记住所选目录 → 常驻自动扫描
@@ -135,15 +146,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // 桌面：批量选择多个文件夹导入（macOS 原生多选；Windows 单选降级）
         final paths = await platform.pickDirectories();
         if (paths == null || paths.isEmpty) return;
-        albums = await service.importFolders(paths, onProgress: (p) {
-          if (!mounted) return;
-          setState(() {
-            _importLabel = p.phase == 'files' ? '正在扫描音频文件' : '正在导入专辑';
-            _importProcessed = p.processed;
-            _importTotal = p.total;
-            _importProgress = p.total > 0 ? p.processed / p.total : 0;
-          });
-        });
+        albums = await service.importFolders(
+          paths,
+          onProgress: (p) {
+            activityOverlayController.update(
+              label: p.phase == 'files' ? '正在扫描音频文件' : '正在导入专辑',
+              processed: p.processed,
+              total: p.total,
+              progress: p.total > 0 ? p.processed / p.total : null,
+            );
+          },
+        );
         // 记住所选目录 → 常驻自动扫描
         for (final path in paths) {
           await ref.read(settingsProvider.notifier).addMusicFolder(path);
@@ -153,11 +166,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       await ref.read(libraryProvider.notifier).mergeNew(albums);
       // 全轨无可用标签的专辑（metaFromFolder）：串行查 DLsite 补标题（失败维持文件夹名）
       if (ref.read(libraryProvider).any(DlsiteScraper.shouldBackfillTitle)) {
-        if (mounted) {
-          setState(() => _importLabel = '正在查询 DLsite 补全标题');
-        }
-        final fixed =
-            await ref.read(scraperProvider).backfillTitles(ref.read(libraryProvider));
+        activityOverlayController.update(label: '正在查询 DLsite 补全标题');
+        final fixed = await ref
+            .read(scraperProvider)
+            .backfillTitles(ref.read(libraryProvider));
         if (fixed > 0) {
           await ref.read(libraryProvider.notifier).load();
         }
@@ -168,35 +180,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _query = '';
         _searchController.clear();
       });
-      _showToast(albums.isEmpty
-          ? '没有在所选文件夹中找到支持的音频文件'
-          : '已导入 ${albums.length} 张专辑，已显示在全部音声');
+      _showToast(
+        albums.isEmpty
+            ? '没有在所选文件夹中找到支持的音频文件'
+            : '已导入 ${albums.length} 张专辑，已显示在全部音声',
+      );
     } catch (e) {
       _showToast('导入失败：$e');
     } finally {
+      activityOverlayController.finish();
       if (mounted) setState(() => _importing = false);
     }
   }
 
   Future<void> _scrapeSelected(Set<String> ids, {required bool force}) async {
-    if (ids.isEmpty) return;
-    setState(() {
-      _importing = true;
-      _importLabel = '正在刮削';
-      _importProcessed = 0;
-      _importTotal = 0;
-      _importProgress = 0;
-    });
+    if (ids.isEmpty || activityOverlayController.isActive) return;
+    setState(() => _importing = true);
+    activityOverlayController.start(label: '正在刮削');
     final scraper = ref.read(scraperProvider);
     try {
-      final result = await scraper.scrape(ids, force: force, onProgress: (p, t) {
-        if (!mounted) return;
-        setState(() {
-          _importProcessed = p;
-          _importTotal = t;
-          _importProgress = t > 0 ? p / t : 0;
-        });
-      });
+      final result = await scraper.scrape(
+        ids,
+        force: force,
+        onProgress: (p, t) {
+          activityOverlayController.update(
+            processed: p,
+            total: t,
+            progress: t > 0 ? p / t : null,
+          );
+        },
+      );
       if (!mounted) return;
       await ref.read(libraryProvider.notifier).load();
       if (result.noRj == ids.length) {
@@ -204,13 +217,116 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         return;
       }
       _showToast(
-          '刮削完成：${result.scraped} 张成功，${result.failed} 张失败'
-          '${result.noRj > 0 ? '，${result.noRj} 张无 RJ 号' : ''}'
-          '${result.skipped > 0 ? '，${result.skipped} 张已刮过跳过' : ''}');
+        '刮削完成：${result.scraped} 张成功，${result.failed} 张失败'
+        '${result.noRj > 0 ? '，${result.noRj} 张无 RJ 号' : ''}'
+        '${result.skipped > 0 ? '，${result.skipped} 张已刮过跳过' : ''}',
+      );
     } catch (e) {
       _showToast('刮削失败：$e');
     } finally {
+      activityOverlayController.finish();
       if (mounted) setState(() => _importing = false);
+    }
+  }
+
+  Future<void> _startRescan() async {
+    if (activityOverlayController.isActive) return;
+    activityOverlayController.start(label: '准备扫描...');
+    try {
+      final added = await ref
+          .read(musicFolderScannerProvider)
+          .scanAll(
+            silent: false,
+            onProgress: (p) {
+              activityOverlayController.update(
+                label: p.phase == 'files' ? '正在扫描音频文件' : '正在解析组装专辑',
+                processed: p.processed,
+                total: p.total,
+                progress: p.total > 0 ? p.processed / p.total : null,
+              );
+            },
+          );
+      _showToast(added > 0 ? '扫描完成，新增 $added 张专辑' : '扫描完成，没有新内容');
+    } catch (e) {
+      _showToast('扫描失败：$e');
+    } finally {
+      activityOverlayController.finish();
+    }
+  }
+
+  Future<void> _reorganizeLibrary() async {
+    if (activityOverlayController.isActive) return;
+    activityOverlayController.start(label: '正在整理专辑元数据');
+    try {
+      final result = await ref.read(libraryReorganizerProvider).reorganizeAll();
+      final stats = result.stats;
+      if (!stats.hasChanges) {
+        _showToast('已检查全部专辑，元数据与曲目均与本地文件一致');
+        return;
+      }
+      final parts = <String>[];
+      if (stats.updatedAlbums > 0) parts.add('更新 ${stats.updatedAlbums} 张专辑');
+      if (stats.removedAlbums > 0) parts.add('清理 ${stats.removedAlbums} 张空专辑');
+      if (stats.tracksAdded > 0) parts.add('+${stats.tracksAdded} 首新增');
+      if (stats.tracksRemoved > 0) parts.add('-${stats.tracksRemoved} 首删除');
+      if (stats.tracksModified > 0) {
+        parts.add('${stats.tracksModified} 首标签/信息更新');
+      }
+      _showToast('整理完成：${parts.join('，')}');
+    } catch (e) {
+      _showToast('整理失败：$e');
+    } finally {
+      activityOverlayController.finish();
+    }
+  }
+
+  Future<void> _cleanMissing() async {
+    if (activityOverlayController.isActive) return;
+    activityOverlayController.start(label: '正在清理失效记录');
+    try {
+      final albums = ref.read(libraryProvider);
+      final kept = await ref.read(platformServiceProvider).cleanMissing(albums);
+      final removed = albums.length - kept.length;
+      await ref.read(libraryProvider.notifier).replaceAll(kept);
+      _showToast(removed > 0 ? '已清理 $removed 张失效专辑' : '库中暂无失效记录');
+    } catch (e) {
+      _showToast('清理失败：$e');
+    } finally {
+      activityOverlayController.finish();
+    }
+  }
+
+  Future<void> _downloadUpdate(GithubRelease release) async {
+    if (activityOverlayController.isActive) return;
+    final asset = UpdateChecker.pickAsset(release, Platform.operatingSystem);
+    if (asset == null) {
+      _showToast('未找到适用于本平台的安装包,请前往 GitHub Releases 手动下载');
+      return;
+    }
+    activityOverlayController.start(label: '正在下载更新包', total: asset.size);
+    try {
+      final dest = await UpdateChecker.suggestDestPath(asset);
+      await UpdateChecker.downloadAsset(
+        asset,
+        dest,
+        onProgress: (received, total) {
+          activityOverlayController.update(
+            processed: received,
+            total: total > 0 ? total : asset.size,
+            progress: total > 0 ? (received / total).clamp(0.0, 1.0) : null,
+          );
+        },
+      );
+      await ref.read(platformServiceProvider).openDownloadedUpdate(dest);
+      _showToast(
+        Platform.isAndroid
+            ? '下载完成,已调起系统安装器'
+            : '已下载到 ${asset.name},请在文件管理器中解压并替换应用',
+      );
+    } catch (e) {
+      _showToast('下载失败：$e');
+    } finally {
+      activityOverlayController.finish();
     }
   }
 
@@ -226,8 +342,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
     final theme = Theme.of(context);
     // 移动布局仅 Android 触屏（≤1000px，与旧版桥接层一致）；桌面永远桌面布局
-    final isMobile =
-        Platform.isAndroid ? MediaQuery.sizeOf(context).width <= 1000 : false;
+    final isMobile = Platform.isAndroid
+        ? MediaQuery.sizeOf(context).width <= 1000
+        : false;
 
     return PopScope(
       canPop: !isMobile,
@@ -293,12 +410,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 child: Sidebar(
                                   activeView: _view,
                                   collapsed: _sidebarCollapsed,
-                                  onViewChanged: (view) => setState(() => _view = view),
+                                  onViewChanged: (view) =>
+                                      setState(() => _view = view),
                                   onOpenSettings: () => _openSettings(context),
                                 ),
                               ),
                             ],
-                            Expanded(child: _buildMain(filtered, theme, isMobile)),
+                            Expanded(
+                              child: _buildMain(filtered, theme, isMobile),
+                            ),
                           ],
                         ),
                       ),
@@ -322,7 +442,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               highlightColor: Colors.transparent,
                               hoverColor: Colors.transparent,
                               child: Container(
-                                  color: Colors.black.withValues(alpha: 0.35)),
+                                color: Colors.black.withValues(alpha: 0.35),
+                              ),
                             ),
                           ),
                           Positioned(
@@ -377,48 +498,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         onClose: () => setState(() => _detailAlbum = null),
                       ),
                     ),
-                  // 导入/刮削进度浮条
-                  if (_importing)
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: isMobile ? 178 : 92,
-                      child: Center(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF292735),
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 34, offset: const Offset(0, 14)),
-                            ],
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '$_importLabel $_importProcessed / $_importTotal ${_importLabel.contains('音频') ? '个文件' : '张专辑'}',
-                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
-                              ),
-                              const SizedBox(height: 7),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(4),
-                                child: SizedBox(
-                                  width: 280,
-                                  height: 4,
-                                  child: LinearProgressIndicator(
-                                    value: _importTotal > 0 ? _importProgress : null,
-                                    backgroundColor: Colors.white.withValues(alpha: 0.15),
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),
@@ -440,11 +519,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 selectedItemColor: theme.colorScheme.primary,
                 unselectedItemColor: theme.hintColor,
                 items: const [
-                  BottomNavigationBarItem(icon: Icon(Icons.grid_view_rounded), label: '全部'),
-                  BottomNavigationBarItem(icon: Icon(Icons.history_rounded), label: '最近'),
-                  BottomNavigationBarItem(icon: Icon(Icons.play_circle_outline_rounded), label: '播放'),
-                  BottomNavigationBarItem(icon: Icon(Icons.favorite_border_rounded), label: '收藏'),
-                  BottomNavigationBarItem(icon: Icon(Icons.settings_outlined), label: '设置'),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.grid_view_rounded),
+                    label: '全部',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.history_rounded),
+                    label: '最近',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.play_circle_outline_rounded),
+                    label: '播放',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.favorite_border_rounded),
+                    label: '收藏',
+                  ),
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.settings_outlined),
+                    label: '设置',
+                  ),
                 ],
               )
             : null,
@@ -474,7 +568,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Widget _buildTopbar(ThemeData theme, bool isMobile) {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 48, vertical: 14),
+      padding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 16 : 48,
+        vertical: 14,
+      ),
       child: Row(
         children: [
           if (isMobile)
@@ -485,18 +582,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             )
           else
             IconButton(
-              icon: Icon(_sidebarCollapsed ? Icons.menu_open : Icons.menu, size: 18),
+              icon: Icon(
+                _sidebarCollapsed ? Icons.menu_open : Icons.menu,
+                size: 18,
+              ),
               tooltip: _sidebarCollapsed ? '显示侧栏' : '隐藏侧栏',
-              onPressed: () => setState(() => _sidebarCollapsed = !_sidebarCollapsed),
+              onPressed: () =>
+                  setState(() => _sidebarCollapsed = !_sidebarCollapsed),
             ),
           if (!isMobile) ...[
-            Text(
-              '音声库',
-              style: TextStyle(fontSize: 13, color: theme.hintColor),
-            ),
+            Text('音声库', style: TextStyle(fontSize: 13, color: theme.hintColor)),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Text('/', style: TextStyle(color: theme.hintColor.withValues(alpha: 0.5))),
+              child: Text(
+                '/',
+                style: TextStyle(color: theme.hintColor.withValues(alpha: 0.5)),
+              ),
             ),
           ],
           Text(
@@ -506,13 +607,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           const Spacer(),
           IconButton(
             icon: Icon(
-              ref.watch(settingsProvider).theme == 'dark' ? Icons.dark_mode_outlined : Icons.light_mode_outlined,
+              ref.watch(settingsProvider).theme == 'dark'
+                  ? Icons.dark_mode_outlined
+                  : Icons.light_mode_outlined,
               size: 18,
             ),
             tooltip: '切换主题',
             onPressed: () {
               final s = ref.read(settingsProvider);
-              ref.read(settingsProvider.notifier).setTheme(s.theme == 'dark' ? 'light' : 'dark');
+              ref
+                  .read(settingsProvider.notifier)
+                  .setTheme(s.theme == 'dark' ? 'light' : 'dark');
             },
           ),
           const SizedBox(width: 4),
@@ -529,7 +634,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget _buildHero(ThemeData theme, int resultCount, bool isMobile) {
     final favCount = ref.watch(libraryProvider).where((a) => a.favorite).length;
     return Padding(
-      padding: EdgeInsets.fromLTRB(isMobile ? 16 : 48, isMobile ? 8 : 20, isMobile ? 16 : 48, isMobile ? 12 : 24),
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 16 : 48,
+        isMobile ? 8 : 20,
+        isMobile ? 16 : 48,
+        isMobile ? 12 : 24,
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -549,7 +659,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 const SizedBox(height: 9),
                 Text(
                   _view,
-                  style: TextStyle(fontSize: isMobile ? 24 : 30, fontWeight: FontWeight.w700, letterSpacing: -1.2),
+                  style: TextStyle(
+                    fontSize: isMobile ? 24 : 30,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -1.2,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -563,7 +677,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text('已收藏', style: TextStyle(fontSize: 10, color: theme.hintColor)),
+                Text(
+                  '已收藏',
+                  style: TextStyle(fontSize: 10, color: theme.hintColor),
+                ),
                 Text(
                   '$favCount',
                   style: TextStyle(
@@ -573,7 +690,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     height: 1.1,
                   ),
                 ),
-                Text('张专辑', style: TextStyle(fontSize: 10, color: theme.hintColor)),
+                Text(
+                  '张专辑',
+                  style: TextStyle(fontSize: 10, color: theme.hintColor),
+                ),
               ],
             ),
         ],
@@ -598,7 +718,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     onChanged: (v) => setState(() => _query = v),
                     decoration: InputDecoration(
                       hintText: '搜索标题、社团或声优',
-                      hintStyle: TextStyle(fontSize: 13, color: theme.hintColor),
+                      hintStyle: TextStyle(
+                        fontSize: 13,
+                        color: theme.hintColor,
+                      ),
                       prefixIcon: const Icon(Icons.search, size: 18),
                       isDense: true,
                       filled: true,
@@ -610,7 +733,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: theme.colorScheme.primary),
+                        borderSide: BorderSide(
+                          color: theme.colorScheme.primary,
+                        ),
                       ),
                     ),
                   ),
@@ -621,20 +746,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               Container(
                 padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.6,
+                  ),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
                   children: [
-                    for (final (key, label) in [('all', '全部'), ('unplayed', '未听完'), ('favorite', '已收藏')])
+                    for (final (key, label) in [
+                      ('all', '全部'),
+                      ('unplayed', '未听完'),
+                      ('favorite', '已收藏'),
+                    ])
                       InkWell(
                         onTap: () => setState(() => _filter = key),
                         mouseCursor: SystemMouseCursors.click,
                         borderRadius: BorderRadius.circular(6),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 7,
+                          ),
                           decoration: BoxDecoration(
-                            color: _filter == key ? theme.colorScheme.surface : null,
+                            color: _filter == key
+                                ? theme.colorScheme.surface
+                                : null,
                             borderRadius: BorderRadius.circular(6),
                           ),
                           child: Text(
@@ -642,7 +778,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
-                              color: _filter == key ? theme.colorScheme.onSurface : theme.hintColor,
+                              color: _filter == key
+                                  ? theme.colorScheme.onSurface
+                                  : theme.hintColor,
                             ),
                           ),
                         ),
@@ -667,13 +805,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   });
                 },
                 style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                  backgroundColor: _multiMode ? theme.colorScheme.primary : null,
-                  foregroundColor: _multiMode ? theme.colorScheme.onPrimary : null,
-                  side: BorderSide(color: _multiMode ? theme.colorScheme.primary : theme.dividerColor),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 9,
+                  ),
+                  backgroundColor: _multiMode
+                      ? theme.colorScheme.primary
+                      : null,
+                  foregroundColor: _multiMode
+                      ? theme.colorScheme.onPrimary
+                      : null,
+                  side: BorderSide(
+                    color: _multiMode
+                        ? theme.colorScheme.primary
+                        : theme.dividerColor,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(7),
+                  ),
                 ),
-                child: Text(_multiMode ? '退出多选' : '多选', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
+                child: Text(
+                  _multiMode ? '退出多选' : '多选',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
             ],
           ),
@@ -686,11 +843,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Text('已选 ${_multiIds.length} 张', style: TextStyle(fontSize: 12, color: theme.hintColor)),
+                  Text(
+                    '已选 ${_multiIds.length} 张',
+                    style: TextStyle(fontSize: 12, color: theme.hintColor),
+                  ),
                   const SizedBox(width: 4),
                   OutlinedButton(
                     onPressed: () {
-                      setState(() => _multiIds.addAll(filtered.map((a) => a.id)));
+                      setState(
+                        () => _multiIds.addAll(filtered.map((a) => a.id)),
+                      );
                     },
                     child: const Text('全选', style: TextStyle(fontSize: 11)),
                   ),
@@ -703,17 +865,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   FilledButton.tonal(
                     onPressed: _multiIds.isEmpty
                         ? null
-                        : () => _scrapeSelected(Set.of(_multiIds), force: false),
+                        : () =>
+                              _scrapeSelected(Set.of(_multiIds), force: false),
                     child: const Text('刮削标签', style: TextStyle(fontSize: 11)),
                   ),
                   FilledButton.tonal(
-                    onPressed: _multiIds.isEmpty ? null : () => _deleteSelected(false),
+                    onPressed: _multiIds.isEmpty
+                        ? null
+                        : () => _deleteSelected(false),
                     child: const Text('删除所选', style: TextStyle(fontSize: 11)),
                   ),
                   FilledButton.tonal(
-                    onPressed: _multiIds.isEmpty ? null : () => _deleteSelected(true),
-                    style: FilledButton.styleFrom(backgroundColor: const Color(0xFFD34C44)),
-                    child: const Text('删除所选及源文件', style: TextStyle(fontSize: 11)),
+                    onPressed: _multiIds.isEmpty
+                        ? null
+                        : () => _deleteSelected(true),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFFD34C44),
+                    ),
+                    child: const Text(
+                      '删除所选及源文件',
+                      style: TextStyle(fontSize: 11),
+                    ),
                   ),
                   TextButton(
                     onPressed: () => setState(() {
@@ -736,7 +908,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       padding: const EdgeInsets.fromLTRB(48, 8, 48, 0),
       child: Row(
         children: [
-          Text('显示 $count 张专辑', style: TextStyle(fontSize: 11, color: theme.hintColor)),
+          Text(
+            '显示 $count 张专辑',
+            style: TextStyle(fontSize: 11, color: theme.hintColor),
+          ),
           const Spacer(),
           if (hasFilter)
             TextButton(
@@ -762,7 +937,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           children: [
             Text(
               empty ? '还没有导入任何音声' : '没有找到匹配的音声',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: theme.hintColor),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: theme.hintColor,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -774,7 +953,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
     }
     return GridView.builder(
-      padding: EdgeInsets.fromLTRB(isMobile ? 16 : 48, 16, isMobile ? 16 : 48, 24),
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 16 : 48,
+        16,
+        isMobile ? 16 : 48,
+        24,
+      ),
       gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: isMobile ? 240 : 190,
         mainAxisSpacing: 25,
@@ -792,7 +976,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           onTap: () {
             if (_multiMode) {
               setState(() {
-                isSelected ? _multiIds.remove(album.id) : _multiIds.add(album.id);
+                isSelected
+                    ? _multiIds.remove(album.id)
+                    : _multiIds.add(album.id);
               });
             } else {
               setState(() => _detailAlbum = album);
@@ -880,9 +1066,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (_detailAlbum?.id == album.id) {
         setState(() => _detailAlbum = _detailAlbum?.copyWith(genre: chosen));
       }
-      _showToast(chosen == '未分类'
-          ? '已将「${album.title}」移出分类'
-          : '已将「${album.title}」归入「$chosen」');
+      _showToast(
+        chosen == '未分类'
+            ? '已将「${album.title}」移出分类'
+            : '已将「${album.title}」归入「$chosen」',
+      );
     } catch (e) {
       _showToast('设置分类失败：$e');
     }
@@ -908,9 +1096,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _multiMode = false;
         _multiIds.clear();
       });
-      _showToast(chosen == '未分类'
-          ? '已将 ${ids.length} 张专辑移出分类'
-          : '已将 ${ids.length} 张专辑批量归入「$chosen」');
+      _showToast(
+        chosen == '未分类'
+            ? '已将 ${ids.length} 张专辑移出分类'
+            : '已将 ${ids.length} 张专辑批量归入「$chosen」',
+      );
     } catch (e) {
       _showToast('批量设置分类失败：$e');
     }
@@ -956,9 +1146,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           : 0;
       await ref.read(libraryProvider.notifier).removeAlbums({album.id});
       if (_detailAlbum?.id == album.id) setState(() => _detailAlbum = null);
-      _showToast(deleteFiles
-          ? '已删除「${album.title}」及 $deletedFiles 个源文件'
-          : '已将「${album.title}」从库中删除');
+      _showToast(
+        deleteFiles
+            ? '已删除「${album.title}」及 $deletedFiles 个源文件'
+            : '已将「${album.title}」从库中删除',
+      );
     } catch (e) {
       _showToast('删除失败：$e');
     }
@@ -982,7 +1174,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (deleteFiles) {
         final albums = ref.read(libraryProvider);
         for (final a in albums.where((a) => ids.contains(a.id))) {
-          deletedFiles += await ref.read(platformServiceProvider).removeAlbumFiles(a);
+          deletedFiles += await ref
+              .read(platformServiceProvider)
+              .removeAlbumFiles(a);
         }
       }
       await ref.read(libraryProvider.notifier).removeAlbums(ids);
@@ -990,9 +1184,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _multiMode = false;
         _multiIds.clear();
       });
-      _showToast(deleteFiles
-          ? '已删除 $count 张专辑及 $deletedFiles 个源文件'
-          : '已从库中删除 $count 张专辑');
+      _showToast(
+        deleteFiles
+            ? '已删除 $count 张专辑及 $deletedFiles 个源文件'
+            : '已从库中删除 $count 张专辑',
+      );
     } catch (e) {
       _showToast('删除失败：$e');
     }
@@ -1063,11 +1259,7 @@ class _SortSelector extends StatelessWidget {
       position: position,
       items: [
         for (final opt in _sortOptions)
-          HikoContextMenuItem(
-            value: opt.$1,
-            label: opt.$2,
-            icon: opt.$3,
-          ),
+          HikoContextMenuItem(value: opt.$1, label: opt.$2, icon: opt.$3),
       ],
     ).then((val) {
       if (val != null && val != currentSort) {
@@ -1087,7 +1279,9 @@ class _SortSelector extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.6,
+          ),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
@@ -1124,4 +1318,3 @@ class _SortSelector extends StatelessWidget {
     );
   }
 }
-

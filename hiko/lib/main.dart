@@ -15,6 +15,7 @@ import 'playback/hiko_media_kit_player.dart';
 import 'playback/playback_controller.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/theme.dart';
+import 'ui/widgets/activity_overlay.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,10 +52,9 @@ Future<void> main() async {
     unawaited(_requestNotificationPermission());
   }
 
-  runApp(UncontrolledProviderScope(
-    container: container,
-    child: const HikoApp(),
-  ));
+  runApp(
+    UncontrolledProviderScope(container: container, child: const HikoApp()),
+  );
 }
 
 /// 播放通知权限（Android 13+ 运行时申请;移植旧版 KikoeruPlugin 行为）
@@ -77,6 +77,10 @@ class HikoApp extends ConsumerWidget {
       title: 'Hiko · 音声库',
       debugShowCheckedModeBanner: false,
       theme: buildHikoTheme(settings),
+      builder: (context, child) => ActivityOverlayHost(
+        controller: activityOverlayController,
+        child: child ?? const SizedBox.shrink(),
+      ),
       home: const HomeScreen(),
     );
   }

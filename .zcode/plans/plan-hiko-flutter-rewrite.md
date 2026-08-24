@@ -4,7 +4,13 @@
 > 旧代码（Electron/Capacitor）保留在仓库根目录作参考，功能对等后归档。
 > 本文档为 Flutter 重写的里程碑与修复记录，新改动请追加章节。
 
-## 1. 背景与决策（2026-08-14）
+### 1.33.0 macOS/Windows 通知层级与扫描进度统一（2026-08-24）
+
+- 新增应用级 `ActivityOverlayHost`，通过 `MaterialApp.builder` 位于 Navigator 与普通对话框之上；Toast 与任务进度共用同一控制器。
+- Toast 改为居中内容宽度、最大 520px、最多三行并显式 `TextDecoration.none`；保留顶替旧提示和自动消失。
+- 设置弹窗不再保存扫描/下载进度；从设置触发的导入、扫描、整理、清理、更新下载先关闭弹窗，再由主页通知层显示进度并在完成/异常时清理和提示。
+- 目标 UI 测试 7 passed；analyzer 保持任务基线 32 issues；版本 `1.33.0+37`。
+
 
 原架构：`index.html` / `app.js` / `styles.css` 三端真源，Electron（macOS/Web）+ Capacitor（Android）共用；
 桥接契约 `window.kikoeru` 三方一致；播放层 Android 走原生 Media3 前台服务。

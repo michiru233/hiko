@@ -1,4 +1,24 @@
-# PROGRESS — 1.30.0 应用内「从 GitHub 获得更新」(macOS + Android)
+# PROGRESS — 1.33.0 通知层级与扫描进度修复（macOS + Windows）
+
+## 开工回执（2026-08-24）
+- 目标：统一根通知层，修复 Toast 下划线/整行宽，并让设置触发任务回到主界面后持续显示进度。
+- 顺序：任务 0 基线 → 根通知层与 Toast → 设置回调/任务进度统一 → UI 测试 → 回归、release 构建与发布。
+- 基线：`flutter analyze` 32 条既有问题；`flutter test` 129 passed、1 skipped、1 failed（GitHub `.apk` 资产网络失败）。
+- 构建基线：`flutter build macos --release` 成功，产出 `build/macos/Build/Products/Release/Hiko.app`（73.2MB）；DMG 脚本流程已确认。
+- 最大风险：MaterialApp builder 层级、设置弹窗关闭时异步任务不能丢失，以及不能增加既有 analyzer/test 问题。
+
+## 任务 1/2 实施记录（2026-08-24）
+- [x] Toast：根通知层优先，回退 Overlay 保留；居中内容宽度，最大 520px，最多 3 行，`TextDecoration.none`；同刻顶替旧 Toast、自动消失保留。
+- [x] 任务进度：新增 `ActivityOverlayHost`，由 `MaterialApp.builder` 放在 Navigator/对话框之上；主页统一承接静默扫描、手动扫描、导入、刮削、整理、清理与软件下载进度。
+- [x] 设置弹窗：移除扫描/下载进度状态；导入、扫描、整理、清理和下载均先关闭设置再回调主页，完成/异常由根 Toast 提示。
+- [x] 目标 UI 测试：`flutter test test/ui/toast_test.dart test/ui/activity_overlay_test.dart` 当前 7 passed；覆盖对话框层级、单 Toast、自动消失、无下划线/宽度、任务显示/完成/异常清理/无任务隐藏。
+- [x] 目标 UI 测试：`flutter test test/ui/toast_test.dart test/ui/activity_overlay_test.dart` 最终 8 passed；新增设置回调测试证明点击「立即重新扫描」后 `SettingsDialog` 消失、根进度出现。
+- [x] 反向验证：临时改 `TextDecoration.none` 为 `underline`，`flutter test test/ui/toast_test.dart` 在无下划线断言处红（`Expected none / Actual underline`）；恢复后同命令 3 passed，目标组最终 8 passed。中途两次设置测试失败均为测试等待未关闭对话框/不确定动画导致，修正测试时未放宽断言。
+- [x] analyzer：最终 32 issues，与任务 0 基线一致；全量测试最终 `134 passed、1 skipped、1 failed`，唯一失败为既有 `update_checker_network_test.dart`（GitHub API 403），未新增失败/跳过。
+
+## 任务 3 发布记录（进行中）
+- [x] 版本更新为 `1.33.0+37`；待 release 构建、zip、git push 与 GitHub Release。
+
 
 > 上一期 1.29.0(Android 恢复开发)已完成发版,实施细节见
 > `.zcode/plans/plan-hiko-flutter-rewrite.md` 的 1.29.0 章。

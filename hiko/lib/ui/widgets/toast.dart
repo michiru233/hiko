@@ -2,10 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-/// 全局 toast（1.32）：插入根 Overlay（rootOverlay: true），永远浮于
-/// showDialog / 底部弹层之上。旧实现走 SnackBar 通道，会被后插入的
-/// 对话框 OverlayEntry 盖住——「点按钮弹的提示被对话框挡住」的根因。
-/// 样式沿用旧 SnackBar 主题：深底白字、圆角 7、floating 边距；同一时刻只保留一条。
+import 'activity_overlay.dart';
+
+/// 全局 toast。应用运行时优先使用 MaterialApp 根通知层，测试或嵌入场景
+/// 没有通知层时回退到根 Overlay；同一时刻只保留最新一条。
 OverlayEntry? _activeToastEntry;
 Timer? _activeToastTimer;
 
@@ -14,34 +14,54 @@ void showHikoToast(
   String message, {
   Duration duration = const Duration(milliseconds: 3200),
 }) {
+  if (activityOverlayController.isAttached) {
+    activityOverlayController.showToast(message, duration: duration);
+    return;
+  }
+
   _dismissActiveToast();
 
   final entry = OverlayEntry(
     builder: (_) => Positioned(
       bottom: 96,
-      left: 24,
-      right: 24,
+      left: 0,
+      right: 0,
       child: IgnorePointer(
-        child: TweenAnimationBuilder<double>(
-          tween: Tween(begin: 0, end: 1),
-          duration: const Duration(milliseconds: 180),
-          builder: (_, opacity, child) => Opacity(opacity: opacity, child: child),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-            decoration: BoxDecoration(
-              color: const Color(0xFF292735),
-              borderRadius: BorderRadius.circular(7),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.25),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: 1),
+              duration: const Duration(milliseconds: 180),
+              builder: (_, opacity, child) =>
+                  Opacity(opacity: opacity, child: child),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 13,
                 ),
-              ],
-            ),
-            child: Text(
-              message,
-              style: const TextStyle(color: Colors.white, fontSize: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF292735),
+                  borderRadius: BorderRadius.circular(7),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.25),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  message,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                      decoration: TextDecoration.none,
+                  ),
+                ),
+              ),
             ),
           ),
         ),
