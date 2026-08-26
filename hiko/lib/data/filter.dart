@@ -36,6 +36,21 @@ List<Album> filterAlbums({
       // 标题 Z-A 倒序
       result.sort((a, b) => naturalCompare(b.title, a.title));
       break;
+    case 'artist_asc':
+      // 专辑艺术家 A-Z 正序：albumArtist 优先，为空回退 artist；皆空排最后；同艺术家内按标题自然排序升序
+      result.sort((a, b) {
+        final keyA = a.albumArtist.isNotEmpty ? a.albumArtist : a.artist;
+        final keyB = b.albumArtist.isNotEmpty ? b.albumArtist : b.artist;
+        if (keyA.isEmpty && keyB.isEmpty) {
+          return naturalCompare(a.title, b.title);
+        }
+        if (keyA.isEmpty) return 1;
+        if (keyB.isEmpty) return -1;
+        final cmp = naturalCompare(keyA, keyB);
+        if (cmp != 0) return cmp;
+        return naturalCompare(a.title, b.title);
+      });
+      break;
     case 'duration':
     case 'duration_desc':
       // 时长由长到短（降序）：总时长秒数降序；相同按曲目数降序

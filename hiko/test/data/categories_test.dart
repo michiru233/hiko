@@ -385,5 +385,130 @@ void main() {
       );
       expect(resOldest.map((x) => x.id).toList(), ['second', 'first']);
     });
+
+    test('按专辑艺术家 artist_asc 升序排序：同 albumArtist 专辑相邻且整体按键升序，同艺术家内按标题自然排序升序', () {
+      final a1 = Album(
+        id: '1',
+        sourcePath: '/tmp/1',
+        title: 'B 作品',
+        albumArtist: 'Alpha',
+        genre: 'ASMR',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+      final a2 = Album(
+        id: '2',
+        sourcePath: '/tmp/2',
+        title: 'A 作品',
+        albumArtist: 'Alpha',
+        genre: 'ASMR',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+      final a3 = Album(
+        id: '3',
+        sourcePath: '/tmp/3',
+        title: 'C 作品',
+        albumArtist: 'Beta',
+        genre: 'ASMR',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+
+      final res = filterAlbums(
+        albums: [a3, a1, a2],
+        view: '全部音声',
+        filter: 'all',
+        query: '',
+        sort: 'artist_asc',
+      );
+
+      expect(res.map((x) => x.id).toList(), ['2', '1', '3']);
+    });
+
+    test('按专辑艺术家 artist_asc 升序排序：albumArtist 为空时回退至 artist 字段', () {
+      final a1 = Album(
+        id: '1',
+        sourcePath: '/tmp/1',
+        title: '作品 1',
+        albumArtist: 'Alpha',
+        artist: 'Other',
+        genre: 'ASMR',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+      final a2 = Album(
+        id: '2',
+        sourcePath: '/tmp/2',
+        title: '作品 2',
+        albumArtist: '',
+        artist: 'Beta',
+        genre: 'ASMR',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+      final a3 = Album(
+        id: '3',
+        sourcePath: '/tmp/3',
+        title: '作品 3',
+        albumArtist: 'Gamma',
+        artist: '',
+        genre: 'ASMR',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+
+      final res = filterAlbums(
+        albums: [a3, a2, a1],
+        view: '全部音声',
+        filter: 'all',
+        query: '',
+        sort: 'artist_asc',
+      );
+
+      expect(res.map((x) => x.id).toList(), ['1', '2', '3']);
+    });
+
+    test('按专辑艺术家 artist_asc 升序排序：albumArtist 和 artist 皆空时排在最后且按标题自然排序', () {
+      final a1 = Album(
+        id: '1',
+        sourcePath: '/tmp/1',
+        title: '作品 1',
+        albumArtist: 'Alpha',
+        genre: 'ASMR',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+      final aEmpty1 = Album(
+        id: 'e1',
+        sourcePath: '/tmp/e1',
+        title: 'Z 无艺术家',
+        albumArtist: '',
+        artist: '',
+        genre: 'ASMR',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+      final aEmpty2 = Album(
+        id: 'e2',
+        sourcePath: '/tmp/e2',
+        title: 'A 无艺术家',
+        albumArtist: '',
+        artist: '',
+        genre: 'ASMR',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+
+      final res = filterAlbums(
+        albums: [aEmpty1, a1, aEmpty2],
+        view: '全部音声',
+        filter: 'all',
+        query: '',
+        sort: 'artist_asc',
+      );
+
+      expect(res.map((x) => x.id).toList(), ['1', 'e2', 'e1']);
+    });
   });
 }

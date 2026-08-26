@@ -1,20 +1,15 @@
-# PROGRESS（hiko Android 三抱怨修复：点击反馈 / toast 置顶 / 元数据与封面）
+# PROGRESS（hiko 1.35.0：主界面排序新增按专辑艺术家）
 
-## 开工回执（任务 0，2026-08-24）
-- 目标：①全 UI 水波纹+按压反馈；②toast 走根 Overlay 永不被对话框挡；③专辑名/艺术家取音轨标签（repairText 对齐 Dart 0x80..0xFF），无标签兜底 DLsite，封面不静默丢失。
-- 顺序：0 基线→1 repairText→2 专辑元数据→3 封面→4 Ink 反馈→5 toast helper→6 模拟器端到端→7 发版 1.32.0+35。
-- 最大风险：模拟器端到端 SAF 导入流程取证（任务 6）依赖真机行为，耗时长。
-- 基线核对：flutter test = +110 ~1 All tests passed（~1 为既有网络测试 skip，非本次引入）。
-- 假绿灯已修：AGP 9 built-in Kotlin 只注册 src/test/java，测试原在 src/test/kotlin 未被编译。已 git mv 迁移至 src/test/java → **12/12 绿**（ImportScannerTest 4 + Id3v2ParserTest 8，XML 落盘）。
-- 注意：构建产物被 Flutter 重定向到 `hiko/build/app/`（非 `hiko/android/app/build/`），test-results 正确路径 = `hiko/build/app/test-results/testDebugUnitTest/`（4 个文件：2 XML + binary）。
-- 基线提交 455964b（旧 zip 出库 + 归档散落计划文件）；新 zip v1.26–1.31 按 Releases 惯例保持不入库。
+## 开工回执（任务 0，2026-08-26）
+- 目标：主界面排序菜单新增「专辑艺术家 A → Z」，选中后按 albumArtist（为空回退 artist，皆空排最后）naturalCompare 升序排列，同艺术家内按标题升序。
+- 顺序：0 基线核对→1 filter.dart 增加 artist_asc→2 categories_test.dart 单测及红绿验证→3 home_screen.dart UI 菜单项与 label→4 发版 1.35.0+39（构建、Release、文档更新）。
+- 最大风险：空艺术家字段排序边界情况处理与同艺术家内标题二级排序未对齐。
+- 基线核对：`flutter test` 结果为 +137 ~1 -1（唯一失败为 update_checker_network_test 真实 GitHub 网络测试，符合预期基线）。
+- 代码落点：`_sortOptions` 位于 `lib/ui/screens/home_screen.dart:1220`，`albumArtist` 位于 `lib/models/album.dart:10`。
 
 ## 任务状态
-- [x] 任务 0：基线核对 + Kotlin 测试装配修复（12/12 绿，见上）
-- [x] 任务 1：ImportScanner.kt repairText 对齐 Dart——三改：触发范围 0xA0..0xFF→0x80..0xFF；候选解码改 strict（REPORT，非法序列跳过该字符集——顺带修掉「正常重音 Latin 文本被 GB18030 替换符垃圾覆盖」的隐藏 bug）；加 Latin-1 外字符保护。红→绿验证：新测试在旧代码 2 失败（片假名原样返回 + Café Crème 被改写），修复后 15/15 绿（ImportScannerTest 7 + Id3v2ParserTest 8）。
-- [x] 任务 2：专辑元数据 + DLsite 兜底——①Android：新增 ImportScanner.decideAlbumMeta 纯函数（首个含可用 ALBUM 标签音轨决定 title/artist/albumArtist），buildAlbumFromFiles 接入并输出 metaFromFolder 标志；②桌面 scanner.dart 对齐（artist 首个含标签优先——注：audio_metadata_reader 的 artist 本身就 TPE2 优先，桌面"专辑艺术家优先"原有测试已覆盖）；③Album 模型加 metaFromFolder 字段（JSON 往返）；④mergeWith 自愈：纯 RJ 号/乱码旧标题允许被新标题替换（_isDegradedTitle），正常/已刮削旧标题仍保留；⑤刮削回写抽出纯函数 applyResults，刮到标题同时更新 title+dlsiteTitle 并清 metaFromFolder；⑥DlsiteScraper.backfillTitles 串行兜底（400ms 限速，连续 3 次网络异常提前终止），挂在 home_screen._importFolder 的 mergeNew 之后；⑦常驻目录自动扫描（music_folder_scanner）不触发兜底——避免启动时联网，导入主路径已覆盖（如需再议）。红→绿：新测试旧代码编译红（metaFromFolder/decideAlbumMeta 未定义）→ 修复后 Dart +123 ~1 全绿（基线 110）、Kotlin 18/18（中途修 3 个测试自身数据缺陷：分组键因 artist 不一致拆组、同 id 专辑、未排序输入）。
-- [x] 任务 3：封面四改——①Kotlin readBytes→readImageBytes：≤15MB 原样读，超限两次开 fd 用 inSampleSize 降采样解码（sampleSizeFor 纯函数）重编码 JPEG90，不再静默跳过；②Kotlin coverDataUrl 阶梯耗尽返最小产物不返 null（质量档扩到 82→30）；③Android 封面候选扩到父目录（walk 记录 parentDirs，buildAlbumFromFiles 候选=组内目录+各自父目录一层）；④桌面 cover.dart 补 600→400→300 × 82→30 阶梯 + 全耗尽返最小产物 + maxBytes 可注入参数（仅测试用）+ 顺手修竖图长边缩放缺陷（旧代码高度为长边时只按宽度缩放会超 600px）；⑤桌面 scanner.dart 封面查找扩父目录、去掉 >15MB 静默跳过。红→绿：父目录封面=运行红（null）已贴；cover 阶梯=编译红（旧无 maxBytes 参数）已贴；sampleSizeFor=编译红（stash 旧 main 文件复现）已贴。Dart +126 ~1、Kotlin 19/19 全绿。注：Dart 侧默认 500KB 下 image 包编码器几乎打不穿单次压缩（600px 噪声 q82 仅 94KB），故阶梯用注入小上限测真实路径，Android 真编码器场景由任务 6 模拟器 >15MB 封面行为验证。
-- [x] 任务 4：Ink 反馈——lib/ui 九处带 onTap 的 GestureDetector 全转 Material+InkWell（专辑卡片/多选勾选/侧栏项/右键菜单项/分类色点/歌词行/两处遮罩）；专辑卡片长按菜单改 Listener 原始指针记位置+InkWell.onLongPress（InkWell 无 onLongPressStart，Listener 不参与手势竞技场不影响水波纹）；两处遮罩（抽屉/详情关闭层）用 NoSplash——遮罩非按钮，全屏水波纹观感差，关闭本身即反馈；主题补 splashColor 0.18/0.28（浅/深）+ highlightColor 0.12 + InkRipple.splashFactory + 按钮 overlayColor ≥0.12（ListTileThemeData.copyWith 无 overlayColor 参数，删——ListTile 走全局 splash/highlight）。验收 grep -A6 输出 onTap=0 ✓；唯一剩余 GestureDetector = player_bar.dart:620 右键菜单专用（onSecondaryTapDown，无 onTap）。新增 test/ui/ink_feedback_test.dart（主题 alpha≥0.12 + AlbumCard InkWell tap），红（旧代码 0 InkWell）→绿。
-- [x] 任务 5：全局 toast——新建 lib/ui/widgets/toast.dart（showHikoToast：Overlay.of(rootOverlay:true) 插 OverlayEntry、180ms 淡入、自动消失、同刻仅一条顶替）；替换全部 14 处 SnackBar 调用（home_screen._showToast、settings_dialog._toast+6 直接调用统一走 _toast、detail_drawer 2、player_bar 4 保留 1s duration）。验收 grep ScaffoldMessenger lib = 0 ✓。新增 test/ui/toast_test.dart：对话框打开时 toast findsOneWidget + 自动消失 + 顶替唯一；红（删 helper 后 Method not found: showHikoToast）→绿。
-- [x] 任务 6：模拟器端到端四点截图（AVD kikoeru_test=emulator-5554，release APK top.voicehub.hiko 已装机，SAF 导入含大封面/带标签专辑）——①标题为元数据名非 RJ 号：详情页主标题【一个由国家机关派发生插女高中生肉垫的世界♡】（はだか抱きまくら係 · RJ01655831），网格另见 るんりーわん(RJ01257775)、被绿咨询～乃乃酱篇～(バイコーンの森/RJ01608775)；②封面在：RJ01655831 详情页封面为真实动漫插画（黑发女性+夜景），非占位符；③按钮按下水波纹：长按底部导航「最近」，半透明圆形水波纹铺满按钮可见；④设置弹窗内 toast 置顶：弹窗内点「清理失效记录」→「库中暂无失效记录」深色圆角条浮于弹窗最底端之上，层级最顶。截图存 /tmp/shot3_detail.png（标题+封面）/ shot5_toast.png（toast 置顶）/ shot6_ripple.png（水波纹）。注：库中 RJ337515（占位封面+RJ 号标题）为修复前旧导入数据，非回归——新代码仅在重导入/mergeWith 时自愈。
-- [x] 任务 7：bump 1.32.0+35（pubspec 1.32.0+35，gradle 由 flutter.versionCode 派生=35）→ Dart +130 ~1 全绿（≥110）、Kotlin 19/19 全绿（XML 落盘 hiko/build/app/test-results/）→ flutter build apk --release（64.1MB，versionCode 35）→ flutter build macos --release（Hiko.app 73.2MB，Info.plist 1.32.0/35）→ zip hiko-v1.32.0-macos.zip（32MB）→ git push + gh release v1.32.0（附 zip + APK）→ 计划文档追加 1.32.0 章节（plan-hiko-flutter-rewrite.md）。
+- [x] 任务 0：基线核对与落点确认（+137 ~1 -1 基线确认）
+- [x] 任务 1：filter.dart 增加 artist_asc 排序逻辑（键取 albumArtist 优先回退 artist，皆空置底，二级按标题升序）
+- [x] 任务 2：categories_test.dart 新增单测并反向验证（红→绿：临时 break 时 3 个新用例均报错，恢复后 14/14 全绿）
+- [x] 任务 3：home_screen.dart 增加 UI 选项及 label（analyze 0 error，全量测试 +140 ~1 -1）
+- [x] 任务 4：发版 1.35.0+39（构建 macOS release、打包 zip、git push、gh release、追加 plan 文档）

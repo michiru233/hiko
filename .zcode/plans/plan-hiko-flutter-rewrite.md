@@ -385,3 +385,22 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 - **测试**：`scanner_test.dart` +2（封面取第一首内嵌 APIC 优先于外置功能图 + albumArtist 补全；标题换行清洗），新增 `createTaggedMp3WithCover`(写 APIC)。
 - **验收**：`flutter analyze` 32 issues（基线一致）；`flutter test` 137 passed、1 skipped、1 failed（唯一失败为既有 `update_checker_network_test` GitHub 403）；实扫两个真实目录，RJ01257775 `localCover` 103KB(曲目列表图)→99KB(封面插画)、RJ01579153 97KB(功能图)→105KB(封面插画)，二者 `albumArtist` 由空变为 `ろんりーわん`/`恋楽屋`，标题去换行。视觉核验（vision-helper）：新封面均为正规人物插画。
 - **版本**：1.34.0+38。发布：hiko-v1.34.0-macos.zip（sha256 fcda477d…）。
+
+### 1.35.0 主界面排序新增「专辑艺术家 A → Z」（2026-08-26）
+
+用户需求：主界面排序菜单增加按专辑艺术家排序，让同艺术家的专辑排在一起。
+
+- **排序逻辑**（`hiko/lib/data/filter.dart`）：
+  - 增加 `artist_asc` 排序项：排序键取 `albumArtist`（非空优先），为空回退 `artist`；两者皆空排在最后；
+  - 排序键使用 `naturalCompare` 升序比较；同艺术家内部（以及皆为空的专辑之间）按标题 `naturalCompare` 升序二级排序。
+- **UI 适配**（`hiko/lib/ui/screens/home_screen.dart`）：
+  - `_SortSelector._sortOptions` 在「标题 Z → A」后、「时长」前插入 `('artist_asc', '专辑艺术家 A → Z', Icons.people_alt_outlined)`。
+  - `_SortSelector._currentLabel` 增加 `case 'artist_asc': return '专辑艺术家';` 匹配。
+- **测试覆盖**（`hiko/test/data/categories_test.dart`）：
+  - 新增 3 条用例覆盖：① 同 albumArtist 专辑相邻且整体升序，内部按标题自然排序；② albumArtist 为空时回退 artist；③ 两者皆空排在最后且按标题排序。
+  - 反向验证：临时禁用排序变红（3 个用例全部失败）→ 恢复实现后全部通过。
+- **验证**：
+  - `flutter analyze` 针对修改文件 0 error。
+  - `flutter test` 全量运行：140 passed、1 skipped、1 failed（已知 GitHub API 网络用例），通过数从基线 137 提升至 140。
+- **版本**：1.35.0+39（pubspec.yaml）。发布：hiko-v1.35.0-macos.zip。
+

@@ -1222,6 +1222,7 @@ class _SortSelector extends StatelessWidget {
     ('recent_asc', '最早添加（旧到新）', Icons.history_rounded),
     ('title_asc', '标题 A → Z', Icons.sort_by_alpha_outlined),
     ('title_desc', '标题 Z → A', Icons.sort_by_alpha_outlined),
+    ('artist_asc', '专辑艺术家 A → Z', Icons.people_alt_outlined),
     ('duration_desc', '时长（长到短）', Icons.hourglass_bottom_outlined),
     ('duration_asc', '时长（短到长）', Icons.hourglass_top_outlined),
   ];
@@ -1235,6 +1236,8 @@ class _SortSelector extends StatelessWidget {
         return '标题 A-Z';
       case 'title_desc':
         return '标题 Z-A';
+      case 'artist_asc':
+        return '专辑艺术家';
       case 'duration':
       case 'duration_desc':
         return '时长 (长→短)';
