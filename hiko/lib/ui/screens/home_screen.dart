@@ -38,7 +38,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   String _view = '全部音声';
   String _filter = 'all';
-  String _sort = 'recent';
   String _query = '';
   bool _multiMode = false;
   final Set<String> _multiIds = {};
@@ -333,12 +332,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final albums = ref.watch(libraryProvider);
+    final currentSort = ref.watch(settingsProvider.select((s) => s.albumSort));
     final filtered = filterAlbums(
       albums: albums,
       view: _view,
       filter: _filter,
       query: _query,
-      sort: _sort,
+      sort: currentSort,
     );
     final theme = Theme.of(context);
     // 移动布局仅 Android 触屏（≤1000px，与旧版桥接层一致）；桌面永远桌面布局
@@ -417,7 +417,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                               ),
                             ],
                             Expanded(
-                              child: _buildMain(filtered, theme, isMobile),
+                              child: _buildMain(
+                                filtered,
+                                theme,
+                                isMobile,
+                                currentSort,
+                              ),
                             ),
                           ],
                         ),
@@ -553,13 +558,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return i < 0 ? 0 : i;
   }
 
-  Widget _buildMain(List<Album> filtered, ThemeData theme, bool isMobile) {
+  Widget _buildMain(List<Album> filtered, ThemeData theme, bool isMobile, String currentSort) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildTopbar(theme, isMobile),
         _buildHero(theme, filtered.length, isMobile),
-        _buildToolbar(theme, isMobile, filtered),
+        _buildToolbar(theme, isMobile, filtered, currentSort),
         _buildResultsLine(theme, filtered.length),
         Expanded(child: _buildGrid(filtered, theme, isMobile)),
       ],
@@ -701,7 +706,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  Widget _buildToolbar(ThemeData theme, bool isMobile, List<Album> filtered) {
+  Widget _buildToolbar(
+    ThemeData theme,
+    bool isMobile,
+    List<Album> filtered,
+    String currentSort,
+  ) {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 48),
       child: Column(
@@ -791,9 +801,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               const SizedBox(width: 14),
               // 排序
               _SortSelector(
-                currentSort: _sort,
+                currentSort: currentSort,
                 isMobile: isMobile,
-                onSelected: (val) => setState(() => _sort = val),
+                onSelected: (val) =>
+                    ref.read(settingsProvider.notifier).setAlbumSort(val),
               ),
               const SizedBox(width: 14),
               // 多选

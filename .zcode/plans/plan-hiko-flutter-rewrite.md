@@ -404,3 +404,25 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
   - `flutter test` 全量运行：140 passed、1 skipped、1 failed（已知 GitHub API 网络用例），通过数从基线 137 提升至 140。
 - **版本**：1.35.0+39（pubspec.yaml）。发布：hiko-v1.35.0-macos.zip。
 
+### 1.36.0 主界面默认按专辑艺术家排序并记住用户选择（2026-08-26）
+
+用户需求：主界面默认按专辑艺术家排在一起；用户改过排序后重启仍保持其选择；不加分组标题。
+
+- **设置持久化**（`hiko/lib/data/settings_store.dart`）：
+  - `AppSettings` 增加 `albumSort` 字段，默认值为 `'artist_asc'`；
+  - `SettingsNotifier` 增加键 `hiko-album-sort` 及 `setAlbumSort` 方法；
+  - 非法值与空值保护：`_normalizeSort` 白名单校验（包含 `recent_desc`/`recent_asc`/`title_asc`/`title_desc`/`artist_asc`/`duration_desc`/`duration_asc` 及旧别名 `recent`/`title`/`duration`），非法或缺失时自动回退为 `'artist_asc'`。
+- **主界面绑定**（`hiko/lib/ui/screens/home_screen.dart`）：
+  - 移除本地状态 `String _sort = 'recent';`，以 `settingsProvider` 为唯一真源；
+  - 排序选择器切换时直接调用 `ref.read(settingsProvider.notifier).setAlbumSort(val)` 实现实时持久化与跨会话记忆。
+- **测试覆盖与反向验证**（`hiko/test/data/settings_store_test.dart`）：
+  - 新增 3 条单元测试：① 空 prefs 时 `albumSort` 默认 `artist_asc`；② 设置 `title_asc` 后重启 `load` 依然为 `title_asc`；③ 非法已存值（未知键或空串）自动回退 `artist_asc`。测试通过数由 3 增至 6。
+  - 反向验证：临时将默认值改为 `'recent'`，空 prefs 用例预期变红；恢复 `'artist_asc'` 后 6 条单测全绿。
+- **验证与发版**：
+  - `flutter analyze` 32 issues（无新增）；
+  - `flutter test` 全量运行：143 passed、1 skipped、1 failed（已知 GitHub API 网络用例）；
+  - `categories_test.dart` 保持未修改，无 Android 相关改动；
+  - 产物构建：`hiko-v1.36.0-macos.zip`。
+- **版本**：1.36.0+40（pubspec.yaml）。发布：hiko-v1.36.0-macos.zip。
+
+

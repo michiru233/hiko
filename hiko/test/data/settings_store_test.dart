@@ -70,4 +70,39 @@ void main() {
     await notifier.setPlaybackRate(3.0);
     expect(notifier.state.playbackRate, 2.0);
   });
+
+  test('专辑排序：空 prefs 默认 artist_asc', () async {
+    final notifier = SettingsNotifier();
+    expect(notifier.state.albumSort, 'artist_asc');
+
+    await notifier.load();
+    expect(notifier.state.albumSort, 'artist_asc');
+  });
+
+  test('专辑排序：设置 title_asc 并重启 load 持久化往返', () async {
+    final notifier = SettingsNotifier();
+    await notifier.load();
+
+    await notifier.setAlbumSort('title_asc');
+    expect(notifier.state.albumSort, 'title_asc');
+
+    final reloaded = SettingsNotifier();
+    await reloaded.load();
+    expect(reloaded.state.albumSort, 'title_asc');
+  });
+
+  test('专辑排序：非法值（空串或未知键）回退 artist_asc', () async {
+    SharedPreferences.setMockInitialValues({'hiko-album-sort': 'invalid_key_xyz'});
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.albumSort, 'artist_asc');
+
+    // 运行时传入非法值也安全回退
+    await notifier.setAlbumSort('');
+    expect(notifier.state.albumSort, 'artist_asc');
+
+    final reloaded = SettingsNotifier();
+    await reloaded.load();
+    expect(reloaded.state.albumSort, 'artist_asc');
+  });
 }

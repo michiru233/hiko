@@ -9,6 +9,7 @@ class AppSettings {
   final double audioGain; // 1.0 - 4.0（音频增益倍率，默认 1.0 即 100% 不放大，最高 4.0x，经 af 链软限幅防破音）
   final String playMode; // list / single / shuffle / album
   final double playbackRate; // 播放倍速 0.5 - 2.0,步进 0.1,默认 1.0
+  final String albumSort; // 专辑排序方式，默认 artist_asc
   final bool sidebarShown;
   final String scrapeProxy;
   final List<String> musicFolders; // 常驻音乐目录（桌面：路径；Android：SAF tree URI）
@@ -20,6 +21,7 @@ class AppSettings {
     this.audioGain = 1.0,
     this.playMode = 'list',
     this.playbackRate = 1.0,
+    this.albumSort = 'artist_asc',
     this.sidebarShown = true,
     this.scrapeProxy = '',
     this.musicFolders = const [],
@@ -42,6 +44,7 @@ class AppSettings {
     double? audioGain,
     String? playMode,
     double? playbackRate,
+    String? albumSort,
     bool? sidebarShown,
     String? scrapeProxy,
     List<String>? musicFolders,
@@ -53,6 +56,7 @@ class AppSettings {
         audioGain: audioGain ?? this.audioGain,
         playMode: playMode ?? this.playMode,
         playbackRate: playbackRate ?? this.playbackRate,
+        albumSort: albumSort ?? this.albumSort,
         sidebarShown: sidebarShown ?? this.sidebarShown,
         scrapeProxy: scrapeProxy ?? this.scrapeProxy,
         musicFolders: musicFolders ?? this.musicFolders,
@@ -85,9 +89,31 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kAudioGain = 'hiko-audio-gain';
   static const _kMode = 'hiko-mode';
   static const _kPlaybackRate = 'hiko-playback-rate';
+  static const _kAlbumSort = 'hiko-album-sort';
   static const _kSidebar = 'hiko-sidebar';
   static const _kProxy = 'hiko-scrape-proxy';
   static const _kMusicFolders = 'hiko-music-folders';
+
+  static const _validSorts = {
+    'recent_desc',
+    'recent_asc',
+    'title_asc',
+    'title_desc',
+    'artist_asc',
+    'duration_desc',
+    'duration_asc',
+    // 兼容旧别名
+    'recent',
+    'title',
+    'duration',
+  };
+
+  static String _normalizeSort(String? val) {
+    if (val != null && _validSorts.contains(val)) {
+      return val;
+    }
+    return 'artist_asc';
+  }
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -98,6 +124,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       audioGain: (prefs.getDouble(_kAudioGain) ?? 1.0).clamp(1.0, 4.0),
       playMode: prefs.getString(_kMode) ?? 'list',
       playbackRate: (prefs.getDouble(_kPlaybackRate) ?? 1.0).clamp(0.5, 2.0),
+      albumSort: _normalizeSort(prefs.getString(_kAlbumSort)),
       sidebarShown: prefs.getBool(_kSidebar) ?? true,
       scrapeProxy: prefs.getString(_kProxy) ?? '',
       musicFolders: prefs.getStringList(_kMusicFolders) ?? const [],
@@ -111,6 +138,11 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   Future<void> setAudioGain(double gain) =>
       _save(_kAudioGain, gain.clamp(1.0, 4.0), state.copyWith(audioGain: gain.clamp(1.0, 4.0)));
   Future<void> setPlayMode(String mode) => _save(_kMode, mode, state.copyWith(playMode: mode));
+
+  Future<void> setAlbumSort(String sort) {
+    final validSort = _normalizeSort(sort);
+    return _save(_kAlbumSort, validSort, state.copyWith(albumSort: validSort));
+  }
 
   /// 播放倍速:0.5 ~ 2.0(步进 0.1 由 UI Slider divisions 保证)
   Future<void> setPlaybackRate(double rate) => _save(
