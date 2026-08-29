@@ -1,3 +1,13 @@
+# BLOCKED — 1.39.0 重发缺失 Mpv.framework 的 macOS 包（启动黑屏修复）
+
+- v1.38.0 Release 说明原文留底（编辑加黑屏警告前，2026-08-29）：
+  > 修复「检查更新」读取 GitHub 发布说明乱码：发布说明现按 UTF-8 解码，中文版本介绍正常显示。
+- 顺手活待裁决：`main()` 启动链（settings/library 加载、MediaKit/AudioSession/AudioService 初始化）无 try/catch，任何初始化异常都会在 `runApp` 前抛出导致静默黑屏（本次事故的表现形式）；建议后续版本加启动错误兜底（FlutterError.onError + runApp 前异常落盘/弹错误窗口）。
+- 顺手活待裁决：media_kit_libs_macos_audio 的 podspec `system("make")` 下载失败不阻断构建（本次事故根因），Flutter 侧暂无干净拦截点，暂以「构建后 find Mpv.framework 计数」人工检查兜底。
+- 其余：无。
+
+---
+
 # BLOCKED — 1.38.0 检查更新发布说明 UTF-8 乱码修复
 
 - 无待裁决事项。
