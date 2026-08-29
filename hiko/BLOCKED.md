@@ -1,3 +1,11 @@
+# BLOCKED — 1.38.0 检查更新发布说明 UTF-8 乱码修复
+
+- 无待裁决事项。
+- 顺手活（本期未动，待裁决）：`pickAsset` 目前对 macos/windows 都匹配 `-macos.zip` 后缀，若未来 Windows 改发独立命名 zip（如 `*-windows.zip`）需扩展；`pickAsset` 可顺手重构为资产命名规则表。
+- network 测试删除 .apk 断言为领导拍板项（Android 暂停后 v1.37.0 起仅发 macos zip，实测 2026-08-29 该断言必挂），非我擅自放宽。
+
+---
+
 # BLOCKED — 1.37.0 专辑艺术家按专辑数降序
 
 - 无待裁决事项。`update_checker_network_test.dart` 为开工前既有红灯（最新 Release 无 .apk 资产），按任务书未触碰。

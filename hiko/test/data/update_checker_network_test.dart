@@ -11,11 +11,8 @@ void main() {
     // 版本号可被比较逻辑解析
     expect(UpdateChecker.parseVersion(release.tagName), isNot([0, 0, 0]));
 
-    // 双平台资产选择:发版惯例同时带 APK 与 macOS zip
-    final apk = UpdateChecker.pickAsset(release, 'android');
+    // 资产选择:发版惯例带 macOS zip(Android 暂停后不再发 .apk)
     final macZip = UpdateChecker.pickAsset(release, 'macos');
-    expect(apk, isNotNull, reason: 'latest release 应含 .apk 资产');
-    expect(apk!.name.toLowerCase().endsWith('.apk'), isTrue);
     expect(macZip, isNotNull, reason: 'latest release 应含 -macos.zip 资产');
     expect(macZip!.size, greaterThan(0));
 

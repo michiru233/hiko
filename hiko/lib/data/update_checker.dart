@@ -110,8 +110,7 @@ class UpdateChecker {
   }
 
   static Map<String, dynamic> _decodeJson(List<int> body) =>
-      (const JsonDecoder().convert(String.fromCharCodes(body))
-          as Map<String, dynamic>);
+      (const JsonDecoder().convert(utf8.decode(body)) as Map<String, dynamic>);
 
   /// 流式下载资产到 destPath,回调 (已收字节, 总字节)
   static Future<void> downloadAsset(

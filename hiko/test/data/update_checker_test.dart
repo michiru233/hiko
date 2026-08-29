@@ -1,5 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hiko/data/update_checker.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 void main() {
   group('版本比较', () {
@@ -62,6 +66,33 @@ void main() {
         ),
         isNull,
       );
+    });
+  });
+
+  group('fetchLatestRelease UTF-8 解码', () {
+    test('含中文发布说明的响应体按 UTF-8 解码不乱码(完整请求路径)', () async {
+      const body = 'v1.38.0 更新说明：修复检查更新中文乱码，中文版本介绍正常显示。';
+      final jsonBytes = utf8.encode(jsonEncode({
+        'tag_name': 'v1.38.0',
+        'name': 'v1.38.0',
+        'body': body,
+        'assets': [
+          {
+            'name': 'hiko-v1.38.0-macos.zip',
+            'browser_download_url': 'https://example.com/hiko-v1.38.0-macos.zip',
+            'size': 123,
+          },
+        ],
+      }));
+      final client = MockClient(
+        (request) async => http.Response.bytes(jsonBytes, 200),
+      );
+
+      final release = await UpdateChecker.fetchLatestRelease(client: client);
+
+      expect(release.tagName, 'v1.38.0');
+      expect(release.body, body);
+      expect(release.assets.single.name, 'hiko-v1.38.0-macos.zip');
     });
   });
 }

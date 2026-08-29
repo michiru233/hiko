@@ -1,3 +1,17 @@
+# PROGRESS — 1.38.0 检查更新发布说明 UTF-8 乱码修复（macOS）
+
+## 开工回执（任务 0，2026-08-29）
+- 目标：`update_checker.dart` 的 `_decodeJson` 用 `String.fromCharCodes` 按 Latin-1 解码 UTF-8 字节导致中文乱码；改为 `utf8.decode`，加中文回归测试，发 v1.38.0。
+- 基线核对（2026-08-29）：`update_checker_test + network_test` → 6 过 / 1 挂（挂的是过时的 latest 应含 .apk 断言，line 17）；pubspec 1.37.0+41；`_decodeJson` 位于 lib/data/update_checker.dart L112-114。三条全部核对无误。
+- 顺序：任务 1（改解码 + fake client 回归测试 + 删 network 测试 apk 断言 + 反向验证红→绿）→ 任务 2（bump 1.38.0+42 → 全量测试 → release 构建 → zip → commit/push → gh release）。
+- 最大风险：compute 隔离结构改动引发测试环境差异；网络测试实网波动（非本任务引入需如实区分）。
+
+## 进度
+- [x] 任务 0：基线核对无误（update_checker 两组测试 6 过 / 1 挂，挂的为 network 测试过时 .apk 断言）。
+- [x] 任务 1：`_decodeJson` 改 `utf8.decode(body)`（保持 compute 隔离结构）；`update_checker_test.dart` 新增「fetchLatestRelease UTF-8 解码」组，用 MockClient（package:http/testing，仅伪造 HTTP 传输、不碰解码逻辑）返回中文 JSON 的 UTF-8 字节走完整请求路径；`update_checker_network_test.dart` 仅删 .apk 相关两行 expect 及 `final apk` 声明与注释（macos zip 断言保留）。反向验证：临时改回 `String.fromCharCodes` → 新测试红（Expected 中文 / Actual `v1.38.0 ææ°è¯´æï¼…` Latin-1 乱码，offset 8）→ 还原后 8 passed / 0 failed / 0 skipped；`grep String.fromCharCodes` 计 0。
+- [ ] 任务 2：发版 v1.38.0（进行中）。
+---
+
 # PROGRESS — 1.37.0 专辑艺术家按专辑数降序（macOS）
 
 ## 开工回执（任务 0，2026-08-29）
