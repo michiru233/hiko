@@ -11,6 +11,11 @@
 - [x] 任务 1：filter.dart `artist_asc` 改为专辑数降序（全库计数，同数按名自然升序，空键最后，组内标题升序）；改写 categories_test.dart 首个 artist_asc 用例覆盖「2 张排在 1 张前」，其余两条语义未动；反向验证比较器临时改升序→新用例红（Expected `['b2','b1','g1','g2','a1']` / Actual `['a1','b2','b1','g1','g2']`）→ 还原后 categories 14 条全绿。全量 `flutter test`：143 passed、1 skipped、1 failed（仅既有网络用例）。
 - [x] 任务 2：菜单文案改「专辑艺术家（专辑多在前）」；pubspec 1.37.0+41；`flutter build macos --release` 成功（Hiko.app 55.9MB，Info.plist 版本 1.37.0）；zip `hiko/dist/hiko-v1.37.0-macos.zip`（23MB）；README 排序描述与 `.zcode/plans/plan-hiko-flutter-rewrite.md` 1.37.0 章节已同步。git push 与 gh release 结果见下方发布记录。
 
+## 发布记录
+- git 提交 `a0d79f7`（`feat(sort): 1.37.0 专辑艺术家排序改为专辑数多的排前面`），推送 `7088102..a0d79f7 main -> main`。
+- GitHub Release：https://github.com/michiru233/hiko/releases/tag/v1.37.0 ，资产 `hiko-v1.37.0-macos.zip`（23MB，zip 路径 `hiko/dist/hiko-v1.37.0-macos.zip`）。
+- 完成审计：改动仅限白名单文件（git diff --stat 核对）；`update_checker_network_test.dart` 未触碰；全量测试 143 过 / 1 跳过 / 1 失败（既有网络用例），与基线一致；未触碰任何 Android 代码。
+
 ---
 
 # 1.34.0 专辑封面按第一首元数据提取（macOS + Windows）
