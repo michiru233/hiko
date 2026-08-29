@@ -1,5 +1,7 @@
 # Kikoeru macOS 音声管理器
 
+> ⚠️ **旧版（参考，不再新增功能）**：当前主线是 Flutter 重写版，见 [`hiko/README.md`](hiko/README.md)。本 README 仅描述根目录的旧版 Electron + Capacitor 共享 UI（macOS/Web + Android）。
+
 本地优先的音声库界面原型，参考 neokikoeru 的“本地库 + 专辑元数据 + 播放队列”思路，当前版本无需安装依赖即可运行。
 
 ## 启动
