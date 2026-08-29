@@ -1,3 +1,20 @@
+# PROGRESS — 1.39.0 重发缺失 Mpv.framework 的 macOS 包（启动黑屏修复）
+
+## 开工回执（任务 0，2026-08-29）
+- 理解的目标：v1.38.0 包因构建期 mpv 依赖缓存损坏且下载失败被静默吞掉而缺 Mpv.framework，启动即黑屏；以 v1.39.0 重发含 Mpv.framework 的包，并在 v1.38.0 Release 说明加黑屏警告；零代码改动。
+- 基线核对（2026-08-29）：HEAD `0b34766` 工作区干净（仅 .zcode/ scratch 未跟踪文件，任务书允许）；pubspec 1.38.0+42；pub 缓存 Frameworks 目录 10 项含 Mpv.xcframework。三条全部核对无误。
+- 顺序：任务 1（版本 1.39.0+43 + 记录）→ 任务 2（构建 + Mpv.framework 反向验证 + zip）→ 任务 3（启动自测）→ 任务 4（push + Release + v1.38.0 警告）。
+- 最大风险：构建环境再次静默缺库（已用「find 计数为 0 禁止发布」反向验证堵住）；v1.38.0 说明编辑前需留底。
+
+## 进度
+- [x] 任务 0：基线核对无误（0b34766 / 1.38.0+42 / Mpv.xcframework 在缓存）。
+- [x] 任务 1：pubspec 1.39.0+43（`grep '^version' pubspec.yaml` → `version: 1.39.0+43`）；本文件与根 PROGRESS.md 已追加 1.39.0 记录。
+- [x] 任务 2：`flutter build macos --release` 成功（Hiko.app 73.2MB）；反向验证 `find … -name 'Mpv.framework' | wc -l` → `1`（≥1 才继续）；`ditto` 打包 `hiko-v1.39.0-macos.zip`（31M）；验收 `unzip -l | grep -c 'Contents/Frameworks/Mpv.framework/Mpv'` → `1`（≥1）。
+- [x] 任务 3：启动自测——`pgrep -x Hiko` 有 PID、`/tmp/hiko139.log` 中 `grep -c "Cannot find Mpv\|Unhandled Exception"` → `0`；测后 `pkill -x Hiko` 清场。
+- [ ] 任务 4：push + gh release v1.39.0 + v1.38.0 黑屏警告。
+
+---
+
 # PROGRESS — 1.38.0 检查更新发布说明 UTF-8 乱码修复（macOS）
 
 ## 开工回执（任务 0，2026-08-29）

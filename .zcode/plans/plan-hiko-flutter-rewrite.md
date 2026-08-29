@@ -443,3 +443,12 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 - **版本**：1.37.0+41（pubspec.yaml）。发布：hiko-v1.37.0-macos.zip。
 
 
+
+### 1.39.0 重发缺失 Mpv.framework 的 macOS 包（启动黑屏修复，2026-08-29）
+
+事故：v1.38.0 发布的 Hiko.app 缺 `Contents/Frameworks/Mpv.framework`，启动时 `main()` 在 `runApp` 前 `MediaKit.ensureInitialized` 抛未捕获异常，窗口全黑。
+
+- **根因**：`media_kit_libs_macos_audio` 的 podspec 在构建期 `system("make")` 从 GitHub 下载 mpv xcframework，打包机 pub 缓存中该目录缺失（下载失败被 pod 静默吞掉），构建产物不带 mpv 却构建成功、无任何报警。
+- **修复**：重跑插件 Makefile 重新下载 mpv（缓存恢复）→ `pod install` → 重建；产物 73.2MB（坏包 55.9MB），包内 `Mpv.framework` 就位，启动日志无异常。
+- **零代码改动**：仅 pubspec 版本号 1.39.0+43 与文档记录；v1.38.0 Release 说明加黑屏警告，v1.39.0 重发覆盖安装。
+- **验收**：构建后 `find Hiko.app -name 'Mpv.framework' | wc -l` ≥1 方可发布（反向验证坏包会报警）；zip `unzip -l | grep 'Contents/Frameworks/Mpv.framework/Mpv'` ≥1；直启自测无 "Cannot find Mpv" / Unhandled Exception。
