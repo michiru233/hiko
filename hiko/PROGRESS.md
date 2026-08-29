@@ -9,7 +9,7 @@
 ## 进度
 - [x] 任务 0：基线核对无误（update_checker 两组测试 6 过 / 1 挂，挂的为 network 测试过时 .apk 断言）。
 - [x] 任务 1：`_decodeJson` 改 `utf8.decode(body)`（保持 compute 隔离结构）；`update_checker_test.dart` 新增「fetchLatestRelease UTF-8 解码」组，用 MockClient（package:http/testing，仅伪造 HTTP 传输、不碰解码逻辑）返回中文 JSON 的 UTF-8 字节走完整请求路径；`update_checker_network_test.dart` 仅删 .apk 相关两行 expect 及 `final apk` 声明与注释（macos zip 断言保留）。反向验证：临时改回 `String.fromCharCodes` → 新测试红（Expected 中文 / Actual `v1.38.0 ææ°è¯´æï¼…` Latin-1 乱码，offset 8）→ 还原后 8 passed / 0 failed / 0 skipped；`grep String.fromCharCodes` 计 0。
-- [ ] 任务 2：发版 v1.38.0（进行中）。
+- [x] 任务 2：pubspec 1.38.0+42；全量 `flutter test` 145 passed / 1 skipped（既有实网测试默认跳过机制，HIKO_NETWORK_TESTS=1 启用）/ 0 failed；`flutter build macos --release` 成功（Hiko.app 55.9MB）；zip `hiko/dist/hiko-v1.38.0-macos.zip`（23MB，ditto --keepParent，顶层 Hiko.app）；提交 `71bd7e1` 推送 `cbd77d7..71bd7e1 main`；GitHub Release https://github.com/michiru233/hiko/releases/tag/v1.38.0 ，资产验收 `gh release view v1.38.0 --json assets --jq '.assets[0].name'` → `hiko-v1.38.0-macos.zip`；`grep String.fromCharCodes lib/data/update_checker.dart` 无匹配。
 ---
 
 # PROGRESS — 1.37.0 专辑艺术家按专辑数降序（macOS）
