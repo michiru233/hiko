@@ -1,3 +1,10 @@
+# BLOCKED — 1.37.0 专辑艺术家按专辑数降序
+
+- 无待裁决事项。`update_checker_network_test.dart` 为开工前既有红灯（最新 Release 无 .apk 资产），按任务书未触碰。
+- 待裁决的顺手活（扫描/封面/播放等）：无。
+
+---
+
 # BLOCKED — 1.33.0 通知层级与扫描进度修复
 
 - 任务 0 基线与文档一致：`flutter analyze` 32 条既有 warning/info；`flutter test` 129 passed、1 skipped、1 failed，唯一失败为 `test/data/update_checker_network_test.dart` 无法取得 GitHub latest 的 `.apk` 资产。该失败保留，不修改业务或测试掩盖。

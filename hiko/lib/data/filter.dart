@@ -37,7 +37,13 @@ List<Album> filterAlbums({
       result.sort((a, b) => naturalCompare(b.title, a.title));
       break;
     case 'artist_asc':
-      // 专辑艺术家 A-Z 正序：albumArtist 优先，为空回退 artist；皆空排最后；同艺术家内按标题自然排序升序
+      // 专辑艺术家排序：专辑数多的艺术家整组排前面（专辑数按全库入参计，不受当前筛选影响）；
+      // 同数按艺术家名自然升序；albumArtist 优先、为空回退 artist，皆空排最后；同艺术家内按标题自然排序升序
+      final artistCounts = <String, int>{};
+      for (final a in albums) {
+        final key = a.albumArtist.isNotEmpty ? a.albumArtist : a.artist;
+        if (key.isNotEmpty) artistCounts[key] = (artistCounts[key] ?? 0) + 1;
+      }
       result.sort((a, b) {
         final keyA = a.albumArtist.isNotEmpty ? a.albumArtist : a.artist;
         final keyB = b.albumArtist.isNotEmpty ? b.albumArtist : b.artist;
@@ -46,6 +52,8 @@ List<Album> filterAlbums({
         }
         if (keyA.isEmpty) return 1;
         if (keyB.isEmpty) return -1;
+        final countCmp = (artistCounts[keyB] ?? 0).compareTo(artistCounts[keyA] ?? 0);
+        if (countCmp != 0) return countCmp;
         final cmp = naturalCompare(keyA, keyB);
         if (cmp != 0) return cmp;
         return naturalCompare(a.title, b.title);

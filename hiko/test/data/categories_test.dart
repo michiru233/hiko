@@ -386,44 +386,63 @@ void main() {
       expect(resOldest.map((x) => x.id).toList(), ['second', 'first']);
     });
 
-    test('按专辑艺术家 artist_asc 升序排序：同 albumArtist 专辑相邻且整体按键升序，同艺术家内按标题自然排序升序', () {
+    test('按专辑艺术家 artist_asc 排序：专辑数多的艺术家整组排前（2 张排在 1 张前），同数按艺术家名自然升序，组内按标题自然排序升序', () {
+      // Alpha 只有 1 张但名字最先；Beta/Gamma 各 2 张 → Beta、Gamma 组须排在 Alpha 前，Beta 组又排在 Gamma 组前
       final a1 = Album(
-        id: '1',
+        id: 'a1',
         sourcePath: '/tmp/1',
-        title: 'B 作品',
-        albumArtist: 'Alpha',
-        genre: 'ASMR',
-        date: DateTime.now(),
-        tracks: const [],
-      );
-      final a2 = Album(
-        id: '2',
-        sourcePath: '/tmp/2',
         title: 'A 作品',
         albumArtist: 'Alpha',
         genre: 'ASMR',
         date: DateTime.now(),
         tracks: const [],
       );
-      final a3 = Album(
-        id: '3',
-        sourcePath: '/tmp/3',
-        title: 'C 作品',
+      final b1 = Album(
+        id: 'b1',
+        sourcePath: '/tmp/b1',
+        title: 'Z 作品',
         albumArtist: 'Beta',
+        genre: 'ASMR',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+      final b2 = Album(
+        id: 'b2',
+        sourcePath: '/tmp/b2',
+        title: 'M 作品',
+        albumArtist: 'Beta',
+        genre: 'ASMR',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+      final g1 = Album(
+        id: 'g1',
+        sourcePath: '/tmp/g1',
+        title: 'B 作品',
+        albumArtist: 'Gamma',
+        genre: 'ASMR',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+      final g2 = Album(
+        id: 'g2',
+        sourcePath: '/tmp/g2',
+        title: 'C 作品',
+        albumArtist: 'Gamma',
         genre: 'ASMR',
         date: DateTime.now(),
         tracks: const [],
       );
 
       final res = filterAlbums(
-        albums: [a3, a1, a2],
+        albums: [a1, g2, b1, g1, b2],
         view: '全部音声',
         filter: 'all',
         query: '',
         sort: 'artist_asc',
       );
 
-      expect(res.map((x) => x.id).toList(), ['2', '1', '3']);
+      expect(res.map((x) => x.id).toList(), ['b2', 'b1', 'g1', 'g2', 'a1']);
     });
 
     test('按专辑艺术家 artist_asc 升序排序：albumArtist 为空时回退至 artist 字段', () {

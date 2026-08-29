@@ -1,4 +1,19 @@
-# PROGRESS — 1.34.0 专辑封面按第一首元数据提取（macOS + Windows）
+# PROGRESS — 1.37.0 专辑艺术家按专辑数降序（macOS）
+
+## 开工回执（任务 0，2026-08-29）
+- 理解的目标：`artist_asc` 排序改为——艺术家组之间按专辑数降序（多的在前），同数按艺术家名自然升序，空键（albumArtist 与 artist 皆空）仍排最后，组内仍按标题自然升序；菜单文案改「专辑艺术家（专辑多在前）」；版本 1.37.0，macOS 封包发 GitHub Release。
+- 基线核对（2026-08-29）：`cd hiko && flutter test` → 143 过 / 1 跳过 / 1 失败（仅 update_checker_network_test），与任务书一致。
+- 顺序：任务 1（filter.dart + 测试 + 反向验证）→ 任务 2（文案/版本/构建/发版/记录）。
+- 最大风险：改写 categories_test.dart 旧用例断言时误动另外两个用例语义（回退、皆空排最后），需保持不变。
+
+## 进度
+- [x] 任务 0：基线核对无误（143 过 / 1 跳过 / 1 失败仅 update_checker_network_test）。
+- [x] 任务 1：filter.dart `artist_asc` 改为专辑数降序（全库计数，同数按名自然升序，空键最后，组内标题升序）；改写 categories_test.dart 首个 artist_asc 用例覆盖「2 张排在 1 张前」，其余两条语义未动；反向验证比较器临时改升序→新用例红（Expected `['b2','b1','g1','g2','a1']` / Actual `['a1','b2','b1','g1','g2']`）→ 还原后 categories 14 条全绿。全量 `flutter test`：143 passed、1 skipped、1 failed（仅既有网络用例）。
+- [x] 任务 2：菜单文案改「专辑艺术家（专辑多在前）」；pubspec 1.37.0+41；`flutter build macos --release` 成功（Hiko.app 55.9MB，Info.plist 版本 1.37.0）；zip `hiko/dist/hiko-v1.37.0-macos.zip`（23MB）；README 排序描述与 `.zcode/plans/plan-hiko-flutter-rewrite.md` 1.37.0 章节已同步。git push 与 gh release 结果见下方发布记录。
+
+---
+
+# 1.34.0 专辑封面按第一首元数据提取（macOS + Windows）
 
 ## 开工回执（2026-08-24）
 - 目标：修复 RJ01257775 / RJ01579153 两个作品专辑封面显示错误——之前封面被「曲目列表图」顶替，`albumArtist` 恒为空，标题带换行重复。

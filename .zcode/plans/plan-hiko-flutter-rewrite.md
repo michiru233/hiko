@@ -425,4 +425,21 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
   - 产物构建：`hiko-v1.36.0-macos.zip`。
 - **版本**：1.36.0+40（pubspec.yaml）。发布：hiko-v1.36.0-macos.zip。
 
+### 1.37.0 专辑艺术家排序：专辑数多的艺术家排前面（2026-08-29）
+
+用户需求：主界面默认「专辑艺术家」排序保持分组相邻，但组与组之间改为专辑数多的艺术家整组排前面，常听的艺术家一眼可见（改造现有 `artist_asc` 选项，不新增选项）。
+
+- **排序实现**（`hiko/lib/data/filter.dart` `case 'artist_asc'`）：
+  - 先按全库（`filterAlbums` 入参列表）统计各艺术家的专辑数——键取 `albumArtist`、为空回退 `artist`，计数不受当前视图/筛选子集影响；
+  - 组间：专辑数降序（多的在前）→ 同数按艺术家名自然升序；空键（albumArtist 与 artist 皆空）仍排最后；
+  - 组内仍按标题自然升序，与 1.35.0 行为一致。
+- **菜单文案**（`hiko/lib/ui/screens/home_screen.dart`）：`_sortOptions` 中 `artist_asc` 标签由「专辑艺术家 A → Z」改为「专辑艺术家（专辑多在前）」；下拉框当前项标签保持「专辑艺术家」。
+- **设置持久化不变**：`albumSort` 键 `hiko-album-sort`、默认值 `artist_asc` 均未改动，老用户已选的排序无缝过渡到新行为。
+- **测试覆盖与反向验证**（`hiko/test/data/categories_test.dart`）：
+  - 改写原「同 albumArtist 相邻且按键升序」用例：Alpha 1 张（名字最先）vs Beta/Gamma 各 2 张，断言 `Beta组(标题升序) → Gamma组 → Alpha`，覆盖「2 张排在 1 张前 + 同数按名升序 + 组内标题升序」；
+  - 回退（albumArtist 空回退 artist）与皆空排最后两条既有用例语义未动、仍然通过；
+  - 反向验证：比较器临时改为专辑数升序，新用例变红（Expected `['b2','b1','g1','g2','a1']` / Actual `['a1','b2','b1','g1','g2']`）；还原后 14 条 categories 用例全绿。
+- **验证**：`flutter test` 全量 143 passed、1 skipped、1 failed（已知 GitHub API 网络用例），与基线一致；README 排序描述同步。
+- **版本**：1.37.0+41（pubspec.yaml）。发布：hiko-v1.37.0-macos.zip。
+
 
