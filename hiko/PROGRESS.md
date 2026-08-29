@@ -11,7 +11,13 @@
 - [x] 任务 1：pubspec 1.39.0+43（`grep '^version' pubspec.yaml` → `version: 1.39.0+43`）；本文件与根 PROGRESS.md 已追加 1.39.0 记录。
 - [x] 任务 2：`flutter build macos --release` 成功（Hiko.app 73.2MB）；反向验证 `find … -name 'Mpv.framework' | wc -l` → `1`（≥1 才继续）；`ditto` 打包 `hiko-v1.39.0-macos.zip`（31M）；验收 `unzip -l | grep -c 'Contents/Frameworks/Mpv.framework/Mpv'` → `1`（≥1）。
 - [x] 任务 3：启动自测——`pgrep -x Hiko` 有 PID、`/tmp/hiko139.log` 中 `grep -c "Cannot find Mpv\|Unhandled Exception"` → `0`；测后 `pkill -x Hiko` 清场。
-- [ ] 任务 4：push + gh release v1.39.0 + v1.38.0 黑屏警告。
+- [x] 任务 4：push + gh release v1.39.0 + v1.38.0 黑屏警告。
+
+## 发布记录
+- git 提交 `7f79137`（fix(release): 1.39.0 重发缺失 Mpv.framework 的 macOS 包）与 `2e69ba9`（BLOCKED 留底），推送 `0b34766..2e69ba9 main -> main`。
+- GitHub Release：https://github.com/michiru233/hiko/releases/tag/v1.39.0 ，资产 `hiko-v1.39.0-macos.zip`（32,399,302 字节）；v1.38.0 说明已改为黑屏警告。
+- 硬指标 A：`gh release download` 因代理掐长流两次 PROTOCOL_ERROR 失败，改 curl 断点续传 4 轮完成下载；`unzip -l /tmp/v139.zip | grep 'Contents/Frameworks/Mpv.framework/Mpv'` 命中；SHA256 三方一致（下载包 = 本地 zip = GitHub digest `389e207d…92c2`）。
+- 硬指标 B：`git diff v1.38.0 HEAD --stat -- lib test macos android` 无输出（先 `git fetch --tags` 拉取远端标签后按任务书原命令复验）。
 
 ---
 

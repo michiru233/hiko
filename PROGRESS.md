@@ -7,5 +7,5 @@
 ## 任务状态
 - [x] 任务 0：基线核对一致
 - [x] 任务 1：pubspec 1.39.0+43，hiko/PROGRESS.md 与根 PROGRESS.md 记录
-- [ ] 任务 2/3：构建、打包、启动自测
-- [ ] 任务 4：git push + gh release v1.39.0 + v1.38.0 黑屏警告
+- [x] 任务 2/3：构建、打包、启动自测（Hiko.app 73.2MB，Mpv.framework 计数 1，zip 31M，启动无报错）
+- [x] 任务 4：发版完成——提交 `7f79137`/`2e69ba9` 已推送，Release https://github.com/michiru233/hiko/releases/tag/v1.39.0 （资产 hiko-v1.39.0-macos.zip，SHA256 `389e207d…92c2` 三方一致），v1.38.0 说明已加黑屏警告；硬指标 A（下载回验包内 Mpv.framework）与 B（v1.38.0…HEAD 代码 diff 为空）均通过
