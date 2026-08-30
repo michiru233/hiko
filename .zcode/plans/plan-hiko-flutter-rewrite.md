@@ -452,3 +452,17 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 - **修复**：重跑插件 Makefile 重新下载 mpv（缓存恢复）→ `pod install` → 重建；产物 73.2MB（坏包 55.9MB），包内 `Mpv.framework` 就位，启动日志无异常。
 - **零代码改动**：仅 pubspec 版本号 1.39.0+43 与文档记录；v1.38.0 Release 说明加黑屏警告，v1.39.0 重发覆盖安装。
 - **验收**：构建后 `find Hiko.app -name 'Mpv.framework' | wc -l` ≥1 方可发布（反向验证坏包会报警）；zip `unzip -l | grep 'Contents/Frameworks/Mpv.framework/Mpv'` ≥1；直启自测无 "Cannot find Mpv" / Unhandled Exception。
+
+### 1.40.0 修复艺术家标签带尾随空格被拆成不同分组（2026-08-30）
+
+用户现象：RJ01619492、RJ01617094（`albumArtist` 为 `"バイコーンの森 "`，带尾随空格）与 RJ01477624（`"バイコーンの森"`，无空格）同属「バイコーンの森」，按默认「专辑艺术家」排序却被当成两个艺术家拆开。库内共 14 组艺人都存在「带空格/不带空格」两种变体。
+
+- **根因**：`scanner.dart` `_buildAlbum` 取 `firstArtist` 时只在 `.where()` 里用 `v.trim().isNotEmpty` 做校验，对最终值未做 trim 赋值，标签里自带的首尾空格被原样写入 `artist`/`albumArtist`；而默认排序 `filter.dart` 的 `artist_asc`（自 1.36.0 起为默认）按 `albumArtist`（为空回退 `artist`）做字符串精确分组，把同名艺术家拆成两个组。
+- **修复**（三层）：
+  - `scanner.dart`：写库前对 artist 用 `normalizeTag()`（trim + 去尾部 NUL）归一化，albumArtist 随之继承。
+  - `filter.dart`：`artist_asc` 分组键做防御性 trim（覆盖未迁移的旧库）。
+  - `library_store.dart`：`load()` 对已入库的 `artist`/`albumArtist` 做 trim 迁移，下次保存自动落盘，无需重扫。
+- **测试覆盖**（`hiko/test/data/categories_test.dart`）：新增用例——同名艺术家「带/不带尾随空格」视为同一人归为一组，组内按标题自然升序、另一艺术家独立成组排后；断言 `['1','2','3','b1','b2']`。
+- **验证**：`flutter test` 全量 146 passed、1 skipped（GitHub API 网络用例默认跳过）；`flutter build macos --release` 产物 70M，`find Hiko.app -name 'Mpv.framework'` =1，zip 内 `Contents/Frameworks/Mpv.framework/` 有 21 个条目；直启新实例无异常日志，截图确认「バイコーンの森」13 张整组排最前、RJ01477624 与 RJ01619492/RJ01617094 同组。
+- **既有缺口（非本次引入）**：计划文档缺 `### 1.38.0` 整节（仅被 1.39.0 事故描述顺带提及），待补。
+- **版本**：1.40.0+44（pubspec.yaml）。发布：hiko-v1.40.0-macos.zip，https://github.com/michiru233/hiko/releases/tag/v1.40.0 。
