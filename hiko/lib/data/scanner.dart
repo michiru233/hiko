@@ -63,7 +63,8 @@ class FileMeta {
   final String dirPath;
   final String dirName;
   final String? title;
-  final String? artist;
+  final String? artist; // 曲目艺术家（MP3=TPE1）
+  final String? albumArtist; // 专辑艺术家（MP3=TPE2）
   final String? album;
   final int? trackNumber;
   final double duration;
@@ -75,6 +76,7 @@ class FileMeta {
     required this.dirName,
     this.title,
     this.artist,
+    this.albumArtist,
     this.album,
     this.trackNumber,
     this.duration = 0,
@@ -100,6 +102,7 @@ Future<List<FileMeta?>> parseBatch(ParseBatch job) async {
       dirName: _fileName(dirPath),
       title: meta.title,
       artist: meta.artist,
+      albumArtist: meta.albumArtist,
       album: meta.album,
       trackNumber: meta.trackNumber,
       duration: meta.duration,
@@ -117,7 +120,9 @@ String _groupKey(FileMeta m, Map<String, String?> directoryAlbums) {
       ? albumName
       : null;
   final normalizedAlbum = albumKey == null ? null : normalizeTag(albumKey);
-  final normalizedArtist = normalizeTag(m.artist ?? '');
+  // 分组的「专辑艺术家」固定用 TPE2：artist 现在是第一轨曲目艺术家（TPE1），
+  // 同专辑各轨声优可能不同，用它分组会把一张专辑拆散
+  final normalizedArtist = normalizeTag((m.albumArtist ?? m.artist) ?? '');
   return normalizedAlbum != null
       ? 'tag:$normalizedArtist|$normalizedAlbum'
       : 'dir:${m.dirPath}';
@@ -269,6 +274,7 @@ Future<List<Album>> scanPath(
             dirName: m.dirName,
             title: m.title,
             artist: m.artist,
+            albumArtist: m.albumArtist,
             album: inherited,
             trackNumber: m.trackNumber,
             duration: m.duration,
@@ -310,17 +316,26 @@ Future<Album?> _buildAlbum(String key, List<FileMeta> files) async {
       : cleanFolderTitle(sorted.first.dirName);
   final clean = _sanityTitle(rawTitle);
   final title = clean.isNotEmpty ? clean : '本地导入';
-  // 艺术家取首个含可用标签音轨（对齐 Android decideAlbumMeta 的首个标签优先）。
-  // 注：audio_metadata_reader 对 MP3 把 TPE2(专辑艺术家) 优先于 TPE1(曲目艺术家) 映射进 artist，
-  // 因此多数情况下 artist 已是专辑艺术家；这里同时用同一值补全 albumArtist，避免其恒为空。
-  final firstArtist = sorted
-      .map((m) => m.artist)
-      .where((v) => v != null && v.trim().isNotEmpty && !looksGarbled(v))
+  // 艺术家取值链（1.43.0）：第一轨 TPE1（曲目艺术家/声优）→ 第一轨 TPE2
+  // （专辑艺术家）→ 任何轨有效标签。修复解析库把 TPE2 优先映射进 artist、
+  // 导致卡片显示社团而非声优的问题。
+  bool tagOk(String? v) => v != null && v.trim().isNotEmpty && !looksGarbled(v);
+  final first = sorted.first;
+  final firstTpe1 = tagOk(first.artist) ? normalizeTag(first.artist!) : null;
+  final firstTpe2 =
+      tagOk(first.albumArtist) ? normalizeTag(first.albumArtist!) : null;
+  final anyTpe1 =
+      sorted.map((m) => tagOk(m.artist) ? normalizeTag(m.artist!) : null).firstOrNull;
+  final anyTpe2 = sorted
+      .map((m) => tagOk(m.albumArtist) ? normalizeTag(m.albumArtist!) : null)
       .firstOrNull;
+  final artistValue = firstTpe1 ?? firstTpe2 ?? anyTpe1 ?? anyTpe2;
+  // albumArtist 独立于 artist：取第一轨 TPE2，空则任何轨 TPE2
+  final albumArtistValue = firstTpe2 ?? anyTpe2 ?? '';
   // 写库前规范化（去首尾空白/NUL）：标签里常见的尾随空格会让「同名艺术家」
   // 在按艺术家排序时被当成两个不同的人拆开
-  final artist = firstArtist != null ? normalizeTag(firstArtist) : '本地导入';
-  final albumArtist = (artist != '本地导入') ? artist : '';
+  final artist = artistValue ?? '本地导入';
+  final albumArtist = albumArtistValue;
   final rjCode = extractRjCode([
     sorted.first.path,
     sorted.first.dirPath,

@@ -193,12 +193,10 @@ class Album {
                   !_isDegradedTitle(oldAlbum.title)))
           ? oldAlbum.title
           : title,
-      artist: (hasDlsite && oldAlbum.artist != '本地导入')
-          ? oldAlbum.artist
-          : (artist != '本地导入' ? artist : oldAlbum.artist),
-      albumArtist: (hasDlsite && oldAlbum.albumArtist.isNotEmpty)
-          ? oldAlbum.albumArtist
-          : (albumArtist.isNotEmpty ? albumArtist : oldAlbum.albumArtist),
+      // 1.43：artist/albumArtist fresh 非空即覆盖——旧版 hasDlsite 时粘滞旧值，
+      // 导致重扫也无法修复错误 artist（DLsite 刮削不写 artist，无冲突）
+      artist: (artist != '本地导入') ? artist : oldAlbum.artist,
+      albumArtist: albumArtist.isNotEmpty ? albumArtist : oldAlbum.albumArtist,
       rjCode: oldAlbum.rjCode ?? rjCode,
       dlsiteTitle: oldAlbum.dlsiteTitle ?? dlsiteTitle,
       tags: oldAlbum.tags.isNotEmpty ? oldAlbum.tags : tags,

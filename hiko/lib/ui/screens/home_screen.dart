@@ -1072,6 +1072,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildGrid(List<Album> filtered, ThemeData theme, bool isMobile) {
+    // 1.43：每行专辑数设置仅桌面端生效，移动端保持按宽度自适应
+    final settings = ref.watch(settingsProvider);
+    final desktopGridColumns = isMobile ? 0.0 : settings.gridColumns;
     if (filtered.isEmpty) {
       final empty = ref.watch(libraryProvider).isEmpty;
       return Center(
@@ -1102,12 +1105,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         isMobile ? 16 : 48,
         24,
       ),
-      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: isMobile ? 240 : 190,
-        mainAxisSpacing: 25,
-        crossAxisSpacing: 18,
-        childAspectRatio: 0.60,
-      ),
+      gridDelegate: desktopGridColumns > 0
+          ? SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: desktopGridColumns.toInt(),
+              mainAxisSpacing: 25,
+              crossAxisSpacing: 18,
+              childAspectRatio: 0.60,
+            )
+          : SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: isMobile ? 240 : 190,
+              mainAxisSpacing: 25,
+              crossAxisSpacing: 18,
+              childAspectRatio: 0.60,
+            ),
       itemCount: filtered.length,
       itemBuilder: (context, index) {
         final album = filtered[index];
@@ -1116,6 +1126,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           album: album,
           multiMode: _multiMode,
           selected: isSelected,
+          showScrapedTags: settings.showScrapedTags,
           onTap: () {
             if (_multiMode) {
               setState(() {

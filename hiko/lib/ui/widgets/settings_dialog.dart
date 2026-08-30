@@ -281,6 +281,60 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                   ],
                 ),
               ),
+              // ---- 主界面 ----
+              _SectionTitle('主界面'),
+              _SettingRow(
+                label: '显示刮削标签',
+                trailing: Switch(
+                  value: settings.showScrapedTags,
+                  onChanged: (v) => ref
+                      .read(settingsProvider.notifier)
+                      .setShowScrapedTags(v),
+                ),
+              ),
+              _SettingRow(
+                label: '每行专辑数',
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 0=自动（按窗口宽度），其余为固定每行数量
+                    for (final columns in const [
+                      0.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 12.0,
+                    ])
+                      InkWell(
+                        onTap: () => ref
+                            .read(settingsProvider.notifier)
+                            .setGridColumns(columns),
+                        mouseCursor: SystemMouseCursors.click,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: settings.gridColumns == columns
+                                ? theme.colorScheme.surface
+                                : null,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            columns == 0 ? '自动' : columns.toStringAsFixed(0),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: settings.gridColumns == columns
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                              color: settings.gridColumns == columns
+                                  ? theme.colorScheme.onSurface
+                                  : theme.hintColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
               // ---- 数据 ----
               _SectionTitle('数据'),
               _SettingRow(

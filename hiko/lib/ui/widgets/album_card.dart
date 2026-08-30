@@ -15,6 +15,7 @@ class AlbumCard extends ConsumerWidget {
     required this.selected,
     required this.onTap,
     required this.onContextMenu,
+    this.showScrapedTags = false,
   });
 
   final Album album;
@@ -24,6 +25,10 @@ class AlbumCard extends ConsumerWidget {
 
   /// 右键（桌面）/长按（移动）菜单回调，携带触发位置
   final void Function(Offset position)? onContextMenu;
+
+  /// 1.43：是否显示 DLsite 刮削标签（由 home_screen 从设置传入，默认关；
+  /// 卡片不直接读 ProviderScope，保持可独立构造——widget_test 无 ProviderScope）
+  final bool showScrapedTags;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -169,7 +174,7 @@ class AlbumCard extends ConsumerWidget {
                         _Tag(text: album.genre),
                       ],
                     ),
-                    if (album.tags.isNotEmpty) ...[
+                    if (showScrapedTags && album.tags.isNotEmpty) ...[
                       const SizedBox(height: 5),
                       Wrap(
                         spacing: 5,

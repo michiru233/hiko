@@ -235,4 +235,49 @@ void main() {
       expect(merged.resumePosition, 0);
     });
   });
+
+  group('mergeWith artist 覆盖方向（1.43：fresh 非空即覆盖）', () {
+    test('已刮削专辑（hasDlsite）重扫后新 artist 必须覆盖旧值', () {
+      final fresh = Album(
+        id: 'a',
+        sourcePath: '/x',
+        title: '作品',
+        artist: '声優A',
+        albumArtist: 'サークルB',
+        date: DateTime.now(),
+      );
+      final old = Album(
+        id: 'a',
+        sourcePath: '/x',
+        title: '作品',
+        artist: '旧社团',
+        albumArtist: '旧社团',
+        dlsiteTitle: 'DLsite 作品名',
+        date: DateTime.now(),
+      );
+      final merged = fresh.mergeWith(old);
+      expect(merged.artist, '声優A',
+          reason: '旧 artist 粘滞会让 artist 修复对已刮削专辑无效');
+      expect(merged.albumArtist, 'サークルB');
+      expect(merged.dlsiteTitle, 'DLsite 作品名', reason: '其余自愈逻辑不受影响');
+    });
+
+    test('fresh artist 为「本地导入」时保留旧值兜底', () {
+      final fresh = Album(
+        id: 'a',
+        sourcePath: '/x',
+        title: '作品',
+        artist: '本地导入',
+        date: DateTime.now(),
+      );
+      final old = Album(
+        id: 'a',
+        sourcePath: '/x',
+        title: '作品',
+        artist: '旧社团',
+        date: DateTime.now(),
+      );
+      expect(fresh.mergeWith(old).artist, '旧社团');
+    });
+  });
 }

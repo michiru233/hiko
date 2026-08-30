@@ -134,4 +134,44 @@ void main() {
     await notifier.setSeekStep(99);
     expect(notifier.state.seekStepSeconds, 3);
   });
+
+  test('1.43 显示刮削标签：默认 false + 开启持久化往返', () async {
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.showScrapedTags, isFalse, reason: '默认关闭');
+
+    await notifier.setShowScrapedTags(true);
+    expect(notifier.state.showScrapedTags, isTrue);
+
+    final reloaded = SettingsNotifier();
+    await reloaded.load();
+    expect(reloaded.state.showScrapedTags, isTrue);
+  });
+
+  test('1.43 每行专辑数：默认 0=自动 + 档位持久化往返 + 白名单外回退自动', () async {
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.gridColumns, 0, reason: '默认自动');
+
+    await notifier.setGridColumns(6);
+    expect(notifier.state.gridColumns, 6);
+
+    final reloaded = SettingsNotifier();
+    await reloaded.load();
+    expect(reloaded.state.gridColumns, 6);
+
+    // 白名单外（3、9、99）回退 0=自动
+    await notifier.setGridColumns(3);
+    expect(notifier.state.gridColumns, 0);
+    await notifier.setGridColumns(9);
+    expect(notifier.state.gridColumns, 0);
+    await notifier.setGridColumns(99);
+    expect(notifier.state.gridColumns, 0);
+
+    // prefs 里存了白名单外值，load 也回退
+    SharedPreferences.setMockInitialValues({'hiko-grid-columns': 9.0});
+    final bad = SettingsNotifier();
+    await bad.load();
+    expect(bad.state.gridColumns, 0);
+  });
 }

@@ -12,6 +12,8 @@ class AppSettings {
   final String albumSort; // 专辑排序方式，默认 artist_asc
   final double seekStepSeconds; // 快进/快退步长（秒），白名单 3/5/10/30，默认 3
   final bool sidebarShown;
+  final bool showScrapedTags; // 主界面卡片显示 DLsite 刮削标签，默认关闭（1.43）
+  final double gridColumns; // 主界面每行专辑数；0=自动（按宽度），档位 4/5/6/7/8/10/12（1.43）
   final String scrapeProxy;
   final List<String> musicFolders; // 常驻音乐目录（桌面：路径；Android：SAF tree URI）
 
@@ -25,6 +27,8 @@ class AppSettings {
     this.albumSort = 'artist_asc',
     this.seekStepSeconds = 3,
     this.sidebarShown = true,
+    this.showScrapedTags = false,
+    this.gridColumns = 0,
     this.scrapeProxy = '',
     this.musicFolders = const [],
   });
@@ -49,6 +53,8 @@ class AppSettings {
     String? albumSort,
     double? seekStepSeconds,
     bool? sidebarShown,
+    bool? showScrapedTags,
+    double? gridColumns,
     String? scrapeProxy,
     List<String>? musicFolders,
   }) =>
@@ -62,6 +68,8 @@ class AppSettings {
         albumSort: albumSort ?? this.albumSort,
         seekStepSeconds: seekStepSeconds ?? this.seekStepSeconds,
         sidebarShown: sidebarShown ?? this.sidebarShown,
+        showScrapedTags: showScrapedTags ?? this.showScrapedTags,
+        gridColumns: gridColumns ?? this.gridColumns,
         scrapeProxy: scrapeProxy ?? this.scrapeProxy,
         musicFolders: musicFolders ?? this.musicFolders,
       );
@@ -96,6 +104,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kAlbumSort = 'hiko-album-sort';
   static const _kSeekStep = 'hiko-seek-step';
   static const _kSidebar = 'hiko-sidebar';
+  static const _kShowScrapedTags = 'hiko-show-scraped-tags';
+  static const _kGridColumns = 'hiko-grid-columns';
   static const _kProxy = 'hiko-scrape-proxy';
   static const _kMusicFolders = 'hiko-music-folders';
 
@@ -125,6 +135,12 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static double _normalizeSeekStep(double? val) =>
       val != null && _validSeekSteps.contains(val) ? val : 3;
 
+  /// 每行专辑数档位：0=自动，其余为固定列数（存 double 以走 _save 的 setDouble 分支）
+  static const _validGridColumns = [0.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 12.0];
+
+  static double _normalizeGridColumns(double? val) =>
+      val != null && _validGridColumns.contains(val) ? val : 0;
+
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     state = AppSettings(
@@ -137,6 +153,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       albumSort: _normalizeSort(prefs.getString(_kAlbumSort)),
       seekStepSeconds: _normalizeSeekStep(prefs.getDouble(_kSeekStep)),
       sidebarShown: prefs.getBool(_kSidebar) ?? true,
+      showScrapedTags: prefs.getBool(_kShowScrapedTags) ?? false,
+      gridColumns: _normalizeGridColumns(prefs.getDouble(_kGridColumns)),
       scrapeProxy: prefs.getString(_kProxy) ?? '',
       musicFolders: prefs.getStringList(_kMusicFolders) ?? const [],
     );
@@ -169,6 +187,16 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       );
   Future<void> setSidebarShown(bool shown) =>
       _save(_kSidebar, shown, state.copyWith(sidebarShown: shown));
+
+  /// 主界面卡片是否显示刮削标签（1.43）
+  Future<void> setShowScrapedTags(bool show) =>
+      _save(_kShowScrapedTags, show, state.copyWith(showScrapedTags: show));
+
+  /// 每行专辑数：0=自动，档位白名单 4/5/6/7/8/10/12，非法值回退自动（1.43）
+  Future<void> setGridColumns(double columns) {
+    final valid = _normalizeGridColumns(columns);
+    return _save(_kGridColumns, valid, state.copyWith(gridColumns: valid));
+  }
   Future<void> setScrapeProxy(String proxy) =>
       _save(_kProxy, proxy, state.copyWith(scrapeProxy: proxy));
 

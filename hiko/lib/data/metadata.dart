@@ -8,7 +8,12 @@ import '../utils/repair_text.dart';
 /// 单曲元数据（桌面端，对应旧版 music-metadata 解析）
 class TrackMetadata {
   final String? title;
+
+  /// 曲目艺术家（MP3=TPE1 leadPerformer；其他格式=解析库的 artist）
   final String? artist;
+
+  /// 专辑艺术家（MP3=TPE2 bandOrOrchestra；其他格式=null）
+  final String? albumArtist;
   final String? album;
   final int? trackNumber; // TRACKNUMBER（排序用）
   final double duration; // 秒
@@ -17,6 +22,7 @@ class TrackMetadata {
   const TrackMetadata({
     this.title,
     this.artist,
+    this.albumArtist,
     this.album,
     this.trackNumber,
     this.duration = 0,
@@ -30,6 +36,13 @@ Future<TrackMetadata?> readTrackMetadata(
   String path, {
   bool getImage = false,
 }) async {
+  // MP3 走精确解析：泛型 AudioMetadata 会把 TPE2(专辑艺术家) 优先映射进 artist
+  // （parser.dart: artist: bandOrOrchestra ?? leadPerformer），拿不到曲目艺术家。
+  // MP3Parser 直接返回 Mp3Metadata，TPE1/TPE2 分离，且同样解析 MPEG 帧算时长。
+  if (path.toLowerCase().endsWith('.mp3')) {
+    final mp3 = _readMp3Metadata(path, getImage: getImage);
+    if (mp3 != null) return mp3;
+  }
   try {
     final meta = readMetadata(File(path), getImage: getImage);
     return TrackMetadata(
@@ -42,6 +55,28 @@ Future<TrackMetadata?> readTrackMetadata(
     );
   } catch (_) {
     return null;
+  }
+}
+
+/// MP3 精确解析（TPE1/TPE2 分离）；失败返回 null 由调用方回退泛型解析
+TrackMetadata? _readMp3Metadata(String path, {bool getImage = false}) {
+  RandomAccessFile? ra;
+  try {
+    ra = File(path).openSync();
+    final m = MP3Parser(fetchImage: getImage).parse(ra);
+    return TrackMetadata(
+      title: repairText(m.songName),
+      artist: repairText(m.leadPerformer),
+      albumArtist: repairText(m.bandOrOrchestra),
+      album: repairText(m.album),
+      trackNumber: m.trackNumber,
+      duration: (m.duration?.inMilliseconds ?? 0) / 1000.0,
+      picture: m.pictures.isNotEmpty ? m.pictures.first.bytes : null,
+    );
+  } catch (_) {
+    return null;
+  } finally {
+    ra?.closeSync();
   }
 }
 

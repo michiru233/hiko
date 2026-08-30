@@ -208,7 +208,7 @@ void main() {
     expect(a2.rjCode, 'RJ01234567');
   });
 
-  test('Shift-JIS 标签修复 + 专辑艺术家优先', () async {
+  test('Shift-JIS 标签修复（1.43 起 artist 取第一轨 TPE1）', () async {
     final dir = Directory('${root.path}/sjis');
     dir.createSync();
     createTaggedMp3('${dir.path}/01.mp3',
@@ -219,7 +219,9 @@ void main() {
 
     final albums = await scanPath(root.path);
     expect(albums.single.tracks.single.name, '雨夜の耳語');
-    expect(albums.single.artist, 'サークルY'); // 专辑艺术家优先
+    // 1.43：fixture 的 TPE1 默认值「某社团」是中文，Shift-JIS 编码成乱码字节，
+    // 按取值链（乱码回退）落到第一轨 TPE2——恰好覆盖「乱码回退 TPE2」路径
+    expect(albums.single.artist, 'サークルY');
   });
 
   test('GBK 中文标签修复', () async {
@@ -286,7 +288,9 @@ void main() {
 
     final tagged = albums.singleWhere((a) => a.tracks.length == 2);
     expect(tagged.title, '标签专辑名');
-    expect(tagged.artist, '社团甲', reason: '首个含标签音轨的专辑艺术家优先');
+    // 1.43 行为变更：artist 取第一轨 TPE1，albumArtist 取 TPE2
+    expect(tagged.artist, '艺人A', reason: 'artist 取第一轨 TPE1');
+    expect(tagged.albumArtist, '社团甲', reason: 'albumArtist 取第一轨 TPE2');
     expect(tagged.metaFromFolder, isFalse, reason: '标题来自标签，不需要兜底');
 
     final plain = albums.singleWhere((a) => a.tracks.length == 1);
@@ -365,9 +369,49 @@ void main() {
 
     expect(albums.single.localCover, startsWith('data:image/jpeg'),
         reason: '第一首内嵌封面优先于外置功能图');
-    // 艺术家与会同 albumArtist 均来自首个含标签音轨（TPE2 优先）
-    expect(albums.single.artist, '社团甲', reason: '专辑艺术家(TPE2)优先于曲目艺人');
+    // 1.43 行为变更：artist 取第一轨 TPE1（曲目艺人），albumArtist 取 TPE2（社团）
+    expect(albums.single.artist, '曲目艺人A', reason: 'artist 取第一轨 TPE1');
     expect(albums.single.albumArtist, '社团甲', reason: 'albumArtist 不应再恒为空');
+  });
+
+  test('1.43.0：艺术家取第一轨 TPE1，albumArtist 取 TPE2', () async {
+    final dir = Directory('${root.path}/RJ0111111_声優作品');
+    dir.createSync(recursive: true);
+    createTaggedMp3('${dir.path}/01 第一首.mp3',
+        title: '第一首',
+        album: '声優作品',
+        artist: '声優A',
+        albumArtist: 'サークルB',
+        trackNumber: 1);
+    createTaggedMp3('${dir.path}/02 第二首.mp3',
+        title: '第二首',
+        album: '声優作品',
+        artist: '声優B',
+        albumArtist: 'サークルB',
+        trackNumber: 2);
+
+    final albums = await scanPath(root.path);
+
+    expect(albums.single.artist, '声優A',
+        reason: 'artist 取第一轨 TPE1（曲目艺术家），不再被 TPE2 顶替');
+    expect(albums.single.albumArtist, 'サークルB', reason: 'albumArtist 取 TPE2');
+  });
+
+  test('1.43.0：第一轨无 TPE1 回退第一轨 TPE2', () async {
+    final dir = Directory('${root.path}/RJ0222222_无曲目艺人');
+    dir.createSync(recursive: true);
+    createTaggedMp3('${dir.path}/01.mp3',
+        title: '第一首',
+        album: '无曲目艺人',
+        artist: '',
+        albumArtist: 'サークルC',
+        trackNumber: 1);
+
+    final albums = await scanPath(root.path);
+
+    expect(albums.single.artist, 'サークルC',
+        reason: '第一轨 TPE1 为空 → 回退第一轨 TPE2');
+    expect(albums.single.albumArtist, 'サークルC');
   });
 
   test('标题清洗：TALB 带换行/重复 → 只取首行并去空白', () async {

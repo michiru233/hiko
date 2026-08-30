@@ -9,10 +9,16 @@ import 'package:hiko/utils/time.dart';
 
 /// 1.42.0 专辑卡片五项信息：专辑名/艺术家/专辑艺术家/RJ号/总时长
 /// 全部可见、无溢出裁切；albumArtist 与 artist 去重。
+/// 1.43.0 刮削标签开关：卡片经 showScrapedTags 参数控制 tags 渲染
+/// （卡片不读 ProviderScope，保持可独立构造，widget_test 依赖这一点）。
 void main() {
-  Widget host(Album album) {
+  Widget host(
+    Album album, {
+    bool showScrapedTags = false,
+    String themeName = 'light',
+  }) {
     return MaterialApp(
-      theme: buildHikoTheme(const AppSettings()),
+      theme: buildHikoTheme(AppSettings(theme: themeName)),
       home: Align(
         alignment: Alignment.topLeft,
         // 桌面网格单卡实际尺寸：宽 190、高 190/0.60（home_screen 网格参数）
@@ -23,6 +29,7 @@ void main() {
             album: album,
             multiMode: false,
             selected: false,
+            showScrapedTags: showScrapedTags,
             onTap: () {},
             onContextMenu: null,
           ),
@@ -95,26 +102,27 @@ void main() {
 
   testWidgets('浅色与深色主题下都无溢出', (tester) async {
     for (final themeName in ['light', 'dark']) {
-      await tester.pumpWidget(MaterialApp(
-        theme: buildHikoTheme(AppSettings(theme: themeName)),
-        home: Align(
-          alignment: Alignment.topLeft,
-          child: SizedBox(
-            width: 190,
-            height: 190 / 0.60,
-            child: AlbumCard(
-              album: fullAlbum(),
-              multiMode: false,
-              selected: false,
-              onTap: () {},
-              onContextMenu: null,
-            ),
-          ),
-        ),
-      ));
+      await tester.pumpWidget(host(fullAlbum(), themeName: themeName));
       await tester.pump();
       expect(tester.takeException(), isNull,
           reason: '$themeName 主题下卡片溢出');
     }
+  });
+
+  testWidgets('1.43 刮削标签开关：关不渲染 tags，开=渲染（两态均无溢出）',
+      (tester) async {
+    // 默认（关）→ tags 不渲染
+    await tester.pumpWidget(host(fullAlbum()));
+    await tester.pump();
+    expect(find.text('耳かき'), findsNothing, reason: '刮削标签默认隐藏');
+    expect(tester.takeException(), isNull);
+
+    // 开 → tags 渲染
+    await tester.pumpWidget(host(fullAlbum(), showScrapedTags: true));
+    await tester.pump();
+    expect(find.text('耳かき'), findsOneWidget, reason: '开关打开后显示刮削标签');
+    expect(find.text('寝落ち'), findsOneWidget);
+    expect(find.text('オールナイト'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
