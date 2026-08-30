@@ -467,7 +467,7 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 - **既有缺口（非本次引入）**：计划文档缺 `### 1.38.0` 整节（仅被 1.39.0 事故描述顺带提及），待补。
 - **版本**：1.40.0+44（pubspec.yaml）。发布：hiko-v1.40.0-macos.zip，https://github.com/michiru233/hiko/releases/tag/v1.40.0 。
 
-### 1.41.0 播放进度记忆 +「继续收听」、键盘快捷键（进行中）
+### 1.41.0 播放进度记忆 +「继续收听」、键盘快捷键（2026-08-30）
 - 开工回执：目标=①Album 加 resumeTrackIndex/resumePosition/lastPlayedAt 持久化断点，主界面横幅卡一键续播；②Shortcuts 加 Space/←→/↑↓，步长 seekStepSeconds 设置项（3/5/10/30，默认 3）。顺序：模型与纯函数 → 控制器接线 → UI 横幅卡 → 快捷键与设置项 → 发版。最大风险：library.json 旧数据兼容（缺字段默认值）与输入框焦点时空格/方向键误触发。
 - **Album 断点字段**（`lib/models/album.dart`）：新增 `resumeTrackIndex`（-1=无断点）/`resumePosition`/`lastPlayedAt` 三字段；fromJson 缺字段给默认值（旧 library.json 直接加载不重扫）；mergeWith 继承断点但轨号越界（重扫后曲目变少）时重置为无断点。
 - **恢复目标纯函数**（`lib/playback/playback_rules.dart`）：`QueueRules.resumePoint`——单轨剩 <2 秒视为播完，断点记下一轨 0 秒（最后一轨回到第 0 轨 0 秒）；`QueueRules.resumeCandidate`——全库取 `lastPlayedAt` 最近且有断点的专辑，排除正在播放的专辑。
