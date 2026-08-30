@@ -375,6 +375,11 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     await syncVolume(gain: gain);
   }
 
+  /// 手动重接音频输出（设置页「重置音频输出」逃生门）：绕过自动自愈的防抖限流
+  Future<void> resetAudioOutput() async {
+    await HikoJustAudioMediaKit.healAllOutputs();
+  }
+
   /// 播放倍速（0.5~2.0）：持久化到 settings 并立即应用
   Future<void> setPlaybackRate(double rate) async {
     await _ref.read(settingsProvider.notifier).setPlaybackRate(rate);

@@ -241,6 +241,28 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                 ),
               ),
               _SettingRow(
+                label: '重置音频输出',
+                trailing: TextButton.icon(
+                  onPressed: () async {
+                    await ref.read(playbackProvider.notifier).resetAudioOutput();
+                    if (mounted) _toast('已重接音频输出（audio-device=auto）');
+                  },
+                  icon: const Icon(Icons.restart_alt, size: 18),
+                  label: const Text('立即重接'),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  '蓝牙耳机断连/切换后若出现「进度在走但没声音」，点此把音频输出重接回当前可用设备；播放中检测到输出异常时也会自动重接。',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    height: 1.5,
+                    color: theme.hintColor,
+                  ),
+                ),
+              ),
+              _SettingRow(
                 label: '快进/快退秒数',
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,

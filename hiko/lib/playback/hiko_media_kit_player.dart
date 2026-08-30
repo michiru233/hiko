@@ -7,7 +7,9 @@ import 'package:just_audio_platform_interface/just_audio_platform_interface.dart
 import 'package:media_kit/media_kit.dart';
 import 'package:universal_platform/universal_platform.dart';
 
+import 'audio_heal.dart';
 import 'gain_chain.dart';
+import 'mpv_diagnostic_log.dart';
 
 /// 桌面端（macOS & Windows）增强版 MediaKit 音频播放引擎：
 /// 1. 彻底解决原版 just_audio_media_kit 在高速本地文件 open 时的 load Completer 竞争死锁问题（导致卡在 0:00）；
@@ -43,6 +45,14 @@ class HikoJustAudioMediaKit extends JustAudioPlatform {
         (UniversalPlatform.isWindows && windows)) {
       JustAudioPlatform.instance = HikoJustAudioMediaKit();
       MediaKit.ensureInitialized();
+      unawaited(MpvDiagnosticLog.init());
+    }
+  }
+
+  /// 对所有存活实例重接音频输出（手动逃生门，绕过防抖限流）。
+  static Future<void> healAllOutputs() async {
+    for (final player in _players.values.toList()) {
+      await player.healAudioOutput();
     }
   }
 
@@ -115,7 +125,8 @@ class HikoMediaKitPlayer extends AudioPlayerPlatform {
         ],
         title: 'HikoPlayer',
         bufferSize: 32 * 1024 * 1024,
-        logLevel: MPVLogLevel.error,
+        // warn 起才能在无声事故后从 hiko-mpv.log 看到 coreaudio/设备线索
+        logLevel: MPVLogLevel.warn,
       ),
     );
 
@@ -156,9 +167,15 @@ class HikoMediaKitPlayer extends AudioPlayerPlatform {
         _maybeCompleteLoad();
         _updatePlaybackEvent();
       }),
+      _player.stream.log.listen((log) {
+        unawaited(MpvDiagnosticLog.write(
+            MpvDiagnosticLog.formatLine(DateTime.now(), log.level, log.prefix, log.text)));
+        _onMpvLog(log.level, log.text);
+      }),
     ];
 
     _readyCompleter.complete();
+    unawaited(_observeAudioDevice());
   }
 
   late final Player _player;
@@ -180,6 +197,70 @@ class HikoMediaKitPlayer extends AudioPlayerPlatform {
 
   int _currentIndex = 0;
   Duration? _setPosition;
+
+  final _healDecider = AudioHealDecider();
+  String? _lastDeviceListJson;
+
+  /// mpv 日志事件 → 自愈判定（仅 warn/error 级别命中音频输出问题文本）。
+  void _onMpvLog(String level, String text) {
+    final severe = level == 'error' || level == 'warn' || level == 'fatal' || level == 'panic';
+    _maybeHeal(
+      logHit: severe && AudioHealDecider.logSuggestsDeadOutput(text),
+      deviceListChanged: false,
+    );
+  }
+
+  /// 观察 audio-device / audio-device-list：设备增删或输出设备变化即触发判定。
+  Future<void> _observeAudioDevice() async {
+    try {
+      final platform = _player.platform;
+      if (platform is! NativePlayer) return;
+      await platform.observeProperty('audio-device-list', (value) async {
+        final changed = _lastDeviceListJson != null && _lastDeviceListJson != value;
+        _lastDeviceListJson = value;
+        _maybeHeal(logHit: false, deviceListChanged: changed);
+      });
+      await platform.observeProperty('audio-device', (value) async {
+        unawaited(MpvDiagnosticLog.write(MpvDiagnosticLog.formatLine(
+            DateTime.now(), 'info', 'hiko', 'audio-device=$value')));
+      });
+    } catch (e) {
+      debugPrint('[heal] observeProperty 失败（容忍）: $e');
+    }
+  }
+
+  void _maybeHeal({required bool logHit, required bool deviceListChanged}) {
+    if (!_healDecider.shouldHeal(
+      playing: _playing,
+      logHit: logHit,
+      deviceListChanged: deviceListChanged,
+    )) {
+      return;
+    }
+    unawaited(healAudioOutput());
+  }
+
+  /// 重接音频输出：audio-device 置回 auto 触发 mpv 音频链重初始化；
+  /// 播放中时 pause→play 恢复发声。失败容忍（不能因自愈弄挂播放）。
+  Future<void> healAudioOutput() async {
+    try {
+      final platform = _player.platform;
+      if (platform is! NativePlayer) return;
+      final current = await platform.getProperty('audio-device');
+      debugPrint('[heal] 重接音频输出 audio-device=$current → auto (playing=$_playing)');
+      unawaited(MpvDiagnosticLog.write(MpvDiagnosticLog.formatLine(
+          DateTime.now(), 'heal', 'hiko', 'audio-device=$current → auto (playing=$_playing)')));
+      await platform.setProperty('audio-device', 'auto');
+      if (_playing && _mediaOpened) {
+        await _player.pause();
+        await _player.play();
+      }
+    } catch (e) {
+      debugPrint('[heal] 重接失败（容忍）: $e');
+      unawaited(MpvDiagnosticLog.write(MpvDiagnosticLog.formatLine(
+          DateTime.now(), 'heal', 'hiko', '重接失败: $e')));
+    }
+  }
 
   Future<void> ready() => _readyCompleter.future;
 
