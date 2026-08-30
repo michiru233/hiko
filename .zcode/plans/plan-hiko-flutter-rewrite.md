@@ -444,6 +444,17 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 
 
 
+### 1.38.0 检查更新发布说明 UTF-8 乱码修复（2026-08-29）
+
+> 本节为事后补记（2026-08-30 洁癖收尾时依据 git 提交 `71bd7e1` 与 `hiko/PROGRESS.md` 留档重建；原执行会话遗漏写入计划文档）。
+
+- **根因**：`lib/data/update_checker.dart` `_decodeJson` 用 `String.fromCharCodes` 按 Latin-1 解码响应字节，GitHub Release 中文发布说明显示乱码。
+- **修复**：改 `utf8.decode(body)`（保持 compute 隔离结构）；`update_checker_test.dart` 新增中文 UTF-8 回归用例（MockClient 走完整请求路径）；反向验证改回 Latin-1 解码 → 新用例红（Actual 为 Latin-1 乱码）→ 还原后 8 passed。
+- 实网测试 `update_checker_network_test.dart` 删除过时 `.apk` 资产断言（Android 暂停后仅发 macos zip）。
+- **验证**：全量 `flutter test` 145 passed / 1 skipped；`flutter build macos --release` 成功，发 `hiko-v1.38.0-macos.zip`。
+- **事故**：本版 Hiko.app（55.9MB）缺 `Mpv.framework` 启动黑屏，由 1.39.0 重发修复（见下节），v1.38.0 Release 说明已补黑屏警告。
+- **版本**：1.38.0+42（pubspec.yaml）。提交 `71bd7e1`，https://github.com/michiru233/hiko/releases/tag/v1.38.0 。
+
 ### 1.39.0 重发缺失 Mpv.framework 的 macOS 包（启动黑屏修复，2026-08-29）
 
 事故：v1.38.0 发布的 Hiko.app 缺 `Contents/Frameworks/Mpv.framework`，启动时 `main()` 在 `runApp` 前 `MediaKit.ensureInitialized` 抛未捕获异常，窗口全黑。
@@ -464,7 +475,7 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
   - `library_store.dart`：`load()` 对已入库的 `artist`/`albumArtist` 做 trim 迁移，下次保存自动落盘，无需重扫。
 - **测试覆盖**（`hiko/test/data/categories_test.dart`）：新增用例——同名艺术家「带/不带尾随空格」视为同一人归为一组，组内按标题自然升序、另一艺术家独立成组排后；断言 `['1','2','3','b1','b2']`。
 - **验证**：`flutter test` 全量 146 passed、1 skipped（GitHub API 网络用例默认跳过）；`flutter build macos --release` 产物 70M，`find Hiko.app -name 'Mpv.framework'` =1，zip 内 `Contents/Frameworks/Mpv.framework/` 有 21 个条目；直启新实例无异常日志，截图确认「バイコーンの森」13 张整组排最前、RJ01477624 与 RJ01619492/RJ01617094 同组。
-- **既有缺口（非本次引入）**：计划文档缺 `### 1.38.0` 整节（仅被 1.39.0 事故描述顺带提及），待补。
+- **既有缺口（非本次引入）**：计划文档缺 `### 1.38.0` 整节（仅被 1.39.0 事故描述顺带提及），已于 2026-08-30 洁癖收尾时补齐（见上）。
 - **版本**：1.40.0+44（pubspec.yaml）。发布：hiko-v1.40.0-macos.zip，https://github.com/michiru233/hiko/releases/tag/v1.40.0 。
 
 ### 1.41.0 播放进度记忆 +「继续收听」、键盘快捷键（2026-08-30）

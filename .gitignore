@@ -12,3 +12,8 @@ android/app/build/
 android/build/
 android/capacitor-cordova-android-plugins/build/
 android/.idea/
+
+# hiko 发版 zip（资产已存 GitHub Releases，不入库）
+hiko/*.zip
+# 会话验收留档（一次性，验收后可删）
+.zcode/scratch-acceptance-*.md
