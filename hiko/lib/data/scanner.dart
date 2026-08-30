@@ -317,7 +317,9 @@ Future<Album?> _buildAlbum(String key, List<FileMeta> files) async {
       .map((m) => m.artist)
       .where((v) => v != null && v.trim().isNotEmpty && !looksGarbled(v))
       .firstOrNull;
-  final artist = firstArtist ?? '本地导入';
+  // 写库前规范化（去首尾空白/NUL）：标签里常见的尾随空格会让「同名艺术家」
+  // 在按艺术家排序时被当成两个不同的人拆开
+  final artist = firstArtist != null ? normalizeTag(firstArtist) : '本地导入';
   final albumArtist = (artist != '本地导入') ? artist : '';
   final rjCode = extractRjCode([
     sorted.first.path,

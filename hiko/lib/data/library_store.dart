@@ -29,9 +29,14 @@ class LibraryStore {
       final raw = await (await _file()).readAsString();
       final data = jsonDecode(raw) as Map<String, dynamic>;
       final albums = data['albums'] as List? ?? [];
-      return albums
-          .map((a) => Album.fromJson(a as Map<String, dynamic>))
-          .toList();
+      return albums.map((a) {
+        final album = Album.fromJson(a as Map<String, dynamic>);
+        // 旧库迁移：早期扫描未 trim 标签，艺术家可能带尾随空格，
+        // 会让同名艺术家在按艺术家排序时被拆成两组；变化随下次保存落盘
+        album.artist = album.artist.trim();
+        album.albumArtist = album.albumArtist.trim();
+        return album;
+      }).toList();
     } catch (_) {
       return [];
     }

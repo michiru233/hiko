@@ -38,15 +38,18 @@ List<Album> filterAlbums({
       break;
     case 'artist_asc':
       // 专辑艺术家排序：专辑数多的艺术家整组排前面（专辑数按全库入参计，不受当前筛选影响）；
-      // 同数按艺术家名自然升序；albumArtist 优先、为空回退 artist，皆空排最后；同艺术家内按标题自然排序升序
+      // 同数按艺术家名自然升序；albumArtist 优先、为空回退 artist，皆空排最后；同艺术家内按标题自然排序升序。
+      // 分组键 trim：旧库数据里艺术家可能带尾随空格，不 trim 会把同名艺术家拆成两组
+      String artistKey(Album a) =>
+          (a.albumArtist.isNotEmpty ? a.albumArtist : a.artist).trim();
       final artistCounts = <String, int>{};
       for (final a in albums) {
-        final key = a.albumArtist.isNotEmpty ? a.albumArtist : a.artist;
+        final key = artistKey(a);
         if (key.isNotEmpty) artistCounts[key] = (artistCounts[key] ?? 0) + 1;
       }
       result.sort((a, b) {
-        final keyA = a.albumArtist.isNotEmpty ? a.albumArtist : a.artist;
-        final keyB = b.albumArtist.isNotEmpty ? b.albumArtist : b.artist;
+        final keyA = artistKey(a);
+        final keyB = artistKey(b);
         if (keyA.isEmpty && keyB.isEmpty) {
           return naturalCompare(a.title, b.title);
         }

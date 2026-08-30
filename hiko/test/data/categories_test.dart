@@ -529,5 +529,65 @@ void main() {
 
       expect(res.map((x) => x.id).toList(), ['1', 'e2', 'e1']);
     });
+
+    test('按专辑艺术家 artist_asc 排序：同名艺术家带/不带尾随空格视为同一人归为一组（旧库标签脏数据）', () {
+      // 3 张「バイコーンの森」+ 2 张「バイコーンの森 」（尾随空格）→ trim 后同组共 5 张，
+      // 整组排最前；组内按标题自然排序；另一艺术家独立成组排后
+      final a1 = Album(
+        id: '1',
+        sourcePath: '/tmp/1',
+        title: 'A 作品',
+        albumArtist: 'バイコーンの森',
+        genre: 'ASMR',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+      final a2 = Album(
+        id: '2',
+        sourcePath: '/tmp/2',
+        title: 'M 作品',
+        albumArtist: 'バイコーンの森 ',
+        genre: 'ASMR',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+      final a3 = Album(
+        id: '3',
+        sourcePath: '/tmp/3',
+        title: 'Z 作品',
+        albumArtist: 'バイコーンの森 ',
+        genre: 'ASMR',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+      final b1 = Album(
+        id: 'b1',
+        sourcePath: '/tmp/b1',
+        title: 'B 作品',
+        albumArtist: 'Beta',
+        genre: 'ASMR',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+      final b2 = Album(
+        id: 'b2',
+        sourcePath: '/tmp/b2',
+        title: 'C 作品',
+        albumArtist: 'Beta',
+        genre: 'ASMR',
+        date: DateTime.now(),
+        tracks: const [],
+      );
+
+      final res = filterAlbums(
+        albums: [a2, b1, a1, b2, a3],
+        view: '全部音声',
+        filter: 'all',
+        query: '',
+        sort: 'artist_asc',
+      );
+
+      expect(res.map((x) => x.id).toList(), ['1', '2', '3', 'b1', 'b2']);
+    });
   });
 }
