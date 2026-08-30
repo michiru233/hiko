@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:just_audio/just_audio.dart';
 
@@ -89,7 +90,14 @@ class PlaybackController extends StateNotifier<PlaybackState> {
       if (d != null) state = state.copyWith(duration: d.inMilliseconds / 1000.0);
     });
     unawaited(_gainSelfTest());
+    // 生命周期兜底：切后台/失活时把断点写盘（退出 app 前最后一次机会）
+    _lifecycle = AppLifecycleListener(
+      onInactive: () => _persistProgress(),
+      onHide: () => _persistProgress(),
+    );
   }
+
+  late final AppLifecycleListener _lifecycle;
   /// 发布验收自检（仅 --dart-define=HIKO_GAIN_SELFTEST=1 时运行，默认不生效）：
   /// 先加载 0.2s 静音激活引擎（just_audio 惰性创建 native player），
   /// 再依次应用 2.0x / 1.0x 增益，用 [gain] 日志验证 af 链读回与常规音量隔离。
@@ -205,15 +213,17 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     await syncVolume();
   }
 
-  /// 播放指定专辑的第 index 首（对应旧版 chooseImported）
-  Future<void> playAlbum(Album album, {int index = 0}) async {
+  /// 播放指定专辑的第 index 首（对应旧版 chooseImported）；
+  /// [startPosition] > 0 时从断点秒数起播（「继续收听」）
+  Future<void> playAlbum(Album album, {int index = 0, double startPosition = 0}) async {
     final queue = album.tracks;
     if (queue.isEmpty) return;
     final idx = index.clamp(0, queue.length - 1);
     final track = queue[idx];
-    
+
     final currentSession = ++_playSessionId;
     _isSwitching = true;
+    final startAt = startPosition.clamp(0.0, track.duration > 0 ? track.duration : double.infinity);
 
     // 先带入 Track 元数据中的 duration，杜绝 0:00 闪烁，并先设为 playing: true
     state = PlaybackState(
@@ -222,18 +232,27 @@ class PlaybackController extends StateNotifier<PlaybackState> {
       queueIndex: idx,
       playing: true,
       duration: track.duration > 0 ? track.duration : 0.0,
-      position: 0.0,
+      position: startAt,
       mode: state.mode,
     );
+    if (startAt > 0) {
+      _pendingSeek = startAt;
+    }
 
-    // 内存中更新进度，避免切歌时主线程被全量写盘阻塞
+    // 内存中更新进度与断点，避免切歌时主线程被全量写盘阻塞
     final played = QueueRules.cumulativePlayed(
       albums: _ref.read(libraryProvider),
       album: album,
       queueIndex: idx,
-      position: 0,
+      position: startAt,
     );
-    _ref.read(libraryProvider.notifier).updatePlayedInMemory(album.id, played);
+    _ref.read(libraryProvider.notifier).updatePlayedInMemory(
+          album.id,
+          played,
+          resumeTrackIndex: idx,
+          resumePosition: startAt,
+          lastPlayedAt: DateTime.now(),
+        );
 
     try {
       if (_playSessionId != currentSession) return;
@@ -287,6 +306,7 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     } catch (e) {
       _pendingSeek = target;
     }
+    _persistProgress(); // seek 后断点立即落盘（不信任 15 秒节流窗口）
   }
 
   /// 音量与增益同步（两者通道分离）：
@@ -419,6 +439,7 @@ class PlaybackController extends StateNotifier<PlaybackState> {
         _player.play();
         return;
       }
+      _persistProgress(); // 播完瞬间先把「播完」断点写盘（剩 <2s → 记下一轨开头）
       _step(1);
     }
   }
@@ -435,17 +456,29 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     final s = state;
     final album = s.album;
     if (album == null) return;
+    final resume = QueueRules.resumePoint(
+      tracks: album.tracks,
+      queueIndex: s.queueIndex,
+      position: s.position,
+    );
     final played = QueueRules.cumulativePlayed(
       albums: _ref.read(libraryProvider),
       album: album,
       queueIndex: s.queueIndex,
       position: s.position,
     );
-    _ref.read(libraryProvider.notifier).updatePlayed(album.id, played);
+    _ref.read(libraryProvider.notifier).updatePlayed(
+          album.id,
+          played,
+          resumeTrackIndex: resume.$1,
+          resumePosition: resume.$2,
+          lastPlayedAt: DateTime.now(),
+        );
   }
 
   @override
   void dispose() {
+    _lifecycle.dispose();
     _sleep.dispose();
     _player.dispose();
     super.dispose();

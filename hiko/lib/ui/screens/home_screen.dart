@@ -13,8 +13,12 @@ import '../../data/music_folder_scanner.dart';
 import '../../data/settings_store.dart';
 import '../../data/update_checker.dart';
 import '../../models/album.dart';
+import '../../playback/playback_controller.dart';
+import '../../playback/playback_rules.dart';
 import '../../platform/platform_service.dart';
 import '../../utils/rj.dart';
+import '../../utils/time.dart';
+import '../covers/cover_art.dart';
 import '../widgets/album_card.dart';
 import '../widgets/activity_overlay.dart';
 import '../widgets/category_dialog.dart';
@@ -45,6 +49,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _sidebarCollapsed = false;
   bool _drawerOpen = false;
   bool _importing = false;
+  final Set<String> _resumeDismissed = {}; // 本次会话内被 × 关掉的「继续收听」专辑
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
 
@@ -114,6 +119,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // 根 Overlay toast：不会被打开中的对话框盖住（1.32）
     showHikoToast(context, message);
   }
+
+  /// 输入框（搜索框等 EditableText）有焦点时为 true——
+  /// 此时空格/方向键必须走打字与光标移动，不触发播放快捷键
+  bool _typingFocusActive() => isFocusInsideEditable(
+      FocusManager.instance.primaryFocus?.context);
 
   Future<void> _importFolder() async {
     if (_importing || activityOverlayController.isActive) return;
@@ -379,6 +389,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 const _ImportIntent(),
             const SingleActivator(LogicalKeyboardKey.keyO, control: true):
                 const _ImportIntent(),
+            // 空格播放/暂停；←→ 快退/快进；↑↓ 切曲（输入框聚焦时不触发）
+            const SingleActivator(LogicalKeyboardKey.space):
+                const _TogglePlaybackIntent(),
+            const SingleActivator(LogicalKeyboardKey.arrowLeft):
+                _SeekIntent(-1),
+            const SingleActivator(LogicalKeyboardKey.arrowRight):
+                _SeekIntent(1),
+            const SingleActivator(LogicalKeyboardKey.arrowUp):
+                const _StepTrackIntent(-1),
+            const SingleActivator(LogicalKeyboardKey.arrowDown):
+                const _StepTrackIntent(1),
           },
           child: Actions(
             actions: {
@@ -391,6 +412,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               _ImportIntent: CallbackAction<_ImportIntent>(
                 onInvoke: (_) {
                   _importFolder();
+                  return null;
+                },
+              ),
+              _TogglePlaybackIntent: CallbackAction<_TogglePlaybackIntent>(
+                onInvoke: (_) {
+                  if (_typingFocusActive()) return null;
+                  ref.read(playbackProvider.notifier).toggle();
+                  return null;
+                },
+              ),
+              _SeekIntent: CallbackAction<_SeekIntent>(
+                onInvoke: (intent) {
+                  if (_typingFocusActive()) return null;
+                  final controller = ref.read(playbackProvider.notifier);
+                  final pos = ref.read(playbackProvider).position;
+                  final step = ref.read(settingsProvider).seekStepSeconds;
+                  controller.seek(pos + intent.direction * step);
+                  return null;
+                },
+              ),
+              _StepTrackIntent: CallbackAction<_StepTrackIntent>(
+                onInvoke: (intent) {
+                  if (_typingFocusActive()) return null;
+                  final controller = ref.read(playbackProvider.notifier);
+                  if (intent.direction < 0) {
+                    controller.prev();
+                  } else {
+                    controller.next();
+                  }
                   return null;
                 },
               ),
@@ -566,8 +616,90 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _buildHero(theme, filtered.length, isMobile),
         _buildToolbar(theme, isMobile, filtered, currentSort),
         _buildResultsLine(theme, filtered.length),
+        _buildResumeBanner(theme, isMobile),
         Expanded(child: _buildGrid(filtered, theme, isMobile)),
       ],
+    );
+  }
+
+  /// 「继续收听」横幅卡：最近播过的一张专辑 + 断点位置，点击断点起播
+  Widget _buildResumeBanner(ThemeData theme, bool isMobile) {
+    final playback = ref.watch(playbackProvider);
+    final candidate = QueueRules.resumeCandidate(
+      ref.watch(libraryProvider),
+      playingAlbumId: playback.album?.id,
+    );
+    if (candidate == null ||
+        candidate.tracks.isEmpty ||
+        _resumeDismissed.contains(candidate.id)) {
+      return const SizedBox.shrink();
+    }
+    final trackNo = candidate.resumeTrackIndex.clamp(0, candidate.tracks.length - 1) + 1;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(isMobile ? 16 : 48, 0, isMobile ? 16 : 48, 12),
+      child: Material(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () {
+            ref.read(playbackProvider.notifier).playAlbum(
+                  candidate,
+                  index: candidate.resumeTrackIndex,
+                  startPosition: candidate.resumePosition,
+                );
+            _showToast('已从上次断点继续播放');
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: AlbumCover(album: candidate),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '继续收听',
+                        style: TextStyle(
+                          fontSize: 10,
+                          letterSpacing: 1.2,
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${candidate.title} · 上次听到第 $trackNo 轨 ${formatTime(candidate.resumePosition)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, size: 16),
+                  tooltip: '关闭',
+                  onPressed: () =>
+                      setState(() => _resumeDismissed.add(candidate.id)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1214,6 +1346,31 @@ class _FocusSearchIntent extends Intent {
 /// 快捷键 Intent：导入音声文件夹
 class _ImportIntent extends Intent {
   const _ImportIntent();
+}
+
+/// 快捷键 Intent：播放/暂停
+class _TogglePlaybackIntent extends Intent {
+  const _TogglePlaybackIntent();
+}
+
+/// 快捷键 Intent：快退/快进（direction: -1 / 1，步长取设置 seekStepSeconds）
+class _SeekIntent extends Intent {
+  final int direction;
+  const _SeekIntent(this.direction);
+}
+
+/// 快捷键 Intent：上一首/下一首（direction: -1 / 1）
+class _StepTrackIntent extends Intent {
+  final int direction;
+  const _StepTrackIntent(this.direction);
+}
+
+/// 焦点落在输入框（EditableText 及其后代）内时返回 true。
+/// 顶层的可单测守卫：Flutter 的 Shortcuts 在焦点链祖先上先于文本输入判定，
+/// 不挡住的话搜索框里打空格会误触发播放/暂停。
+bool isFocusInsideEditable(BuildContext? context) {
+  if (context == null) return false;
+  return context.findAncestorStateOfType<EditableTextState>() != null;
 }
 
 /// 与筛选栏视觉一致的精致排序下拉组件

@@ -16,6 +16,9 @@ class Album {
   int duration; // 曲目数量
   double totalDuration; // 秒
   double played; // 已播放进度（秒）
+  int resumeTrackIndex; // 断点轨号（-1 = 从未播放过，无断点）
+  double resumePosition; // 断点轨内位置（秒）
+  DateTime? lastPlayedAt; // 最近一次播放时间（「继续收听」选最近一张用）
   bool favorite;
   DateTime date; // 添加时间
   List<Track> tracks;
@@ -39,6 +42,9 @@ class Album {
     this.duration = 0,
     this.totalDuration = 0,
     this.played = 0,
+    this.resumeTrackIndex = -1,
+    this.resumePosition = 0,
+    this.lastPlayedAt,
     this.favorite = false,
     required this.date,
     this.tracks = const [],
@@ -63,6 +69,13 @@ class Album {
         duration: (json['duration'] as num?)?.toInt() ?? 0,
         totalDuration: (json['totalDuration'] as num?)?.toDouble() ?? 0,
         played: (json['played'] as num?)?.toDouble() ?? 0,
+        resumeTrackIndex: (json['resumeTrackIndex'] as num?)?.toInt() ?? -1,
+        resumePosition: (json['resumePosition'] as num?)?.toDouble() ?? 0,
+        lastPlayedAt: (json['lastPlayedAt'] as num?) != null &&
+                (json['lastPlayedAt'] as num).toInt() > 0
+            ? DateTime.fromMillisecondsSinceEpoch(
+                (json['lastPlayedAt'] as num).toInt())
+            : null,
         favorite: json['favorite'] as bool? ?? false,
         date: DateTime.fromMillisecondsSinceEpoch(
             (json['date'] as num?)?.toInt() ?? 0),
@@ -91,6 +104,10 @@ class Album {
         'duration': duration,
         'totalDuration': totalDuration,
         'played': played,
+        'resumeTrackIndex': resumeTrackIndex,
+        'resumePosition': resumePosition,
+        if (lastPlayedAt != null)
+          'lastPlayedAt': lastPlayedAt!.millisecondsSinceEpoch,
         'favorite': favorite,
         'date': date.millisecondsSinceEpoch,
         'tracks': tracks.map((t) => t.toJson()).toList(),
@@ -110,6 +127,9 @@ class Album {
     String? group,
     String? genre,
     double? played,
+    int? resumeTrackIndex,
+    double? resumePosition,
+    DateTime? lastPlayedAt,
     bool? favorite,
     DateTime? date,
     List<Track>? tracks,
@@ -134,6 +154,9 @@ class Album {
         totalDuration: (tracks ?? this.tracks)
             .fold<double>(0, (sum, t) => sum + t.duration),
         played: played ?? this.played,
+        resumeTrackIndex: resumeTrackIndex ?? this.resumeTrackIndex,
+        resumePosition: resumePosition ?? this.resumePosition,
+        lastPlayedAt: lastPlayedAt ?? this.lastPlayedAt,
         favorite: favorite ?? this.favorite,
         date: date ?? this.date,
         tracks: tracks ?? this.tracks,
@@ -190,6 +213,16 @@ class Album {
               ? oldAlbum.played.clamp(0.0, totalDuration)
               : oldAlbum.played)
           : 0.0,
+      // 断点继承旧值，但轨号必须仍落在新曲目范围内（重扫后曲目可能变化）
+      resumeTrackIndex:
+          (oldAlbum.resumeTrackIndex >= 0 && oldAlbum.resumeTrackIndex < tracks.length)
+              ? oldAlbum.resumeTrackIndex
+              : -1,
+      resumePosition:
+          (oldAlbum.resumeTrackIndex >= 0 && oldAlbum.resumeTrackIndex < tracks.length)
+              ? oldAlbum.resumePosition
+              : 0.0,
+      lastPlayedAt: oldAlbum.lastPlayedAt,
       favorite: oldAlbum.favorite,
       date: oldAlbum.date.millisecondsSinceEpoch > 0 ? oldAlbum.date : date,
       tracks: tracks,

@@ -167,4 +167,72 @@ void main() {
       expect(album.copyWith(metaFromFolder: false).metaFromFolder, isFalse);
     });
   });
+
+  group('断点恢复字段 resumeTrackIndex/resumePosition/lastPlayedAt（1.41）', () {
+    test('旧 library.json（无断点字段）→ 默认值 -1/0/null，可直接加载', () {
+      final album = Album.fromJson(const {
+        'id': 'old',
+        'sourcePath': '/x',
+        'title': '旧库专辑',
+        'date': 0,
+      });
+      expect(album.resumeTrackIndex, -1);
+      expect(album.resumePosition, 0);
+      expect(album.lastPlayedAt, isNull);
+    });
+
+    test('有断点值 JSON 往返保留', () {
+      final album = Album(
+        id: 'a',
+        sourcePath: '/x',
+        title: 'T',
+        date: DateTime.now(),
+      )
+        ..resumeTrackIndex = 2
+        ..resumePosition = 123.5
+        ..lastPlayedAt = DateTime.fromMillisecondsSinceEpoch(1700000000000);
+      final restored = Album.fromJson(album.toJson());
+      expect(restored.resumeTrackIndex, 2);
+      expect(restored.resumePosition, 123.5);
+      expect(restored.lastPlayedAt!.millisecondsSinceEpoch, 1700000000000);
+    });
+
+    test('lastPlayedAt 为 0/缺失时解析为 null', () {
+      final album = Album.fromJson(const {
+        'id': 'x',
+        'sourcePath': '',
+        'title': 'T',
+        'date': 0,
+        'lastPlayedAt': 0,
+      });
+      expect(album.lastPlayedAt, isNull);
+    });
+
+    test('mergeWith：断点轨号仍在新曲目范围内 → 继承', () {
+      final tracks = [
+        for (var i = 0; i < 3; i++)
+          Track(index: i, name: 't$i', url: 'file:///x/$i.mp3', duration: 100),
+      ];
+      final fresh = Album(id: 'a', sourcePath: '/x', title: '新扫描', date: DateTime.now(), tracks: tracks);
+      final old = Album(id: 'a', sourcePath: '/x', title: '旧', date: DateTime.now())
+        ..resumeTrackIndex = 1
+        ..resumePosition = 40
+        ..lastPlayedAt = DateTime(2026, 8, 30);
+      final merged = fresh.mergeWith(old);
+      expect(merged.resumeTrackIndex, 1);
+      expect(merged.resumePosition, 40);
+      expect(merged.lastPlayedAt, isNotNull);
+    });
+
+    test('mergeWith：断点轨号越界（重扫后曲目变少）→ 重置为无断点', () {
+      final tracks = [Track(index: 0, name: 't0', url: 'file:///x/0.mp3', duration: 100)];
+      final fresh = Album(id: 'a', sourcePath: '/x', title: '新扫描', date: DateTime.now(), tracks: tracks);
+      final old = Album(id: 'a', sourcePath: '/x', title: '旧', date: DateTime.now())
+        ..resumeTrackIndex = 2
+        ..resumePosition = 40;
+      final merged = fresh.mergeWith(old);
+      expect(merged.resumeTrackIndex, -1);
+      expect(merged.resumePosition, 0);
+    });
+  });
 }

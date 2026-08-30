@@ -466,3 +466,14 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 - **验证**：`flutter test` 全量 146 passed、1 skipped（GitHub API 网络用例默认跳过）；`flutter build macos --release` 产物 70M，`find Hiko.app -name 'Mpv.framework'` =1，zip 内 `Contents/Frameworks/Mpv.framework/` 有 21 个条目；直启新实例无异常日志，截图确认「バイコーンの森」13 张整组排最前、RJ01477624 与 RJ01619492/RJ01617094 同组。
 - **既有缺口（非本次引入）**：计划文档缺 `### 1.38.0` 整节（仅被 1.39.0 事故描述顺带提及），待补。
 - **版本**：1.40.0+44（pubspec.yaml）。发布：hiko-v1.40.0-macos.zip，https://github.com/michiru233/hiko/releases/tag/v1.40.0 。
+
+### 1.41.0 播放进度记忆 +「继续收听」、键盘快捷键（进行中）
+- 开工回执：目标=①Album 加 resumeTrackIndex/resumePosition/lastPlayedAt 持久化断点，主界面横幅卡一键续播；②Shortcuts 加 Space/←→/↑↓，步长 seekStepSeconds 设置项（3/5/10/30，默认 3）。顺序：模型与纯函数 → 控制器接线 → UI 横幅卡 → 快捷键与设置项 → 发版。最大风险：library.json 旧数据兼容（缺字段默认值）与输入框焦点时空格/方向键误触发。
+- **Album 断点字段**（`lib/models/album.dart`）：新增 `resumeTrackIndex`（-1=无断点）/`resumePosition`/`lastPlayedAt` 三字段；fromJson 缺字段给默认值（旧 library.json 直接加载不重扫）；mergeWith 继承断点但轨号越界（重扫后曲目变少）时重置为无断点。
+- **恢复目标纯函数**（`lib/playback/playback_rules.dart`）：`QueueRules.resumePoint`——单轨剩 <2 秒视为播完，断点记下一轨 0 秒（最后一轨回到第 0 轨 0 秒）；`QueueRules.resumeCandidate`——全库取 `lastPlayedAt` 最近且有断点的专辑，排除正在播放的专辑。
+- **控制器接线**（`lib/playback/playback_controller.dart`）：`playAlbum` 加 `startPosition` 参数（>0 时走 `_pendingSeek` 断点起播）；`_persistProgress` 随 played 同步写轨号/轨内位置/lastPlayedAt；seek 与曲终 completed 时立即落盘（不信任 15s 节流窗口）；新增 `AppLifecycleListener` 在失活/隐藏时兜底落盘（硬杀进程仍可能丢最近 ≤15s，可接受）。
+- **继续收听横幅卡**（`lib/ui/screens/home_screen.dart`）：全部音声网格上方，封面缩略图 + 「专辑名 · 上次听到第 N 轨 mm:ss」，点击断点起播；× 关闭本次会话内不再出现；正在播放该专辑时不显示。
+- **键盘快捷键**：Space 播放/暂停、←→ 快退/快进、↑↓ 上一首/下一首（复用现有 Shortcuts/Actions 框架）；焦点守卫 `isFocusInsideEditable`——搜索框等输入框聚焦时空格/方向键走打字不触发快捷键（Flutter 的 Shortcuts 在焦点链祖先先于 IME 判定，必须显式拦截）。
+- **步长设置项**（`lib/data/settings_store.dart` + `settings_dialog.dart`）：`seekStepSeconds` 白名单 3/5/10/30、非法回退 3、键 `hiko-seek-step` 默认 3；设置弹窗「音频与增益」区加「快进/快退秒数」四档选择行。
+- **测试**：新增 18 条（resumePoint 5 分支、resumeCandidate 3、album 断点字段往返/mergeWith 5、seekStep 归一化 3、快捷键焦点守卫 widget 测试 2），`flutter test` 164 passed / 1 skipped（基线 146，实网用例默认跳过）；反向验证 4 组红→绿（resumePoint <2s 规则、焦点守卫、seekStep 白名单、album 缺省 -1）；`flutter analyze` 32 issues 与基线一致。
+- **发版**：pubspec 1.41.0+45；`flutter build macos --release` 产物 73.2MB，`find Hiko.app -name Mpv.framework` =1；`hiko-v1.41.0-macos.zip` 31M（与历史包一致），zip 内 `Contents/Frameworks/Mpv.framework/` 26 条目。

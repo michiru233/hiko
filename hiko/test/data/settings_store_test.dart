@@ -105,4 +105,33 @@ void main() {
     await reloaded.load();
     expect(reloaded.state.albumSort, 'artist_asc');
   });
+
+  test('快进/快退步长：空 prefs 默认 3 秒', () async {
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.seekStepSeconds, 3);
+  });
+
+  test('快进/快退步长：设置 10 秒并重启 load 持久化往返', () async {
+    final notifier = SettingsNotifier();
+    await notifier.load();
+
+    await notifier.setSeekStep(10);
+    expect(notifier.state.seekStepSeconds, 10);
+
+    final reloaded = SettingsNotifier();
+    await reloaded.load();
+    expect(reloaded.state.seekStepSeconds, 10);
+  });
+
+  test('快进/快退步长：白名单外（7 秒）回退 3 秒', () async {
+    SharedPreferences.setMockInitialValues({'hiko-seek-step': 7.0});
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.seekStepSeconds, 3);
+
+    // 运行时传入白名单外的值也回退
+    await notifier.setSeekStep(99);
+    expect(notifier.state.seekStepSeconds, 3);
+  });
 }

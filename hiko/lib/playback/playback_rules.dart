@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import '../models/album.dart';
+import '../models/track.dart';
 
 /// 播放模式（对应旧版 app.js 四种）
 enum PlaybackMode { list, single, shuffle, album }
@@ -92,5 +93,44 @@ class QueueRules {
       sum += album.tracks[i].duration;
     }
     return sum + position;
+  }
+
+  /// 断点落盘目标：单轨只剩 <2 秒视为已播完，断点记为下一轨 0 秒；
+  /// 已是最后一轨则回到第 0 轨 0 秒。其余情况 clamp 在当前轨时长内。
+  static (int trackIndex, double position) resumePoint({
+    required List<Track> tracks,
+    required int queueIndex,
+    required double position,
+  }) {
+    if (tracks.isEmpty) return (0, 0);
+    final idx = queueIndex.clamp(0, tracks.length - 1);
+    final duration = tracks[idx].duration;
+    final remaining = duration - position;
+    if (duration > 0 && remaining < 2) {
+      final next = idx + 1;
+      if (next >= tracks.length) return (0, 0);
+      return (next, 0);
+    }
+    return (idx, position.clamp(0.0, duration > 0 ? duration : position));
+  }
+
+  /// 「继续收听」候选：最近一次播放过的专辑（有断点记录），
+  /// 排除当前正在播放的专辑；无任何断点时返回 null。
+  static Album? resumeCandidate(
+    List<Album> albums, {
+    String? playingAlbumId,
+  }) {
+    Album? best;
+    for (final a in albums) {
+      if (a.resumeTrackIndex < 0) continue;
+      if (playingAlbumId != null && a.id == playingAlbumId) continue;
+      final at = a.lastPlayedAt;
+      if (best == null ||
+          (at != null &&
+              (best.lastPlayedAt == null || at.isAfter(best.lastPlayedAt!)))) {
+        best = a;
+      }
+    }
+    return best;
   }
 }

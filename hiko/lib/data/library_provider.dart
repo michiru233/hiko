@@ -99,18 +99,46 @@ class LibraryNotifier extends StateNotifier<List<Album>> {
     await _store.save(state);
   }
 
-  /// 播放进度等运行时变化落盘（不改变列表顺序）
-  Future<void> updatePlayed(String id, double played) async {
+  /// 播放进度等运行时变化落盘（不改变列表顺序）；断点三字段随 played 一并写
+  Future<void> updatePlayed(
+    String id,
+    double played, {
+    int? resumeTrackIndex,
+    double? resumePosition,
+    DateTime? lastPlayedAt,
+  }) async {
     state = [
-      for (final a in state) a.id == id ? a.copyWith(played: played) : a,
+      for (final a in state)
+        a.id == id
+            ? a.copyWith(
+                played: played,
+                resumeTrackIndex: resumeTrackIndex,
+                resumePosition: resumePosition,
+                lastPlayedAt: lastPlayedAt,
+              )
+            : a,
     ];
     await _store.save(state);
   }
 
   /// 不落盘的纯内存更新（避免高频位置更新反复写盘）
-  void updatePlayedInMemory(String id, double played) {
+  void updatePlayedInMemory(
+    String id,
+    double played, {
+    int? resumeTrackIndex,
+    double? resumePosition,
+    DateTime? lastPlayedAt,
+  }) {
     state = [
-      for (final a in state) a.id == id ? a.copyWith(played: played) : a,
+      for (final a in state)
+        a.id == id
+            ? a.copyWith(
+                played: played,
+                resumeTrackIndex: resumeTrackIndex,
+                resumePosition: resumePosition,
+                lastPlayedAt: lastPlayedAt,
+              )
+            : a,
     ];
   }
 

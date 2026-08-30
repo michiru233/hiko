@@ -10,6 +10,7 @@ class AppSettings {
   final String playMode; // list / single / shuffle / album
   final double playbackRate; // 播放倍速 0.5 - 2.0,步进 0.1,默认 1.0
   final String albumSort; // 专辑排序方式，默认 artist_asc
+  final double seekStepSeconds; // 快进/快退步长（秒），白名单 3/5/10/30，默认 3
   final bool sidebarShown;
   final String scrapeProxy;
   final List<String> musicFolders; // 常驻音乐目录（桌面：路径；Android：SAF tree URI）
@@ -22,6 +23,7 @@ class AppSettings {
     this.playMode = 'list',
     this.playbackRate = 1.0,
     this.albumSort = 'artist_asc',
+    this.seekStepSeconds = 3,
     this.sidebarShown = true,
     this.scrapeProxy = '',
     this.musicFolders = const [],
@@ -45,6 +47,7 @@ class AppSettings {
     String? playMode,
     double? playbackRate,
     String? albumSort,
+    double? seekStepSeconds,
     bool? sidebarShown,
     String? scrapeProxy,
     List<String>? musicFolders,
@@ -57,6 +60,7 @@ class AppSettings {
         playMode: playMode ?? this.playMode,
         playbackRate: playbackRate ?? this.playbackRate,
         albumSort: albumSort ?? this.albumSort,
+        seekStepSeconds: seekStepSeconds ?? this.seekStepSeconds,
         sidebarShown: sidebarShown ?? this.sidebarShown,
         scrapeProxy: scrapeProxy ?? this.scrapeProxy,
         musicFolders: musicFolders ?? this.musicFolders,
@@ -90,6 +94,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kMode = 'hiko-mode';
   static const _kPlaybackRate = 'hiko-playback-rate';
   static const _kAlbumSort = 'hiko-album-sort';
+  static const _kSeekStep = 'hiko-seek-step';
   static const _kSidebar = 'hiko-sidebar';
   static const _kProxy = 'hiko-scrape-proxy';
   static const _kMusicFolders = 'hiko-music-folders';
@@ -115,6 +120,11 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     return 'artist_asc';
   }
 
+  static const _validSeekSteps = [3.0, 5.0, 10.0, 30.0];
+
+  static double _normalizeSeekStep(double? val) =>
+      val != null && _validSeekSteps.contains(val) ? val : 3;
+
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     state = AppSettings(
@@ -125,6 +135,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       playMode: prefs.getString(_kMode) ?? 'list',
       playbackRate: (prefs.getDouble(_kPlaybackRate) ?? 1.0).clamp(0.5, 2.0),
       albumSort: _normalizeSort(prefs.getString(_kAlbumSort)),
+      seekStepSeconds: _normalizeSeekStep(prefs.getDouble(_kSeekStep)),
       sidebarShown: prefs.getBool(_kSidebar) ?? true,
       scrapeProxy: prefs.getString(_kProxy) ?? '',
       musicFolders: prefs.getStringList(_kMusicFolders) ?? const [],
@@ -142,6 +153,12 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   Future<void> setAlbumSort(String sort) {
     final validSort = _normalizeSort(sort);
     return _save(_kAlbumSort, validSort, state.copyWith(albumSort: validSort));
+  }
+
+  /// 快进/快退步长：白名单 3/5/10/30 秒，非法值回退 3
+  Future<void> setSeekStep(double seconds) {
+    final valid = _normalizeSeekStep(seconds);
+    return _save(_kSeekStep, valid, state.copyWith(seekStepSeconds: valid));
   }
 
   /// 播放倍速:0.5 ~ 2.0(步进 0.1 由 UI Slider divisions 保证)

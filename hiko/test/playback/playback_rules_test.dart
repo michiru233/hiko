@@ -149,6 +149,60 @@ void main() {
       ), 8);
     });
   });
+
+  group('QueueRules.resumePoint 断点落盘目标（1.41）', () {
+    final tracks = [
+      for (var i = 0; i < 3; i++)
+        Track(index: i, name: 't$i', url: 'file:///x/t$i.mp3', duration: 100),
+    ];
+
+    test('轨中段：原位保留', () {
+      expect(QueueRules.resumePoint(tracks: tracks, queueIndex: 1, position: 40), (1, 40));
+    });
+
+    test('单轨只剩 <2 秒 → 记下一轨 0 秒', () {
+      expect(QueueRules.resumePoint(tracks: tracks, queueIndex: 0, position: 98.5), (1, 0));
+    });
+
+    test('最后一轨只剩 <2 秒 → 回到第 0 轨 0 秒', () {
+      expect(QueueRules.resumePoint(tracks: tracks, queueIndex: 2, position: 99.0), (0, 0));
+    });
+
+    test('空曲目 → (0, 0)', () {
+      expect(QueueRules.resumePoint(tracks: const [], queueIndex: 0, position: 5), (0, 0));
+    });
+
+    test('位置越过轨时长（视为播完）→ 记下一轨 0 秒', () {
+      expect(QueueRules.resumePoint(tracks: tracks, queueIndex: 0, position: 500), (1, 0));
+    });
+  });
+
+  group('QueueRules.resumeCandidate 继续收听候选（1.41）', () {
+    test('取 lastPlayedAt 最近的一张', () {
+      final a = _album('A', 2)
+        ..resumeTrackIndex = 0
+        ..lastPlayedAt = DateTime(2026, 8, 1);
+      final b = _album('B', 2)
+        ..resumeTrackIndex = 1
+        ..lastPlayedAt = DateTime(2026, 8, 20);
+      expect(QueueRules.resumeCandidate([a, b])!.id, 'B');
+    });
+
+    test('无断点记录（resumeTrackIndex < 0）的专辑不参选', () {
+      final a = _album('A', 2)..lastPlayedAt = DateTime(2026, 8, 1);
+      expect(QueueRules.resumeCandidate([a]), isNull);
+    });
+
+    test('排除当前正在播放的专辑', () {
+      final a = _album('A', 2)
+        ..resumeTrackIndex = 0
+        ..lastPlayedAt = DateTime(2026, 8, 20);
+      final b = _album('B', 2)
+        ..resumeTrackIndex = 0
+        ..lastPlayedAt = DateTime(2026, 8, 1);
+      expect(QueueRules.resumeCandidate([a, b], playingAlbumId: 'A')!.id, 'B');
+    });
+  });
 }
 
 class RandomTest implements Random {

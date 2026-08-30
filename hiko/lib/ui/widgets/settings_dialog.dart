@@ -240,6 +240,47 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                   ),
                 ),
               ),
+              _SettingRow(
+                label: '快进/快退秒数',
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 键盘 ←→ 快退/快进的步长，白名单 3/5/10/30 秒
+                    for (final step in const [3.0, 5.0, 10.0, 30.0])
+                      InkWell(
+                        onTap: () => ref
+                            .read(settingsProvider.notifier)
+                            .setSeekStep(step),
+                        mouseCursor: SystemMouseCursors.click,
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: settings.seekStepSeconds == step
+                                ? theme.colorScheme.surface
+                                : null,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            '${step.toStringAsFixed(0)}秒',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: settings.seekStepSeconds == step
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                              color: settings.seekStepSeconds == step
+                                  ? theme.colorScheme.onSurface
+                                  : theme.hintColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
               // ---- 数据 ----
               _SectionTitle('数据'),
               _SettingRow(
