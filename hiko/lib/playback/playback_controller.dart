@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -14,6 +15,20 @@ import 'gain_chain.dart';
 import 'hiko_media_kit_player.dart';
 import 'playback_rules.dart';
 import 'sleep_timer.dart';
+
+/// 「随机播放」盲选：从可播专辑（tracks 非空）中均匀随机挑一张；
+/// [current] 为正在播的专辑且还有其他候选时避开它；无可播专辑返回 null
+/// （UI 层负责 toast 提示）。[random] 仅供测试注入，生产路径用默认 Random。
+Album? pickRandomPlayableAlbum(List<Album> albums, Album? current, {Random? random}) {
+  final playable = albums.where((a) => a.tracks.isNotEmpty).toList();
+  if (playable.isEmpty) return null;
+  final candidates = (playable.length > 1 && current != null)
+      ? playable.where((a) => a.id != current.id).toList()
+      : playable;
+  if (candidates.isEmpty) return null;
+  final rng = random ?? Random();
+  return candidates[rng.nextInt(candidates.length)];
+}
 
 /// 播放器状态（UI 直接消费）
 class PlaybackState {

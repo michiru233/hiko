@@ -703,6 +703,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  /// 「随机播放」：盲选一张可播专辑从第 1 轨起播，不改当前播放模式
+  void _playRandomAlbum() {
+    final albums = ref.read(libraryProvider);
+    final current = ref.read(playbackProvider).album;
+    final picked = pickRandomPlayableAlbum(albums, current);
+    if (picked == null) {
+      _showToast('还没有可播放的专辑');
+      return;
+    }
+    ref.read(playbackProvider.notifier).playAlbum(picked, index: 0);
+  }
+
   Widget _buildTopbar(ThemeData theme, bool isMobile) {
     return Padding(
       padding: EdgeInsets.symmetric(
@@ -756,6 +768,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   .read(settingsProvider.notifier)
                   .setTheme(s.theme == 'dark' ? 'light' : 'dark');
             },
+          ),
+          const SizedBox(width: 4),
+          FilledButton.tonalIcon(
+            onPressed: _playRandomAlbum,
+            icon: const Icon(Icons.shuffle_rounded, size: 16),
+            label: Text(isMobile ? '随机' : '随机播放'),
           ),
           const SizedBox(width: 4),
           FilledButton.tonalIcon(
