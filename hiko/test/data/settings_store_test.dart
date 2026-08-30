@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hiko/data/settings_store.dart';
+import 'package:hiko/playback/gain_chain.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -33,21 +34,25 @@ void main() {
     await notifier.load();
     expect(notifier.state.audioGain, 1.0);
 
-    // 设置增益 2.0x
-    await notifier.setAudioGain(2.0);
-    expect(notifier.state.audioGain, 2.0);
+    // macOS 上限 1.3（底层缺音量滤镜），Windows 上限 4.0；用平台上限断言更健壮
+    final cap = desktopGainCap();
+    final midGain = cap >= 2.0 ? 2.0 : (cap - 0.1).clamp(1.0, cap);
+
+    // 设置一个合法的中间增益
+    await notifier.setAudioGain(midGain);
+    expect(notifier.state.audioGain, midGain);
 
     // 重新加载（模拟重启）
     final reloaded = SettingsNotifier();
     await reloaded.load();
-    expect(reloaded.state.audioGain, 2.0);
+    expect(reloaded.state.audioGain, midGain);
 
-    // 边界限制 1.0 ~ 4.0
+    // 边界限制：低于下限吸附 1.0，高于上限吸附上限
     await notifier.setAudioGain(0.5);
     expect(notifier.state.audioGain, 1.0);
 
     await notifier.setAudioGain(5.0);
-    expect(notifier.state.audioGain, 4.0);
+    expect(notifier.state.audioGain, cap);
   });
 
   test('播放倍速:默认 1.0 + 0.5/1.0/2.0 持久化往返 + 范围限制', () async {

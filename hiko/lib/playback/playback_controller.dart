@@ -316,7 +316,7 @@ class PlaybackController extends StateNotifier<PlaybackState> {
   Future<void> syncVolume({double? baseVolume, double? gain}) async {
     final settings = _ref.read(settingsProvider);
     final vol = (baseVolume ?? settings.volume).clamp(0.0, 1.0);
-    final g = (gain ?? settings.audioGain).clamp(1.0, 4.0);
+    final g = (gain ?? settings.audioGain).clamp(1.0, desktopGainCap());
     if (Platform.isAndroid) {
       await _syncVolumeAndroid(vol, g);
       return;

@@ -25,10 +25,13 @@ class HikoJustAudioMediaKit extends JustAudioPlatform {
   /// >1.3x 硬削波，增益必须走 af 浮点域；volume 属性只留 0~1 常规音量）。
   static double _globalGain = 1.0;
 
+  /// 当前全局增益（供实例在 macOS 上合成 volume 用）。
+  static double get globalGain => _globalGain;
+
   /// 设置全局增益并应用到当前所有实例；之后 init 的实例也会补挂。
   /// 相同值幂等跳过；单实例失败容忍（风格同 syncVolume）。
   static Future<void> setGlobalGain(double gain) async {
-    final g = gain.clamp(1.0, 4.0).toDouble();
+    final g = gain.clamp(1.0, desktopGainCap()).toDouble();
     if (g == _globalGain) return;
     _globalGain = g;
     for (final player in _players.values.toList()) {
@@ -390,16 +393,41 @@ class HikoMediaKitPlayer extends AudioPlayerPlatform {
     return PauseResponse();
   }
 
+  /// 记录最近一次常规音量（0~1）；macOS 上增益并入 volume 时需以此避免累积漂移。
+  double _baseVolume = 1.0;
+
   @override
   Future<SetVolumeResponse> setVolume(SetVolumeRequest request) async {
-    // request.volume 只传 0.0~1.0 常规音量；增益已整体搬进 af 链（见 setGlobalGain）
-    await _player.setVolume(request.volume * 100.0);
+    _baseVolume = request.volume.clamp(0.0, 1.0);
+    if (UniversalPlatform.isMacOS) {
+      // macOS：volume 属性同时承载 base×gain，避免重复设 af 链导致静音。
+      final merged = desktopEffectiveVolume(_baseVolume, HikoJustAudioMediaKit.globalGain);
+      await _player.setVolume(merged * 100.0);
+      return SetVolumeResponse();
+    }
+    // Windows：常规音量只走 0~1；增益在 af 链（见 applyGain）。
+    await _player.setVolume(_baseVolume * 100.0);
     return SetVolumeResponse();
   }
 
-  /// 应用 af 增益链并读回验证；失败容忍（引擎不可用时静默降级为直通）。
-  /// 同时读回 mpv volume，验证增益改动不影响常规音量通道。
+  /// 应用增益：
+  /// - Windows：设置 `af` 链（lavfi volume + alimiter，浮点域软增益 + 软限幅）。
+  /// - macOS：media_kit 库缺 volume/alimiter 滤镜，af 链必然失败导致静音，
+  ///   故把 base×gain 并入 mpv `volume` 属性（上限见 [desktopGainCap]）。
   Future<void> applyGain(double gain) async {
+    if (UniversalPlatform.isMacOS) {
+      try {
+        final platform = _player.platform;
+        if (platform is! NativePlayer) return;
+        final merged = desktopEffectiveVolume(_baseVolume, gain);
+        await _player.setVolume(merged * 100.0);
+        final readBack = await platform.getProperty('volume');
+        debugPrint('[gain] macOS volume=$merged (readBack=$readBack)');
+      } catch (e) {
+        debugPrint('[gain] macOS 应用增益失败（容忍）: $e');
+      }
+      return;
+    }
     try {
       final platform = _player.platform;
       if (platform is! NativePlayer) return;

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/settings_store.dart';
 import '../../lyrics/desktop_lyrics_service.dart';
 import '../../models/album.dart';
+import '../../playback/gain_chain.dart';
 import '../../playback/playback_controller.dart';
 import '../../playback/playback_rules.dart';
 import '../../playback/sleep_timer.dart';
@@ -34,8 +35,9 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
   double? _gainDrag; // 增益滑动条拖动中的临时值（松手才提交）
   double? _rateDrag; // 倍速滑动条拖动中的临时值（松手才提交）
 
-  /// 归一到一位小数并夹在 1.0~4.0，避免 divisions 步进的浮点尾差
-  double _snapGain(double v) => ((v * 10).round() / 10).clamp(1.0, 4.0).toDouble();
+  /// 归一到一位小数并夹在 1.0~上限（macOS 因缺滤镜 1.3，Windows 4.0）
+  double _snapGain(double v) =>
+      ((v * 10).round() / 10).clamp(1.0, desktopGainCap()).toDouble();
 
   /// 倍速归一位小数并夹在 0.5~2.0
   double _snapRate(double v) => ((v * 10).round() / 10).clamp(0.5, 2.0).toDouble();
@@ -404,9 +406,10 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
                 child: Slider(
                   key: const ValueKey('gain-slider-player-bar'),
                   min: 1.0,
-                  max: 4.0,
-                  divisions: 30,
-                  value: (_gainDrag ?? settings.audioGain).clamp(1.0, 4.0),
+                  max: desktopGainCap(),
+                  divisions: desktopGainCap() > 1.3 ? 30 : 3,
+                  value: (_gainDrag ?? settings.audioGain)
+                      .clamp(1.0, desktopGainCap()),
                   label: 'x${(_gainDrag ?? settings.audioGain).toStringAsFixed(1)}',
                   mouseCursor: SystemMouseCursors.click,
                   onChanged: (v) => setState(() => _gainDrag = _snapGain(v)),

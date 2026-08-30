@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../playback/gain_chain.dart';
+
 /// 应用设置（对应旧版 localStorage 各项 + 刮削代理）
 class AppSettings {
   final String theme; // light / dark
@@ -147,7 +149,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       theme: prefs.getString(_kTheme) ?? 'light',
       accent: prefs.getString(_kAccent) ?? AppSettings.defaultAccent,
       volume: (prefs.getDouble(_kVolume) ?? 0.8).clamp(0.0, 1.0),
-      audioGain: (prefs.getDouble(_kAudioGain) ?? 1.0).clamp(1.0, 4.0),
+      audioGain: (prefs.getDouble(_kAudioGain) ?? 1.0)
+          .clamp(1.0, desktopGainCap()),
       playMode: prefs.getString(_kMode) ?? 'list',
       playbackRate: (prefs.getDouble(_kPlaybackRate) ?? 1.0).clamp(0.5, 2.0),
       albumSort: _normalizeSort(prefs.getString(_kAlbumSort)),
@@ -165,7 +168,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   Future<void> setVolume(double volume) =>
       _save(_kVolume, volume.clamp(0.0, 1.0), state.copyWith(volume: volume.clamp(0.0, 1.0)));
   Future<void> setAudioGain(double gain) =>
-      _save(_kAudioGain, gain.clamp(1.0, 4.0), state.copyWith(audioGain: gain.clamp(1.0, 4.0)));
+      _save(_kAudioGain, gain.clamp(1.0, desktopGainCap()),
+          state.copyWith(audioGain: gain.clamp(1.0, desktopGainCap())));
   Future<void> setPlayMode(String mode) => _save(_kMode, mode, state.copyWith(playMode: mode));
 
   Future<void> setAlbumSort(String sort) {

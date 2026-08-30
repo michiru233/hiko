@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:universal_platform/universal_platform.dart';
 
 import '../../data/settings_store.dart';
 import '../../data/update_checker.dart';
+import '../../playback/gain_chain.dart';
 import '../../playback/playback_controller.dart';
 import '../../platform/platform_service.dart';
 import 'toast.dart';
@@ -74,9 +76,10 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
 
   void _toast(String message) => showHikoToast(context, message);
 
-  /// 归一到一位小数并夹在 1.0~4.0，避免 divisions 步进的浮点尾差
+  /// 归一到一位小数并夹在 1.0~上限（macOS 因缺滤镜上限 1.3，Windows 4.0），
+  /// 避免 divisions 步进的浮点尾差。
   double _snapGain(double v) =>
-      ((v * 10).round() / 10).clamp(1.0, 4.0).toDouble();
+      ((v * 10).round() / 10).clamp(1.0, desktopGainCap()).toDouble();
 
   Future<void> _cleanMissing() async {
     widget.onCleanMissingRequested?.call();
@@ -193,11 +196,11 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                       width: 180,
                       child: Slider(
                         min: 1.0,
-                        max: 4.0,
-                        divisions: 30,
+                        max: desktopGainCap(),
+                        divisions: desktopGainCap() > 1.3 ? 30 : 3,
                         value: (_gainDrag ?? settings.audioGain).clamp(
                           1.0,
-                          4.0,
+                          desktopGainCap(),
                         ),
                         label:
                             'x${(_gainDrag ?? settings.audioGain).toStringAsFixed(1)}',
@@ -231,14 +234,20 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
               ),
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  '增益在音频滤镜链内以浮点精度放大，并经 -1dB 软限幅器兜底，高增益下不会削波破音。亦可在播放底栏音量图标处快捷调节。',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    height: 1.5,
-                    color: theme.hintColor,
-                  ),
-                ),
+                child: Builder(builder: (context) {
+                  final cap = desktopGainCap();
+                  final isMac = UniversalPlatform.isMacOS;
+                  return Text(
+                    isMac
+                        ? '此平台（macOS）因底层解码库未随附音量滤镜，增益并入主音量调节（上限 ${cap}x，过高会削波破音）。Windows 版走滤镜链软增益+软限幅，可到 4.0x 不削波。'
+                        : '增益在音频滤镜链内以浮点精度放大，并经 -1dB 软限幅器兜底，高增益下不会削波破音。亦可在播放底栏音量图标处快捷调节。',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      height: 1.5,
+                      color: theme.hintColor,
+                    ),
+                  );
+                }),
               ),
               _SettingRow(
                 label: '重置音频输出',
