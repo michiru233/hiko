@@ -91,12 +91,16 @@ class UpdateChecker {
     return null;
   }
 
-  /// 拉取最新 Release(10 秒超时;失败抛异常由调用方提示)
-  static Future<GithubRelease> fetchLatestRelease({http.Client? client}) async {
+  /// 拉取最新 Release(10 秒超时;失败抛异常由调用方提示)。
+  /// [headers] 供测试注入 token 以绕开匿名限流；置 null 走匿名请求（与旧行为一致）。
+  static Future<GithubRelease> fetchLatestRelease({
+    http.Client? client,
+    Map<String, String>? headers,
+  }) async {
     final c = client ?? http.Client();
     try {
       final resp = await c
-          .get(Uri.parse('$repoApiBase/releases/latest'))
+          .get(Uri.parse('$repoApiBase/releases/latest'), headers: headers)
           .timeout(const Duration(seconds: 10));
       if (resp.statusCode != 200) {
         throw HttpException('GitHub API ${resp.statusCode}');

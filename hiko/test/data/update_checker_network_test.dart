@@ -4,7 +4,12 @@ import 'package:hiko/data/update_checker.dart';
 /// 实网验证:GitHub Releases API 解析(仓库 michiru233/hiko 公开,无需鉴权)
 void main() {
   test('真实 GitHub API:拉最新 Release,tag 可解析且带双平台资产', () async {
-    final release = await UpdateChecker.fetchLatestRelease();
+    // 有 GITHUB_TOKEN 时带 Authorization 头绕开匿名限流，否则走匿名请求
+    final token = String.fromEnvironment('GITHUB_TOKEN');
+    final headers = token.isEmpty
+        ? null
+        : {'Authorization': 'Bearer $token'};
+    final release = await UpdateChecker.fetchLatestRelease(headers: headers);
 
     expect(release.tagName, isNotEmpty);
     expect(release.tagName, startsWith('v'));
