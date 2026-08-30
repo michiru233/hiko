@@ -142,16 +142,27 @@ class AlbumCard extends ConsumerWidget {
                           fontSize: 13, fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      // albumArtist 与 artist 相同（扫描器常写同一值）或为空时去重，只显示一次
-                      album.albumArtist.isNotEmpty &&
-                              album.albumArtist != album.artist
-                          ? '${album.artist} · ${album.albumArtist}'
-                          : album.artist,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 11, color: theme.colorScheme.onSurface),
+                    // 1.44：artist/albumArtist 胶囊化（与总时长同款次级色），
+                    // 去重逻辑不变：albumArtist 为空或与 artist 相同时只显示 artist
+                    Wrap(
+                      spacing: 5,
+                      runSpacing: 4,
+                      children: [
+                        _Pill(
+                          text: album.artist,
+                          bg: theme.colorScheme.secondaryContainer,
+                          color: theme.colorScheme.onSecondaryContainer,
+                          maxWidth: 178,
+                        ),
+                        if (album.albumArtist.isNotEmpty &&
+                            album.albumArtist != album.artist)
+                          _Pill(
+                            text: album.albumArtist,
+                            bg: theme.colorScheme.secondaryContainer,
+                            color: theme.colorScheme.onSecondaryContainer,
+                            maxWidth: 178,
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 6),
                     Wrap(
@@ -208,23 +219,27 @@ class AlbumCard extends ConsumerWidget {
   }
 }
 
-/// 高亮胶囊（1.42.0）：RJ号/总时长等关键信息，10px 加粗、实底高对比
+/// 高亮胶囊（1.42.0）：RJ号/总时长等关键信息，10px 加粗、实底高对比。
+/// 1.44.0：文字 maxLines 1 + ellipsis，可选 [maxWidth] 约束（超长艺术家名
+/// 在无界 Wrap 内会横向溢出，必须限宽截断）。
 class _Pill extends StatelessWidget {
   const _Pill({
     required this.text,
     required this.bg,
     required this.color,
     this.bold = false,
+    this.maxWidth,
   });
 
   final String text;
   final Color bg;
   final Color color;
   final bool bold;
+  final double? maxWidth;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    Widget pill = Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
         color: bg,
@@ -232,12 +247,22 @@ class _Pill extends StatelessWidget {
       ),
       child: Text(
         text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        softWrap: false,
         style: TextStyle(
             fontSize: 10,
             fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
             color: color),
       ),
     );
+    if (maxWidth != null) {
+      pill = ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth!),
+        child: pill,
+      );
+    }
+    return pill;
   }
 }
 

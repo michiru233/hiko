@@ -52,14 +52,30 @@ void main() {
         date: DateTime(2026),
       );
 
-  testWidgets('五项信息全部渲染：标题/艺术家行/RJ号/总时长，无溢出', (tester) async {
+  testWidgets('五项信息全部渲染：标题/艺术家/RJ号/总时长，无溢出', (tester) async {
     await tester.pumpWidget(host(fullAlbum()));
     await tester.pump();
     expect(find.text('夜のひめごと'), findsOneWidget);
-    expect(find.text('声優A · サークルB'), findsOneWidget);
+    // 1.44：artist/albumArtist 各为一颗胶囊，不再是合并文本行
+    expect(find.text('声優A'), findsOneWidget);
+    expect(find.text('サークルB'), findsOneWidget);
+    expect(find.text('声優A · サークルB'), findsNothing);
     expect(find.text('RJ01234567'), findsOneWidget);
     expect(find.text(formatDuration(5025)), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('1.44 超长艺术家名：胶囊内省略号截断，无溢出', (tester) async {
+    final longName = '超長いアーティスト名前' * 6; // 60 字
+    final album = fullAlbum().copyWith(
+      artist: longName,
+      albumArtist: '別のサークル名もかなり長い名前です' * 2,
+    );
+    await tester.pumpWidget(host(album));
+    await tester.pump();
+    expect(find.textContaining('超長い'), findsOneWidget);
+    expect(tester.takeException(), isNull,
+        reason: '超长艺术家名在 190px 卡片内必须省略号截断而非溢出');
   });
 
   testWidgets('albumArtist 与 artist 相同时去重：艺术家文本只出现一次', (tester) async {
