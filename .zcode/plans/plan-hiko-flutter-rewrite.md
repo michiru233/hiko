@@ -520,3 +520,4 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 - **测试**：新增 `audio_heal_test.dart` 8 例 + `mpv_diagnostic_log_test.dart` 3 例（合计 +11）。反向验证红→绿：临时把 `audio_heal.dart` 正则改成 `NEVER_MATCH_XYZ` → `Expected: true / Actual: <false>` +7 -1 红；还原后 +8 全绿。
 - **实机日志验证**：`flutter build macos --debug --dart-define=HIKO_GAIN_SELFTEST=1` 启动运行，`hiko-mpv.log` 成功落盘；cat 见 `[info] hiko: audio-device=auto` 与 `[fatal] cplayer: No video or audio streams selected.`（自检 WAV 属预期），日志格式 `时间戳 [级别] prefix: text`，证明 log stream + observeProperty 链路工作。
 - **发版**：pubspec 1.45.0+49；`flutter build macos --release` 产物 73.4MB；`hiko-v1.45.0-macos.zip` 31MB（ditto keepParent），zip 入 .gitignore；GitHub Release v1.45.0。
+- **网络测试外部干扰说明**：`test/data/update_checker_network_test.dart`（仓库原有，走匿名 GitHub API）在最终全量测试时因 GitHub 匿名限额 60 次/时用尽（HTTP 403，reset≈18:01:30 后重置）而失败。该测试与本次播放改动无关，任务 0 基线跑时它通过（+177 ~1）；限流解除后单独重跑应恢复全绿。此为外部速率限制，非代码回归。
