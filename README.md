@@ -1,80 +1,82 @@
-# Kikoeru macOS 音声管理器
+# Hiko · 音声收藏室
 
-> ⚠️ **旧版（参考，不再新增功能）**：当前主线是 Flutter 重写版，见 [`hiko/README.md`](hiko/README.md)。本 README 仅描述根目录的旧版 Electron + Capacitor 共享 UI（macOS/Web + Android）。
+本地优先的音声库管理器，面向 DLsite 音声作品。选一个文件夹整库导入，它会把散在硬盘各处的专辑收进一个可搜索的本地库，记住你听到哪里，下次接着放。
 
-本地优先的音声库界面原型，参考 neokikoeru 的“本地库 + 专辑元数据 + 播放队列”思路，当前版本无需安装依赖即可运行。
+目前提供 **macOS 版**。Windows 与 Android 版在开发计划中，代码与数据模型已按多平台设计。
 
-## 启动
+## 界面预览
+
+| 主界面 | 详情与歌词 | 播放与继续收听 |
+| --- | --- | --- |
+| ![主界面](docs/screenshots/home.png) | ![详情与歌词](docs/screenshots/detail.png) | ![播放](docs/screenshots/player.png) |
+
+## 功能
+
+### 导入与整理
+
+- 递归扫描选中的文件夹，专辑按子文件夹聚合，RJ 号能从深层目录名里提取出来
+- 元数据直接读音频文件，标题、社团、声优、时长和内嵌封面都在导入时解析好。封面优先取专辑第一轨的内嵌图，找不到再认 cover、front、folder 这类命名的外置图
+- 日文标签常见的 GBK / Shift-JIS 乱码会自动修复，用多字符集打分还原，标题和声优名恢复可读
+- 支持自定义分类，右键或批量归类；多选后可以批量刮削标签、删除专辑，或连源文件一起删
+- 文件被移走后产生的失效记录，一键清理
+
+### 浏览与查找
+
+- 搜索覆盖标题、社团和声优
+- 排序默认按专辑艺术家，作品多的排前面；最近添加、标题、时长也可以选，选择会记住
+- 按未听完、已收藏筛选，视图分全部、最近添加、正在播放、收藏夹和自定义分类
+- 专辑卡片上直接显示 RJ 号、总时长和声优胶囊，tag 显示与否、每行几张卡，都能在设置里调
+
+### DLsite 标签刮削
+
+- 按 RJ 号抓取官方标签，支持配置代理，刮削过程有进度条
+- 卡片展示前 3 个标签，详情页看全部；可以单张刮，也可以批量
+
+### 播放
+
+- 4 种播放模式。列表循环、单曲循环、随机（专辑内避免连播）和专辑循环（跨专辑接续）
+- 播放进度自动保存。重启应用后主界面出现「继续收听」横幅，点一下就从上次的轨号和轨内秒数接着放
+- 音量增益无级放大，Windows 最高 4 倍，走 64 位浮点软增益渲染，大音量不破音；macOS 走 mpv 音量通道，上限 1.3 倍
+- 睡眠定时，倒计时结束音量渐弱后自动停止
+- 倍速播放
+- 键盘控制。空格播放暂停，左右快退快进，步长 3 / 5 / 10 / 30 秒可调，上下切曲；⌘K 聚焦搜索，⌘O 导入。输入框聚焦时快捷键自动让位给打字
+- macOS 控制中心和状态栏的「正在播放」组件直接控制播放，媒体键可用
+- 蓝牙等外接设备切换后无声，应用会记录诊断日志并自动重接音频输出，设置里也有手动重置按钮
+
+### 歌词与字幕
+
+- 音频同目录下的 LRC / VTT 文件自动加载，在详情抽屉里和标签分 Tab 展示
+- macOS 有系统级置顶的桌面悬浮歌词窗
+
+### 外观
+
+- 浅色 / 深色主题，6 种强调色
+- 侧边栏可折叠
+- 应用内检查 GitHub Releases 更新，发布说明直接可读
+
+### 数据
+
+- 整库存成一个 library.json，原子写入，导入过程每 5 张增量保存，中途崩溃不丢已导入的部分
+- 数据目录可以直接打开，库文件可导出备份
+
+## 平台计划
+
+- **macOS**：当前版本，持续维护
+- **Windows**：开发计划中，构建与安装包流程已具备
+- **Android**：开发计划中，手机端播放与前台通知能力已预留
+
+## 下载
+
+macOS 安装包在 [Releases](https://github.com/michiru233/hiko/releases) 页面。
+
+## 开发
 
 ```bash
-npm run dev
+cd hiko
+flutter run -d macos       # macOS 桌面
+flutter run -d windows     # Windows 桌面（需 Windows 机器）
+flutter test               # 单元测试
+flutter build macos --release
 ```
 
-打开 `http://localhost:4173`。macOS 用户也可以双击 `run.command`，它会启动本地服务并打开浏览器。
-
-## macOS 桌面版
-
-安装 Node.js 依赖后运行：
-
-```bash
-npm install
-npm run desktop
-```
-
-构建 `.dmg` / `.zip`：
-
-```bash
-npm run dist
-```
-
-每次执行 `npm run dist` 会自动递增次版本号，例如 `0.1.0 → 0.2.0 → 0.3.0`，并同步更新 `package-lock.json`。日常运行 `npm run desktop` 不会修改版本号。
-
-## 已实现
-
-- macOS 风格窗口、侧栏分类和本地存储占用提示
-- 专辑封面网格展示（离线 SVG 封面，不依赖外部图片）
-- 搜索标题、社团、声优；按最近添加、标题、时长排序
-- 未听完 / 已收藏筛选，收藏状态可直接切换
-- 专辑详情侧栏、曲目列表、播放状态和底部播放条
-- `⌘ K` 快速聚焦搜索
-- 选择本地文件夹，按文件夹聚合导入音频；自动识别 `cover`、`front`、`封面` 等图片
-- 真实音频播放、播放/暂停、上一首/下一首、循环、进度拖动
-
-## Android 版（Capacitor 混合架构）
-
-同一份 UI（`index.html` + `app.js` + `styles.css`）跑在 Android WebView 中，原生层（Kotlin 插件）实现与桌面 `window.kikoeru` 同签名的接口，三端功能对齐、代码共享。最低 Android 15（API 35）。
-
-### 前置
-
-```bash
-npm install
-# 需要 JDK 17+ 与 Android SDK（cmdline-tools, platform-tools, platforms;android-36, build-tools）
-# SDK 路径写入 android/local.properties：sdk.dir=/path/to/sdk
-```
-
-### 构建 / 运行
-
-```bash
-npm run android:build   # 同步 web 资源 + cap sync + 构建 debug APK
-npm run android:run     # 同步并安装到已连接设备/模拟器
-```
-
-`npm run android:build` 的输出在 `android/app/build/outputs/apk/debug/app-debug.apk`。发布用 `./gradlew assembleRelease`（需配置签名）。
-
-### Android 原生能力（Kotlin 插件，见 `android/app/src/main/java/top/voicehub/kikoeru/`）
-
-- **导入**：SAF `ACTION_OPEN_DOCUMENT_TREE` 选目录（持久化授权），递归扫描 + `MediaMetadataRetriever` 元数据解析 + 封面缩放，深层目录 RJ 号提取
-- **播放**：Media3 ExoPlayer + 前台服务 + 媒体通知/锁屏控制；`bridge/native-audio.js` 把 `<audio>` 调用桥接到原生引擎（app.js 零改动）
-- **刮削**：DLsite 标签刮削（原生请求无 CORS、代理可配、进度事件），解析逻辑与桌面同一套正则
-- **数据操作**：删除专辑（含源文件）、清理失效记录、打开所在文件夹、导出音声库
-
-### 架构说明
-
-```
-web/（构建产物，cap sync 到 Android）  ← scripts/sync-web.js 从根目录拷贝共享 UI + Android 专属脚本
-bridge/kikoeru-bridge.js    window.kikoeru = Capacitor 插件封装（接口契约同 preload.js）
-bridge/native-audio.js      <audio> DOM shim → 原生 Media3 引擎
-```
-
-版本号：`npm run bump-version` 会同步 package.json 与 `android/app/build.gradle` 的 versionCode/versionName。
-
+代码在 [`hiko/`](hiko/) 子目录，数据模型、扫描存储、播放引擎和桌面 UI 分层放在 `lib/models`、`lib/data`、`lib/playback`、`lib/ui`。仓库根目录保留的旧版 Electron + Capacitor 代码仅作参考，不再新增功能。
