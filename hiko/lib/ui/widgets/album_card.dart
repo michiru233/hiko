@@ -120,57 +120,53 @@ class AlbumCard extends ConsumerWidget {
                 );
               },
             ),
-            // 信息区：占封面下方剩余空间（高度由网格宽高比决定，杜绝溢出）
+            // 信息区：占封面下方剩余空间（高度由网格宽高比决定，杜绝溢出）。
+            // 1.42.0：五项信息（专辑名/艺术家/专辑艺术家/RJ号/总时长）放大提级——
+            // 标题 13 w700；艺术家行 11px 前景色；RJ号实底胶囊 + 总时长胶囊。
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(2, 10, 2, 0),
+                padding: const EdgeInsets.fromLTRB(2, 8, 2, 0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            album.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                                fontSize: 12, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                        if (album.albumArtist.isNotEmpty)
-                          Flexible(
-                            child: Text(
-                              '· ${album.albumArtist}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                  fontSize: 10, color: theme.hintColor),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
                     Text(
-                      '${album.artist} · ${album.rjCode ?? '本地导入'}',
+                      album.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 10, color: theme.hintColor),
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w700),
                     ),
-                    const SizedBox(height: 8),
-                    Row(
+                    const SizedBox(height: 4),
+                    Text(
+                      // albumArtist 与 artist 相同（扫描器常写同一值）或为空时去重，只显示一次
+                      album.albumArtist.isNotEmpty &&
+                              album.albumArtist != album.artist
+                          ? '${album.artist} · ${album.albumArtist}'
+                          : album.artist,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 11, color: theme.colorScheme.onSurface),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 5,
+                      runSpacing: 4,
                       children: [
-                        _Tag(
-                          text: album.genre,
-                          color: theme.colorScheme.primary,
-                          bg: theme.colorScheme.primaryContainer,
+                        _Pill(
+                          text: album.rjCode ?? '本地导入',
+                          bg: theme.colorScheme.primary,
+                          color: theme.colorScheme.onPrimary,
+                          bold: true,
                         ),
-                        const SizedBox(width: 5),
-                        _Tag(
+                        _Pill(
                           text: album.totalDuration > 0
                               ? formatDuration(album.totalDuration)
                               : '${album.duration} 首',
+                          bg: theme.colorScheme.secondaryContainer,
+                          color: theme.colorScheme.onSecondaryContainer,
                         ),
+                        _Tag(text: album.genre),
                       ],
                     ),
                     if (album.tags.isNotEmpty) ...[
@@ -202,6 +198,39 @@ class AlbumCard extends ConsumerWidget {
         ),
         ),
         ),
+      ),
+    );
+  }
+}
+
+/// 高亮胶囊（1.42.0）：RJ号/总时长等关键信息，10px 加粗、实底高对比
+class _Pill extends StatelessWidget {
+  const _Pill({
+    required this.text,
+    required this.bg,
+    required this.color,
+    this.bold = false,
+  });
+
+  final String text;
+  final Color bg;
+  final Color color;
+  final bool bold;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+            fontSize: 10,
+            fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
+            color: color),
       ),
     );
   }

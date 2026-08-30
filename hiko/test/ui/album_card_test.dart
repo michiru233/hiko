@@ -1,0 +1,120 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:hiko/data/settings_store.dart';
+import 'package:hiko/models/album.dart';
+import 'package:hiko/ui/theme.dart';
+import 'package:hiko/ui/widgets/album_card.dart';
+import 'package:hiko/utils/time.dart';
+
+/// 1.42.0 专辑卡片五项信息：专辑名/艺术家/专辑艺术家/RJ号/总时长
+/// 全部可见、无溢出裁切；albumArtist 与 artist 去重。
+void main() {
+  Widget host(Album album) {
+    return MaterialApp(
+      theme: buildHikoTheme(const AppSettings()),
+      home: Align(
+        alignment: Alignment.topLeft,
+        // 桌面网格单卡实际尺寸：宽 190、高 190/0.60（home_screen 网格参数）
+        child: SizedBox(
+          width: 190,
+          height: 190 / 0.60,
+          child: AlbumCard(
+            album: album,
+            multiMode: false,
+            selected: false,
+            onTap: () {},
+            onContextMenu: null,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Album fullAlbum() => Album(
+        id: 'local-test1',
+        sourcePath: '/tmp/rj123',
+        title: '夜のひめごと',
+        artist: '声優A',
+        albumArtist: 'サークルB',
+        rjCode: 'RJ01234567',
+        genre: '癒し',
+        totalDuration: 5025,
+        duration: 8,
+        tags: const ['耳かき', '寝落ち', 'オールナイト'],
+        date: DateTime(2026),
+      );
+
+  testWidgets('五项信息全部渲染：标题/艺术家行/RJ号/总时长，无溢出', (tester) async {
+    await tester.pumpWidget(host(fullAlbum()));
+    await tester.pump();
+    expect(find.text('夜のひめごと'), findsOneWidget);
+    expect(find.text('声優A · サークルB'), findsOneWidget);
+    expect(find.text('RJ01234567'), findsOneWidget);
+    expect(find.text(formatDuration(5025)), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('albumArtist 与 artist 相同时去重：艺术家文本只出现一次', (tester) async {
+    final album = fullAlbum().copyWith(albumArtist: '声優A');
+    await tester.pumpWidget(host(album));
+    await tester.pump();
+    expect(find.text('声優A'), findsOneWidget);
+    expect(find.text('声優A · 声優A'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('albumArtist 为空时只显示 artist，不出现悬空分隔符', (tester) async {
+    final album = fullAlbum().copyWith(albumArtist: '');
+    await tester.pumpWidget(host(album));
+    await tester.pump();
+    expect(find.text('声優A'), findsOneWidget);
+    expect(find.text('声優A · '), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('无 RJ 号显示「本地导入」，totalDuration 为 0 回退曲目数', (tester) async {
+    final album = Album(
+      id: 'local-test1',
+      sourcePath: '/tmp/rj123',
+      title: '夜のひめごと',
+      artist: '声優A',
+      albumArtist: 'サークルB',
+      rjCode: null,
+      genre: '癒し',
+      totalDuration: 0,
+      duration: 8,
+      date: DateTime(2026),
+    );
+    await tester.pumpWidget(host(album));
+    await tester.pump();
+    expect(find.text('本地导入'), findsOneWidget);
+    expect(find.text('8 首'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('浅色与深色主题下都无溢出', (tester) async {
+    for (final themeName in ['light', 'dark']) {
+      await tester.pumpWidget(MaterialApp(
+        theme: buildHikoTheme(AppSettings(theme: themeName)),
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(
+            width: 190,
+            height: 190 / 0.60,
+            child: AlbumCard(
+              album: fullAlbum(),
+              multiMode: false,
+              selected: false,
+              onTap: () {},
+              onContextMenu: null,
+            ),
+          ),
+        ),
+      ));
+      await tester.pump();
+      expect(tester.takeException(), isNull,
+          reason: '$themeName 主题下卡片溢出');
+    }
+  });
+}
