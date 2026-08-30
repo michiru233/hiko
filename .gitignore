@@ -17,3 +17,7 @@ android/.idea/
 hiko/*.zip
 # 会话验收留档（一次性，验收后可删）
 .zcode/scratch-acceptance-*.md
+
+# Mimosa 安全扫描 hook 运行时产物（不入库）
+.mimosa/
+hiko/.mimosa/

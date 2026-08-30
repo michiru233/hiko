@@ -21,6 +21,7 @@ class SettingsDialog extends ConsumerStatefulWidget {
     this.onReorganizeRequested,
     this.onCleanMissingRequested,
     this.onDownloadUpdateRequested,
+    this.autoCheckUpdate = false,
   });
 
   /// 数据区「导入音声」入口
@@ -29,6 +30,9 @@ class SettingsDialog extends ConsumerStatefulWidget {
   final VoidCallback? onReorganizeRequested;
   final VoidCallback? onCleanMissingRequested;
   final ValueChanged<GithubRelease>? onDownloadUpdateRequested;
+
+  /// 打开即自动检查更新（菜单栏「检查更新」发现新版时跳转用）
+  final bool autoCheckUpdate;
 
   @override
   ConsumerState<SettingsDialog> createState() => _SettingsDialogState();
@@ -46,6 +50,9 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   void initState() {
     super.initState();
     _loadVersion();
+    if (widget.autoCheckUpdate) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _checkUpdate());
+    }
   }
 
   Future<void> _loadVersion() async {

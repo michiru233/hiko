@@ -119,6 +119,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     'artist_asc',
     'duration_desc',
     'duration_asc',
+    'rating_desc', // 评分优先（1.48）
     // 兼容旧别名
     'recent',
     'title',

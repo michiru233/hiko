@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../data/dlsite_scraper.dart';
 import '../../data/filter.dart';
@@ -11,6 +12,7 @@ import '../../data/library_provider.dart';
 import '../../data/library_reorganizer.dart';
 import '../../data/music_folder_scanner.dart';
 import '../../data/settings_store.dart';
+import '../../data/stats.dart';
 import '../../data/update_checker.dart';
 import '../../models/album.dart';
 import '../../playback/playback_controller.dart';
@@ -27,7 +29,9 @@ import '../widgets/context_menu.dart';
 import '../widgets/detail_drawer.dart';
 import '../widgets/toast.dart';
 import '../widgets/player_bar.dart';
+import '../widgets/rating_dialog.dart';
 import '../widgets/settings_dialog.dart';
+import '../widgets/stats_view.dart';
 import '../widgets/sidebar.dart';
 
 /// 主界面：桌面三栏布局（侧栏 | 网格 | 详情抽屉）+ 底部播放条；
@@ -52,10 +56,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final Set<String> _resumeDismissed = {}; // 本次会话内被 × 关掉的「继续收听」专辑
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
+  final _filterMemo = FilterAlbumsMemo();
 
   @override
   void initState() {
     super.initState();
+    // macOS 菜单栏动作转发（导入文件夹/设置/检查更新，1.48）
+    if (Platform.isMacOS) {
+      const MethodChannel('top.voicehub.hiko/menu').setMethodCallHandler((call) async {
+        if (!mounted) return;
+        switch (call.method) {
+          case 'importFolders':
+            _importFolder();
+          case 'openSettings':
+            _openSettings(context);
+          case 'checkUpdate':
+            _checkUpdateFromMenu();
+        }
+      });
+    }
     // 启动后执行静默扫描：由于有了快速增量 diff 检查，无新文件时 10ms 即可极速返回；
     // 有新文件时展示非阻塞轻量提示与进度浮条。
     Future.delayed(const Duration(milliseconds: 500), () async {
@@ -88,10 +107,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.dispose();
   }
 
-  void _openSettings(BuildContext context) {
+  void _openSettings(BuildContext context, {bool autoCheckUpdate = false}) {
     showDialog<void>(
       context: context,
       builder: (context) => SettingsDialog(
+        autoCheckUpdate: autoCheckUpdate,
         onImportRequested: () {
           Navigator.pop(context);
           _importFolder();
@@ -113,6 +133,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         },
       ),
     );
+  }
+
+  /// 菜单栏「检查更新」：已是最新直接 toast；发现新版打开设置弹窗自动检查（那里有下载入口）
+  Future<void> _checkUpdateFromMenu() async {
+    try {
+      final current = (await PackageInfo.fromPlatform()).version;
+      final release = await UpdateChecker.fetchLatestRelease();
+      if (!mounted) return;
+      if (UpdateChecker.isNewer(current, release.tagName)) {
+        if (!mounted) return;
+        _openSettings(context, autoCheckUpdate: true);
+      } else {
+        _showToast('已是最新版本($current)');
+      }
+    } catch (e) {
+      if (mounted) _showToast('检查更新失败：$e');
+    }
   }
 
   void _showToast(String message) {
@@ -343,13 +380,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final albums = ref.watch(libraryProvider);
     final currentSort = ref.watch(settingsProvider.select((s) => s.albumSort));
-    final filtered = filterAlbums(
-      albums: albums,
-      view: _view,
-      filter: _filter,
-      query: _query,
-      sort: currentSort,
-    );
+    // 1.48：排序/过滤走 memo——列表实例与参数不变时复用结果，大库重建不再全量重算；
+    // 「统计」视图不走筛选（面板直接聚合全库）
+    final filtered = _view == '统计'
+        ? albums
+        : _filterMemo.get(
+            albums: albums,
+            view: _view,
+            filter: _filter,
+            query: _query,
+            sort: currentSort,
+          );
     final theme = Theme.of(context);
     // 移动布局仅 Android 触屏（≤1000px，与旧版桥接层一致）；桌面永远桌面布局
     final isMobile = Platform.isAndroid
@@ -617,7 +658,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _buildToolbar(theme, isMobile, filtered, currentSort),
         _buildResultsLine(theme, filtered.length),
         _buildResumeBanner(theme, isMobile),
-        Expanded(child: _buildGrid(filtered, theme, isMobile)),
+        Expanded(
+          child: _view == '统计'
+              ? StatsView(
+                  stats: computeLibraryStats(filtered),
+                  onOpenAlbum: (album) =>
+                      setState(() => _detailAlbum = album),
+                )
+              : _buildGrid(filtered, theme, isMobile),
+        ),
       ],
     );
   }
@@ -1033,6 +1082,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   FilledButton.tonal(
                     onPressed: _multiIds.isEmpty
                         ? null
+                        : () => _setRatingForSelected(Set.of(_multiIds)),
+                    child: const Text('设置星级', style: TextStyle(fontSize: 11)),
+                  ),
+                  FilledButton.tonal(
+                    onPressed: _multiIds.isEmpty
+                        ? null
                         : () => _deleteSelected(false),
                     child: const Text('删除所选', style: TextStyle(fontSize: 11)),
                   ),
@@ -1173,6 +1228,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           label: '设置分类',
           icon: Icons.label_outline,
         ),
+        const HikoContextMenuItem(
+          value: 'rating',
+          label: '设置星级',
+          icon: Icons.star_outline_rounded,
+        ),
         if (albumRjCode(album) != null)
           const HikoContextMenuItem(
             value: 'scrape',
@@ -1209,6 +1269,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       switch (action) {
         case 'category':
           _setCategoryForSingle(album);
+        case 'rating':
+          _setRatingForSingle(album);
         case 'scrape':
           _scrapeSelected({album.id}, force: true);
         case 'reorganize':
@@ -1248,8 +1310,46 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  Future<void> _setCategoryForSelected(Set<String> ids) async {
+  /// 单张设星（右键菜单 / 详情抽屉，1.48）
+  Future<void> _setRatingForSingle(Album album) async {
+    final rating = await showRatingDialog(context, initialRating: album.rating);
+    if (rating == null || !mounted) return;
+    try {
+      await ref
+          .read(libraryProvider.notifier)
+          .updateAlbum(album.id, (a) => a.copyWith(rating: rating));
+      if (_detailAlbum?.id == album.id) {
+        setState(() => _detailAlbum = _detailAlbum?.copyWith(rating: rating));
+      }
+      _showToast(rating > 0 ? '已设为 $rating 星' : '已清除星级');
+    } catch (e) {
+      _showToast('设置星级失败：$e');
+    }
+  }
+
+  /// 多选批量设星（1.48）
+  Future<void> _setRatingForSelected(Set<String> ids) async {
     if (ids.isEmpty) return;
+    final rating = await showRatingDialog(context, initialRating: 0);
+    if (rating == null || !mounted) return;
+    try {
+      await ref
+          .read(libraryProvider.notifier)
+          .updateAlbums(ids, (a) => a.copyWith(rating: rating));
+      if (_detailAlbum != null && ids.contains(_detailAlbum!.id)) {
+        setState(() => _detailAlbum = _detailAlbum?.copyWith(rating: rating));
+      }
+      setState(() {
+        _multiMode = false;
+        _multiIds.clear();
+      });
+      _showToast(rating > 0 ? '已为 ${ids.length} 张专辑设为 $rating 星' : '已清除 ${ids.length} 张专辑的星级');
+    } catch (e) {
+      _showToast('设置星级失败：$e');
+    }
+  }
+
+  Future<void> _setCategoryForSelected(Set<String> ids) async {    if (ids.isEmpty) return;
     final chosen = await showSelectCategoryDialog(
       context,
       currentGenre: '',
@@ -1422,6 +1522,7 @@ class _SortSelector extends StatelessWidget {
     ('artist_asc', '专辑艺术家（专辑多在前）', Icons.people_alt_outlined),
     ('duration_desc', '时长（长到短）', Icons.hourglass_bottom_outlined),
     ('duration_asc', '时长（短到长）', Icons.hourglass_top_outlined),
+    ('rating_desc', '评分优先', Icons.star_rounded),
   ];
 
   String get _currentLabel {
@@ -1440,6 +1541,8 @@ class _SortSelector extends StatelessWidget {
         return '时长 (长→短)';
       case 'duration_asc':
         return '时长 (短→长)';
+      case 'rating_desc':
+        return '评分优先';
       case 'recent':
       case 'recent_desc':
       default:

@@ -40,6 +40,7 @@ class Sidebar extends ConsumerWidget {
       ('◷', '最近添加'),
       ('▶', '正在播放'),
       ('♡', '收藏夹'),
+      ('∑', '统计'),
     ];
 
     Widget item({

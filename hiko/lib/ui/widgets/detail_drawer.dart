@@ -12,6 +12,7 @@ import '../../utils/time.dart';
 import '../covers/cover_art.dart';
 import '../lyrics/drawer_lyrics_view.dart';
 import 'category_dialog.dart';
+import 'rating_dialog.dart';
 import 'toast.dart';
 
 /// 详情抽屉（对应旧版 aside.details）：封面、标签、RJ 号、曲目列表、进度、收藏、从头播放
@@ -157,6 +158,28 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                             color: album.favorite ? const Color(0xFFD34C44) : null,
                           ),
                           label: Text(album.favorite ? '已收藏' : '收藏', style: const TextStyle(fontSize: 11)),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            final rating = await showRatingDialog(
+                              context,
+                              initialRating: album.rating,
+                            );
+                            if (rating == null || !context.mounted) return;
+                            await ref
+                                .read(libraryProvider.notifier)
+                                .updateAlbum(album.id, (a) => a.copyWith(rating: rating));
+                          },
+                          icon: Icon(
+                            album.rating > 0 ? Icons.star_rounded : Icons.star_outline_rounded,
+                            size: 14,
+                            color: album.rating > 0 ? const Color(0xFFE8B33C) : null,
+                          ),
+                          label: Text(
+                            album.rating > 0 ? '${album.rating} 星' : '未评分',
+                            style: const TextStyle(fontSize: 11),
+                          ),
                         ),
                         const SizedBox(width: 8),
                         OutlinedButton.icon(

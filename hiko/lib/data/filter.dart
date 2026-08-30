@@ -71,6 +71,14 @@ List<Album> filterAlbums({
         return b.duration.compareTo(a.duration);
       });
       break;
+    case 'rating_desc':
+      // 评分优先：星级高在前，未评分(0)排最后；同星按标题自然升序（1.48）
+      result.sort((a, b) {
+        final cmp = b.rating.compareTo(a.rating);
+        if (cmp != 0) return cmp;
+        return naturalCompare(a.title, b.title);
+      });
+      break;
     case 'duration_asc':
       // 时长由短到长（升序）：总时长秒数升序；相同按曲目数升序
       result.sort((a, b) {
@@ -90,4 +98,49 @@ List<Album> filterAlbums({
   }
 
   return result;
+}
+
+/// 排序/过滤结果缓存（1.48）：列表实例与全部参数不变时直接复用上次结果。
+/// 大库（数万张）下每次 rebuild 全量重算（含 artist_asc 的全库计数）会拖慢
+/// 搜索与筛选交互——缓存键含入参列表的对象身份（identity）：
+/// LibraryNotifier 的每次状态更新都会生成新 List 实例，天然失效，无陈旧风险。
+class FilterAlbumsMemo {
+  List<Album>? _lastAlbums; // 仅用于 identity 比较，不作为内容来源
+  String? _lastView;
+  String? _lastFilter;
+  String? _lastQuery;
+  String? _lastSort;
+  List<Album>? _result;
+  int hits = 0; // 缓存命中计数（测试观测用）
+
+  List<Album> get({
+    required List<Album> albums,
+    required String view,
+    required String filter,
+    required String query,
+    required String sort,
+  }) {
+    if (identical(_lastAlbums, albums) &&
+        _lastView == view &&
+        _lastFilter == filter &&
+        _lastQuery == query &&
+        _lastSort == sort) {
+      hits++;
+      return _result!;
+    }
+    final result = filterAlbums(
+      albums: albums,
+      view: view,
+      filter: filter,
+      query: query,
+      sort: sort,
+    );
+    _lastAlbums = albums;
+    _lastView = view;
+    _lastFilter = filter;
+    _lastQuery = query;
+    _lastSort = sort;
+    _result = result;
+    return result;
+  }
 }

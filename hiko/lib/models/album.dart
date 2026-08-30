@@ -20,6 +20,7 @@ class Album {
   double resumePosition; // 断点轨内位置（秒）
   DateTime? lastPlayedAt; // 最近一次播放时间（「继续收听」选最近一张用）
   bool favorite;
+  int rating; // 星级 0–5（0 = 未评分，1.48）
   DateTime date; // 添加时间
   List<Track> tracks;
   String? localCover; // dataURL / file:// / content://
@@ -46,6 +47,7 @@ class Album {
     this.resumePosition = 0,
     this.lastPlayedAt,
     this.favorite = false,
+    this.rating = 0,
     required this.date,
     this.tracks = const [],
     this.localCover,
@@ -77,6 +79,7 @@ class Album {
                 (json['lastPlayedAt'] as num).toInt())
             : null,
         favorite: json['favorite'] as bool? ?? false,
+        rating: ((json['rating'] as num?)?.toInt() ?? 0).clamp(0, 5),
         date: DateTime.fromMillisecondsSinceEpoch(
             (json['date'] as num?)?.toInt() ?? 0),
         tracks: (json['tracks'] as List?)
@@ -109,6 +112,7 @@ class Album {
         if (lastPlayedAt != null)
           'lastPlayedAt': lastPlayedAt!.millisecondsSinceEpoch,
         'favorite': favorite,
+        if (rating > 0) 'rating': rating,
         'date': date.millisecondsSinceEpoch,
         'tracks': tracks.map((t) => t.toJson()).toList(),
         if (localCover != null) 'localCover': localCover,
@@ -131,6 +135,7 @@ class Album {
     double? resumePosition,
     DateTime? lastPlayedAt,
     bool? favorite,
+    int? rating,
     DateTime? date,
     List<Track>? tracks,
     String? localCover,
@@ -158,6 +163,7 @@ class Album {
         resumePosition: resumePosition ?? this.resumePosition,
         lastPlayedAt: lastPlayedAt ?? this.lastPlayedAt,
         favorite: favorite ?? this.favorite,
+        rating: (rating ?? this.rating).clamp(0, 5),
         date: date ?? this.date,
         tracks: tracks ?? this.tracks,
         localCover: localCover ?? this.localCover,
@@ -222,6 +228,8 @@ class Album {
               : 0.0,
       lastPlayedAt: oldAlbum.lastPlayedAt,
       favorite: oldAlbum.favorite,
+      // 星级是用户手工数据：重扫时旧评分 >0 则保留（1.48）
+      rating: oldAlbum.rating > 0 ? oldAlbum.rating : rating,
       date: oldAlbum.date.millisecondsSinceEpoch > 0 ? oldAlbum.date : date,
       tracks: tracks,
       localCover: localCover ?? oldAlbum.localCover,

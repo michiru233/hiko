@@ -13,6 +13,7 @@ import 'data/settings_store.dart';
 import 'playback/audio_handler.dart';
 import 'playback/hiko_media_kit_player.dart';
 import 'playback/playback_controller.dart';
+import 'ui/covers/cover_cache.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/theme.dart';
 import 'ui/widgets/activity_overlay.dart';
@@ -24,6 +25,8 @@ Future<void> main() async {
     HikoJustAudioMediaKit.ensureInitialized(macOS: true, windows: true);
   }
   final container = ProviderContainer();
+  // 封面磁盘缓存（Application Support/hiko/covers；失败静默降级纯内存，1.48）
+  unawaited(CoverCache.instance.init());
   // 加载设置与音声库与分类
   await container.read(settingsProvider.notifier).load();
   await container.read(libraryProvider.notifier).load();
