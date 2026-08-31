@@ -598,7 +598,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       top: 0,
                       bottom: isMobile ? 118 : 0,
                       left: isMobile ? 0 : null,
-                      width: isMobile ? null : 390,
+                      // 桌面：抽屉宽 390，窗口过窄时收缩到窗口可用宽，避免抽屉本身溢出右缘
+                      width: isMobile
+                          ? null
+                          : MediaQuery.sizeOf(context).width.clamp(200.0, 390.0),
                       child: DetailDrawer(
                         album: _detailAlbum!,
                         onClose: () => setState(() => _detailAlbum = null),

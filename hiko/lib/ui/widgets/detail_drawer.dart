@@ -137,15 +137,16 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                       style: TextStyle(fontSize: 12, color: theme.hintColor),
                     ),
                     const SizedBox(height: 20),
-                    // 操作
-                    Row(
+                    // 操作（窄窗口下自动换行，避免单个 Row 溢出抽屉右缘被裁剪）
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
                         FilledButton.icon(
                           onPressed: () => ref.read(playbackProvider.notifier).playAlbum(album, index: 0),
                           icon: const Icon(Icons.play_arrow, size: 16),
                           label: const Text('从头播放', style: TextStyle(fontSize: 11)),
                         ),
-                        const SizedBox(width: 8),
                         OutlinedButton.icon(
                           onPressed: () async {
                             await ref
@@ -159,7 +160,6 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                           ),
                           label: Text(album.favorite ? '已收藏' : '收藏', style: const TextStyle(fontSize: 11)),
                         ),
-                        const SizedBox(width: 8),
                         OutlinedButton.icon(
                           onPressed: () async {
                             final rating = await showRatingDialog(
@@ -181,7 +181,6 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                             style: const TextStyle(fontSize: 11),
                           ),
                         ),
-                        const SizedBox(width: 8),
                         OutlinedButton.icon(
                           onPressed: () async {
                             try {
@@ -373,6 +372,8 @@ class _TabButton extends StatelessWidget {
             const SizedBox(width: 5),
             Text(
               label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
