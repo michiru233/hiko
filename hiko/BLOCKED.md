@@ -20,3 +20,5 @@ Mimosa 在 1.48.0 commit 前全库扫描报告 12 个 high，均**非本次改�
 - **处理**：领导决策后，用户**卸载 Mimosa 插件**，commit 随即放行（commit `0cede9a`，24 文件、1291 insertions 已推送 origin main）。发布范围不含任何安全修复改动（工作区已 clean，仅 24 个 1.48.0 文件入 commit）。
 - **遗留**：这 12 个 historical high 仍在仓库（旧版 Electron/Android/测试脚本原始实现），属历史遗留，待旧版 Electron 迁移 / Android 恢复时一并处理；本版未触碰这些文件。
 - **版本**：1.48.0+52，`hiko-v1.48.0-macos.zip` 32.5MB，GitHub Release v1.48.0（https://github.com/michiru233/hiko/releases/tag/v1.48.0）。终验 `flutter test` 223 passed/1 skipped、analyze 31 issues 基线一致。
+
+1.49.0（定位当前播放按钮）：任务0 基线记录——`flutter test` 实测 223 passed/1 skipped/0 failed，与任务书记载 222/1/1 的差异为实网测试 `update_checker_network_test.dart` 匿名限流解除转通过（该测试波动性已在任务书与本计划书记载），非代码漂移，不构成阻塞；analyze 31 issues 与基线一致。本版无新增待裁决；既有 1.42.0 待办与 Mimosa 历史高危记录保持不变。

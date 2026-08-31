@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -18,6 +19,7 @@ import '../../models/album.dart';
 import '../../playback/playback_controller.dart';
 import '../../playback/playback_rules.dart';
 import '../../platform/platform_service.dart';
+import '../../utils/grid_locate.dart';
 import '../../utils/rj.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
@@ -57,6 +59,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final _searchController = TextEditingController();
   final _searchFocus = FocusNode();
   final _filterMemo = FilterAlbumsMemo();
+  // 1.49「定位当前播放」：网格滚动控制、目标卡 Key 与高亮状态
+  final _gridScrollController = ScrollController();
+  final _locateCardKey = GlobalKey();
+  String? _locateTargetId; // 需要定位的专辑 id（定位完成后清除）
+  String? _highlightedAlbumId; // 高亮中的专辑 id
+  Timer? _highlightTimer;
 
   @override
   void initState() {
@@ -104,6 +112,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void dispose() {
     _searchController.dispose();
     _searchFocus.dispose();
+    _gridScrollController.dispose();
+    _highlightTimer?.cancel();
     super.dispose();
   }
 
@@ -764,6 +774,92 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.read(playbackProvider.notifier).playAlbum(picked, index: 0);
   }
 
+  /// 「定位当前播放」（1.49）：网格滚回正在播放的专辑卡并短暂高亮；
+  /// 专辑不在当前列表（搜索/筛选/其它视图/统计）时先清筛选切回「全部音声」
+  void _locatePlayingAlbum() {
+    final target = ref.read(playbackProvider).album;
+    if (target == null) return;
+    final inCurrentView = _view != '统计' &&
+        _filterMemo
+            .get(
+              albums: ref.read(libraryProvider),
+              view: _view,
+              filter: _filter,
+              query: _query,
+              sort: ref.read(settingsProvider).albumSort,
+            )
+            .any((a) => a.id == target.id);
+    setState(() {
+      if (!inCurrentView) {
+        // 与「清除筛选」同语义
+        _query = '';
+        _searchController.clear();
+        _filter = 'all';
+        _view = '全部音声';
+      }
+      _locateTargetId = target.id;
+    });
+    // 等网格按（可能重置后的）列表完成一帧布局，再计算偏移跳转
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _jumpToLocatedCard(target.id);
+    });
+  }
+
+  /// 按当前网格布局算出目标行偏移并 jumpTo（大库禁止动画长滚），
+  /// 跳转后下一帧对目标卡精确微调并点亮高亮
+  void _jumpToLocatedCard(String albumId) {
+    if (!mounted) return;
+    final settings = ref.read(settingsProvider);
+    final size = MediaQuery.sizeOf(context);
+    final isMobile =
+        Platform.isAndroid ? size.width <= 1000 : false;
+    final result = locateAlbumInGrid(
+      filtered: _filterMemo.get(
+        albums: ref.read(libraryProvider),
+        view: _view,
+        filter: _filter,
+        query: _query,
+        sort: settings.albumSort,
+      ),
+      albumId: albumId,
+      metrics: GridMetrics(
+        useFixedCount: !isMobile && settings.gridColumns > 0,
+        fixedCrossAxisCount: settings.gridColumns.round(),
+        maxCrossAxisExtent: isMobile ? 240 : 190,
+        viewportWidth: size.width,
+        horizontalPadding: (isMobile ? 16 : 48) * 2 + (isMobile ? 0 : (_sidebarCollapsed ? 44.0 : 240.0)),
+        topPadding: 16,
+      ),
+    );
+    if (!result.found) {
+      setState(() => _locateTargetId = null);
+      return;
+    }
+    final position = _gridScrollController.position;
+    _gridScrollController
+        .jumpTo((result.scrollOffset - 24).clamp(0.0, position.maxScrollExtent));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = _locateCardKey.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 120),
+          alignment: 0.15,
+        );
+      }
+      _highlightTimer?.cancel();
+      setState(() => _highlightedAlbumId = albumId);
+      _highlightTimer = Timer(const Duration(seconds: 2), () {
+        if (!mounted) return;
+        setState(() {
+          _highlightedAlbumId = null;
+          _locateTargetId = null;
+        });
+      });
+    });
+  }
+
   Widget _buildTopbar(ThemeData theme, bool isMobile) {
     return Padding(
       padding: EdgeInsets.symmetric(
@@ -803,6 +899,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
           ),
           const Spacer(),
+          // 1.49「定位当前播放」：无播放置灰
+          IconButton(
+            icon: const Icon(Icons.center_focus_strong_rounded, size: 18),
+            tooltip: '定位当前播放',
+            onPressed: ref.watch(playbackProvider).album == null
+                ? null
+                : _locatePlayingAlbum,
+          ),
           IconButton(
             icon: Icon(
               ref.watch(settingsProvider).theme == 'dark'
@@ -1172,6 +1276,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
     }
     return GridView.builder(
+      controller: _gridScrollController,
       padding: EdgeInsets.fromLTRB(
         isMobile ? 16 : 48,
         16,
@@ -1196,10 +1301,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         final album = filtered[index];
         final isSelected = _multiIds.contains(album.id);
         return AlbumCard(
+          key: album.id == _locateTargetId ? _locateCardKey : null,
           album: album,
           multiMode: _multiMode,
           selected: isSelected,
           showScrapedTags: settings.showScrapedTags,
+          highlighted: album.id == _highlightedAlbumId,
           onTap: () {
             if (_multiMode) {
               setState(() {

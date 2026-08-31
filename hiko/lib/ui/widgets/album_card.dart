@@ -16,6 +16,7 @@ class AlbumCard extends ConsumerWidget {
     required this.onTap,
     required this.onContextMenu,
     this.showScrapedTags = false,
+    this.highlighted = false,
   });
 
   final Album album;
@@ -29,6 +30,9 @@ class AlbumCard extends ConsumerWidget {
   /// 1.43：是否显示 DLsite 刮削标签（由 home_screen 从设置传入，默认关；
   /// 卡片不直接读 ProviderScope，保持可独立构造——widget_test 无 ProviderScope）
   final bool showScrapedTags;
+
+  /// 1.49「定位当前播放」命中高亮：主色描边发光，由 HomeScreen 控制约 2 秒后熄灭
+  final bool highlighted;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -54,7 +58,26 @@ class AlbumCard extends ConsumerWidget {
                 ? null
                 : () => onContextMenu!(pointerPosition ?? Offset.zero),
             borderRadius: BorderRadius.circular(10),
-            child: Column(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              decoration: highlighted
+                  ? BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: theme.colorScheme.primary,
+                        width: 2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color:
+                              theme.colorScheme.primary.withValues(alpha: 0.45),
+                          blurRadius: 18,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    )
+                  : const BoxDecoration(),
+              child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 封面 + 多选勾选（固定正方形，占卡片上部）
@@ -212,6 +235,7 @@ class AlbumCard extends ConsumerWidget {
             ),
           ],
         ),
+            ),
         ),
         ),
       ),
