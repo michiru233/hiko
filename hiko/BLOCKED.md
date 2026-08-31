@@ -24,3 +24,5 @@ Mimosa 在 1.48.0 commit 前全库扫描报告 12 个 high，均**非本次改�
 1.49.0（定位当前播放按钮）：任务0 基线记录——`flutter test` 实测 223 passed/1 skipped/0 failed，与任务书记载 222/1/1 的差异为实网测试 `update_checker_network_test.dart` 匿名限流解除转通过（该测试波动性已在任务书与本计划书记载），非代码漂移，不构成阻塞；analyze 31 issues 与基线一致。本版无新增待裁决；既有 1.42.0 待办与 Mimosa 历史高危记录保持不变。
 
 1.49.0（定位当前播放）：发版记录——pubspec 1.49.0+53，`hiko-v1.49.0-macos.zip` 32,531,202B，GitHub Release https://github.com/michiru233/hiko/releases/tag/v1.49.0 ，commit `6ac38ea` 已推送。终验 `flutter test` 231 passed/1 skipped、analyze 31 issues（基线一致）、工作区 clean。本版无新增待裁决；既有 1.42.0 待办与 Mimosa 历史高危记录（1.48 未裁决）保持不变。
+
+1.50.0（修复专辑详情抽屉窄窗口横向溢出裁剪）：发版记录——pubspec 1.50.0+54，`hiko-v1.50.0-macos.zip` 32,502,608B，GitHub Release https://github.com/michiru233/hiko/releases/tag/v1.50.0 ，commit `bfcf7f4` 已推送。终验 `flutter test` 231 passed/1 skipped、analyze 31 issues（基线一致）、工作区 clean。本版无新增待裁决；既有 1.42.0 待办与本仓库 Mimosa 历史高危记录（1.48 未裁决）保持不变。
