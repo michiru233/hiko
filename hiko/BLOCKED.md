@@ -27,4 +27,4 @@ Mimosa 在 1.48.0 commit 前全库扫描报告 12 个 high，均**非本次改�
 
 1.50.0（修复专辑详情抽屉窄窗口横向溢出裁剪）：发版记录——pubspec 1.50.0+54，`hiko-v1.50.0-macos.zip` 32,502,608B，GitHub Release https://github.com/michiru233/hiko/releases/tag/v1.50.0 ，commit `bfcf7f4` 已推送。终验 `flutter test` 231 passed/1 skipped、analyze 31 issues（基线一致）、工作区 clean。本版无新增待裁决；既有 1.42.0 待办与本仓库 Mimosa 历史高危记录（1.48 未裁决）保持不变。
 
-1.51.0（Masonry 专辑卡片与动态元数据布局）：本版无新增待裁决；既有 1.42.0 深色主题 tag 对比度问题与 Mimosa 历史 high 遗留保持不变。Android 按仓库红线未触碰、未执行 Android 测试。
+1.51.0（Masonry 专辑卡片与动态元数据布局）：发版记录——pubspec 1.51.0+55，`hiko-v1.51.0-macos.zip` 32,419,938B，GitHub Release https://github.com/michiru233/hiko/releases/tag/v1.51.0，commit `113bfd6` 已推送。终验 `flutter test` 234 passed/1 skipped、analyze 31 issues（基线一致）、Mpv.framework=1、工作区 clean。本版无新增待裁决；既有 1.42.0 深色主题 tag 对比度问题与 Mimosa 历史 high 遗留保持不变。Android 按仓库红线未触碰、未执行 Android 测试。
