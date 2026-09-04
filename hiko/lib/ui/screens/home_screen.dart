@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../data/dlsite_scraper.dart';
@@ -19,7 +20,7 @@ import '../../models/album.dart';
 import '../../playback/playback_controller.dart';
 import '../../playback/playback_rules.dart';
 import '../../platform/platform_service.dart';
-import '../../utils/grid_locate.dart';
+import '../../utils/masonry_layout.dart';
 import '../../utils/rj.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
@@ -71,17 +72,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.initState();
     // macOS 菜单栏动作转发（导入文件夹/设置/检查更新，1.48）
     if (Platform.isMacOS) {
-      const MethodChannel('top.voicehub.hiko/menu').setMethodCallHandler((call) async {
-        if (!mounted) return;
-        switch (call.method) {
-          case 'importFolders':
-            _importFolder();
-          case 'openSettings':
-            _openSettings(context);
-          case 'checkUpdate':
-            _checkUpdateFromMenu();
-        }
-      });
+      const MethodChannel('top.voicehub.hiko/menu')
+          .setMethodCallHandler((call) async {
+            if (!mounted) return;
+            switch (call.method) {
+              case 'importFolders':
+                _importFolder();
+              case 'openSettings':
+                _openSettings(context);
+              case 'checkUpdate':
+                _checkUpdateFromMenu();
+            }
+          });
     }
     // 启动后执行静默扫描：由于有了快速增量 diff 检查，无新文件时 10ms 即可极速返回；
     // 有新文件时展示非阻塞轻量提示与进度浮条。
@@ -169,8 +171,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// 输入框（搜索框等 EditableText）有焦点时为 true——
   /// 此时空格/方向键必须走打字与光标移动，不触发播放快捷键
-  bool _typingFocusActive() => isFocusInsideEditable(
-      FocusManager.instance.primaryFocus?.context);
+  bool _typingFocusActive() =>
+      isFocusInsideEditable(FocusManager.instance.primaryFocus?.context);
 
   Future<void> _importFolder() async {
     if (_importing || activityOverlayController.isActive) return;
@@ -443,10 +445,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             // 空格播放/暂停；←→ 快退/快进；↑↓ 切曲（输入框聚焦时不触发）
             const SingleActivator(LogicalKeyboardKey.space):
                 const _TogglePlaybackIntent(),
-            const SingleActivator(LogicalKeyboardKey.arrowLeft):
-                _SeekIntent(-1),
-            const SingleActivator(LogicalKeyboardKey.arrowRight):
-                _SeekIntent(1),
+            const SingleActivator(LogicalKeyboardKey.arrowLeft): _SeekIntent(
+              -1,
+            ),
+            const SingleActivator(LogicalKeyboardKey.arrowRight): _SeekIntent(
+              1,
+            ),
             const SingleActivator(LogicalKeyboardKey.arrowUp):
                 const _StepTrackIntent(-1),
             const SingleActivator(LogicalKeyboardKey.arrowDown):
@@ -601,7 +605,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       // 桌面：抽屉宽 390，窗口过窄时收缩到窗口可用宽，避免抽屉本身溢出右缘
                       width: isMobile
                           ? null
-                          : MediaQuery.sizeOf(context).width.clamp(200.0, 390.0),
+                          : MediaQuery.sizeOf(context).width
+                                .clamp(200.0, 390.0),
                       child: DetailDrawer(
                         album: _detailAlbum!,
                         onClose: () => setState(() => _detailAlbum = null),
@@ -662,7 +667,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return i < 0 ? 0 : i;
   }
 
-  Widget _buildMain(List<Album> filtered, ThemeData theme, bool isMobile, String currentSort) {
+  Widget _buildMain(
+    List<Album> filtered,
+    ThemeData theme,
+    bool isMobile,
+    String currentSort,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -675,8 +685,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: _view == '统计'
               ? StatsView(
                   stats: computeLibraryStats(filtered),
-                  onOpenAlbum: (album) =>
-                      setState(() => _detailAlbum = album),
+                  onOpenAlbum: (album) => setState(() => _detailAlbum = album),
                 )
               : _buildGrid(filtered, theme, isMobile),
         ),
@@ -696,16 +705,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _resumeDismissed.contains(candidate.id)) {
       return const SizedBox.shrink();
     }
-    final trackNo = candidate.resumeTrackIndex.clamp(0, candidate.tracks.length - 1) + 1;
+    final trackNo =
+        candidate.resumeTrackIndex.clamp(0, candidate.tracks.length - 1) + 1;
     return Padding(
-      padding: EdgeInsets.fromLTRB(isMobile ? 16 : 48, 0, isMobile ? 16 : 48, 12),
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 16 : 48,
+        0,
+        isMobile ? 16 : 48,
+        12,
+      ),
       child: Material(
         color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(10),
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: () {
-            ref.read(playbackProvider.notifier).playAlbum(
+            ref
+                .read(playbackProvider.notifier)
+                .playAlbum(
                   candidate,
                   index: candidate.resumeTrackIndex,
                   startPosition: candidate.resumePosition,
@@ -782,7 +799,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _locatePlayingAlbum() {
     final target = ref.read(playbackProvider).album;
     if (target == null) return;
-    final inCurrentView = _view != '统计' &&
+    final inCurrentView =
+        _view != '统计' &&
         _filterMemo
             .get(
               albums: ref.read(libraryProvider),
@@ -814,10 +832,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (!mounted) return;
     final settings = ref.read(settingsProvider);
     final size = MediaQuery.sizeOf(context);
-    final isMobile =
-        Platform.isAndroid ? size.width <= 1000 : false;
-    final result = locateAlbumInGrid(
-      filtered: _filterMemo.get(
+    final isMobile = Platform.isAndroid ? size.width <= 1000 : false;
+    final result = locateAlbumInMasonry(
+      albums: _filterMemo.get(
         albums: ref.read(libraryProvider),
         view: _view,
         filter: _filter,
@@ -825,13 +842,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         sort: settings.albumSort,
       ),
       albumId: albumId,
-      metrics: GridMetrics(
-        useFixedCount: !isMobile && settings.gridColumns > 0,
-        fixedCrossAxisCount: settings.gridColumns.round(),
-        maxCrossAxisExtent: isMobile ? 240 : 190,
+      metrics: MasonryLayoutMetrics(
+        fixedCrossAxisCount: !isMobile && settings.gridColumns > 0
+            ? settings.gridColumns.round()
+            : null,
+        maxCrossAxisExtent: isMobile ? 240 : 260,
         viewportWidth: size.width,
-        horizontalPadding: (isMobile ? 16 : 48) * 2 + (isMobile ? 0 : (_sidebarCollapsed ? 44.0 : 240.0)),
-        topPadding: 16,
+        horizontalPadding:
+            (isMobile ? 16 : 48) * 2 +
+            (isMobile ? 0 : (_sidebarCollapsed ? 44.0 : 240.0)),
+        showScrapedTags: settings.showScrapedTags,
       ),
     );
     if (!result.found) {
@@ -839,8 +859,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return;
     }
     final position = _gridScrollController.position;
-    _gridScrollController
-        .jumpTo((result.scrollOffset - 24).clamp(0.0, position.maxScrollExtent));
+    _gridScrollController.jumpTo(
+      (result.scrollOffset - 24).clamp(0.0, position.maxScrollExtent),
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final ctx = _locateCardKey.currentContext;
@@ -1278,7 +1299,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       );
     }
-    return GridView.builder(
+    return MasonryGridView.builder(
       controller: _gridScrollController,
       padding: EdgeInsets.fromLTRB(
         isMobile ? 16 : 48,
@@ -1287,18 +1308,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         24,
       ),
       gridDelegate: desktopGridColumns > 0
-          ? SliverGridDelegateWithFixedCrossAxisCount(
+          ? SliverSimpleGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: desktopGridColumns.toInt(),
-              mainAxisSpacing: 25,
-              crossAxisSpacing: 18,
-              childAspectRatio: 0.60,
             )
-          : SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: isMobile ? 240 : 190,
-              mainAxisSpacing: 25,
-              crossAxisSpacing: 18,
-              childAspectRatio: 0.60,
+          : SliverSimpleGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: isMobile ? 240 : 260,
             ),
+      mainAxisSpacing: 25,
+      crossAxisSpacing: 18,
       itemCount: filtered.length,
       itemBuilder: (context, index) {
         final album = filtered[index];
@@ -1453,13 +1470,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _multiMode = false;
         _multiIds.clear();
       });
-      _showToast(rating > 0 ? '已为 ${ids.length} 张专辑设为 $rating 星' : '已清除 ${ids.length} 张专辑的星级');
+      _showToast(
+        rating > 0
+            ? '已为 ${ids.length} 张专辑设为 $rating 星'
+            : '已清除 ${ids.length} 张专辑的星级',
+      );
     } catch (e) {
       _showToast('设置星级失败：$e');
     }
   }
 
-  Future<void> _setCategoryForSelected(Set<String> ids) async {    if (ids.isEmpty) return;
+  Future<void> _setCategoryForSelected(Set<String> ids) async {
+    if (ids.isEmpty) return;
     final chosen = await showSelectCategoryDialog(
       context,
       currentGenre: '',

@@ -21,10 +21,9 @@ void main() {
       theme: buildHikoTheme(AppSettings(theme: themeName)),
       home: Align(
         alignment: Alignment.topLeft,
-        // 桌面网格单卡实际尺寸：宽 190、高 190/0.60（home_screen 网格参数）
+        // Masonry 卡片宽度固定，高度由内容自然决定。
         child: SizedBox(
           width: 190,
-          height: 190 / 0.60,
           child: AlbumCard(
             album: album,
             multiMode: false,
@@ -39,18 +38,18 @@ void main() {
   }
 
   Album fullAlbum() => Album(
-        id: 'local-test1',
-        sourcePath: '/tmp/rj123',
-        title: '夜のひめごと',
-        artist: '声優A',
-        albumArtist: 'サークルB',
-        rjCode: 'RJ01234567',
-        genre: '癒し',
-        totalDuration: 5025,
-        duration: 8,
-        tags: const ['耳かき', '寝落ち', 'オールナイト'],
-        date: DateTime(2026),
-      );
+    id: 'local-test1',
+    sourcePath: '/tmp/rj123',
+    title: '夜のひめごと',
+    artist: '声優A',
+    albumArtist: 'サークルB',
+    rjCode: 'RJ01234567',
+    genre: '癒し',
+    totalDuration: 5025,
+    duration: 8,
+    tags: const ['耳かき', '寝落ち', 'オールナイト'],
+    date: DateTime(2026),
+  );
 
   testWidgets('五项信息全部渲染：标题/艺术家/RJ号/总时长，无溢出', (tester) async {
     await tester.pumpWidget(host(fullAlbum()));
@@ -65,7 +64,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('1.44 超长艺术家名：胶囊内省略号截断，无溢出', (tester) async {
+  testWidgets('超长元数据胶囊完整换行，无溢出', (tester) async {
     final longName = '超長いアーティスト名前' * 6; // 60 字
     final album = fullAlbum().copyWith(
       artist: longName,
@@ -74,8 +73,8 @@ void main() {
     await tester.pumpWidget(host(album));
     await tester.pump();
     expect(find.textContaining('超長い'), findsOneWidget);
-    expect(tester.takeException(), isNull,
-        reason: '超长艺术家名在 190px 卡片内必须省略号截断而非溢出');
+    expect(find.textContaining('別のサークル名'), findsOneWidget);
+    expect(tester.takeException(), isNull, reason: '超长元数据应在胶囊内换行而非溢出');
   });
 
   testWidgets('albumArtist 与 artist 相同时去重：艺术家文本只出现一次', (tester) async {
@@ -120,13 +119,11 @@ void main() {
     for (final themeName in ['light', 'dark']) {
       await tester.pumpWidget(host(fullAlbum(), themeName: themeName));
       await tester.pump();
-      expect(tester.takeException(), isNull,
-          reason: '$themeName 主题下卡片溢出');
+      expect(tester.takeException(), isNull, reason: '$themeName 主题下卡片溢出');
     }
   });
 
-  testWidgets('1.43 刮削标签开关：关不渲染 tags，开=渲染（两态均无溢出）',
-      (tester) async {
+  testWidgets('1.43 刮削标签开关：关不渲染 tags，开=渲染（两态均无溢出）', (tester) async {
     // 默认（关）→ tags 不渲染
     await tester.pumpWidget(host(fullAlbum()));
     await tester.pump();

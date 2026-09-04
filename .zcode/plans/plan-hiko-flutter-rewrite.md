@@ -570,3 +570,11 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 - 任务书修正（SDK 列数公式）：无。本改动未触 delegate/列数逻辑。
 - 验证：`flutter analyze` 31 issues ✅=基线；`flutter test` **231 passed / 1 skipped / 0 failed**（≥225 ✅，与 1.49 基线一致）。实机装进 `/Applications` 拉窄到 960px 验证——操作行折成 `从头播放/收藏/未评分` 一行 + `整理专辑` 落到第二行完整显示，Tab 栏「曲目列表 (15)」「歌词字幕」均完整无裁剪。同一 `Wrap` 逻辑对所有专辑生效（已用相邻专辑验证长标题/多标签场景）。
 - 发版：pubspec 1.50.0+54；`flutter build macos --release` 产物 Hiko.app **73.5MB**，包内 CFBundleShortVersionString=1.50.0 / CFBundleVersion=54；`ditto --keepParent` 封 `hiko-v1.50.0-macos.zip`（**32,502,608B**）；commit **bfcf7f4** 已 `git push origin main`（fd2d55b..bfcf7f4）；GitHub Release **v1.50.0**（https://github.com/michiru233/hiko/releases/tag/v1.50.0）终验资产名 `hiko-v1.50.0-macos.zip`、工作区 clean（porcelain 0）。
+
+### 1.51.0 Masonry 专辑卡片与动态元数据布局（2026-09-04）
+- 开工回执：目标=主界面从固定等高网格改为瀑布流；列宽按窗口自适应（桌面自动模式卡宽约 260px），卡片高度由封面/标题/元数据自然决定；标题最多 4 行，元数据胶囊完整换行。顺序：Masonry 依赖与主页布局 → 卡片自然高度/胶囊 → 动态定位估算 → 测试 → macOS release。最大风险：动态高度会使旧等高网格定位公式失效，需与 Masonry 最短列规则保持一致。基线版本 1.50.0+54，`flutter analyze` 31 条既有问题。
+- **网格**：`pubspec.yaml` 增加 `flutter_staggered_grid_view: ^0.7.0`；`home_screen.dart` 改用 `MasonryGridView.builder` 和 `SliverSimpleGridDelegateWithFixedCrossAxisCount`/`WithMaxCrossAxisExtent`，保留固定列数设置、滚动控制器、筛选、选择、高亮与点击行为；桌面自动最大卡宽由 190 调整为 260。
+- **卡片**：`album_card.dart` 信息区移除 `Expanded`，改为自然高度；标题最多 4 行；artist/albumArtist、RJ、时长、genre、刮削 tags 胶囊均受卡片内宽约束并允许文本换行，不再单行省略。
+- **定位**：新增 `lib/utils/masonry_layout.dart`，按 Masonry 最短列分配估算变量卡片高度；`home_screen.dart` 先估算 `jumpTo`，再用现有 `Scrollable.ensureVisible` 精确校正。旧 `grid_locate.dart` 保留供历史等高网格测试，不再被主页调用。
+- **测试**：更新 `test/ui/album_card_test.dart` 适配自然高度并新增长胶囊无溢出断言；新增 `test/utils/masonry_layout_test.dart` 覆盖自动/固定列数、窄窗口、最短列分配、变量高度和缺失目标。全量 `flutter test` 通过（当前 **234 passed / 1 skipped / 0 failed**）；`flutter analyze` **31 issues**，与基线一致。Android 未触碰、未执行 Android 测试。
+- **文档**：根 README 与 `hiko/README.md` 同步说明瀑布流、动态卡片高度和胶囊完整展开；`hiko/BLOCKED.md` 追加本版无新增待裁决，保留既有主题色与历史扫描遗留项。
