@@ -24,6 +24,7 @@ class AppSettings {
   final bool sidebarShown;
   final bool showScrapedTags; // 主界面卡片显示 DLsite 刮削标签，默认关闭（1.43）
   final double gridColumns; // 主界面每行专辑数；0=自动（按宽度），档位 4/5/6/7/8/10/12（1.43）
+  final double mobileGridColumns; // 移动端每行专辑数，档位 2/3/4，默认 2（1.54，与桌面独立）
   final String scrapeProxy;
   final List<String> musicFolders; // 常驻音乐目录（桌面：路径；Android：SAF tree URI）
 
@@ -39,6 +40,7 @@ class AppSettings {
     this.sidebarShown = true,
     this.showScrapedTags = false,
     this.gridColumns = 0,
+    this.mobileGridColumns = 2,
     this.scrapeProxy = '',
     this.musicFolders = const [],
   });
@@ -65,6 +67,7 @@ class AppSettings {
     bool? sidebarShown,
     bool? showScrapedTags,
     double? gridColumns,
+    double? mobileGridColumns,
     String? scrapeProxy,
     List<String>? musicFolders,
   }) =>
@@ -80,6 +83,7 @@ class AppSettings {
         sidebarShown: sidebarShown ?? this.sidebarShown,
         showScrapedTags: showScrapedTags ?? this.showScrapedTags,
         gridColumns: gridColumns ?? this.gridColumns,
+        mobileGridColumns: mobileGridColumns ?? this.mobileGridColumns,
         scrapeProxy: scrapeProxy ?? this.scrapeProxy,
         musicFolders: musicFolders ?? this.musicFolders,
       );
@@ -116,6 +120,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kSidebar = 'hiko-sidebar';
   static const _kShowScrapedTags = 'hiko-show-scraped-tags';
   static const _kGridColumns = 'hiko-grid-columns';
+  static const _kMobileGridColumns = 'hiko-mobile-grid-columns';
   static const _kProxy = 'hiko-scrape-proxy';
   static const _kMusicFolders = 'hiko-music-folders';
 
@@ -152,6 +157,12 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static double _normalizeGridColumns(double? val) =>
       val != null && _validGridColumns.contains(val) ? val : 0;
 
+  /// 移动端每行专辑数档位：2/3/4（1.54，与桌面档位独立）
+  static const _validMobileGridColumns = [2.0, 3.0, 4.0];
+
+  static double _normalizeMobileGridColumns(double? val) =>
+      val != null && _validMobileGridColumns.contains(val) ? val : 2;
+
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     state = AppSettings(
@@ -167,6 +178,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       sidebarShown: prefs.getBool(_kSidebar) ?? true,
       showScrapedTags: prefs.getBool(_kShowScrapedTags) ?? false,
       gridColumns: _normalizeGridColumns(prefs.getDouble(_kGridColumns)),
+      mobileGridColumns:
+          _normalizeMobileGridColumns(prefs.getDouble(_kMobileGridColumns)),
       scrapeProxy: prefs.getString(_kProxy) ?? '',
       musicFolders: prefs.getStringList(_kMusicFolders) ?? const [],
     );
@@ -209,6 +222,12 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   Future<void> setGridColumns(double columns) {
     final valid = _normalizeGridColumns(columns);
     return _save(_kGridColumns, valid, state.copyWith(gridColumns: valid));
+  }
+
+  /// 移动端每行专辑数：档位 2/3/4，默认 2（1.54）
+  Future<void> setMobileGridColumns(double columns) {
+    final valid = _normalizeMobileGridColumns(columns);
+    return _save(_kMobileGridColumns, valid, state.copyWith(mobileGridColumns: valid));
   }
   Future<void> setScrapeProxy(String proxy) =>
       _save(_kProxy, proxy, state.copyWith(scrapeProxy: proxy));

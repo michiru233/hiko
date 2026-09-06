@@ -19,9 +19,11 @@ class MusicFolderScanner {
 
   /// 扫描全部常驻目录并合并入库；返回新增/更新的专辑数。
   /// [silent] 静默模式（启动自动扫描）在无新文件时几毫秒内极速跳过，不占用 CPU 与 I/O。
+  /// [full] 全量重建（手动重扫）：忽略已知记录，全部重新解析（修复存量封面/标题）。
   /// [onProgress] 进度回调，便于 UI 展示加载状态。
   Future<int> scanAll({
     bool silent = false,
+    bool full = false,
     void Function(ImportProgress)? onProgress,
   }) async {
     final folders = _ref.read(settingsProvider).musicFolders;
@@ -38,8 +40,22 @@ class MusicFolderScanner {
       try {
         final platform = _ref.read(platformServiceProvider);
         if (Platform.isAndroid) {
-          // Android:SAF tree URI 经接口方法(原生插件事件流式)
-          final albums = await platform.scanSavedFolder(folder);
+          // Android:SAF tree URI 经接口方法(原生插件事件流式)。
+          // full=手动重扫 → 传空 known 全量重建;否则增量跳过全已知目录。
+          final albums = await platform.scanSavedFolder(
+            folder,
+            onProgress: onProgress == null
+                ? null
+                : (p, t, phase, unit) => onProgress(ImportProgress(
+                      folderIndex: i + 1,
+                      folderTotal: folders.length,
+                      processed: p,
+                      total: t,
+                      phase: phase,
+                      unit: unit,
+                    )),
+            known: full ? const {} : knownUrls,
+          );
           final before = _ref.read(libraryProvider).length;
           await _ref.read(libraryProvider.notifier).mergeNew(albums);
           total += _ref.read(libraryProvider).length - before;

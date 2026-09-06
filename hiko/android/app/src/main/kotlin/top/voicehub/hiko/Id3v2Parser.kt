@@ -9,7 +9,10 @@ import java.nio.charset.CodingErrorAction
 /** Small, bounded ID3v2 reader used before MediaMetadataRetriever loses malformed legacy bytes. */
 object Id3v2Parser {
     private const val HEADER_SIZE = 10
-    private const val MAX_TAG_SIZE = 4 * 1024 * 1024
+    // 真实 DLsite 音频常内嵌大图（实测 2240px PNG 使整标签达 4.4MB），4MB 上限会整标签
+    // 拒解析 → 退到 MediaMetadataRetriever 兜底产生乱码/降级（1.54 实锤根因）。
+    // ponytail: 16MB 天花板防畸形声明撑爆内存；再大的标签仍拒（真实世界未见）。
+    private const val MAX_TAG_SIZE = 16 * 1024 * 1024
 
     data class Metadata(
         val title: String? = null,

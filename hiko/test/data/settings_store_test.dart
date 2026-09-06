@@ -179,4 +179,28 @@ void main() {
     await bad.load();
     expect(bad.state.gridColumns, 0);
   });
+
+  test('1.54 移动端每行专辑数：默认 2 + 档位持久化往返 + 白名单外回退 2，与桌面档位独立', () async {
+    SharedPreferences.setMockInitialValues({});
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.mobileGridColumns, 2, reason: '默认 2');
+    expect(notifier.state.gridColumns, 0, reason: '桌面档位不受影响');
+
+    await notifier.setMobileGridColumns(3);
+    expect(notifier.state.mobileGridColumns, 3);
+
+    final reloaded = SettingsNotifier();
+    await reloaded.load();
+    expect(reloaded.state.mobileGridColumns, 3);
+
+    // 白名单外（1、5、9）回退 2
+    await notifier.setMobileGridColumns(5);
+    expect(notifier.state.mobileGridColumns, 2);
+
+    SharedPreferences.setMockInitialValues({'hiko-mobile-grid-columns': 9.0});
+    final bad = SettingsNotifier();
+    await bad.load();
+    expect(bad.state.mobileGridColumns, 2);
+  });
 }

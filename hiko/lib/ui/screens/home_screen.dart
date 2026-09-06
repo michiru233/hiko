@@ -67,6 +67,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   String? _locateTargetId; // 需要定位的专辑 id（定位完成后清除）
   String? _highlightedAlbumId; // 高亮中的专辑 id
   Timer? _highlightTimer;
+  // 1.54 移动端左边缘右滑呼出抽屉：起手点在左缘 ≤24dp 时累计横向位移
+  double? _edgeDragDx;
+  double? _edgeStartDy;
 
   @override
   void initState() {
@@ -96,7 +99,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onProgress: (p) {
           if (!mounted) return;
           activityOverlayController.start(
-            label: p.phase == 'files' ? '正在快速同步音乐目录' : '正在导入新增专辑',
+            label: p.phase == 'walk'
+                ? '正在清点文件'
+                : p.phase == 'files'
+                    ? '正在快速同步音乐目录'
+                    : '正在导入新增专辑',
             processed: p.processed,
             total: p.total,
             progress: p.total > 0 ? p.processed / p.total : null,
@@ -193,11 +200,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     try {
       final platform = ref.read(platformServiceProvider);
       List<Album> albums;
-      // Android:SAF 单树导入(接口方法,事件流式);桌面:返回 null 走批量多选
+      // Android:SAF 单树导入(接口方法,事件流式,增量跳过全已知目录);桌面:返回 null 走批量多选
+      final knownUrls = <String>{
+        for (final a in ref.read(libraryProvider))
+          for (final t in a.tracks) t.url,
+      };
       final saf = await platform.importAudioFolder(
+        known: knownUrls,
         onProgress: (p, t, phase, unit) {
           activityOverlayController.update(
-            label: phase == 'files' ? '正在扫描音频文件' : '正在导入专辑',
+            label: phase == 'walk'
+                ? '正在清点文件'
+                : phase == 'files'
+                    ? '正在扫描音频文件'
+                    : '正在导入专辑',
             processed: p,
             total: t,
             progress: t > 0 ? p / t : null,
@@ -233,8 +249,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
       if (!mounted) return;
       await ref.read(libraryProvider.notifier).mergeNew(albums);
-      // 全轨无可用标签的专辑（metaFromFolder）：串行查 DLsite 补标题（失败维持文件夹名）
-      if (ref.read(libraryProvider).any(DlsiteScraper.shouldBackfillTitle)) {
+      // 全轨无可用标签的专辑（metaFromFolder）：串行查 DLsite 补标题（失败维持文件夹名）。
+      // 1.54：移动端跳过自动补全（串行网络拖慢导入），标题不对时手动刮削。
+      if (!Platform.isAndroid &&
+          ref.read(libraryProvider).any(DlsiteScraper.shouldBackfillTitle)) {
         activityOverlayController.update(label: '正在查询 DLsite 补全标题');
         final fixed = await ref
             .read(scraperProvider)
@@ -306,9 +324,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           .read(musicFolderScannerProvider)
           .scanAll(
             silent: false,
+            full: true, // 手动重扫 = 全量重建（1.54）：修复存量封面/标题
             onProgress: (p) {
               activityOverlayController.update(
-                label: p.phase == 'files' ? '正在扫描音频文件' : '正在解析组装专辑',
+                label: p.phase == 'walk'
+                    ? '正在清点文件'
+                    : p.phase == 'files'
+                        ? '正在扫描音频文件'
+                        : '正在解析组装专辑',
                 processed: p.processed,
                 total: p.total,
                 progress: p.total > 0 ? p.processed / p.total : null,
@@ -527,7 +550,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             },
             child: SafeArea(
-              child: Stack(
+              // 移动端：左边缘右滑呼出抽屉（1.54，安卓惯例）。用 Listener 直接跟踪指针
+              //（不进手势竞技场，网格垂直滚动识别器不会吞掉水平拖动）；竖向位移大于
+              // 横向即视为滚动放弃呼出。配合 MainActivity 的系统手势排除区使用。
+              child: Listener(
+                onPointerDown: (d) {
+                  final edge = d.localPosition.dx <= 24;
+                  _edgeDragDx = edge ? 0 : null;
+                  _edgeStartDy = edge ? d.localPosition.dy : null;
+                },
+                onPointerMove: (d) {
+                  if (_edgeDragDx == null) return;
+                  _edgeDragDx = _edgeDragDx! + d.delta.dx;
+                  final dy = (d.localPosition.dy - (_edgeStartDy ?? 0)).abs();
+                  if (_edgeDragDx! > 60 && dy < _edgeDragDx!) {
+                    _edgeDragDx = null;
+                    if (!_drawerOpen && isMobile) {
+                      setState(() => _drawerOpen = true);
+                    }
+                  }
+                },
+                onPointerUp: (_) => _edgeDragDx = null,
+                onPointerCancel: (_) => _edgeDragDx = null,
+                child: Stack(
                 children: [
                   Column(
                     children: [
@@ -558,10 +603,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           ],
                         ),
                       ),
-                      PlayerBar(
-                        compact: isMobile,
-                        onCoverTap: (a) => setState(() => _detailAlbum = a),
-                      ),
+                      // 1.54 移动端：未播放任何专辑时整个播放条隐藏，底部导航贴底
+                      if (!isMobile ||
+                          ref.watch(playbackProvider).album != null)
+                        PlayerBar(
+                          compact: isMobile,
+                          onCoverTap: (a) => setState(() => _detailAlbum = a),
+                        ),
                     ],
                   ),
                   // 移动端：抽屉侧栏
@@ -626,7 +674,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     Positioned(
                       right: 0,
                       top: 0,
-                      bottom: isMobile ? 118 : 0,
+                      // 移动端：播放条显示时留播放条+导航位，未播放只留底部导航（1.54）
+                      bottom: isMobile
+                          ? (ref.watch(playbackProvider).album != null ? 118 : 60)
+                          : 0,
                       left: isMobile ? 0 : null,
                       // 桌面：抽屉宽 390，窗口过窄时收缩到窗口可用宽，避免抽屉本身溢出右缘
                       width: isMobile
@@ -640,6 +691,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                 ],
               ),
+              ), // Listener（左边缘右滑呼出抽屉）
             ),
           ),
         ),
@@ -869,9 +921,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       albumId: albumId,
       metrics: MasonryLayoutMetrics(
-        fixedCrossAxisCount: !isMobile && settings.gridColumns > 0
-            ? settings.gridColumns.round()
-            : null,
+        // 与 _buildGrid 列数决策保持一致（1.54 移动端独立档位也参与定位估算）
+        fixedCrossAxisCount: isMobile
+            ? settings.mobileGridColumns.round()
+            : (settings.gridColumns > 0 ? settings.gridColumns.round() : null),
         maxCrossAxisExtent: isMobile ? 240 : 260,
         viewportWidth: size.width,
         horizontalPadding:
@@ -1019,16 +1072,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'PERSONAL LIBRARY',
-                  style: TextStyle(
-                    fontSize: 10,
-                    letterSpacing: 1.7,
-                    fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.primary,
+                // 1.54 移动端精简：去掉眉题与描述文案，只留一行标题（省出列表可视区）
+                if (!isMobile) ...[
+                  Text(
+                    'PERSONAL LIBRARY',
+                    style: TextStyle(
+                      fontSize: 10,
+                      letterSpacing: 1.7,
+                      fontWeight: FontWeight.w700,
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 9),
+                  const SizedBox(height: 9),
+                ],
                 Text(
                   _view,
                   style: TextStyle(
@@ -1037,11 +1093,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     letterSpacing: -1.2,
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  '把每一次心动、每一段陪伴，都放进自己的声音收藏室。',
-                  style: TextStyle(fontSize: 12, color: theme.hintColor),
-                ),
+                if (!isMobile) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    '把每一次心动、每一段陪伴，都放进自己的声音收藏室。',
+                    style: TextStyle(fontSize: 12, color: theme.hintColor),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1313,9 +1371,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildGrid(List<Album> filtered, ThemeData theme, bool isMobile) {
-    // 1.43：每行专辑数设置仅桌面端生效，移动端保持按宽度自适应
+    // 1.43：每行专辑数设置仅桌面端生效；1.54：移动端用独立档位 2/3/4（默认 2）
     final settings = ref.watch(settingsProvider);
-    final desktopGridColumns = isMobile ? 0.0 : settings.gridColumns;
+    final fixedColumns = isMobile
+        ? settings.mobileGridColumns.toInt()
+        : (settings.gridColumns > 0 ? settings.gridColumns.toInt() : 0);
     if (filtered.isEmpty) {
       final empty = ref.watch(libraryProvider).isEmpty;
       return Center(
@@ -1347,9 +1407,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         isMobile ? 16 : 48,
         24,
       ),
-      gridDelegate: desktopGridColumns > 0
+      gridDelegate: fixedColumns > 0
           ? SliverSimpleGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: desktopGridColumns.toInt(),
+              crossAxisCount: fixedColumns,
             )
           : SliverSimpleGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: isMobile ? 240 : 260,

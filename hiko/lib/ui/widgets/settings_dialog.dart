@@ -105,6 +105,35 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     final theme = Theme.of(context);
     final settings = ref.watch(settingsProvider);
 
+    // 每行专辑数选择 chip（1.54：移动端独立档位 2/3/4，桌面 0=自动 + 4~12）
+    Widget columnChip(
+      double columns, {
+      required bool selected,
+      bool auto = false,
+      required VoidCallback onTap,
+    }) {
+      return InkWell(
+        onTap: onTap,
+        mouseCursor: SystemMouseCursors.click,
+        borderRadius: BorderRadius.circular(6),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: selected ? theme.colorScheme.surface : null,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            auto && columns == 0 ? '自动' : columns.toStringAsFixed(0),
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+              color: selected ? theme.colorScheme.onSurface : theme.hintColor,
+            ),
+          ),
+        ),
+      );
+    }
+
     return AlertDialog(
       titlePadding: const EdgeInsets.fromLTRB(24, 22, 16, 0),
       contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
@@ -330,49 +359,45 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                       .setShowScrapedTags(v),
                 ),
               ),
-              _SettingRow(
-                label: '每行专辑数',
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // 0=自动（按窗口宽度），其余为固定每行数量
-                    for (final columns in const [
-                      0.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 12.0,
-                    ])
-                      InkWell(
-                        onTap: () => ref
-                            .read(settingsProvider.notifier)
-                            .setGridColumns(columns),
-                        mouseCursor: SystemMouseCursors.click,
-                        borderRadius: BorderRadius.circular(6),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: settings.gridColumns == columns
-                                ? theme.colorScheme.surface
-                                : null,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            columns == 0 ? '自动' : columns.toStringAsFixed(0),
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: settings.gridColumns == columns
-                                  ? FontWeight.w600
-                                  : FontWeight.w400,
-                              color: settings.gridColumns == columns
-                                  ? theme.colorScheme.onSurface
-                                  : theme.hintColor,
-                            ),
-                          ),
+              // 1.54：移动端独立档位 2/3/4（默认 2），与桌面互不影响
+              if (Platform.isAndroid)
+                _SettingRow(
+                  label: '每行专辑数',
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final columns in const [2.0, 3.0, 4.0])
+                        columnChip(
+                          columns,
+                          selected: settings.mobileGridColumns == columns,
+                          onTap: () => ref
+                              .read(settingsProvider.notifier)
+                              .setMobileGridColumns(columns),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
+                )
+              else
+                _SettingRow(
+                  label: '每行专辑数',
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // 0=自动（按窗口宽度），其余为固定每行数量
+                      for (final columns in const [
+                        0.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 12.0,
+                      ])
+                        columnChip(
+                          columns,
+                          auto: true,
+                          selected: settings.gridColumns == columns,
+                          onTap: () => ref
+                              .read(settingsProvider.notifier)
+                              .setGridColumns(columns),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
               // ---- 数据 ----
               _SectionTitle('数据'),
               _SettingRow(

@@ -118,13 +118,25 @@ object ImportScanner {
             val qualities = intArrayOf(82, 70, 60, 50, 40, 30)
             val maxSizes = intArrayOf(600, 400, 300)
             var smallest: ByteArray? = null
+            // OOM 韧性(1.54):大图并行解码内存吃紧时加大采样重试,而不是整张放弃
+            fun decodeWithOomRetry(startSample: Int): Bitmap? {
+                var s = startSample
+                repeat(3) {
+                    try {
+                        val opts = BitmapFactory.Options().apply { inSampleSize = s }
+                        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return null
+                    } catch (e: OutOfMemoryError) {
+                        s *= 2
+                    }
+                }
+                return null
+            }
             for (max in maxSizes) {
                 var sample = 1
                 while (bounds.outWidth / sample > max * 2 || bounds.outHeight / sample > max * 2) {
                     sample *= 2
                 }
-                val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sample }
-                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOpts) ?: return null
+                val bmp = decodeWithOomRetry(sample) ?: return null
                 val w = bmp.width
                 val h = bmp.height
                 if (w == 0 || h == 0) return null
@@ -464,13 +476,27 @@ object ImportScanner {
         val cover: String?
     )
 
-    /** 逐文件解析（与 readTrackMeta 相同结构；单文件失败返回 null） */
+    /** 提取单轨内嵌封面并压缩。1.54:封面不再逐文件提取(原 95% 白算 + 大图并行解码 OOM
+     *  是"部分专辑没封面"的根源),组专辑后仅对排序前 3 轨调用。 */
+    private fun embeddedCoverFor(context: Context, uri: Uri): String? {
+        val retriever = MediaMetadataRetriever()
+        return try {
+            retriever.setDataSource(context, uri)
+            retriever.embeddedPicture?.let { coverDataUrl(it) }
+        } catch (e: Exception) {
+            null
+        } finally {
+            retriever.release()
+        }
+    }
+
+    /** 逐文件解析（与 readTrackMeta 相同结构；单文件失败返回 null）。
+     *  1.54 起不提取封面（cover 恒 null），由 buildAlbumFromFiles 对前 3 轨补提。 */
     fun parseFile(context: Context, file: DocumentFile, albumDir: DocumentFile): FileMeta? {
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(context, file.uri)
             val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
-            val picture = retriever.embeddedPicture
             val rawId3 = if (file.name?.lowercase()?.endsWith(".mp3") == true) {
                 context.contentResolver.openInputStream(file.uri)?.use { Id3v2Parser.parse(it) }
             } else null
@@ -485,7 +511,7 @@ object ImportScanner {
                 albumArtist = chooseMetadata(rawId3?.albumArtist, retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST)),
                 trackNumber = rawId3?.trackNumber ?: retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER)?.toIntOrNull(),
                 duration = durationMs / 1000.0,
-                cover = picture?.let { coverDataUrl(it) }
+                cover = null
             )
         } catch (e: Exception) {
             null
@@ -497,10 +523,15 @@ object ImportScanner {
     /**
      * 扫描根目录：收集全部音频 → 并行解析 → 混合分组 → 组装专辑。
      * 有 ALBUM 标签按「专辑艺术家|专辑名」聚合（跨文件夹）；无标签按文件夹。
+     * [known] 为已导入音轨 URI 集合（1.54 增量）：目录内全部音频均已知的目录整目录跳过
+     * 不解析（与桌面 knownUrls diff 同语义）；含任一新文件的目录全量解析——合并按 id 整表
+     * 替换曲目，绝不部分重建。ponytail: 同名文件原位替换（URI 不变）不触发重扫，由设置页
+     * "重新扫描"（传空 known=全量）兜底。
      */
     fun scanAlbums(
         context: Context,
         root: DocumentFile,
+        known: Set<String> = emptySet(),
         onProgress: (processed: Int, total: Int, phase: String, album: JSONObject?) -> Unit = { _, _, _, _ -> },
     ): List<JSONObject> {
         data class Entry(val file: DocumentFile, val dir: DocumentFile)
@@ -525,16 +556,26 @@ object ImportScanner {
         }
         walk(root)
 
-        val executor = Executors.newFixedThreadPool(4)
+        onProgress(0, 0, "walk", null) // SAF 逐目录清点中（0/0 = 不定进度）
+
+        // 增量（1.54）：全部音频均已知的目录整目录跳过
+        val audioByDir = entries.groupBy({ it.dir.uri.toString() }) { it.file }
+        val skipDirs = if (known.isEmpty()) emptySet() else audioByDir
+            .filter { (_, files) -> files.all { it.uri.toString() in known } }
+            .keys
+        val toParse = entries.filter { it.dir.uri.toString() !in skipDirs }
+        val skipped = entries.size - toParse.size
+
+        val executor = Executors.newFixedThreadPool(minOf(Runtime.getRuntime().availableProcessors(), 8))
         try {
-            val futures = entries.map { e ->
+            val futures = toParse.map { e ->
                 executor.submit<FileMeta?> { parseFile(context, e.file, e.dir) }
             }
-            onProgress(0, entries.size, "files", null)
+            onProgress(skipped, entries.size, "files", null)
             val metas = mutableListOf<FileMeta>()
             futures.forEachIndexed { index, future ->
                 try { future.get()?.let { metas.add(it) } } catch (_: Exception) { }
-                onProgress(index + 1, entries.size, "files", null)
+                onProgress(skipped + index + 1, entries.size, "files", null)
             }
             val groups = LinkedHashMap<String, MutableList<FileMeta>>()
             val directoryAlbums = metas.groupBy { it.dirUri }
@@ -623,9 +664,10 @@ object ImportScanner {
         val albumArtist = decision.albumArtist
         val rjCode = extractRjCode(sorted.first().uri, sorted.first().dirUri, title)
 
-        // 封面对齐桌面(1.40):只取排序后前 3 轨的内嵌封面,避免极端序号的最后一轨
-        // 内嵌功能图(曲目列表/角色介绍)被误当专辑封面;前 3 轨均无 → 回退外置图片
-        val embeddedCover = sorted.take(3).firstOrNull { !it.cover.isNullOrBlank() }?.cover
+        // 封面对齐桌面(1.40/1.54):组专辑后只对排序前 3 轨提取内嵌封面(避免极端序号的
+        // 最后一轨功能图被误当封面);前 3 轨均无 → 回退外置图片
+        val embeddedCover = sorted.take(3)
+            .firstNotNullOfOrNull { embeddedCoverFor(context, Uri.parse(it.uri)) }
         val tracks = JSONArray()
         var totalDuration = 0.0
         sorted.forEachIndexed { index, m ->

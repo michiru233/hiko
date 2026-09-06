@@ -34,6 +34,7 @@ class HikoPlugin : MethodChannel.MethodCallHandler {
     private var channel: MethodChannel? = null
     private var activity: Activity? = null
     private var pendingImport: MethodChannel.Result? = null
+    private var pendingKnown: Set<String> = emptySet()
     private var pendingPermission: MethodChannel.Result? = null
 
     fun register(activity: Activity, engine: FlutterEngine) {
@@ -45,7 +46,11 @@ class HikoPlugin : MethodChannel.MethodCallHandler {
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
-            "importAudioFolder" -> startImport(result)
+            "importAudioFolder" -> {
+                // 已导入音轨 URI 集合：原生对全已知目录整目录跳过（1.54 增量）
+                pendingKnown = (call.argument<List<String>>("known") ?: emptyList()).toSet()
+                startImport(result)
+            }
             // 常驻音乐目录扫描：按已授权 tree URI 直接扫描（不弹选择器），事件流与导入一致
             "scanFolder" -> scanFolder(call, result)
             "deleteFiles" -> deleteFiles(call, result)
@@ -112,9 +117,11 @@ class HikoPlugin : MethodChannel.MethodCallHandler {
             result.error("bad-uri", "目录 URI 无效", null)
             return
         }
+        // 空 known = 全量重建（设置页"重新扫描"语义）；非空 = 增量跳过全已知目录
+        val known = (call.argument<List<String>>("known") ?: emptyList()).toSet()
         Thread {
             try {
-                val scanError = scanTree(activity, uri)
+                val scanError = scanTree(activity, uri, known)
                 mainHandler.post {
                     if (scanError == null) {
                         result.success(mapOf("ok" to true))
@@ -162,7 +169,7 @@ class HikoPlugin : MethodChannel.MethodCallHandler {
         }
         Thread {
             try {
-                val scanError = scanTree(activity, uri)
+                val scanError = scanTree(activity, uri, pendingKnown)
                 // MethodChannel 的 Result 必须在主线程回调
                 mainHandler.post {
                     if (scanError == null) {
@@ -181,13 +188,13 @@ class HikoPlugin : MethodChannel.MethodCallHandler {
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     /** 后台扫描：事件经主线程回传；返回 null 成功 / 错误消息 */
-    private fun scanTree(activity: Activity, rootUri: Uri): String? {
+    private fun scanTree(activity: Activity, rootUri: Uri, known: Set<String>): String? {
         val context = activity.applicationContext
         val root = DocumentFile.fromTreeUri(context, rootUri)
         if (root == null) return "无法打开所选文件夹"
         val albums = try {
-            // 文件级并行扫描 + 混合分组；进度在扫描阶段实时回传，专辑阶段由回调发送。
-            ImportScanner.scanAlbums(context, root) { processed, total, phase, album ->
+            // 文件级并行扫描 + 混合分组 + 已知目录整目录跳过；进度在扫描阶段实时回传。
+            ImportScanner.scanAlbums(context, root, known) { processed, total, phase, album ->
                 mainHandler.post {
                     try {
                         album?.let { channel?.invokeMethod("onAlbum", it.toBridge()) }

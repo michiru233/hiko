@@ -9,10 +9,12 @@ import 'platform_service.dart';
 class AndroidPlatformService implements PlatformService {
   static const _channel = MethodChannel('top.voicehub.hiko/plugin');
 
-  /// SAF 目录选择 + 扫描；返回新专辑列表与所选目录 tree URI（未落盘，由调用方 merge+save）
+  /// SAF 目录选择 + 扫描；返回新专辑列表与所选目录 tree URI（未落盘，由调用方 merge+save）。
+  /// [known] 为已导入音轨 URI 集合，原生对全已知目录整目录跳过（1.54 增量）。
   @override
   Future<ImportScanResult> importAudioFolder({
     void Function(int processed, int total, String phase, String unit)? onProgress,
+    Set<String> known = const {},
   }) async {
     final albums = <Album>[];
     var total = 0;
@@ -36,7 +38,9 @@ class AndroidPlatformService implements PlatformService {
     });
     try {
       final result = Map<String, dynamic>.from(
-        await _channel.invokeMethod('importAudioFolder') as Map,
+        await _channel.invokeMethod('importAudioFolder', {
+          'known': known.toList(),
+        }) as Map,
       );
       final canceled = result['canceled'] as bool? ?? false;
       return (
@@ -48,10 +52,12 @@ class AndroidPlatformService implements PlatformService {
     }
   }
 
-  /// 扫描已授权的常驻音乐目录（SAF tree URI），事件流与导入一致，不弹选择器
+  /// 扫描已授权的常驻音乐目录（SAF tree URI），事件流与导入一致，不弹选择器。
+  /// [known] 非空 = 增量（全已知目录整目录跳过）；空 = 全量重建（手动重扫）。
   @override
   Future<List<Album>> scanSavedFolder(String treeUri,
-      {void Function(int processed, int total, String phase, String unit)? onProgress}) async {
+      {void Function(int processed, int total, String phase, String unit)? onProgress,
+      Set<String> known = const {}}) async {
     final albums = <Album>[];
     _channel.setMethodCallHandler((call) async {
       switch (call.method) {
@@ -70,7 +76,7 @@ class AndroidPlatformService implements PlatformService {
       return null;
     });
     try {
-      await _channel.invokeMethod('scanFolder', {'uri': treeUri});
+      await _channel.invokeMethod('scanFolder', {'uri': treeUri, 'known': known.toList()});
       return albums;
     } finally {
       _channel.setMethodCallHandler(null);

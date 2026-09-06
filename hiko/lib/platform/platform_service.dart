@@ -35,17 +35,21 @@ abstract class PlatformService {
 
   /// 导入音频文件夹：
   /// - Android：SAF 单树导入（事件流式回传），返回专辑与所选 tree URI；
+  ///   [known] 为已导入音轨 URI 集合，原生对全已知目录整目录跳过（增量）；
   /// - 桌面：返回 null（调用方走 [pickDirectories] 多选 + ImportService）。
   Future<ImportScanResult?> importAudioFolder({
     void Function(int processed, int total, String phase, String unit)? onProgress,
+    Set<String> known = const {},
   });
 
   /// 扫描常驻音乐目录：
-  /// - Android：SAF tree URI 经原生插件（事件流式）；
+  /// - Android：SAF tree URI 经原生插件（事件流式）；[known] 增量跳过全已知目录，
+  ///   传空集合 = 全量重建（手动重扫语义）；
   /// - 桌面：本地路径文件解析。
   Future<List<Album>> scanSavedFolder(
     String folder, {
     void Function(int processed, int total, String phase, String unit)? onProgress,
+    Set<String> known = const {},
   });
 
   /// 更新包下载完成后的落地动作：
@@ -188,17 +192,19 @@ class DesktopPlatformService implements PlatformService {
     return path == null ? null : [path];
   }
 
-  /// 桌面无 SAF:返回 null,调用方走 pickDirectories + ImportService
+  /// 桌面无 SAF:返回 null,调用方走 pickDirectories + ImportService（known 仅 Android 增量用）
   @override
   Future<ImportScanResult?> importAudioFolder({
     void Function(int processed, int total, String phase, String unit)? onProgress,
+    Set<String> known = const {},
   }) async => null;
 
-  /// 桌面常驻目录扫描:本地路径文件解析(等价 ImportService.scanPath)
+  /// 桌面常驻目录扫描:本地路径文件解析(等价 ImportService.scanPath;known 仅 Android 用)
   @override
   Future<List<Album>> scanSavedFolder(
     String folder, {
     void Function(int processed, int total, String phase, String unit)? onProgress,
+    Set<String> known = const {},
   }) {
     return ImportService(LibraryStore()).scanPath(folder, onProgress: onProgress == null
         ? null

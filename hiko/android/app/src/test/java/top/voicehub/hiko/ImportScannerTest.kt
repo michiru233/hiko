@@ -1,12 +1,39 @@
 package top.voicehub.hiko
 
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.nio.charset.Charset
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ImportScannerTest {
+
+    @Test
+    fun parsesTagOverLegacy4MbLimit() {
+        // 1.54 回归：真实 DLsite 音频内嵌 2240px PNG 使 ID3 标签达 4.4MB，
+        // 旧 MAX_TAG_SIZE=4MB 直接整标签拒解析 → 退到 MMR 兜底乱码。
+        // 合成 4.4MB 标签（UTF-16 文本帧 + 大 APIC 占位）必须完整解析。
+        val big = ImportScannerTestIds3v2.buildOversizeTag(overshootBytes = 300 * 1024)
+        val meta = Id3v2Parser.parse(big.inputStream())
+        assertNotNull(meta)
+        assertEquals("雨夜耳語", meta!!.title)
+        assertEquals("音波彼女", meta.artist)
+        assertEquals("はちみつ社", meta.albumArtist)
+        assertEquals(3, meta.trackNumber)
+    }
+
+    @Test
+    fun rejectsAbsurdTagSize() {
+        // 声明 >16MB 的畸形标签仍拒解析（内存天花板）
+        val header = byteArrayOf(
+            0x49, 0x44, 0x33, 0x03, 0x00, 0x00,
+            // syncsafe 20MB: 0,0x60,0,0
+            0x00, 0x60, 0x00, 0x00,
+        )
+        assertNull(Id3v2Parser.parse(header.inputStream()))
+    }
 
     @Test
     fun readsLyricTextWithinLimit() {
@@ -149,5 +176,57 @@ class ImportScannerTest {
         assertEquals(true, ImportScanner.isLyric("03.srt"))
         assertEquals(false, ImportScanner.isLyric("04.mp3"))
         assertEquals(false, ImportScanner.isLyric(null))
+    }
+}
+
+/** 合成 ID3v2.3 字节流的测试夹具 */
+private object ImportScannerTestIds3v2 {
+    /** 生成总大小 >4MB 的标签：TIT2/TPE1/TPE2/TRCK + 占位 APIC（垃圾字节撑体积） */
+    fun buildOversizeTag(overshootBytes: Int): ByteArray {
+        val frames = ByteArrayOutputStream()
+
+        fun frame(id: String, body: ByteArray) {
+            frames.write(id.toByteArray(Charsets.ISO_8859_1))
+            val size = body.size
+            frames.write(byteArrayOf(
+                (size ushr 24).toByte(), (size ushr 16).toByte(),
+                (size ushr 8).toByte(), size.toByte(),
+            ))
+            frames.write(byteArrayOf(0, 0)) // flags
+            frames.write(body)
+        }
+
+        fun utf16(text: String): ByteArray {
+            val raw = text.toByteArray(Charsets.UTF_16LE)
+            val out = ByteArray(raw.size + 3)
+            out[0] = 1 // encoding UTF-16 w/ BOM
+            out[1] = 0xFF.toByte(); out[2] = 0xFE.toByte()
+            raw.copyInto(out, 3)
+            return out
+        }
+
+        frame("TIT2", utf16("雨夜耳語"))
+        frame("TPE1", utf16("音波彼女"))
+        frame("TPE2", utf16("はちみつ社"))
+        frame("TRCK", byteArrayOf(0) + "3".toByteArray(Charsets.ISO_8859_1))
+        // APIC：encoding 0 + mime "image/png" + type + desc + 大块垃圾字节
+        val filler = ByteArray(4 * 1024 * 1024 + overshootBytes) { (it % 251).toByte() }
+        val apic = ByteArray(11) { 0 } // enc + "image/png\0"
+        apic[10] = 3 // picture type
+        frame("APIC", apic + filler)
+
+        val payload = frames.toByteArray()
+        val out = ByteArrayOutputStream()
+        out.write(byteArrayOf(0x49, 0x44, 0x33, 0x03, 0x00, 0x00))
+        // syncsafe int
+        val size = payload.size
+        out.write(byteArrayOf(
+            ((size ushr 21) and 0x7f).toByte(),
+            ((size ushr 14) and 0x7f).toByte(),
+            ((size ushr 7) and 0x7f).toByte(),
+            (size and 0x7f).toByte(),
+        ))
+        out.write(payload)
+        return out.toByteArray()
     }
 }
