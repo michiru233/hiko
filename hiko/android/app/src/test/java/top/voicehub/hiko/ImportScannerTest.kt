@@ -75,7 +75,40 @@ class ImportScannerTest {
         val d = ImportScanner.decideAlbumMeta(listOf(f1, f2), isTagGroup = true)
         assertEquals("作品甲", d.title)
         assertEquals("社团甲", d.albumArtist)
-        assertEquals("社团甲", d.artist)
+        // 1.43 对齐桌面：artist 取第一轨 TPE1（声优），不再是 TPE2（社团）
+        assertEquals("艺人A", d.artist)
+        assertEquals(true, d.titleFromTags)
+    }
+
+    @Test
+    fun albumMetaArtistFallsBackToAnyTrackTag() {
+        // 第一轨无任何艺术家标签 → 取任何轨的第一个有效 TPE1/TPE2
+        val f1 = ImportScanner.FileMeta("content://x/01.mp3", "01.mp3", "content://x", "RJ111111_作品甲",
+            "第1首", null, "作品甲", null, 1, 100.0, null)
+        val f2 = ImportScanner.FileMeta("content://x/02.mp3", "02.mp3", "content://x", "RJ111111_作品甲",
+            "第2首", "艺人B", "作品甲", "社团乙", 2, 100.0, null)
+        val d = ImportScanner.decideAlbumMeta(listOf(f1, f2), isTagGroup = true)
+        assertEquals("艺人B", d.artist)
+        assertEquals("社团乙", d.albumArtist)
+    }
+
+    @Test
+    fun albumMetaArtistTrailingSpaceTrimmed() {
+        // 尾随空格的艺术家标签必须规范化，否则「同名艺术家」排序时被拆开
+        val f = ImportScanner.FileMeta("content://x/01.mp3", "01.mp3", "content://x", "RJ111111_作品甲",
+            "第1首", "艺人A ", "作品甲", "社团甲 ", 1, 100.0, null)
+        val d = ImportScanner.decideAlbumMeta(listOf(f), isTagGroup = true)
+        assertEquals("艺人A", d.artist)
+        assertEquals("社团甲", d.albumArtist)
+    }
+
+    @Test
+    fun albumMetaTitleMultilineSanitized() {
+        // DLsite 的 TALB 标签常写入带换行的冗长文本 → 取首个非空行
+        val f = ImportScanner.FileMeta("content://x/01.mp3", "01.mp3", "content://x", "RJ111111_作品甲",
+            "第1首", "艺人A", "作品甲\n作品甲（2）\n", "社团甲", 1, 100.0, null)
+        val d = ImportScanner.decideAlbumMeta(listOf(f), isTagGroup = true)
+        assertEquals("作品甲", d.title)
         assertEquals(true, d.titleFromTags)
     }
 

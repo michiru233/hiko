@@ -224,6 +224,13 @@ object ImportScanner {
         return if (!clean.isNullOrEmpty()) clean else name
     }
 
+    /** 标题清洗:DLsite 的 TALB 标签常写入带换行的冗长文本,取首个非空行(对齐桌面 _sanityTitle)。 */
+    fun sanityTitle(title: String?): String {
+        if (title == null) return ""
+        val line = title.split('\n').map { it.trim() }.firstOrNull { it.isNotEmpty() }
+        return line ?: title.trim()
+    }
+
     /** 降采样倍率：2 的幂，保证解码后长边 ≤ maxDim×2（纯函数，可单测） */
     fun sampleSizeFor(width: Int, height: Int, maxDim: Int): Int {
         var sample = 1
@@ -536,7 +543,9 @@ object ImportScanner {
                 val albumName = m.album ?: directoryAlbums[m.dirUri]
                 val albumKey = albumName?.takeIf { !looksGarbled(it) && it.isNotBlank() }
                 val normalizedAlbum = albumKey?.normalizeTag()
-                val normalizedArtist = m.albumArtist?.normalizeTag().orEmpty()
+                // 分组的「专辑艺术家」用 TPE2(TPE1 现在是曲目声优,同专辑各轨可能不同,会拆散专辑);
+                // 无 TPE2 时回退 TPE1(对齐桌面 1.43)
+                val normalizedArtist = (m.albumArtist ?: m.artist)?.normalizeTag().orEmpty()
                 val key = if (normalizedAlbum != null) "tag:$normalizedArtist|$normalizedAlbum" else "dir:${m.dirUri}"
                 groups.getOrPut(key) { mutableListOf() }.add(if (m.album == null && albumName != null) {
                     FileMeta(m.uri, m.fileName, m.dirUri, m.dirName, m.title, m.artist, albumName, m.albumArtist, m.trackNumber, m.duration, m.cover)
@@ -566,27 +575,30 @@ object ImportScanner {
     )
 
     /** 纯函数：由排序后的文件元数据决定专辑 title/artist/albumArtist。
-     *  [sorted] 已按 TRCK+文件名排序；[isTagGroup] 分组键是否 tag: 前缀。 */
+     *  [sorted] 已按 TRCK+文件名排序；[isTagGroup] 分组键是否 tag: 前缀。
+     *  艺术家取值链(对齐桌面 1.43.0):第一轨 TPE1(曲目艺术家/声优)→ 第一轨 TPE2(专辑艺术家)
+     *  → 任何轨 TPE1 → 任何轨 TPE2;写库前 normalizeTag 去首尾空白/NUL(尾随空格会让
+     *  「同名艺术家」按艺术家排序时被拆开)。 */
     fun decideAlbumMeta(sorted: List<FileMeta>, isTagGroup: Boolean): AlbumMetaDecision {
+        fun ok(v: String?) = !v.isNullOrBlank() && !looksGarbled(v)
+        val first = sorted.first()
+        val firstTpe1 = first.artist?.takeIf(::ok)?.normalizeTag()
+        val firstTpe2 = first.albumArtist?.takeIf(::ok)?.normalizeTag()
+        val anyTpe1 = sorted.firstOrNull { ok(it.artist) }?.artist?.normalizeTag()
+        val anyTpe2 = sorted.firstOrNull { ok(it.albumArtist) }?.albumArtist?.normalizeTag()
         val firstTagged = sorted.firstOrNull { m ->
             !m.album.isNullOrBlank() && !looksGarbled(m.album)
         }
         val firstDirName = sorted.firstNotNullOfOrNull { it.dirName }
         val titleFromTags = firstTagged != null && isTagGroup
-        val title = if (isTagGroup) {
+        val rawTitle = if (isTagGroup) {
             firstTagged?.album ?: cleanFolderTitle(firstDirName) ?: "本地导入"
         } else {
             cleanFolderTitle(firstDirName) ?: "本地导入"
         }
-        val firstTagAlbumArtist = firstTagged?.albumArtist?.takeIf { !looksGarbled(it) && it.isNotBlank() }
-        val firstTagArtist = firstTagged?.artist?.takeIf { !looksGarbled(it) && it.isNotBlank() }
-        val artist = firstTagAlbumArtist
-            ?: firstTagArtist
-            ?: mostCommon(sorted.map { it.artist })?.takeIf { !looksGarbled(it) }
-            ?: "本地导入"
-        val albumArtist = firstTagAlbumArtist
-            ?: sorted.firstNotNullOfOrNull { it.albumArtist?.takeIf { v -> !looksGarbled(v) && v.isNotBlank() } }
-            ?: ""
+        val title = sanityTitle(rawTitle).ifEmpty { "本地导入" }
+        val artist = firstTpe1 ?: firstTpe2 ?: anyTpe1 ?: anyTpe2 ?: "本地导入"
+        val albumArtist = firstTpe2 ?: anyTpe2 ?: ""
         return AlbumMetaDecision(title, artist, albumArtist, titleFromTags)
     }
 
@@ -611,11 +623,12 @@ object ImportScanner {
         val albumArtist = decision.albumArtist
         val rjCode = extractRjCode(sorted.first().uri, sorted.first().dirUri, title)
 
-        var embeddedCover: String? = null
+        // 封面对齐桌面(1.40):只取排序后前 3 轨的内嵌封面,避免极端序号的最后一轨
+        // 内嵌功能图(曲目列表/角色介绍)被误当专辑封面;前 3 轨均无 → 回退外置图片
+        val embeddedCover = sorted.take(3).firstOrNull { !it.cover.isNullOrBlank() }?.cover
         val tracks = JSONArray()
         var totalDuration = 0.0
         sorted.forEachIndexed { index, m ->
-            if (embeddedCover == null) embeddedCover = m.cover
             val name = m.title?.takeIf { !looksGarbled(it) && it.isNotBlank() }
                 ?: m.fileName.substringBeforeLast('.')
                 ?: "Track ${index + 1}"

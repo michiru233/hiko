@@ -587,3 +587,15 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 - **系统 Now Playing 中性化**：`lib/playback/audio_handler.dart` 构造器 `privacyBlur.addListener(_syncNowPlaying)`；模糊态 `mediaItem` 发 `title:'正在播放' / artist:'Hiko' / album:'Hiko'`、不传 `artUri`（控制中心直接展示原图，必须置空），并跳过 `_resolveArtUri`（不再写封面缓存文件）。
 - **测试**：新增 `test/ui/privacy_blur_test.dart`（默认模糊有 ImageFiltered / 关闭移除 / 再开恢复 / 无异常）。全量 `flutter test` **237 passed / 1 skipped / 0 failed**；`flutter analyze` **31 issues** 与基线一致（本轮曾引入 1 条 unnecessary_underscores 已修）。Android 未触碰。
 - **发版**：pubspec 1.52.0+56；`flutter build macos --release` 产物 Hiko.app **73.6MB**，包内 CFBundleShortVersionString=1.52.0 / CFBundleVersion=56；`ditto --keepParent` 封 `hiko-v1.52.0-macos.zip`（**32,555,690B**），`unzip -t` OK；SHA-256 `26e99d769b9c226ec59ba7e40ee259a0b603f7175ba89a6ccbdd95a0194b7cda`。
+
+### 1.53.0 Android 恢复开发：导入语义对齐桌面 1.40–1.43（2026-09-06）
+- 开工回执：用户拍板恢复 Android 开发。第一步架构盘点（UI/Business/Platform 三层考察）结论：三层区隔在 1.29.0 已建成——platform/ 抽象 + HikoPlugin/ImportScanner Kotlin 原生齐备、playback 双引擎（桌面 media_kit 仅 main.dart 注册于 macOS/Windows，Android 走 ExoPlayer+LoudnessEnhancer 分支）、UI 一套代码 isMobile 分支（返回键 PopScope/长按菜单/底部导航均在）。**用户点名的重点风险成立**：Kotlin 侧 `ImportScanner.kt` 最后改动停在 1.32.0，桌面导入 1.40–1.43 的四项语义演化未同步。
+- 差异清单（桌面 scanner.dart → Kotlin ImportScanner）：
+  1. **艺术家取值链（1.43.0）**：桌面=第一轨 TPE1（声优）→第一轨 TPE2→任意轨 TPE1→任意轨 TPE2；Kotlin 仍是旧逻辑「首个含标签轨的 TPE2（社团）优先」——正是 1.43 修掉的"卡片显示社团而非声优"bug，Android 侧未同步。
+  2. **标题清洗（_sanityTitle）**：DLsite 的 TALB 标签常写带换行的冗长文本，桌面取首个非空行；Kotlin 无此清洗。
+  3. **艺术家值规范化（5bc9826）**：尾随空格致同名艺术家排序被拆分；Kotlin decideAlbumMeta 未 normalizeTag。
+  4. **封面「前 3 轨」规则（b1bc803）**：桌面只从排序后前 3 轨取内嵌封面（防极端序号最后一轨功能图误当封面）；Kotlin 仍取全专辑第一张内嵌图。
+- 修复（全部在 Kotlin，最小 diff）：`decideAlbumMeta` 改为桌面 1.43 取值链（ok() 判定+normalizeTag 写库规范化）；新增 `sanityTitle` 应用于 title；`scanAlbums` 分组键 normalizedArtist 改 `albumArtist ?: artist`（对齐桌面 TPE2 优先+TPE1 兜底）；`buildAlbumFromFiles` 内嵌封面改 `sorted.take(3)` 首个非空。测试：ImportScannerTest 11→14 例（改 TPE1 期望+新增任意轨回退/尾随空格/多行标题 3 例）。
+- 已知对齐语义（非 bug，两端一致）：多行 TALB 参与分组键用原始串（桌面 _groupKey 同样未清洗），实测多行标签专辑会按轨拆分——桌面同行为，如需改进两端一起改，记 BLOCKED 待裁决。
+- 验证：Kotlin `:app:testDebugUnitTest` **14/14 全绿**（构建目录被 Flutter 重定向至 `hiko/build/app/test-results/`）；`flutter test` **237 passed / 1 skipped / 0 failed** 与 1.52.0 基线一致。模拟器（kikoeru_test AVD，API arm64）端到端实测：ffmpeg 造带日文 ID3（多行 TALB/尾随空格 TPE1/TPE2/内嵌封面）的 3 轨 mp3 push 至 /sdcard/Download → 应用内「导入」→ SAF 选目录授权 → 扫描入库；实机确认：①卡片艺术家=音波彼女（第一轨 TPE1，非社团）✓ ②尾随空格被规范化（はちみつ社）✓ ③多行 TALB 标题清洗为「雨夜耳語」✓ ④第一轨内嵌封面提取+无内嵌轨回退外置图 ✓ ⑤详情页「从头播放」ExoPlayer 播 content:// URI 完整播完 3 秒音轨 ✓ ⑥移动布局/隐私模糊/底部导航正常 ✓。
+- 发版：pubspec 1.53.0+57；Android `flutter build apk --release` 产物 **64.6MB**（封 `hiko-v1.53.0-android.zip`，SHA-256 `cc94690d4d93bb29ae23c48f62e9744916c99250d7986ca1a8ae0f922b4f7b43`）；macOS `flutter build macos --release` 按发版纪律同步执行（本次无 Dart 改动，macOS 行为不变）；macOS `flutter build macos --release` 产物 Hiko.app **73.6MB**（封 `hiko-v1.53.0-macos.zip` **32,527,002B**，SHA-256 `7b34a467e2a3e6dcc79485a6c4e77cad1edf861047450aeb35633b3ad184260f`，`unzip -t` OK、Contents/MacOS/Hiko=1）；GitHub Release **v1.53.0** 附 android/macos 双资产。

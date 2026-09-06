@@ -29,3 +29,9 @@ Mimosa 在 1.48.0 commit 前全库扫描报告 12 个 high，均**非本次改�
 
 1.51.0（Masonry 专辑卡片与动态元数据布局）：发版记录——pubspec 1.51.0+55，`hiko-v1.51.0-macos.zip` 32,419,938B，GitHub Release https://github.com/michiru233/hiko/releases/tag/v1.51.0，commit `113bfd6` 已推送。终验 `flutter test` 234 passed/1 skipped、analyze 31 issues（基线一致）、Mpv.framework=1、工作区 clean。本版无新增待裁决；既有 1.42.0 深色主题 tag 对比度问题与 Mimosa 历史 high 遗留保持不变。Android 按仓库红线未触碰、未执行 Android 测试。
 1.52.0（防社死隐私模糊）：发版记录——pubspec 1.52.0+56，`hiko-v1.52.0-macos.zip` 32,555,690B，GitHub Release https://github.com/michiru233/hiko/releases/tag/v1.52.0 ，commit 见 git log。终验 `flutter test` 237 passed/1 skipped、analyze 31 issues（基线一致）、工作区 clean。本版无新增待裁决；既有 1.42.0 深色主题 tag 对比度问题与 Mimosa 历史 high 遗留保持不变。Android 按仓库红线未触碰。
+
+1.53.0（Android 导入语义对齐）：发版记录——pubspec 1.53.0+57，`hiko-v1.53.0-android.zip`（内含 app-release.apk 64.6MB，SHA-256 cc94690d4d93bb29ae23c48f62e9744916c99250d7986ca1a8ae0f922b4f7b43），GitHub Release v1.53.0 附 android/macos 双资产。终验 Kotlin 单测 14/14、flutter test 237 passed/1 skipped（基线一致）、模拟器 SAF 导入+content:// 播放实测通过。
+
+1.53.0 新增待裁决：
+1.（1.53.0 实测发现）Android 端专辑详情页「整理专辑」按钮可见可点——library_reorganizer 基于本地路径移动文件，SAF 下语义不成立。建议后续版本 Android 隐藏该入口（isMobile 守卫）。
+2.（1.53.0 对齐语义）多行 TALB 标签原始串参与分组键，会把多行标签专辑按轨拆散——桌面 `_groupKey` 与 Kotlin 分组同行为。如要修需两端一起改（分组键也做 sanityTitle），待裁决。
