@@ -16,6 +16,7 @@ import '../../data/music_folder_scanner.dart';
 import '../../data/settings_store.dart';
 import '../../data/stats.dart';
 import '../../data/update_checker.dart';
+import '../../lyrics/desktop_lyrics_service.dart';
 import '../../models/album.dart';
 import '../../playback/playback_controller.dart';
 import '../../playback/playback_rules.dart';
@@ -173,6 +174,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// 此时空格/方向键必须走打字与光标移动，不触发播放快捷键
   bool _typingFocusActive() =>
       isFocusInsideEditable(FocusManager.instance.primaryFocus?.context);
+
+  /// 防社死隐私模糊开关（1.52）：顶栏按钮与 Cmd/Ctrl+Shift+H 共用。
+  /// 开启时顺带隐藏 macOS 桌面歌词（浮动歌词裸奔曲名/台词，等于没防）；
+  /// 解除模糊后不自动恢复歌词，由用户自行再开。
+  void _togglePrivacyBlur() {
+    privacyBlur.value = !privacyBlur.value;
+    if (privacyBlur.value && ref.read(desktopLyricsProvider).isShowing) {
+      ref.read(desktopLyricsProvider.notifier).hide();
+    }
+  }
 
   Future<void> _importFolder() async {
     if (_importing || activityOverlayController.isActive) return;
@@ -455,6 +466,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 const _StepTrackIntent(-1),
             const SingleActivator(LogicalKeyboardKey.arrowDown):
                 const _StepTrackIntent(1),
+            // ⌘⇧H / Ctrl+Shift+H 防社死隐私模糊（1.52）
+            const SingleActivator(LogicalKeyboardKey.keyH, meta: true, shift: true):
+                const _TogglePrivacyBlurIntent(),
+            const SingleActivator(
+              LogicalKeyboardKey.keyH,
+              control: true,
+              shift: true,
+            ):
+                const _TogglePrivacyBlurIntent(),
           },
           child: Actions(
             actions: {
@@ -496,6 +516,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   } else {
                     controller.next();
                   }
+                  return null;
+                },
+              ),
+              _TogglePrivacyBlurIntent: CallbackAction<_TogglePrivacyBlurIntent>(
+                onInvoke: (_) {
+                  _togglePrivacyBlur();
                   return null;
                 },
               ),
@@ -945,6 +971,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   .read(settingsProvider.notifier)
                   .setTheme(s.theme == 'dark' ? 'light' : 'dark');
             },
+          ),
+          // 1.52 防社死隐私模糊：一键模糊全部封面
+          ValueListenableBuilder<bool>(
+            valueListenable: privacyBlur,
+            builder: (_, blurred, _) => IconButton(
+              icon: Icon(
+                blurred
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                size: 18,
+              ),
+              tooltip: blurred ? '关闭隐私模糊' : '隐私模糊（⌘⇧H）',
+              onPressed: _togglePrivacyBlur,
+            ),
           ),
           const SizedBox(width: 4),
           FilledButton.tonalIcon(
@@ -1624,6 +1664,11 @@ class _SeekIntent extends Intent {
 class _StepTrackIntent extends Intent {
   final int direction;
   const _StepTrackIntent(this.direction);
+}
+
+/// 快捷键 Intent：防社死隐私模糊切换（⌘⇧H / Ctrl+Shift+H，1.52）
+class _TogglePrivacyBlurIntent extends Intent {
+  const _TogglePrivacyBlurIntent();
 }
 
 /// 焦点落在输入框（EditableText 及其后代）内时返回 true。

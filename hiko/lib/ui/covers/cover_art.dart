@@ -1,9 +1,11 @@
 import 'dart:typed_data';
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../models/album.dart';
+import '../../data/settings_store.dart';
 import 'cover_cache.dart';
 
 /// 12 种兜底封面 SVG 生成（移植旧版 app.js coverSvg）。
@@ -49,15 +51,35 @@ String coverSvg(String id, List<String> color, String shape) {
       '</svg>';
 }
 
-/// 专辑封面组件：data: 封面 → 内存图；file:/http(s) → 网络图；否则 SVG 兜底
+/// 专辑封面组件：data: 封面 → 内存图；file:/http(s) → 网络图；否则 SVG 兜底。
+/// 防社死隐私模糊（1.52）：privacyBlur 开启时整张封面高斯模糊（σ20，边缘 clamp 不发白），
+/// 标题/RJ 号文字不受影响。
 class AlbumCover extends StatelessWidget {
   const AlbumCover({super.key, required this.album, this.fit = BoxFit.cover});
 
   final Album album;
   final BoxFit fit;
 
+  /// 模糊 σ：20+ 已不可辨识；TileMode.clamp 用边缘像素延伸，避免 ImageFiltered 四边泛透明
+  static final _blurFilter = ImageFilter.blur(
+    sigmaX: 20,
+    sigmaY: 20,
+    tileMode: TileMode.clamp,
+  );
+
   @override
   Widget build(BuildContext context) {
+    // child 只构建一次，切换开关仅替换模糊包装层
+    return ValueListenableBuilder<bool>(
+      valueListenable: privacyBlur,
+      child: _cover(),
+      builder: (_, blurred, child) => blurred
+          ? ImageFiltered(imageFilter: _blurFilter, child: child)
+          : child!,
+    );
+  }
+
+  Widget _cover() {
     final cover = album.currentCover ?? album.localCover;
     if (cover != null && cover.startsWith('data:')) {
       final bytes = CoverCache.instance.peek(cover);

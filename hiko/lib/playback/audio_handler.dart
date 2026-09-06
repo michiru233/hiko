@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../data/settings_store.dart';
 import '../models/album.dart';
 import '../models/track.dart';
 import 'playback_controller.dart';
@@ -18,6 +19,9 @@ class HikoAudioHandler extends BaseAudioHandler with SeekHandler {
       _syncNowPlaying();
       _syncPlaybackState();
     });
+
+    // 防社死隐私模糊切换（1.52）→ 系统 Now Playing 同步中性化/还原
+    privacyBlur.addListener(_syncNowPlaying);
 
     // 进度/播放状态 → audio_service playbackState（通知、锁屏与 macOS 控制中心进度条）
     _controller.player.positionStream.listen((pos) {
@@ -83,6 +87,21 @@ class HikoAudioHandler extends BaseAudioHandler with SeekHandler {
     final track = s.currentTrack;
     if (album == null || track == null) {
       mediaItem.add(null);
+      return;
+    }
+
+    // 防社死隐私模糊（1.52）：系统媒体控件（macOS 控制中心/通知）不显示真名与封面图，
+    // 全部换中性文案 + 不传 artUri（控制中心会直接展示 artUri 指向的原图）
+    if (privacyBlur.value) {
+      mediaItem.add(MediaItem(
+        id: track.url,
+        title: '正在播放',
+        artist: 'Hiko',
+        album: 'Hiko',
+        duration: track.duration > 0
+            ? Duration(milliseconds: (track.duration * 1000).round())
+            : null,
+      ));
       return;
     }
 

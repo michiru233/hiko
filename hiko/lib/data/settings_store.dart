@@ -1,7 +1,15 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../playback/gain_chain.dart';
+
+/// 防社死隐私模糊全局开关（1.52）：内存态，每次启动默认开启、不持久化（防忘即安全）。
+/// 覆盖面：AlbumCover 全部调用点（卡片/详情抽屉/播放条/统计/继续收听）、
+/// 系统 Now Playing 中性化（audio_handler）、桌面歌词自动隐藏（home_screen 切换时）。
+/// 用 ValueNotifier 而非 Riverpod：AlbumCover 保持不依赖 ProviderScope（可独立构造），
+/// 播放层 audio_handler 也能直接监听。
+final ValueNotifier<bool> privacyBlur = ValueNotifier(true);
 
 /// 应用设置（对应旧版 localStorage 各项 + 刮削代理）
 class AppSettings {
