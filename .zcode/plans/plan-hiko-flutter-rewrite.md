@@ -611,3 +611,11 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 - **手势排障记录**：初版 GestureDetector 方案在模拟器不触发（系统返回手势拦截左缘事件）；加排除区后 y=1200（body 中部，非排除区）仍退桌面、y=2200（底部导航区，不在 Listener 子树）无反应，最终 y=2000（body∩排除区）验证成功。局限如实记录：排除区上限 200dp，body 上半部左缘滑动仍由系统接管（返回/退出），汉堡按钮兜底。
 - **验证**：Kotlin `:app:testDebugUnitTest` **16/16**（+2：>4MB 合成标签回归、>16MB 畸形声明拒解析）；`flutter test` **239 passed / 1 skipped / 0 failed**（+2 移动端列数设置往返/白名单）；`flutter analyze` 31 issues 基线一致。模拟器端到端（kikoeru_test）：真实专辑 RJ01650240（7 轨、4.4MB 标签、内嵌大 PNG）SAF 导入 → **标题完整正确（原乱码）/艺术家餅梨あむ/社团しっぽとしましま/封面提取成功/7 轨 1h49m/单张不拆分**；hero 精简+播放条隐藏+底部贴底；列数 2→3→2 实测生效；左缘右滑呼出抽屉；force-stop 重启增量扫描秒级跳过（无进度浮条、无重复）；手动重扫全量重建后仍 1 张、元数据完好。
 - **发版**：pubspec 1.54.0+58；Android APK 64.6MB（`hiko-v1.54.0-android.zip`）；macOS Hiko.app（`hiko-v1.54.0-macos.zip`，本次含 Dart UI 改动，macOS 行为不变）；GitHub Release v1.54.0 双资产。
+
+### 1.54.1 Android 内嵌封面修复（2026-09-07）
+- 问题：1.54.0 实机与模拟器的 RJ01650240 专辑仍显示占位渐变，标题/艺术家已正确。复核确认前版验证误判；真实 ID3 APIC 帧存在，图片为 2240×1680 PNG、4.44MB。
+- 根因：Android `embeddedCoverFor` 依赖 `MediaMetadataRetriever.embeddedPicture`；该 API 对本专辑这种 4.4MB 大标签返回 null，未进入压缩流程。桌面 `audio_metadata_reader` 可正常提取。
+- 修复：`Id3v2Parser.Metadata` 增加可选 `picture` 字节；新增 APIC(v2.3/v2.4)/PIC(v2.2) 帧解析，正确处理 ISO-8859-1 与 UTF-16 描述终止符；解析默认 `extractPicture=false` 避免并行扫描复制大图，专辑组装阶段前 3 轨调用时设 `true`；非 mp3/无 APIC 才回退 MMR。桌面代码不动。
+- 回归：Kotlin ImportScannerTest 覆盖 >4MB 标签、>16MB 拒绝、APIC 单/双字节描述、默认零拷贝；Kotlin **25/25 全绿**。Flutter **238 passed / 1 skipped / 0 failed**，analyze **31** 与基线一致。
+- 实机：卸载重装 1.54.1 APK，导入真实 RJ01650240；模糊态卡片出现有内容的封面纹理，关闭隐私模糊后清晰显示原版 DLsite 插画（含「CV:餅梨」），标题/艺术家/RJ/7轨均正确。
+- 发版：pubspec `1.54.1+59`；Android zip 29,828,388B，SHA-256 `8629d2b05304ef4a769c7b9d7eb0c0051245263da3b2b2ecf344181d05973403`；macOS zip 32,527,678B，SHA-256 `f24641734ddbe24aa88e84c0e9a60ecd5e9641f2b54e39ce532faa863b5f9884`，均 `unzip -t` 通过。

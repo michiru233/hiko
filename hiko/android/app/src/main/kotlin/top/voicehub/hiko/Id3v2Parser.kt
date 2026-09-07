@@ -19,13 +19,16 @@ object Id3v2Parser {
         val artist: String? = null,
         val album: String? = null,
         val albumArtist: String? = null,
-        val trackNumber: Int? = null
+        val trackNumber: Int? = null,
+        // 1.54.1：内嵌封面原始字节（APIC/PIC 帧首个）——MMR.embeddedPicture 对大标签/
+        // 非标准 APIC 常返回 null（RJ01650240 实锤 4.4MB 标签），自研解析与桌面同源
+        val picture: ByteArray? = null
     ) {
         fun isEmpty(): Boolean =
             title == null && artist == null && album == null && albumArtist == null && trackNumber == null
     }
 
-    fun parse(input: InputStream): Metadata? {
+    fun parse(input: InputStream, extractPicture: Boolean = false): Metadata? {
         val header = ByteArray(HEADER_SIZE)
         if (!input.readFully(header) || !header.copyOfRange(0, 3).contentEquals("ID3".toByteArray())) return null
         val major = header[3].toInt() and 0xff
@@ -34,10 +37,15 @@ object Id3v2Parser {
         if (size <= 0 || size > MAX_TAG_SIZE) return null
         val payload = ByteArray(size)
         if (!input.readFully(payload)) return null
-        return parsePayload(major, header[5].toInt() and 0xff, payload)
+        return parsePayload(major, header[5].toInt() and 0xff, payload, extractPicture)
     }
 
-    private fun parsePayload(major: Int, tagFlags: Int, source: ByteArray): Metadata? {
+    private fun parsePayload(
+        major: Int,
+        tagFlags: Int,
+        source: ByteArray,
+        extractPicture: Boolean,
+    ): Metadata? {
         val tagUnsynchronised = tagFlags and 0x80 != 0
         var offset = extendedHeaderSize(major, tagFlags, source) ?: return null
         var result = Metadata()
@@ -60,13 +68,20 @@ object Id3v2Parser {
             val frameUnsynchronised = major == 4 && frameFlags and 0x0002 != 0
             if (tagUnsynchronised || frameUnsynchronised) body = removeUnsynchronisation(body)
 
-            val value = decodeTextFrame(body)
+            val value = when (id) {
+                "TT2", "TIT2", "TP1", "TPE1", "TAL", "TALB", "TP2", "TPE2", "TRK", "TRCK" ->
+                    decodeTextFrame(body)
+                else -> null
+            }
             result = when (id) {
                 "TT2", "TIT2" -> result.copy(title = result.title ?: value)
                 "TP1", "TPE1" -> result.copy(artist = result.artist ?: value)
                 "TAL", "TALB" -> result.copy(album = result.album ?: value)
                 "TP2", "TPE2" -> result.copy(albumArtist = result.albumArtist ?: value)
                 "TRK", "TRCK" -> result.copy(trackNumber = result.trackNumber ?: parseTrackNumber(value))
+                "PIC", "APIC" -> result.copy(
+                    picture = if (extractPicture && result.picture == null) parsePicture(major, body) else result.picture,
+                )
                 else -> result
             }
             offset += headerSize + frameSize
@@ -81,6 +96,30 @@ object Id3v2Parser {
         declared ?: return null
         val total = if (major == 3) declared + 4 else declared
         return total.takeIf { it in 4..data.size }
+    }
+
+    /** APIC(v3/v4)/PIC(v2) 封面帧：enc + mime\0(或 3 字节 format) + type + desc\0 + 图片数据。
+     *  desc 终止符按 encoding 定长（UTF-16 为双字节 \0）；返回图片原始字节。 */
+    private fun parsePicture(major: Int, body: ByteArray): ByteArray? {
+        if (body.size < 4) return null
+        val encoding = body[0].toInt() and 0xff
+        var i = 1
+        if (major == 2) {
+            i = 4 // v2.2: 3 字节 image format，无 null 结尾
+        } else {
+            while (i < body.size && body[i] != 0.toByte()) i++
+            i++ // mime null
+        }
+        i++ // picture type
+        if (encoding == 1 || encoding == 2) {
+            while (i + 1 < body.size && !(body[i] == 0.toByte() && body[i + 1] == 0.toByte())) i += 2
+            i += 2
+        } else {
+            while (i < body.size && body[i] != 0.toByte()) i++
+            i++
+        }
+        if (i >= body.size) return null
+        return body.copyOfRange(i, body.size).takeIf { it.isNotEmpty() }
     }
 
     private fun decodeTextFrame(body: ByteArray): String? {

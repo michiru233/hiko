@@ -6,6 +6,7 @@ import java.nio.charset.Charset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ImportScannerTest {
@@ -22,6 +23,26 @@ class ImportScannerTest {
         assertEquals("音波彼女", meta.artist)
         assertEquals("はちみつ社", meta.albumArtist)
         assertEquals(3, meta.trackNumber)
+        // 默认不提取封面（并行解析零拷贝）
+        assertNull("默认不提取封面（并行解析零拷贝）", meta.picture)
+    }
+
+    @Test
+    fun extractsPictureFromApicWhenRequested() {
+        // 1.54.1 回归：MMR.embeddedPicture 对 4.4MB 大标签返回 null（RJ01650240 实锤），
+        // 封面必须走自研 APIC 解析（与桌面同源）；覆盖 enc=0 单字节 desc 与 UTF-16 双字节 desc。
+        val png = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3)
+
+        val latin = ImportScannerTestIds3v2.buildTagWithApic(png, utf16Desc = false)
+        val m1 = Id3v2Parser.parse(latin.inputStream(), extractPicture = true)
+        assertNotNull(m1)
+        assertEquals("雨夜耳語", m1!!.title)
+        assertTrue(m1.picture!!.contentEquals(png))
+
+        val utf16 = ImportScannerTestIds3v2.buildTagWithApic(png, utf16Desc = true)
+        val m2 = Id3v2Parser.parse(utf16.inputStream(), extractPicture = true)
+        assertNotNull(m2)
+        assertTrue(m2!!.picture!!.contentEquals(png))
     }
 
     @Test
@@ -181,9 +202,52 @@ class ImportScannerTest {
 
 /** 合成 ID3v2.3 字节流的测试夹具 */
 private object ImportScannerTestIds3v2 {
-    /** 生成总大小 >4MB 的标签：TIT2/TPE1/TPE2/TRCK + 占位 APIC（垃圾字节撑体积） */
-    fun buildOversizeTag(overshootBytes: Int): ByteArray {
+    /** 生成 v2.3 标签：TIT2 + APIC（png 字节；desc 按 utf16Desc 选单/双字节 null 结尾） */
+    fun buildTagWithApic(png: ByteArray, utf16Desc: Boolean): ByteArray {
         val frames = ByteArrayOutputStream()
+        fun frame(id: String, body: ByteArray) {
+            frames.write(id.toByteArray(Charsets.ISO_8859_1))
+            val size = body.size
+            frames.write(byteArrayOf(
+                (size ushr 24).toByte(), (size ushr 16).toByte(),
+                (size ushr 8).toByte(), size.toByte(),
+            ))
+            frames.write(byteArrayOf(0, 0))
+            frames.write(body)
+        }
+        val titleRaw = "雨夜耳語".toByteArray(Charsets.UTF_16LE)
+        val title = byteArrayOf(1, 0xFF.toByte(), 0xFE.toByte()) + titleRaw
+        frame("TIT2", title)
+        val apic = ByteArrayOutputStream()
+        // enc 决定 desc 编码:utf16Desc=true → enc=1(UTF-16,desc 以双字节 \0 结尾)
+        apic.write(if (utf16Desc) 1 else 0)
+        apic.write("image/png".toByteArray(Charsets.ISO_8859_1))
+        apic.write(0)
+        apic.write(3) // picture type: front cover
+        if (utf16Desc) {
+            apic.write(byteArrayOf(0, 0)) // 空 desc 的 UTF-16 双字节 null
+        } else {
+            apic.write(0) // 空 desc 单字节 null
+        }
+        apic.write(png)
+        frame("APIC", apic.toByteArray())
+
+        val payload = frames.toByteArray()
+        val out = ByteArrayOutputStream()
+        out.write(byteArrayOf(0x49, 0x44, 0x33, 0x03, 0x00, 0x00))
+        val size = payload.size
+        out.write(byteArrayOf(
+            ((size ushr 21) and 0x7f).toByte(),
+            ((size ushr 14) and 0x7f).toByte(),
+            ((size ushr 7) and 0x7f).toByte(),
+            (size and 0x7f).toByte(),
+        ))
+        out.write(payload)
+        return out.toByteArray()
+    }
+
+    /** 生成总大小 >4MB 的标签：TIT2/TPE1/TPE2/TRCK + 占位 APIC（垃圾字节撑体积） */
+    fun buildOversizeTag(overshootBytes: Int): ByteArray {        val frames = ByteArrayOutputStream()
 
         fun frame(id: String, body: ByteArray) {
             frames.write(id.toByteArray(Charsets.ISO_8859_1))

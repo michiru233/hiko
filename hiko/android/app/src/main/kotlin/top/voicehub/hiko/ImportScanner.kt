@@ -477,8 +477,19 @@ object ImportScanner {
     )
 
     /** 提取单轨内嵌封面并压缩。1.54:封面不再逐文件提取(原 95% 白算 + 大图并行解码 OOM
-     *  是"部分专辑没封面"的根源),组专辑后仅对排序前 3 轨调用。 */
+     *  是"部分专辑没封面"的根源),组专辑后仅对排序前 3 轨调用。
+     *  1.54.1:mp3 优先自研 ID3 APIC 解析(与桌面同源)——MMR.embeddedPicture 对大标签/
+     *  非标准 APIC 常返回 null(RJ01650240 的 4.4MB 标签实锤);非 mp3 或无 APIC 时 MMR 兜底。 */
     private fun embeddedCoverFor(context: Context, uri: Uri): String? {
+        if (uri.toString().lowercase().endsWith(".mp3")) {
+            try {
+                context.contentResolver.openInputStream(uri)?.use { ins ->
+                    val picture = Id3v2Parser.parse(ins, extractPicture = true)?.picture
+                    if (picture != null && picture.isNotEmpty()) return coverDataUrl(picture)
+                }
+            } catch (_: Exception) {
+            }
+        }
         val retriever = MediaMetadataRetriever()
         return try {
             retriever.setDataSource(context, uri)
