@@ -1,10 +1,10 @@
 # Kikoeru 仓库约定（AGENTS）
 
-本仓库是 Kikoeru 音声管理器。**当前主线：Flutter 重写（`hiko/` 子目录，专注 macOS + Windows 桌面版）**。
+本仓库是 Kikoeru 音声管理器。**当前主线：Flutter 重写（`hiko/` 子目录，覆盖 macOS / Windows 桌面端与 Android）**。
 仓库根目录保留旧版 Electron + Capacitor 共享 UI 代码（macOS/Web + Android），仅作参考，**新功能一律写进 `hiko/`**。
 
 ## ⚠️ 核心开发红线（严格遵守）
-- **暂停 Android 版本开发**：**除非用户在后续对话中明确且主动要求开发/适配安卓版本，否则绝对不要主动去碰、去修改任何 Android 相关的代码或配置文件**（包括 `hiko/android/`、Kotlin 原生插件、SAF 导入适配、Android 模拟器测试等）。所有开发、优化、测试与发版工作均全神贯注于 **macOS / Windows 桌面端**。
+- **Android 已恢复开发（自 1.53.0）**：用户已明确要求恢复 Android 适配。新功能默认同时评估桌面与 Android；平台差异走 `lib/platform/` 抽象与 `hiko/android/` 原生插件，不要再把 Android 当暂停线。Windows 仍需在 Windows 机器构建验证。
 
 ## Flutter 版（当前主线）
 
@@ -12,10 +12,11 @@
 cd hiko
 flutter run -d macos      # macOS 桌面开发
 flutter run -d windows    # Windows（需 Windows 机器）
+flutter run -d emulator-5554   # Android 模拟器（AVD：kikoeru_test）
 flutter test              # 单测（RJ 提取/自然排序/repairText/模型往返/播放模式队列）
 ```
 
-- **版本号与封包规则（重要）**：每次修复 bug / 发新功能必须 bump `hiko/pubspec.yaml` 的 `version`（1.x.0）。**改动完成后必须自动执行 Release 封包构建（macOS: `flutter build macos --release`），并在交付时明确提供 App 所在路径**。
+- **版本号与封包规则（重要）**：每次修复 bug / 发新功能必须 bump `hiko/pubspec.yaml` 的 `version`（1.x.0）。**改动完成后必须自动执行 Release 封包构建（macOS: `flutter build macos --release`；Android: `flutter build apk --release`），并在交付时明确提供产物路径**。
 - **架构**：`lib/models/` 数据模型；`lib/data/` 存储与扫描（library.json 原子写 + 每 5 张增量保存）；`lib/playback/` 桌面播放引擎；`lib/ui/` 桌面 UI（三栏布局、侧边栏、播放条等）。
 - **播放模式**：列表循环/单曲循环/随机（专辑内避免连播）/专辑循环（跨专辑接续）。
 - **GitHub 自动备份与 Release 发布（强制）**：每次完成代码更新、bug 修复或新功能开发并验证通过后：

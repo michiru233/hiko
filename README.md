@@ -2,7 +2,7 @@
 
 本地优先的音声库管理器，面向 DLsite 音声作品。选一个文件夹整库导入，它会把散在硬盘各处的专辑收进一个可搜索的本地库，记住你听到哪里，下次接着放。
 
-目前提供 **macOS 版**。Windows 与 Android 版在开发计划中，代码与数据模型已按多平台设计。
+目前提供 **macOS 与 Android 版**。Windows 版在开发计划中，代码与数据模型已按多平台设计。
 
 ## 界面预览
 
@@ -69,11 +69,11 @@
 
 - **macOS**：当前版本，持续维护
 - **Windows**：开发计划中，构建与安装包流程已具备
-- **Android**：暂停开发，现有代码仅作保留参考，恢复前不纳入验证与发布
+- **Android**：已恢复开发并随 GitHub Releases 发布 APK；导入走 SAF，内嵌封面由原生 ID3 APIC 解析
 
 ## 下载
 
-macOS 安装包在 [Releases](https://github.com/michiru233/hiko/releases) 页面。
+macOS 与 Android 安装包在 [Releases](https://github.com/michiru233/hiko/releases) 页面。当前现役版本为 [v1.54.1](https://github.com/michiru233/hiko/releases/tag/v1.54.1)。
 
 ## 开发
 
@@ -81,8 +81,10 @@ macOS 安装包在 [Releases](https://github.com/michiru233/hiko/releases) 页�
 cd hiko
 flutter run -d macos       # macOS 桌面
 flutter run -d windows     # Windows 桌面（需 Windows 机器）
+flutter run -d emulator-5554   # Android 模拟器（AVD：kikoeru_test）
 flutter test               # 单元测试
 flutter build macos --release
+flutter build apk --release
 ```
 
 代码在 [`hiko/`](hiko/) 子目录，数据模型、扫描存储、播放引擎和桌面 UI 分层放在 `lib/models`、`lib/data`、`lib/playback`、`lib/ui`。仓库根目录保留的旧版 Electron + Capacitor 代码仅作参考，不再新增功能。

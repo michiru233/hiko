@@ -1,6 +1,6 @@
 # Hiko · 音声收藏室
 
-本地优先的音声库管理器（DLsite 音声作品），**Flutter 重写版**，当前主线覆盖 **macOS + Windows 桌面端**；Android 代码保留但暂停开发。
+本地优先的音声库管理器（DLsite 音声作品），**Flutter 重写版**，当前主线覆盖 **macOS / Windows 桌面端与 Android**。
 
 > 仓库根目录保留旧版 Electron + Capacitor 代码（参考用）；当前主线在 `hiko/`。
 
@@ -21,12 +21,12 @@
 - **主题**：浅/深 + 6 强调色；侧栏折叠；macOS 记住窗口大小/位置（重启恢复）+ 菜单栏全中文化（⌘O 导入、⌘, 设置、检查更新）
 - **清理失效记录**、打开数据目录、导入/刮削进度条、确认对话框、Toast
 
-## 平台能力（Android 条目为保留代码状态，不代表当前发布）
+## 平台能力
 
 | 能力 | macOS | Windows | Android |
 |---|---|---|---|
 | 导入 | 文件夹选择对话框 | 文件夹选择对话框 | SAF 目录选择（持久授权） |
-| 元数据 | audio_metadata_reader | audio_metadata_reader | MediaMetadataRetriever |
+| 元数据 | audio_metadata_reader | audio_metadata_reader | 自研 ID3 APIC + MediaMetadataRetriever 兜底 |
 | 播放 | AVPlayer (just_audio) | libmpv (just_audio_media_kit) | ExoPlayer (just_audio) |
 | 后台播放/通知/锁屏 | — | — | ✅ audio_service 前台服务 |
 | 删除源文件 | ✅ | ✅ | ✅ SAF |
@@ -37,7 +37,7 @@
 
 - **macOS**：当前发布平台，持续维护
 - **Windows**：当前主线目标，需在 Windows 机器构建验证
-- **Android**：暂停开发；现有代码与历史测试仅作保留参考，除非明确恢复 Android 工作，否则不纳入本线验证与发布
+- **Android**：已恢复开发；导入走 SAF，内嵌封面由原生 ID3 APIC 解析，随 GitHub Releases 发布 APK
 
 ## 开发
 
@@ -45,8 +45,10 @@
 cd hiko
 flutter run -d macos      # macOS 桌面
 flutter run -d windows    # Windows 桌面（需 Windows 机器）
+flutter run -d emulator-5554   # Android 模拟器（AVD：kikoeru_test）
 flutter test              # 单元测试
 flutter build macos --release
+flutter build apk --release
 ```
 
 ## 打包
@@ -57,7 +59,7 @@ scripts/build-macos-dmg.sh   # macOS：release 构建 + dmg
 flutter build windows        # Windows：需 Windows 机器
 ```
 
-产物：`dist/Hiko-<version>.dmg`（dmg 路线）、`hiko/hiko-v<version>-macos.zip`（GitHub Release 路线，1.45.0 起落在 `hiko/` 并已 gitignore）。
+产物：`dist/Hiko-<version>.dmg`（dmg 路线）、`hiko/hiko-v<version>-macos.zip` 与 `hiko/hiko-v<version>-android.zip`（GitHub Release 路线，落在 `hiko/` 并已 gitignore）。
 
 ## 数据
 
@@ -69,5 +71,5 @@ flutter build windows        # Windows：需 Windows 机器
 ## 测试注意
 
 - 内容以日文为主（DLsite），测试覆盖 UTF-8 与 Shift-JIS 编码标签
-- Android 测试与发布按仓库规则暂停，恢复前不执行模拟器或 APK 流程
-- 版本规则：每次修复/发版 bump `pubspec.yaml` version（桌面 release 需同步构建）
+- Android 测试覆盖 SAF 导入、content:// 播放与大 ID3 内嵌封面；模拟器 AVD 名 `kikoeru_test`
+- 版本规则：每次修复/发版 bump `pubspec.yaml` version（桌面与 Android 同步封包）
