@@ -46,3 +46,9 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Release artifacts (published to GitHub Releases, not committed)
+*.apk
+*.zip
+*.ipa
+*.aab
