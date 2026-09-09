@@ -26,6 +26,7 @@ class AppSettings {
   final double gridColumns; // 主界面每行专辑数；0=自动（按宽度），档位 4/5/6/7/8/10/12（1.43）
   final double mobileGridColumns; // 移动端每行专辑数，档位 2/3/4，默认 2（1.54，与桌面独立）
   final double fontScale; // 字号缩放比例，档位 0.85/1.0/1.15/1.30，默认 1.0（1.56）
+  final double lyricsFontScale; // 歌词字号缩放比例，档位 0.85/1.0/1.15/1.30/1.50，默认 1.0（1.61）
   final String scrapeProxy;
   final List<String> musicFolders; // 常驻音乐目录（桌面：路径；Android：SAF tree URI）
 
@@ -43,6 +44,7 @@ class AppSettings {
     this.gridColumns = 0,
     this.mobileGridColumns = 2,
     this.fontScale = 1.0,
+    this.lyricsFontScale = 1.0,
     this.scrapeProxy = '',
     this.musicFolders = const [],
   });
@@ -71,6 +73,7 @@ class AppSettings {
     double? gridColumns,
     double? mobileGridColumns,
     double? fontScale,
+    double? lyricsFontScale,
     String? scrapeProxy,
     List<String>? musicFolders,
   }) =>
@@ -88,6 +91,7 @@ class AppSettings {
         gridColumns: gridColumns ?? this.gridColumns,
         mobileGridColumns: mobileGridColumns ?? this.mobileGridColumns,
         fontScale: fontScale ?? this.fontScale,
+        lyricsFontScale: lyricsFontScale ?? this.lyricsFontScale,
         scrapeProxy: scrapeProxy ?? this.scrapeProxy,
         musicFolders: musicFolders ?? this.musicFolders,
       );
@@ -126,6 +130,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kGridColumns = 'hiko-grid-columns';
   static const _kMobileGridColumns = 'hiko-mobile-grid-columns';
   static const _kFontScale = 'hiko-font-scale';
+  static const _kLyricsFontScale = 'hiko-lyrics-font-scale';
   static const _kProxy = 'hiko-scrape-proxy';
   static const _kMusicFolders = 'hiko-music-folders';
 
@@ -174,6 +179,12 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static double _normalizeFontScale(double? val) =>
       val != null && _validFontScales.contains(val) ? val : 1.0;
 
+  /// 歌词字号缩放档位：0.85 (小) / 1.0 (标准) / 1.15 (大) / 1.30 (超大) / 1.50 (巨大)
+  static const _validLyricsFontScales = [0.85, 1.0, 1.15, 1.30, 1.50];
+
+  static double _normalizeLyricsFontScale(double? val) =>
+      val != null && _validLyricsFontScales.contains(val) ? val : 1.0;
+
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     state = AppSettings(
@@ -192,6 +203,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       mobileGridColumns:
           _normalizeMobileGridColumns(prefs.getDouble(_kMobileGridColumns)),
       fontScale: _normalizeFontScale(prefs.getDouble(_kFontScale)),
+      lyricsFontScale: _normalizeLyricsFontScale(prefs.getDouble(_kLyricsFontScale)),
       scrapeProxy: prefs.getString(_kProxy) ?? '',
       musicFolders: prefs.getStringList(_kMusicFolders) ?? const [],
     );
@@ -247,6 +259,13 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     final valid = _normalizeFontScale(scale);
     return _save(_kFontScale, valid, state.copyWith(fontScale: valid));
   }
+
+  /// 歌词字号缩放比例：0.85/1.0/1.15/1.30/1.50（1.61）
+  Future<void> setLyricsFontScale(double scale) {
+    final valid = _normalizeLyricsFontScale(scale);
+    return _save(_kLyricsFontScale, valid, state.copyWith(lyricsFontScale: valid));
+  }
+
   Future<void> setScrapeProxy(String proxy) =>
       _save(_kProxy, proxy, state.copyWith(scrapeProxy: proxy));
 

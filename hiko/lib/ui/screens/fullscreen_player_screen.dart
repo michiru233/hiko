@@ -32,9 +32,11 @@ class _FullscreenPlayerScreenState
     extends ConsumerState<FullscreenPlayerScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _rotationController;
+  final ScrollController _lyricsScrollController = ScrollController();
   bool _showLyrics = false;
   bool _dragging = false;
   double _dragValue = 0;
+  int _lastScrolledIndex = -1;
 
   @override
   void initState() {
@@ -49,6 +51,7 @@ class _FullscreenPlayerScreenState
   @override
   void dispose() {
     _rotationController.dispose();
+    _lyricsScrollController.dispose();
     super.dispose();
   }
 
@@ -120,26 +123,26 @@ class _FullscreenPlayerScreenState
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             // 中央区域：黑胶唱片层或歌词层
             Expanded(
               child: _showLyrics
                   ? _buildLyricsView(theme, isDark)
                   : _buildVinylView(album, theme, isDark, state.playing),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             // 曲目信息
             _buildTrackInfo(album, track, theme, isDark),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             // 进度条
             _buildProgressBar(position, duration, theme, isDark),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             // 播放控制
             _buildPlaybackControls(state, theme, isDark),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             // 三核心功能键
             _buildFunctionButtons(state, settings, theme, isDark),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
           ],
         ),
       ),
@@ -251,9 +254,11 @@ class _FullscreenPlayerScreenState
     );
   }
 
-  /// 歌词视图
+  /// 歌词视图（带自动滚动）
   Widget _buildLyricsView(ThemeData theme, bool isDark) {
     final lyrics = ref.watch(lyricsProvider);
+    final settings = ref.watch(settingsProvider);
+    
     if (!lyrics.hasLyrics) {
       return Center(
         child: Text(
@@ -268,33 +273,75 @@ class _FullscreenPlayerScreenState
 
     final lines = lyrics.lines;
     final currentIndex = lyrics.activeIndex;
+    final lyricsFontScale = settings.lyricsFontScale;
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 40),
-      itemCount: lines.length,
-      itemBuilder: (context, index) {
-        final isCurrent = index == currentIndex;
-        final line = lines[index];
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Text(
-            line.text,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: isCurrent ? 18 : 15,
-              fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
-              color: isCurrent
-                  ? (isDark ? HikoColors.darkInk : HikoColors.lightInk)
-                  : (isDark ? HikoColors.darkMuted : HikoColors.lightMuted),
-              height: 1.8,
-            ),
-          ),
-        );
+    // 自动滚动到当前行
+    if (currentIndex >= 0 && currentIndex != _lastScrolledIndex && lyrics.autoScrollEnabled) {
+      _lastScrolledIndex = currentIndex;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_lyricsScrollController.hasClients) {
+          // 每行高度约为：字体大小 * 行高 + padding
+          // 当前行：18 * 1.8 + 16 = 48.4，非当前行：15 * 1.8 + 16 = 43
+          // 简化计算：平均每行 45，滚动到居中位置
+          final itemHeight = 45.0 * lyricsFontScale;
+          final screenHeight = MediaQuery.of(context).size.height;
+          final targetOffset = (currentIndex * itemHeight) - (screenHeight / 2) + (itemHeight / 2);
+          
+          _lyricsScrollController.animateTo(
+            targetOffset.clamp(0.0, _lyricsScrollController.position.maxScrollExtent),
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    }
+
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is UserScrollNotification) {
+          // 用户手动滚动时暂停自动跟随
+          ref.read(lyricsProvider.notifier).userScrolled();
+        }
+        return true;
       },
+      child: Stack(
+        children: [
+          ListView.builder(
+            controller: _lyricsScrollController,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+            itemCount: lines.length,
+            itemBuilder: (context, index) {
+              final isCurrent = index == currentIndex;
+              final line = lines[index];
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  line.text,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: (isCurrent ? 18 : 15) * lyricsFontScale,
+                    fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
+                    color: isCurrent
+                        ? (isDark ? HikoColors.darkInk : HikoColors.lightInk)
+                        : (isDark ? HikoColors.darkMuted : HikoColors.lightMuted),
+                    height: 1.8,
+                  ),
+                ),
+              );
+            },
+          ),
+          // 歌词字号调节按钮（右下角）
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: _buildLyricsFontScaleButton(settings, theme, isDark),
+          ),
+        ],
+      ),
     );
   }
 
-  /// 曲目信息
+  /// 曲目信息（减小字号）
   Widget _buildTrackInfo(
     Album album,
     dynamic track,
@@ -308,7 +355,7 @@ class _FullscreenPlayerScreenState
           Text(
             track?.name ?? album.title,
             style: TextStyle(
-              fontSize: 22,
+              fontSize: 18,
               fontWeight: FontWeight.w700,
               color: isDark ? HikoColors.darkInk : HikoColors.lightInk,
             ),
@@ -316,11 +363,11 @@ class _FullscreenPlayerScreenState
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             album.artist,
             style: TextStyle(
-              fontSize: 16,
+              fontSize: 15,
               color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
             ),
             textAlign: TextAlign.center,
@@ -328,6 +375,31 @@ class _FullscreenPlayerScreenState
             overflow: TextOverflow.ellipsis,
           ),
         ],
+      ),
+    );
+  }
+
+  /// 歌词字号调节按钮
+  Widget _buildLyricsFontScaleButton(
+    AppSettings settings,
+    ThemeData theme,
+    bool isDark,
+  ) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.black.withValues(alpha: 0.5)
+            : Colors.white.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: IconButton(
+        icon: Icon(
+          Icons.text_fields,
+          color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+          size: 20,
+        ),
+        onPressed: () => _showLyricsFontScaleDialog(settings, theme, isDark),
+        tooltip: '调整歌词字号',
       ),
     );
   }
@@ -532,6 +604,46 @@ class _FullscreenPlayerScreenState
                 color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 歌词字号调节对话框
+  Future<void> _showLyricsFontScaleDialog(
+    AppSettings settings,
+    ThemeData theme,
+    bool isDark,
+  ) async {
+    final scales = [
+      (0.85, '小'),
+      (1.0, '标准'),
+      (1.15, '大'),
+      (1.30, '超大'),
+      (1.50, '巨大'),
+    ];
+
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('歌词字号', style: TextStyle(fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (scale, label) in scales)
+              RadioListTile<double>(
+                title: Text(label),
+                value: scale,
+                groupValue: settings.lyricsFontScale,
+                onChanged: (value) {
+                  if (value != null) {
+                    ref.read(settingsProvider.notifier).setLyricsFontScale(value);
+                    Navigator.pop(context);
+                    showHikoToast(context, '歌词字号已设为 $label');
+                  }
+                },
+              ),
           ],
         ),
       ),
