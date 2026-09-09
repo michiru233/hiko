@@ -1004,6 +1004,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildTopbar(ThemeData theme, bool isMobile) {
+    final iconSize = isMobile ? 24.0 : 18.0;
     return Padding(
       padding: EdgeInsets.symmetric(
         horizontal: isMobile ? 16 : 48,
@@ -1030,26 +1031,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 style: TextStyle(color: theme.hintColor.withValues(alpha: 0.5)),
               ),
             ),
+            Text(
+              _view,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
           ],
-          Text(
-            _view,
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-          ),
           const Spacer(),
-          // 1.49「定位当前播放」：无播放置灰
+          // 移动端：4个统一的图标按钮，右对齐紧凑排列
           IconButton(
-            icon: const Icon(Icons.center_focus_strong_rounded, size: 18),
+            icon: Icon(Icons.center_focus_strong_rounded, size: iconSize),
             tooltip: '定位当前播放',
             onPressed: ref.watch(playbackProvider).album == null
                 ? null
                 : _locatePlayingAlbum,
           ),
+          if (isMobile) const SizedBox(width: 8),
           IconButton(
             icon: Icon(
               ref.watch(settingsProvider).theme == 'dark'
                   ? Icons.dark_mode_outlined
                   : Icons.light_mode_outlined,
-              size: 18,
+              size: iconSize,
             ),
             tooltip: '切换主题',
             onPressed: () {
@@ -1059,7 +1061,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   .setTheme(s.theme == 'dark' ? 'light' : 'dark');
             },
           ),
-          // 1.52 防社死隐私模糊：一键模糊全部封面
+          if (isMobile) const SizedBox(width: 8),
           ValueListenableBuilder<bool>(
             valueListenable: privacyBlur,
             builder: (_, blurred, _) => IconButton(
@@ -1067,24 +1069,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 blurred
                     ? Icons.visibility_off_outlined
                     : Icons.visibility_outlined,
-                size: 18,
+                size: iconSize,
               ),
               tooltip: blurred ? '关闭隐私模糊' : '隐私模糊（⌘⇧H）',
               onPressed: _togglePrivacyBlur,
             ),
           ),
-          const SizedBox(width: 4),
-          FilledButton.tonalIcon(
+          if (isMobile) const SizedBox(width: 8),
+          IconButton(
+            icon: Icon(Icons.shuffle_rounded, size: iconSize),
+            tooltip: '随机播放',
             onPressed: _playRandomAlbum,
-            icon: const Icon(Icons.shuffle_rounded, size: 16),
-            label: Text(isMobile ? '随机' : '随机播放'),
           ),
-          const SizedBox(width: 4),
-          FilledButton.tonalIcon(
-            onPressed: _importFolder,
-            icon: const Icon(Icons.upload, size: 16),
-            label: Text(isMobile ? '导入' : '导入'),
-          ),
+          // 桌面端保留原有的导入按钮
+          if (!isMobile) ...[
+            const SizedBox(width: 4),
+            FilledButton.tonalIcon(
+              onPressed: _importFolder,
+              icon: const Icon(Icons.upload, size: 16),
+              label: const Text('导入'),
+            ),
+          ],
         ],
       ),
     );
