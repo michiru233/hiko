@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -11,11 +13,12 @@ import '../../utils/rj.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
 import '../lyrics/drawer_lyrics_view.dart';
+import '../theme.dart';
 import 'category_dialog.dart';
 import 'rating_dialog.dart';
 import 'toast.dart';
 
-/// 详情抽屉（对应旧版 aside.details）：封面、标签、RJ 号、曲目列表、进度、收藏、从头播放
+/// 详情抽屉：沉浸式玻璃拟态界面（背景大图虚化 + 拟态高光药丸按钮 + 晶透曲目项）
 class DetailDrawer extends ConsumerStatefulWidget {
   const DetailDrawer({super.key, required this.album, required this.onClose});
 
@@ -64,27 +67,64 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
 
     return Container(
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(left: BorderSide(color: theme.dividerColor)),
+        color: isDark ? HikoColors.darkGlassSurface : HikoColors.lightGlassSurface,
+        border: Border(
+          left: BorderSide(
+            color: isDark ? HikoColors.darkGlassBorder : HikoColors.lightGlassBorder,
+            width: 1,
+          ),
+        ),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.07), blurRadius: 35, offset: const Offset(-15, 0)),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.1),
+            blurRadius: 40,
+            offset: const Offset(-15, 0),
+          ),
         ],
       ),
       child: Stack(
         children: [
+          // 沉浸式虚化封面氛围背板 (Ambient Cover Backdrop)
+          Positioned(
+            top: -60,
+            right: -60,
+            width: 320,
+            height: 320,
+            child: IgnorePointer(
+              child: Opacity(
+                opacity: isDark ? 0.22 : 0.16,
+                child: ImageFiltered(
+                  imageFilter: ImageFilter.blur(sigmaX: 55, sigmaY: 55),
+                  child: AlbumCover(album: album),
+                ),
+              ),
+            ),
+          ),
           Positioned.fill(
             child: SelectionArea(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(32),
+                padding: const EdgeInsets.all(28),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 封面
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: AspectRatio(
-                        aspectRatio: 1,
-                        child: AlbumCover(album: album),
+                    // 封面（带玻璃投光阴影与精细圆角）
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15),
+                            blurRadius: 26,
+                            offset: const Offset(0, 12),
+                          ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: AspectRatio(
+                          aspectRatio: 1,
+                          child: AlbumCover(album: album),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 22),
@@ -103,9 +143,16 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                                   .updateAlbum(album.id, (a) => a.copyWith(genre: chosen));
                             }
                           },
-                          borderRadius: BorderRadius.circular(4),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+                          borderRadius: BorderRadius.circular(999),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: theme.colorScheme.primary.withValues(alpha: 0.25),
+                              ),
+                            ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
@@ -113,7 +160,7 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                                   '${album.genre.toUpperCase()} · ALBUM ${album.id.padLeft(2, '0')}',
                                   style: TextStyle(
                                     fontSize: 10,
-                                    letterSpacing: 1.2,
+                                    letterSpacing: 1.1,
                                     fontWeight: FontWeight.w700,
                                     color: theme.colorScheme.primary,
                                   ),
@@ -126,41 +173,66 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 7),
+                    const SizedBox(height: 10),
                     Text(
                       album.title,
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.7),
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.5, height: 1.25),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Text(
                       '${album.artist} · ${album.rjCode ?? '本地导入'}',
                       style: TextStyle(fontSize: 12, color: theme.hintColor),
                     ),
                     const SizedBox(height: 20),
-                    // 操作（窄窗口下自动换行，避免单个 Row 溢出抽屉右缘被裁剪）
+                    // 操作胶囊按钮
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [
                         FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                            elevation: 0,
+                          ),
                           onPressed: () => ref.read(playbackProvider.notifier).playAlbum(album, index: 0),
-                          icon: const Icon(Icons.play_arrow, size: 16),
-                          label: const Text('从头播放', style: TextStyle(fontSize: 11)),
+                          icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                          label: const Text('从头播放', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                         ),
                         OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                            side: BorderSide(
+                              color: isDark ? HikoColors.darkGlassBorder : HikoColors.lightGlassBorderSubtle,
+                            ),
+                            backgroundColor: isDark
+                                ? Colors.white.withValues(alpha: 0.05)
+                                : Colors.black.withValues(alpha: 0.03),
+                          ),
                           onPressed: () async {
                             await ref
                                 .read(libraryProvider.notifier)
                                 .updateAlbum(album.id, (a) => a.copyWith(favorite: !a.favorite));
                           },
                           icon: Icon(
-                            album.favorite ? Icons.favorite : Icons.favorite_border,
-                            size: 14,
+                            album.favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                            size: 15,
                             color: album.favorite ? const Color(0xFFD34C44) : null,
                           ),
                           label: Text(album.favorite ? '已收藏' : '收藏', style: const TextStyle(fontSize: 11)),
                         ),
                         OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                            side: BorderSide(
+                              color: isDark ? HikoColors.darkGlassBorder : HikoColors.lightGlassBorderSubtle,
+                            ),
+                            backgroundColor: isDark
+                                ? Colors.white.withValues(alpha: 0.05)
+                                : Colors.black.withValues(alpha: 0.03),
+                          ),
                           onPressed: () async {
                             final rating = await showRatingDialog(
                               context,
@@ -173,7 +245,7 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                           },
                           icon: Icon(
                             album.rating > 0 ? Icons.star_rounded : Icons.star_outline_rounded,
-                            size: 14,
+                            size: 15,
                             color: album.rating > 0 ? const Color(0xFFE8B33C) : null,
                           ),
                           label: Text(
@@ -182,6 +254,16 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                           ),
                         ),
                         OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                            side: BorderSide(
+                              color: isDark ? HikoColors.darkGlassBorder : HikoColors.lightGlassBorderSubtle,
+                            ),
+                            backgroundColor: isDark
+                                ? Colors.white.withValues(alpha: 0.05)
+                                : Colors.black.withValues(alpha: 0.03),
+                          ),
                           onPressed: () async {
                             try {
                               final result = await ref
@@ -206,7 +288,7 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                               }
                             }
                           },
-                          icon: const Icon(Icons.refresh, size: 14),
+                          icon: const Icon(Icons.refresh_rounded, size: 15),
                           label: const Text('整理专辑', style: TextStyle(fontSize: 11)),
                         ),
                       ],
@@ -219,17 +301,17 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                     if (album.tags.isNotEmpty) ...[
                       const SizedBox(height: 12),
                       Wrap(
-                        spacing: 5,
-                        runSpacing: 5,
+                        spacing: 6,
+                        runSpacing: 6,
                         children: [
                           for (final t in album.tags)
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFE3F4F2),
-                                borderRadius: BorderRadius.circular(4),
+                                color: const Color(0xFFE3F4F2).withValues(alpha: isDark ? 0.2 : 0.8),
+                                borderRadius: BorderRadius.circular(6),
                               ),
-                              child: Text(t, style: const TextStyle(fontSize: 9, color: Color(0xFF2E8A8F))),
+                              child: Text(t, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: Color(0xFF2E8A8F))),
                             ),
                         ],
                       ),
@@ -241,13 +323,16 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                         style: TextStyle(fontSize: 10, color: theme.hintColor),
                       ),
                     ],
-                    const SizedBox(height: 18),
-                    // 双 Tab 导航：曲目列表 vs 歌词字幕
+                    const SizedBox(height: 20),
+                    // 双 Tab 导航：曲目列表 vs 歌词字幕（胶囊分段开关）
                     Container(
-                      padding: const EdgeInsets.all(3),
+                      padding: const EdgeInsets.all(4),
                       decoration: BoxDecoration(
-                        color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
-                        borderRadius: BorderRadius.circular(8),
+                        color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isDark ? HikoColors.darkGlassBorderSubtle : HikoColors.lightGlassBorderSubtle,
+                        ),
                       ),
                       child: Row(
                         children: [
@@ -272,7 +357,7 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 14),
                     // Tab 内容切换
                     if (_selectedTabIndex == 0) ...[
                       for (var i = 0; i < album.tracks.length; i++)
@@ -301,15 +386,23 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
               ),
             ),
           ),
-          // 关闭按钮
+          // 关闭按钮（玻璃悬浮微圆角）
           Positioned(
             right: 14,
             top: 14,
-            child: IconButton(
-              onPressed: widget.onClose,
-              icon: const Icon(Icons.close, size: 15),
-              style: IconButton.styleFrom(
-                backgroundColor: Colors.black.withValues(alpha: 0.05),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: IconButton(
+                  onPressed: widget.onClose,
+                  icon: const Icon(Icons.close_rounded, size: 16),
+                  style: IconButton.styleFrom(
+                    backgroundColor: isDark
+                        ? Colors.white.withValues(alpha: 0.12)
+                        : Colors.black.withValues(alpha: 0.06),
+                  ),
+                ),
               ),
             ),
           ),
@@ -443,12 +536,28 @@ class _TrackRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final color = active ? theme.colorScheme.primary : theme.colorScheme.onSurface;
     return InkWell(
       onTap: onTap,
       mouseCursor: SystemMouseCursors.click,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 9),
+      borderRadius: BorderRadius.circular(10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+        margin: const EdgeInsets.symmetric(vertical: 2),
+        decoration: BoxDecoration(
+          color: active
+              ? theme.colorScheme.primary.withValues(alpha: isDark ? 0.16 : 0.08)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: active
+              ? Border.all(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                  width: 1,
+                )
+              : null,
+        ),
         child: Row(
           children: [
             InkWell(
@@ -459,14 +568,16 @@ class _TrackRow extends StatelessWidget {
                 width: 26,
                 height: 26,
                 decoration: BoxDecoration(
-                  color: active ? theme.colorScheme.primary : theme.colorScheme.surfaceContainerHighest,
+                  color: active
+                      ? theme.colorScheme.primary
+                      : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05)),
                   shape: BoxShape.circle,
                 ),
                 child: Center(
                   // Material 图标：与播放条统一，避免文字符号在 Android 字体渲染异常
                   child: Icon(
                     playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                    size: 12,
+                    size: 13,
                     color: active ? theme.colorScheme.onPrimary : theme.hintColor,
                   ),
                 ),
@@ -474,10 +585,14 @@ class _TrackRow extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             SizedBox(
-              width: 17,
+              width: 20,
               child: Text(
                 (index + 1).toString().padLeft(2, '0'),
-                style: TextStyle(fontSize: 10, color: theme.hintColor),
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: active ? theme.colorScheme.primary : theme.hintColor,
+                ),
               ),
             ),
             const SizedBox(width: 8),
@@ -486,12 +601,20 @@ class _TrackRow extends StatelessWidget {
                 track.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, color: color, fontWeight: active ? FontWeight.w600 : FontWeight.w400),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: color,
+                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                ),
               ),
             ),
             Text(
               track.duration > 0 ? formatTime(track.duration) : '--:--',
-              style: TextStyle(fontSize: 10, color: theme.hintColor),
+              style: TextStyle(
+                fontSize: 10,
+                color: active ? theme.colorScheme.primary : theme.hintColor,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
             ),
           ],
         ),

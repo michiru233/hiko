@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,9 +13,11 @@ import '../../playback/playback_rules.dart';
 import '../../playback/sleep_timer.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
+import '../theme.dart';
+import 'glass_container.dart';
 import 'toast.dart';
 
-/// 底部播放条：封面 + 标题/艺人 + 控制 + 进度 + 播放模式 + 音量（对应旧版 footer.player）。
+/// 底部播放条：玻璃拟态悬浮胶囊设计（毛玻璃模糊背景 + 双层边框 + 环境反光）
 /// compact（移动端）为两行布局：控件在上，全宽进度条下移成一行。
 class PlayerBar extends ConsumerStatefulWidget {
   const PlayerBar({super.key, this.onCoverTap, this.compact = false});
@@ -47,6 +50,7 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
     final state = ref.watch(playbackProvider);
     final settings = ref.watch(settingsProvider);
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final album = state.album;
     final track = state.currentTrack;
 
@@ -80,43 +84,61 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
       ],
     );
 
-    return Container(
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
-        border: Border(top: BorderSide(color: theme.dividerColor)),
+    final innerContent = widget.compact
+        ? Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              topRow,
+              _buildTimeline(theme, position, duration),
+            ],
+          )
+        : Row(
+            children: [
+              _buildCover(theme, album),
+              const SizedBox(width: 15),
+              _buildMeta(theme, state, album, track),
+              const SizedBox(width: 18),
+              _buildControls(theme, state),
+              const SizedBox(width: 18),
+              Expanded(child: _buildTimeline(theme, position, duration)),
+              const SizedBox(width: 18),
+              _buildModeButton(theme, state),
+              const SizedBox(width: 14),
+              _buildSleepButton(theme, state),
+              const SizedBox(width: 14),
+              _buildSpeedButton(theme, settings),
+              if (Platform.isMacOS) ...[
+                const SizedBox(width: 14),
+                _buildDesktopLyricsButton(theme),
+              ],
+              const SizedBox(width: 14),
+              _buildVolumeButton(theme, settings),
+            ],
+          );
+
+    return RepaintBoundary(
+      child: GlassContainer(
+        blur: 20,
+        borderRadius: widget.compact ? 20 : 0,
+        margin: widget.compact
+            ? const EdgeInsets.fromLTRB(10, 0, 10, 10)
+            : EdgeInsets.zero,
+        padding: EdgeInsets.symmetric(
+          horizontal: widget.compact ? 12 : 24,
+          vertical: widget.compact ? 8 : 10,
+        ),
+        borderColor: isDark ? HikoColors.darkGlassBorder : HikoColors.lightGlassBorder,
+        borderWidth: 1.0,
+        backgroundColor: isDark ? HikoColors.darkGlassSurface : HikoColors.lightGlassSurface,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),
+            blurRadius: 24,
+            offset: const Offset(0, -2),
+          ),
+        ],
+        child: innerContent,
       ),
-      padding: EdgeInsets.symmetric(horizontal: widget.compact ? 12 : 26, vertical: 8),
-      child: widget.compact
-          ? Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                topRow,
-                _buildTimeline(theme, position, duration),
-              ],
-            )
-          : Row(
-              children: [
-                _buildCover(theme, album),
-                const SizedBox(width: 15),
-                _buildMeta(theme, state, album, track),
-                const SizedBox(width: 18),
-                _buildControls(theme, state),
-                const SizedBox(width: 18),
-                Expanded(child: _buildTimeline(theme, position, duration)),
-                const SizedBox(width: 18),
-                _buildModeButton(theme, state),
-                const SizedBox(width: 14),
-                _buildSleepButton(theme, state),
-                const SizedBox(width: 14),
-                _buildSpeedButton(theme, settings),
-                if (Platform.isMacOS) ...[
-                  const SizedBox(width: 14),
-                  _buildDesktopLyricsButton(theme),
-                ],
-                const SizedBox(width: 14),
-                _buildVolumeButton(theme, settings),
-              ],
-            ),
     );
   }
 

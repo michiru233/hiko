@@ -5,8 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/album.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
+import '../theme.dart';
 
-/// 专辑卡片：封面 + 悬停操作 + 标题/艺人 + 标签。
+/// 专辑卡片：玻璃拟态质感卡片（双层微反光边缘 + 柔和投光 + 胶囊标签）
 class AlbumCard extends ConsumerWidget {
   const AlbumCard({
     super.key,
@@ -30,7 +31,13 @@ class AlbumCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     Offset? pointerPosition;
+
+    // 玻璃卡片表面：长列表滚动使用高性能 Faux-Glass（高透半透明 + 渐变微反光）
+    final cardBg = isDark ? HikoColors.darkGlassCard : HikoColors.lightGlassCard;
+    final cardBorder = isDark ? HikoColors.darkGlassBorderSubtle : HikoColors.lightGlassBorderSubtle;
+
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: Listener(
@@ -47,27 +54,34 @@ class AlbumCard extends ConsumerWidget {
             onLongPress: onContextMenu == null
                 ? null
                 : () => onContextMenu!(pointerPosition ?? Offset.zero),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(16),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 300),
-              decoration: highlighted
-                  ? BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: cardBg,
+                borderRadius: BorderRadius.circular(16),
+                border: highlighted || selected
+                    ? Border.all(
                         color: theme.colorScheme.primary,
-                        width: 2,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: theme.colorScheme.primary.withValues(
-                            alpha: 0.45,
-                          ),
-                          blurRadius: 18,
-                          spreadRadius: 2,
-                        ),
-                      ],
+                        width: 1.5,
+                      )
+                    : null,
+                boxShadow: [
+                  if (highlighted)
+                    BoxShadow(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.4),
+                      blurRadius: 18,
+                      spreadRadius: 2,
                     )
-                  : const BoxDecoration(),
+                  else
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                      blurRadius: 14,
+                      offset: const Offset(0, 6),
+                    ),
+                ],
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -76,7 +90,7 @@ class AlbumCard extends ConsumerWidget {
                       return Stack(
                         children: [
                           ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(12),
                             child: AspectRatio(
                               aspectRatio: 1,
                               child: AlbumCover(album: album),
@@ -84,8 +98,8 @@ class AlbumCard extends ConsumerWidget {
                           ),
                           if (multiMode)
                             Positioned(
-                              left: 10,
-                              top: 10,
+                              left: 8,
+                              top: 8,
                               child: MouseRegion(
                                 cursor: SystemMouseCursors.click,
                                 child: Material(
@@ -94,19 +108,15 @@ class AlbumCard extends ConsumerWidget {
                                     onTap: onTap,
                                     customBorder: const CircleBorder(),
                                     child: Container(
-                                      width: 22,
-                                      height: 22,
+                                      width: 24,
+                                      height: 24,
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
                                         color: selected
                                             ? theme.colorScheme.primary
-                                            : Colors.black.withValues(
-                                                alpha: 0.4,
-                                              ),
+                                            : Colors.black.withValues(alpha: 0.45),
                                         border: Border.all(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.85,
-                                          ),
+                                          color: Colors.white.withValues(alpha: 0.9),
                                           width: 2,
                                         ),
                                       ),
@@ -127,20 +137,6 @@ class AlbumCard extends ConsumerWidget {
                                 ),
                               ),
                             ),
-                          if (selected)
-                            Positioned.fill(
-                              child: IgnorePointer(
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
-                                      color: theme.colorScheme.primary,
-                                      width: 2,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
                         ],
                       );
                     },
@@ -152,37 +148,41 @@ class AlbumCard extends ConsumerWidget {
                         double.infinity,
                       );
                       return Padding(
-                        padding: const EdgeInsets.fromLTRB(2, 8, 2, 0),
+                        padding: const EdgeInsets.fromLTRB(4, 10, 4, 4),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               album.title,
-                              maxLines: 4,
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
+                                height: 1.3,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 6),
                             Wrap(
                               spacing: 5,
                               runSpacing: 4,
                               children: [
                                 _Pill(
                                   text: album.artist,
-                                  bg: theme.colorScheme.secondaryContainer,
-                                  color: theme.colorScheme.onSecondaryContainer,
+                                  bg: isDark
+                                      ? Colors.white.withValues(alpha: 0.08)
+                                      : Colors.black.withValues(alpha: 0.05),
+                                  color: isDark ? HikoColors.darkInk : HikoColors.lightInk,
                                   maxWidth: contentWidth,
                                 ),
                                 if (album.albumArtist.isNotEmpty &&
                                     album.albumArtist != album.artist)
                                   _Pill(
                                     text: album.albumArtist,
-                                    bg: theme.colorScheme.secondaryContainer,
-                                    color:
-                                        theme.colorScheme.onSecondaryContainer,
+                                    bg: isDark
+                                        ? Colors.white.withValues(alpha: 0.08)
+                                        : Colors.black.withValues(alpha: 0.05),
+                                    color: isDark ? HikoColors.darkInk : HikoColors.lightInk,
                                     maxWidth: contentWidth,
                                   ),
                               ],
@@ -194,7 +194,7 @@ class AlbumCard extends ConsumerWidget {
                               children: [
                                 _Pill(
                                   text: album.rjCode ?? '本地导入',
-                                  bg: theme.colorScheme.primary,
+                                  bg: theme.colorScheme.primary.withValues(alpha: 0.9),
                                   color: theme.colorScheme.onPrimary,
                                   bold: true,
                                   maxWidth: contentWidth,
@@ -203,15 +203,18 @@ class AlbumCard extends ConsumerWidget {
                                   text: album.totalDuration > 0
                                       ? formatDuration(album.totalDuration)
                                       : '${album.duration} 首',
-                                  bg: theme.colorScheme.secondaryContainer,
-                                  color: theme.colorScheme.onSecondaryContainer,
+                                  bg: isDark
+                                      ? Colors.white.withValues(alpha: 0.06)
+                                      : Colors.black.withValues(alpha: 0.04),
+                                  color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
                                   maxWidth: contentWidth,
                                 ),
-                                _Tag(text: album.genre, maxWidth: contentWidth),
+                                if (album.genre.isNotEmpty)
+                                  _Tag(text: album.genre, maxWidth: contentWidth),
                               ],
                             ),
                             if (showScrapedTags && album.tags.isNotEmpty) ...[
-                              const SizedBox(height: 5),
+                              const SizedBox(height: 6),
                               Wrap(
                                 spacing: 5,
                                 runSpacing: 4,
@@ -220,14 +223,14 @@ class AlbumCard extends ConsumerWidget {
                                     _Tag(
                                       text: tag,
                                       color: const Color(0xFF2E8A8F),
-                                      bg: const Color(0xFFE3F4F2),
+                                      bg: const Color(0xFFE3F4F2).withValues(alpha: isDark ? 0.2 : 0.8),
                                       maxWidth: contentWidth,
                                     ),
                                   if (album.tags.length > 3)
                                     _Tag(
                                       text: '+${album.tags.length - 3}',
                                       color: const Color(0xFF2E8A8F),
-                                      bg: const Color(0xFFD7ECEA),
+                                      bg: const Color(0xFFD7ECEA).withValues(alpha: isDark ? 0.2 : 0.8),
                                       maxWidth: contentWidth,
                                     ),
                                 ],
@@ -267,10 +270,10 @@ class _Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget pill = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         text,
@@ -303,16 +306,17 @@ class _Tag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     Widget tag = Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
-        color: bg ?? theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(4),
+        color: bg ?? (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04)),
+        borderRadius: BorderRadius.circular(5),
       ),
       child: Text(
         text,
         softWrap: true,
-        style: TextStyle(fontSize: 9, color: color ?? theme.hintColor),
+        style: TextStyle(fontSize: 9, color: color ?? (isDark ? HikoColors.darkMuted : HikoColors.lightMuted)),
       ),
     );
     if (maxWidth != null) {

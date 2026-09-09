@@ -22,6 +22,21 @@ class HikoColors {
   static const darkSidebar = Color(0xFF17181D);
   static const darkTrack = Color(0xFF3A3D45);
   static const darkCard = Color(0xFF23252C);
+
+  // 玻璃拟态专属色彩规范 (Glassmorphism Tokens)
+  // 深色玻璃表面
+  static const darkGlassSurface = Color(0xB81D1F24); // 72% 不透明度
+  static const darkGlassCard = Color(0x9923252C);    // 60% 不透明度
+  static const darkGlassBorder = Color(0x2EFFFFFF);  // 18% 白色高光边缘
+  static const darkGlassBorderSubtle = Color(0x14FFFFFF); // 8% 白色微光边缘
+  static const darkGlassHighlight = Color(0x1AFFFFFF); // 10% 顶边内高光
+
+  // 浅色玻璃表面
+  static const lightGlassSurface = Color(0xB3FFFFFF); // 70% 不透明度
+  static const lightGlassCard = Color(0xC7FFFFFF);    // 78% 不透明度
+  static const lightGlassBorder = Color(0x66FFFFFF);  // 40% 白色反光边缘
+  static const lightGlassBorderSubtle = Color(0x14000000); // 8% 浅黑边缘
+  static const lightGlassHighlight = Color(0x80FFFFFF); // 50% 顶边内高光
 }
 
 /// '#6559d8' → Color

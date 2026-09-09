@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -25,12 +26,14 @@ import '../../utils/masonry_layout.dart';
 import '../../utils/rj.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
+import '../theme.dart';
 import '../widgets/album_card.dart';
 import '../widgets/activity_overlay.dart';
 import '../widgets/category_dialog.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/context_menu.dart';
 import '../widgets/detail_drawer.dart';
+import '../widgets/glass_container.dart';
 import '../widgets/toast.dart';
 import '../widgets/player_bar.dart';
 import '../widgets/rating_dialog.dart';
@@ -574,6 +577,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 onPointerCancel: (_) => _edgeDragDx = null,
                 child: Stack(
                 children: [
+                  // 背景全局动态封面光晕 (Ambient Backdrop Glow)
+                  if (ref.watch(playbackProvider).album != null)
+                    Positioned(
+                      top: -100,
+                      left: -100,
+                      width: 500,
+                      height: 500,
+                      child: IgnorePointer(
+                        child: Opacity(
+                          opacity: theme.brightness == Brightness.dark ? 0.15 : 0.08,
+                          child: ImageFiltered(
+                            imageFilter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+                            child: AlbumCover(album: ref.watch(playbackProvider).album!),
+                          ),
+                        ),
+                      ),
+                    ),
                   Column(
                     children: [
                       Expanded(
@@ -695,43 +715,64 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
         ),
-        // 移动端底部导航（对应旧版 bottom-nav）
+        // 移动端底部导航（玻璃拟态悬浮或半透明背景）
         bottomNavigationBar: isMobile
-            ? BottomNavigationBar(
-                currentIndex: _navIndex,
-                onTap: (i) {
-                  if (i == 4) {
-                    _openSettings(context);
-                    return;
-                  }
-                  setState(() => _view = _navViews[i]);
-                },
-                type: BottomNavigationBarType.fixed,
-                backgroundColor: theme.colorScheme.surface,
-                selectedItemColor: theme.colorScheme.primary,
-                unselectedItemColor: theme.hintColor,
-                items: const [
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.grid_view_rounded),
-                    label: '全部',
+            ? ClipRRect(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: theme.brightness == Brightness.dark
+                          ? HikoColors.darkGlassSurface
+                          : HikoColors.lightGlassSurface,
+                      border: Border(
+                        top: BorderSide(
+                          color: theme.brightness == Brightness.dark
+                              ? HikoColors.darkGlassBorderSubtle
+                              : HikoColors.lightGlassBorderSubtle,
+                          width: 0.8,
+                        ),
+                      ),
+                    ),
+                    child: BottomNavigationBar(
+                      currentIndex: _navIndex,
+                      onTap: (i) {
+                        if (i == 4) {
+                          _openSettings(context);
+                          return;
+                        }
+                        setState(() => _view = _navViews[i]);
+                      },
+                      type: BottomNavigationBarType.fixed,
+                      backgroundColor: Colors.transparent,
+                      elevation: 0,
+                      selectedItemColor: theme.colorScheme.primary,
+                      unselectedItemColor: theme.hintColor,
+                      items: const [
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.grid_view_rounded),
+                          label: '全部',
+                        ),
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.history_rounded),
+                          label: '最近',
+                        ),
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.play_circle_outline_rounded),
+                          label: '播放',
+                        ),
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.favorite_border_rounded),
+                          label: '收藏',
+                        ),
+                        BottomNavigationBarItem(
+                          icon: Icon(Icons.settings_outlined),
+                          label: '设置',
+                        ),
+                      ],
+                    ),
                   ),
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.history_rounded),
-                    label: '最近',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.play_circle_outline_rounded),
-                    label: '播放',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.favorite_border_rounded),
-                    label: '收藏',
-                  ),
-                  BottomNavigationBarItem(
-                    icon: Icon(Icons.settings_outlined),
-                    label: '设置',
-                  ),
-                ],
+                ),
               )
             : null,
       ),
@@ -1146,7 +1187,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             children: [
               Expanded(
                 child: SizedBox(
-                  height: 36,
+                  height: 38,
                   child: TextField(
                     controller: _searchController,
                     focusNode: _searchFocus,
@@ -1157,34 +1198,46 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         fontSize: 13,
                         color: theme.hintColor,
                       ),
-                      prefixIcon: const Icon(Icons.search, size: 18),
+                      prefixIcon: const Icon(Icons.search_rounded, size: 18),
                       isDense: true,
                       filled: true,
-                      fillColor: theme.colorScheme.surface,
+                      fillColor: theme.brightness == Brightness.dark
+                          ? HikoColors.darkGlassCard
+                          : HikoColors.lightGlassCard,
                       contentPadding: EdgeInsets.zero,
                       enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: theme.dividerColor),
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: theme.brightness == Brightness.dark
+                              ? HikoColors.darkGlassBorderSubtle
+                              : HikoColors.lightGlassBorderSubtle,
+                        ),
                       ),
                       focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(10),
                         borderSide: BorderSide(
                           color: theme.colorScheme.primary,
+                          width: 1.5,
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 14),
-              // 筛选组
+              const SizedBox(width: 12),
+              // 筛选组（玻璃胶囊分段）
               Container(
                 padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(
-                    alpha: 0.6,
+                  color: theme.brightness == Brightness.dark
+                      ? HikoColors.darkGlassCard
+                      : HikoColors.lightGlassCard,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: theme.brightness == Brightness.dark
+                        ? HikoColors.darkGlassBorderSubtle
+                        : HikoColors.lightGlassBorderSubtle,
                   ),
-                  borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
                   children: [
@@ -1196,25 +1249,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       InkWell(
                         onTap: () => setState(() => _filter = key),
                         mouseCursor: SystemMouseCursors.click,
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: BorderRadius.circular(7),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
-                            vertical: 7,
+                            vertical: 6,
                           ),
                           decoration: BoxDecoration(
                             color: _filter == key
-                                ? theme.colorScheme.surface
+                                ? (theme.brightness == Brightness.dark
+                                    ? Colors.white.withValues(alpha: 0.12)
+                                    : Colors.white)
                                 : null,
-                            borderRadius: BorderRadius.circular(6),
+                            borderRadius: BorderRadius.circular(7),
+                            boxShadow: _filter == key
+                                ? [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.04),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 1),
+                                    ),
+                                  ]
+                                : null,
                           ),
                           child: Text(
                             label,
                             style: TextStyle(
                               fontSize: 11,
-                              fontWeight: FontWeight.w500,
+                              fontWeight: _filter == key ? FontWeight.w700 : FontWeight.w500,
                               color: _filter == key
-                                  ? theme.colorScheme.onSurface
+                                  ? theme.colorScheme.primary
                                   : theme.hintColor,
                             ),
                           ),
