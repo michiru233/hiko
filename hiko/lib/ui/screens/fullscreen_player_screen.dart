@@ -152,8 +152,9 @@ class _FullscreenPlayerScreenState
     return Center(
       child: Stack(
         alignment: Alignment.center,
+        clipBehavior: Clip.none,
         children: [
-          // 旋转的黑胶唱片
+          // 旋转的黑胶唱片外圈
           AnimatedBuilder(
             animation: _rotationController,
             builder: (context, child) {
@@ -163,70 +164,78 @@ class _FullscreenPlayerScreenState
               );
             },
             child: Container(
-              width: 280,
-              height: 280,
+              width: 320,
+              height: 320,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
+                // 黑胶唱片外圈：黑色圆环
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xFF1a1a1a),
+                    const Color(0xFF0d0d0d),
+                    Colors.black,
+                  ],
+                  stops: const [0.7, 0.85, 1.0],
+                ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    blurRadius: 30,
-                    offset: const Offset(0, 10),
+                    color: Colors.black.withValues(alpha: 0.5),
+                    blurRadius: 40,
+                    offset: const Offset(0, 15),
                   ),
                 ],
               ),
-              child: ClipOval(
-                child: AlbumCover(
-                  album: album,
-                  fit: BoxFit.cover,
+              child: Center(
+                // 封面图片（占中间部分）
+                child: Container(
+                  width: 220,
+                  height: 220,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.3),
+                        blurRadius: 20,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: ClipOval(
+                    child: AlbumCover(
+                      album: album,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-          // 中心圆孔
+          // 中心圆孔（在封面上）
           Container(
-            width: 60,
-            height: 60,
+            width: 50,
+            height: 50,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: isDark ? HikoColors.darkBg : HikoColors.lightBg,
+              color: isDark ? const Color(0xFF0d0d0d) : const Color(0xFF2a2a2a),
               border: Border.all(
                 color: isDark
-                    ? Colors.white.withValues(alpha: 0.1)
-                    : Colors.black.withValues(alpha: 0.1),
+                    ? Colors.white.withValues(alpha: 0.15)
+                    : Colors.white.withValues(alpha: 0.2),
                 width: 2,
               ),
             ),
           ),
-          // 唱针（右上角）
+          // 唱针（右上角）：改为更真实的唱针臂设计
           Positioned(
-            top: -20,
-            right: 80,
+            top: -30,
+            right: 40,
             child: AnimatedRotation(
               duration: const Duration(milliseconds: 400),
-              turns: isPlaying ? 0.05 : -0.05, // 播放时落下，暂停时抬起
-              alignment: Alignment.topRight,
-              child: Container(
-                width: 80,
-                height: 120,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      isDark ? Colors.grey[700]! : Colors.grey[400]!,
-                      isDark ? Colors.grey[800]! : Colors.grey[500]!,
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 8,
-                      offset: const Offset(2, 4),
-                    ),
-                  ],
-                ),
+              turns: isPlaying ? 0.08 : -0.08, // 播放时落下，暂停时抬起
+              alignment: const Alignment(0.3, -0.8), // 旋转中心靠近唱针臂顶部
+              child: CustomPaint(
+                size: const Size(100, 140),
+                painter: _VinylArmPainter(isDark: isDark),
               ),
             ),
           ),
@@ -762,4 +771,69 @@ class _FullscreenPlayerScreenState
       },
     );
   }
+}
+
+/// 唱针臂绘制器：绘制真实的唱针形状
+class _VinylArmPainter extends CustomPainter {
+  final bool isDark;
+
+  _VinylArmPainter({required this.isDark});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 唱针臂主体
+    final armPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: isDark
+            ? [const Color(0xFF9e9e9e), const Color(0xFF616161)]
+            : [const Color(0xFFbdbdbd), const Color(0xFF757575)],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..style = PaintingStyle.fill;
+
+    // 唱针臂路径（细长的臂状）
+    final armPath = Path()
+      ..moveTo(size.width * 0.5, 0) // 顶部中心
+      ..lineTo(size.width * 0.65, size.height * 0.6) // 右侧向下延伸
+      ..lineTo(size.width * 0.55, size.height * 0.65) // 底部略窄
+      ..lineTo(size.width * 0.35, size.height * 0.65)
+      ..lineTo(size.width * 0.25, size.height * 0.6)
+      ..close();
+
+    canvas.drawPath(armPath, armPaint);
+
+    // 唱针头部（小圆点）
+    final needlePaint = Paint()
+      ..color = isDark ? const Color(0xFF424242) : const Color(0xFF616161)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(
+      Offset(size.width * 0.45, size.height * 0.7),
+      6,
+      needlePaint,
+    );
+
+    // 唱针顶部圆形固定点
+    final pivotPaint = Paint()
+      ..color = isDark ? const Color(0xFF757575) : const Color(0xFF9e9e9e)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(
+      Offset(size.width * 0.5, 8),
+      8,
+      pivotPaint,
+    );
+
+    // 阴影
+    final shadowPath = armPath.shift(const Offset(3, 3));
+    final shadowPaint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.3)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+
+    canvas.drawPath(shadowPath, shadowPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
