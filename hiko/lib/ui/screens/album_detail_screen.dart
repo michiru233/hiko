@@ -17,6 +17,7 @@ import '../theme.dart';
 import '../widgets/category_dialog.dart';
 import '../widgets/rating_dialog.dart';
 import '../widgets/toast.dart';
+import 'fullscreen_player_screen.dart';
 
 /// 移动端专辑详情全屏页面（1.56）：沉浸式大图背景+顶栏返回+曲目列表+操作按钮
 class AlbumDetailScreen extends ConsumerStatefulWidget {
@@ -113,11 +114,11 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
                 const SizedBox(height: 20),
                 // 封面与元数据
                 _buildHeader(album, theme, isDark, rj, progress),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
                 // Tab 切换（曲目/歌词）
                 _buildTabs(theme, isDark, hasLyrics),
-                const SizedBox(height: 12),
-                // 内容区域
+                const SizedBox(height: 8),
+                // 内容区域 - 移除底部 padding，让列表居中
                 Expanded(
                   child: _selectedTabIndex == 0
                       ? _buildTrackList(
@@ -148,20 +149,24 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         children: [
-          // 封面
+          // 封面 - 缩小尺寸
           ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: AlbumCover(
-              album: album,
-              fit: BoxFit.cover,
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              width: 160,
+              height: 160,
+              child: AlbumCover(
+                album: album,
+                fit: BoxFit.cover,
+              ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           // 标题
           Text(
             album.title,
             style: TextStyle(
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: FontWeight.w700,
               color: isDark ? HikoColors.darkInk : HikoColors.lightInk,
             ),
@@ -169,19 +174,19 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           // 艺术家
           Text(
             album.albumArtist,
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 13,
               color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
             ),
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           // RJ 码 + 时长 + 进度
           Wrap(
             alignment: WrapAlignment.center,
@@ -253,11 +258,16 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        // 全部播放
+        // 全部播放 - 点击后跳转到全屏播放页
         ElevatedButton.icon(
           onPressed: () {
             ref.read(playbackProvider.notifier).playAlbum(album);
-            showHikoToast(context, '开始播放');
+            // 自动跳转到全屏播放页
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const FullscreenPlayerScreen(),
+              ),
+            );
           },
           icon: const Icon(Icons.play_arrow, size: 20),
           label: const Text('全部播放'),
@@ -378,6 +388,12 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
         borderRadius: BorderRadius.circular(8),
         onTap: () {
           ref.read(playbackProvider.notifier).playAlbum(album, index: index);
+          // 点击曲目后自动跳转到全屏播放页
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => const FullscreenPlayerScreen(),
+            ),
+          );
         },
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
