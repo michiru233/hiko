@@ -10,6 +10,7 @@ import '../../lyrics/lyrics_controller.dart';
 import '../../models/album.dart';
 import '../../playback/gain_chain.dart';
 import '../../playback/playback_controller.dart';
+import '../../playback/playback_rules.dart';
 import '../../playback/sleep_timer.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
@@ -530,7 +531,7 @@ class _FullscreenPlayerScreenState
     );
   }
 
-  /// 三核心功能键：睡眠定时、音频增益、音轨列表
+  /// 四核心功能键：睡眠定时、音频增益、播放模式、音轨列表
   Widget _buildFunctionButtons(
     dynamic state,
     AppSettings settings,
@@ -558,6 +559,8 @@ class _FullscreenPlayerScreenState
             isDark: isDark,
             onTap: () => _showGainDialog(settings, theme, isDark),
           ),
+          // 播放模式
+          _buildPlayModeButton(state.mode, theme, isDark),
           // 音轨列表
           _buildFunctionButton(
             icon: Icons.queue_music_outlined,
@@ -606,6 +609,149 @@ class _FullscreenPlayerScreenState
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 播放模式按钮（带菜单）
+  Widget _buildPlayModeButton(
+    PlaybackMode currentMode,
+    ThemeData theme,
+    bool isDark,
+  ) {
+    // 根据当前模式选择图标和标签
+    final modeInfo = playModes.firstWhere((m) => m.key == currentMode.key);
+    final IconData icon;
+    switch (currentMode) {
+      case PlaybackMode.list:
+        icon = Icons.repeat_outlined;
+        break;
+      case PlaybackMode.single:
+        icon = Icons.repeat_one_outlined;
+        break;
+      case PlaybackMode.shuffle:
+        icon = Icons.shuffle_outlined;
+        break;
+      case PlaybackMode.album:
+        icon = Icons.album; // 无 outlined 变体
+        break;
+    }
+
+    return MenuAnchor(
+      builder: (context, controller, child) {
+        return InkWell(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            if (controller.isOpen) {
+              controller.close();
+            } else {
+              controller.open();
+            }
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            constraints: const BoxConstraints(minWidth: 56, minHeight: 56),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  size: 28,
+                  color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  modeInfo.label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+      menuChildren: [
+        // 菜单标题
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Text(
+            '播放模式',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        const Divider(height: 1),
+        // 四种播放模式选项
+        for (final mode in PlaybackMode.values) _buildPlayModeMenuItem(mode, currentMode, theme),
+      ],
+    );
+  }
+
+  /// 单个播放模式菜单项
+  Widget _buildPlayModeMenuItem(
+    PlaybackMode mode,
+    PlaybackMode currentMode,
+    ThemeData theme,
+  ) {
+    final info = playModes.firstWhere((m) => m.key == mode.key);
+    final isSelected = mode == currentMode;
+    
+    // 图标
+    final IconData leadingIcon;
+    switch (mode) {
+      case PlaybackMode.list:
+        leadingIcon = Icons.repeat_outlined;
+        break;
+      case PlaybackMode.single:
+        leadingIcon = Icons.repeat_one_outlined;
+        break;
+      case PlaybackMode.shuffle:
+        leadingIcon = Icons.shuffle_outlined;
+        break;
+      case PlaybackMode.album:
+        leadingIcon = Icons.album;
+        break;
+    }
+
+    return MenuItemButton(
+      leadingIcon: Icon(leadingIcon, size: 20),
+      trailingIcon: isSelected ? const Icon(Icons.check, size: 20) : null,
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.all(
+          isSelected ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3) : null,
+        ),
+      ),
+      onPressed: () async {
+        HapticFeedback.selectionClick();
+        await ref.read(playbackProvider.notifier).setMode(mode);
+        await ref.read(settingsProvider.notifier).setPlayMode(mode.key);
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            info.name,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            info.desc,
+            style: TextStyle(
+              fontSize: 11,
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
+            ),
+          ),
+        ],
       ),
     );
   }

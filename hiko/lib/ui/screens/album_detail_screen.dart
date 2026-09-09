@@ -263,7 +263,14 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
         ElevatedButton.icon(
           onPressed: () {
             HapticFeedback.mediumImpact(); // 主操作按钮使用中等强度反馈
-            ref.read(playbackProvider.notifier).playAlbum(album);
+            // 从断点继续播放（如果有断点）
+            final resumeIndex = album.resumeTrackIndex >= 0 ? album.resumeTrackIndex : 0;
+            final resumePos = album.resumeTrackIndex >= 0 ? album.resumePosition : 0.0;
+            ref.read(playbackProvider.notifier).playAlbum(
+              album,
+              index: resumeIndex,
+              startPosition: resumePos,
+            );
             // 自动跳转到全屏播放页
             Navigator.of(context).push(
               MaterialPageRoute(

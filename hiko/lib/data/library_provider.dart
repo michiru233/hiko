@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/album.dart';
@@ -107,6 +108,7 @@ class LibraryNotifier extends StateNotifier<List<Album>> {
     double? resumePosition,
     DateTime? lastPlayedAt,
   }) async {
+    debugPrint('[Progress] LibraryNotifier.updatePlayed: id=$id, resumeTrackIndex=$resumeTrackIndex, resumePosition=${resumePosition?.toStringAsFixed(1)}s');
     state = [
       for (final a in state)
         a.id == id

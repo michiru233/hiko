@@ -231,6 +231,7 @@ class PlaybackController extends StateNotifier<PlaybackState> {
   /// 播放指定专辑的第 index 首（对应旧版 chooseImported）；
   /// [startPosition] > 0 时从断点秒数起播（「继续收听」）
   Future<void> playAlbum(Album album, {int index = 0, double startPosition = 0}) async {
+    debugPrint('[Progress] playAlbum: album=${album.id}, index=$index, startPosition=${startPosition.toStringAsFixed(1)}s');
     final queue = album.tracks;
     if (queue.isEmpty) return;
     final idx = index.clamp(0, queue.length - 1);
@@ -239,6 +240,7 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     final currentSession = ++_playSessionId;
     _isSwitching = true;
     final startAt = startPosition.clamp(0.0, track.duration > 0 ? track.duration : double.infinity);
+    debugPrint('[Progress] playAlbum: starting at ${startAt.toStringAsFixed(1)}s (clamped from $startPosition)');
 
     // 先带入 Track 元数据中的 duration，杜绝 0:00 闪烁，并先设为 playing: true
     state = PlaybackState(
@@ -468,6 +470,7 @@ class PlaybackController extends StateNotifier<PlaybackState> {
   void _maybePersistProgress() {
     final now = DateTime.now().millisecondsSinceEpoch / 1000.0;
     if (now - _lastPersistAt < 15) return;
+    debugPrint('[Progress] _maybePersistProgress: triggering persist (15s throttle passed)');
     _persistProgress(now);
   }
 
@@ -475,12 +478,17 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     _lastPersistAt = now ?? DateTime.now().millisecondsSinceEpoch / 1000.0;
     final s = state;
     final album = s.album;
-    if (album == null) return;
+    if (album == null) {
+      debugPrint('[Progress] _persistProgress: skipped (no album)');
+      return;
+    }
     final resume = QueueRules.resumePoint(
       tracks: album.tracks,
       queueIndex: s.queueIndex,
       position: s.position,
     );
+    debugPrint('[Progress] _persistProgress: album=${album.id}, queueIndex=${s.queueIndex}, position=${s.position.toStringAsFixed(1)}s');
+    debugPrint('[Progress] resumePoint: trackIndex=${resume.$1}, position=${resume.$2.toStringAsFixed(1)}s');
     final played = QueueRules.cumulativePlayed(
       albums: _ref.read(libraryProvider),
       album: album,
@@ -494,6 +502,7 @@ class PlaybackController extends StateNotifier<PlaybackState> {
           resumePosition: resume.$2,
           lastPlayedAt: DateTime.now(),
         );
+    debugPrint('[Progress] _persistProgress: called updatePlayed (resumeTrackIndex=${resume.$1}, resumePosition=${resume.$2.toStringAsFixed(1)}s)');
   }
 
   @override

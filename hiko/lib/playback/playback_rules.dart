@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
+
 import '../models/album.dart';
 import '../models/track.dart';
 
@@ -108,10 +110,16 @@ class QueueRules {
     final remaining = duration - position;
     if (duration > 0 && remaining < 2) {
       final next = idx + 1;
-      if (next >= tracks.length) return (0, 0);
+      if (next >= tracks.length) {
+        debugPrint('[Progress] resumePoint: track finished, returning (0, 0)');
+        return (0, 0);
+      }
+      debugPrint('[Progress] resumePoint: <2s remaining, advancing to next track ($next, 0)');
       return (next, 0);
     }
-    return (idx, position.clamp(0.0, duration > 0 ? duration : position));
+    final result = (idx, position.clamp(0.0, duration > 0 ? duration : position));
+    debugPrint('[Progress] resumePoint: normal save (${result.$1}, ${result.$2.toStringAsFixed(1)}s)');
+    return result;
   }
 
   /// 「继续收听」候选：最近一次播放过的专辑（有断点记录），

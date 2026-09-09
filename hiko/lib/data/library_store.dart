@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/album.dart';
@@ -47,6 +48,7 @@ class LibraryStore {
   Future<void> _writeQueue = Future.value();
 
   Future<void> save(List<Album> albums) {
+    debugPrint('[Progress] LibraryStore.save: saving ${albums.length} albums to library.json');
     final json = jsonEncode({
       'version': 1,
       'albums': albums.map((a) => a.toJson()).toList(),
@@ -57,15 +59,19 @@ class LibraryStore {
 
   Future<void> _writeAtomic(String json) async {
     final file = await _file();
+    debugPrint('[Progress] LibraryStore._writeAtomic: writing to ${file.path}');
     final tmp = File('${file.path}.tmp');
     await tmp.parent.create(recursive: true); // 数据目录可能尚不存在
     await tmp.writeAsString(json);
     try {
       await tmp.rename(file.path);
-    } on FileSystemException {
+      debugPrint('[Progress] LibraryStore._writeAtomic: rename succeeded');
+    } on FileSystemException catch (e) {
       // Windows 上 rename 无法覆盖已存在目标：先删再改名
+      debugPrint('[Progress] LibraryStore._writeAtomic: rename failed ($e), deleting target first');
       if (await file.exists()) await file.delete();
       await tmp.rename(file.path);
+      debugPrint('[Progress] LibraryStore._writeAtomic: retry rename succeeded');
     }
   }
 }
