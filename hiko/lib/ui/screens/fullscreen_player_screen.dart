@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/settings_store.dart';
@@ -60,10 +61,13 @@ class _FullscreenPlayerScreenState
     final album = state.album;
     final track = state.currentTrack;
 
+    // 尊重系统 reduce-motion 设置，禁用动画时停止旋转
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    
     // 同步旋转动画与播放状态
-    if (state.playing && !_rotationController.isAnimating) {
+    if (!reduceMotion && state.playing && !_rotationController.isAnimating) {
       _rotationController.repeat();
-    } else if (!state.playing && _rotationController.isAnimating) {
+    } else if (reduceMotion || (!state.playing && _rotationController.isAnimating)) {
       _rotationController.stop();
     }
 
@@ -407,7 +411,10 @@ class _FullscreenPlayerScreenState
         IconButton(
           icon: const Icon(Icons.skip_previous, size: 36),
           color: isDark ? HikoColors.darkInk : HikoColors.lightInk,
-          onPressed: () => ref.read(playbackProvider.notifier).prev(),
+          onPressed: () {
+            HapticFeedback.lightImpact();
+            ref.read(playbackProvider.notifier).prev();
+          },
         ),
         const SizedBox(width: 20),
         // 播放/暂停
@@ -431,7 +438,10 @@ class _FullscreenPlayerScreenState
               size: 32,
             ),
             color: theme.colorScheme.onPrimary,
-            onPressed: () => ref.read(playbackProvider.notifier).toggle(),
+            onPressed: () {
+              HapticFeedback.mediumImpact(); // 主按钮使用更强烈的反馈
+              ref.read(playbackProvider.notifier).toggle();
+            },
           ),
         ),
         const SizedBox(width: 20),
@@ -439,7 +449,10 @@ class _FullscreenPlayerScreenState
         IconButton(
           icon: const Icon(Icons.skip_next, size: 36),
           color: isDark ? HikoColors.darkInk : HikoColors.lightInk,
-          onPressed: () => ref.read(playbackProvider.notifier).next(),
+          onPressed: () {
+            HapticFeedback.lightImpact();
+            ref.read(playbackProvider.notifier).next();
+          },
         ),
       ],
     );
@@ -495,7 +508,10 @@ class _FullscreenPlayerScreenState
   }) {
     // 扩大触摸目标到 56×56px（图标 28 + padding 14×2）
     return InkWell(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.lightImpact(); // 触觉反馈
+        onTap();
+      },
       borderRadius: BorderRadius.circular(12),
       child: Container(
         constraints: const BoxConstraints(minWidth: 56, minHeight: 56),
@@ -710,6 +726,10 @@ class _FullscreenPlayerScreenState
                     child: ListView.builder(
                       controller: scrollController,
                       itemCount: album.tracks.length,
+                      // 优化滚动性能
+                      cacheExtent: 500,
+                      addAutomaticKeepAlives: true,
+                      addRepaintBoundaries: true,
                       itemBuilder: (context, index) {
                         final track = album.tracks[index];
                         final isCurrent = index == currentIndex;

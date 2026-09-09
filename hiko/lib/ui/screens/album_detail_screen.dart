@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/library_provider.dart';
@@ -261,6 +262,7 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
         // 全部播放 - 点击后跳转到全屏播放页
         ElevatedButton.icon(
           onPressed: () {
+            HapticFeedback.mediumImpact(); // 主操作按钮使用中等强度反馈
             ref.read(playbackProvider.notifier).playAlbum(album);
             // 自动跳转到全屏播放页
             Navigator.of(context).push(
@@ -358,8 +360,12 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
     bool isPlaying,
   ) {
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       itemCount: album.tracks.length,
+      // 优化滚动性能
+      cacheExtent: 500, // 预加载视口外 500px
+      addAutomaticKeepAlives: true,
+      addRepaintBoundaries: true,
       itemBuilder: (context, index) {
         final track = album.tracks[index];
         final isCurrent = index == currentIndex;
@@ -385,23 +391,26 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
     bool isCurrent,
     bool isPlaying,
   ) {
-    return Material(
-      color: isCurrent
-          ? theme.colorScheme.primary.withValues(alpha: 0.1)
-          : Colors.transparent,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
+    // 使用 RepaintBoundary 隔离每个列表项的重绘
+    return RepaintBoundary(
+      child: Material(
+        color: isCurrent
+            ? theme.colorScheme.primary.withValues(alpha: 0.1)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
-        onTap: () {
-          ref.read(playbackProvider.notifier).playAlbum(album, index: index);
-          // 点击曲目后自动跳转到全屏播放页
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => const FullscreenPlayerScreen(),
-            ),
-          );
-        },
-        child: Padding(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: () {
+            HapticFeedback.selectionClick(); // 列表项选择使用轻量反馈
+            ref.read(playbackProvider.notifier).playAlbum(album, index: index);
+            // 点击曲目后自动跳转到全屏播放页
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const FullscreenPlayerScreen(),
+              ),
+            );
+          },
+          child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
@@ -452,6 +461,7 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
               ),
             ],
           ),
+        ),
         ),
       ),
     );
