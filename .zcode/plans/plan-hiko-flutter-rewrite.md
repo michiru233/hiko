@@ -619,3 +619,11 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 - 回归：Kotlin ImportScannerTest 覆盖 >4MB 标签、>16MB 拒绝、APIC 单/双字节描述、默认零拷贝；Kotlin **25/25 全绿**。Flutter **238 passed / 1 skipped / 0 failed**，analyze **31** 与基线一致。
 - 实机：卸载重装 1.54.1 APK，导入真实 RJ01650240；模糊态卡片出现有内容的封面纹理，关闭隐私模糊后清晰显示原版 DLsite 插画（含「CV:餅梨」），标题/艺术家/RJ/7轨均正确。
 - 发版：pubspec `1.54.1+59`；Android zip 29,828,388B，SHA-256 `8629d2b05304ef4a769c7b9d7eb0c0051245263da3b2b2ecf344181d05973403`；macOS zip 32,527,678B，SHA-256 `f24641734ddbe24aa88e84c0e9a60ecd5e9641f2b54e39ce532faa863b5f9884`，均 `unzip -t` 通过。
+
+### 1.61.0 歌词体验优化：自动聚焦、字号调节、布局优化（2026-09-09）
+- **需求**：①歌词界面不会自动聚焦当前句；②当前歌曲名字号过大；③歌词字号最好可以调整；④播放控制区占比应该小一些，歌词区域应该大一些。
+- **歌词自动滚动**：`fullscreen_player_screen.dart` 新增 `ScrollController _lyricsScrollController` 和 `_lastScrolledIndex` 状态；`_buildLyricsView` 监听 `lyrics.activeIndex` 变化，当 `autoScrollEnabled=true` 且索引更新时，`WidgetsBinding.addPostFrameCallback` 触发 `animateTo` 滚动到当前行居中（估算行高 45dp×lyricsFontScale，目标偏移=索引×行高-屏幕高度/2）；`NotificationListener<ScrollNotification>` 监听用户手动滚动，调用 `lyricsProvider.notifier.userScrolled()` 暂停自动跟随（3 秒后自动恢复，逻辑已在 `LyricsController` 实现）。
+- **歌词字号设置**：`settings_store.dart` 新增 `lyricsFontScale` 字段（档位 0.85/1.0/1.15/1.30/1.50，默认 1.0）；`copyWith` 参数、持久化 key `_kLyricsFontScale`、验证函数 `_normalizeLyricsFontScale`、setter `setLyricsFontScale` 全套支持；`_buildLyricsView` 应用 `lyricsFontScale` 到当前行（18×scale）和非当前行（15×scale）字体大小；歌词页右下角新增字号调节按钮（`_buildLyricsFontScaleButton`，半透明圆角容器 + text_fields 图标），点击弹出对话框（`_showLyricsFontScaleDialog`）展示 5 档 RadioListTile，选择即时生效并显示 Toast。
+- **布局优化**：①曲目标题字号从 22pt 降至 18pt，艺术家从 16pt 降至 15pt，行间距从 8dp 降至 6dp；②`SafeArea` 下方间距从 20→12、封面与标题间距从 24→16、标题与进度条从 20→12、进度条与播放控制从 20→12、播放控制与功能键从 16→8、底部从 24→16，总计减少 52dp，为歌词区域腾出更多空间。
+- **验证**：本地编译通过；macOS release 产物 Hiko.app **73.8MB**（`hiko-v1.61.0-macos.zip`）；Android release APK **65.6MB**（`hiko-v1.61.0-android.apk`）；commit **f95749c** 已推送 origin main；GitHub Release **v1.61.0**（https://github.com/michiru233/hiko/releases/tag/v1.61.0）。功能实测（macOS）：歌词自动居中滚动✓，手动滚动暂停自动跟随✓，字号 5 档切换即时生效✓，布局更紧凑歌词区域明显增大✓。
+- **发版**：pubspec 1.61.0+69。
