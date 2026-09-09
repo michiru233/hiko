@@ -4,6 +4,21 @@
 > 旧代码（Electron/Capacitor）保留在仓库根目录作参考，功能对等后归档。
 > 本文档为 Flutter 重写的里程碑与修复记录，新改动请追加章节。
 
+### 1.62.0 macOS 歌词自动检测（2026-09-09）
+
+- **macOS 歌词自动检测**（对齐 Android 1.29.0 行为）：
+  - 扫描时自动查找同名 `.lrc/.vtt/.srt` 文件（大小写不敏感）：`01.mp3` → `01.lrc/01.vtt/01.srt`
+  - 文件大小限制 ≤64KB（`lyricMaxBytes` 常量）
+  - 多编码解码（UTF-8 / Shift-JIS / GBK）：复用 `repairText` 的 CJK 评分逻辑
+  - 实现位置：`lib/data/scanner.dart` 新增 `_findLyricFor()` + `_readLyricText()`，在 `_buildAlbum()` 中为每个 Track 关联 `lyricsText`
+- **跨平台功能确认**：经全面代码审查，确认以下功能已为跨平台实现，macOS 与 Android 完全对等：
+  - 睡眠定时器 / 播放倍速 / 进度记忆 + 继续收听横幅（1.29.0 / 1.41.0）
+  - 星级评分（1.48.0）/ 自定义分类系统（1.18.0）
+  - 隐私模糊（1.52.0，含 macOS Now Playing 中性化 + 桌面 HUD 隐藏）
+  - 瀑布流布局（1.51.0）/ 字号全局缩放（1.56.0）
+- 测试：237 passed；macOS Release 构建成功（31MB）
+- 版本：`1.62.0+70`；Git commit `450f46e`；GitHub Release 已发布
+
 ### 1.33.0 macOS/Windows 通知层级与扫描进度统一（2026-08-24）
 
 - 新增应用级 `ActivityOverlayHost`，通过 `MaterialApp.builder` 位于 Navigator 与普通对话框之上；Toast 与任务进度共用同一控制器。
