@@ -4,6 +4,30 @@
 > 旧代码（Electron/Capacitor）保留在仓库根目录作参考，功能对等后归档。
 > 本文档为 Flutter 重写的里程碑与修复记录，新改动请追加章节。
 
+### 1.65.0 Android 端顶部工具栏优化（2026-09-09）
+
+- **设计决策**（通过 grilling skill 系统提问确认）：
+  - Q1: 删除"全部音声"文字 → 确认删除，其他按钮左移填充
+  - Q2: 按钮统一样式 → 选择全部改为纯图标按钮（移动端空间有限）
+  - Q3: 显示不出来的按钮 → 移除导入按钮（功能在设置中完成）+ 改纯图标
+  - Q4: 功能优先级 → 保留4个核心功能（定位、主题、隐私、随机）
+- **UI 改进**：
+  - 删除顶部左侧 `_view` 文字显示（原显示"全部音声"等视图名称）
+  - 移除"导入"按钮（Android 端，桌面端保留）
+  - 4个功能按钮统一为 IconButton 纯图标样式：
+    - 定位当前播放（`center_focus_strong_rounded`）
+    - 主题切换（`dark_mode_outlined` / `light_mode_outlined`）
+    - 隐私模糊（`visibility_off_outlined` / `visibility_outlined`）
+    - 随机播放（`shuffle_rounded`）
+  - 图标尺寸：移动端 24px（更易点击），桌面端 18px
+  - 布局：右对齐紧凑排列，按钮间距 8dp（符合 Material Design 规范）
+- **响应式处理**：
+  - `isMobile` 判定：Android 且屏幕宽度 ≤1000px
+  - 桌面端（macOS/Windows）布局不受影响，保留原有面包屑导航和导入按钮
+- 测试：`flutter analyze` 通过（0 issues）；Android Release APK 65.6MB
+- 版本：`1.64.0+72` → `1.65.0+73`；Git commit `512ef66`；GitHub Release 已发布
+- 文件：`home_screen.dart`（`_buildTopbar` 方法重构）
+
 ### 1.64.0 Android 端精简主界面（2026-09-09）
 
 - **需求背景**：用户反馈 Android 移动端主界面选项过多，希望简化导航结构
