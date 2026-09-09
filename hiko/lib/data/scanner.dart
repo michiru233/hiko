@@ -16,6 +16,8 @@ const audioExtensions = {
   '.mp3', '.m4a', '.wav', '.flac', '.ogg', '.aac', '.opus', '.webm',
 };
 const imageExtensions = {'.jpg', '.jpeg', '.png', '.webp', '.gif'};
+const lyricExtensions = {'.lrc', '.vtt', '.srt'};
+const lyricMaxBytes = 64 * 1024; // 64KB 上限（对齐 Android）
 
 String _ext(String path) {
   final dot = path.lastIndexOf('.');
@@ -24,6 +26,50 @@ String _ext(String path) {
 
 String _fileName(String path) => path.split(Platform.pathSeparator).last;
 String _toFileUrl(String path) => Uri.file(path).toString();
+
+/// 查找与音频文件同名的歌词文件（.lrc/.vtt/.srt，大小写不敏感）
+/// 例如：01.mp3 → 01.lrc / 01.vtt / 01.srt
+Future<String?> _findLyricFor(String audioPath) async {
+  final dir = Directory(audioPath.substring(0, audioPath.lastIndexOf(Platform.pathSeparator)));
+  final fileName = _fileName(audioPath);
+  final stem = fileName.substring(0, _stemLength(fileName)).toLowerCase();
+  
+  try {
+    final entries = await dir.list().toList();
+    for (final entry in entries) {
+      if (entry is File) {
+        final lyricName = _fileName(entry.path);
+        final lyricStem = lyricName.substring(0, _stemLength(lyricName)).toLowerCase();
+        final lyricExt = _ext(entry.path);
+        
+        if (lyricStem == stem && lyricExtensions.contains(lyricExt)) {
+          return entry.path;
+        }
+      }
+    }
+  } catch (_) {}
+  
+  return null;
+}
+
+/// 读取歌词文件内容（≤64KB，多编码解码）
+Future<String?> _readLyricText(String lyricPath) async {
+  try {
+    final file = File(lyricPath);
+    final stat = await file.stat();
+    
+    // 超过 64KB 跳过
+    if (stat.size > lyricMaxBytes) return null;
+    
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty || bytes.length > lyricMaxBytes) return null;
+    
+    // 多编码解码（对齐 Android 的 decodeLyricText 逻辑）
+    return repairText(String.fromCharCodes(bytes));
+  } catch (_) {
+    return null;
+  }
+}
 
 /// sha1 前 16 位 hex（与 Android stableId 同源）
 String stableId(String value) =>
@@ -352,11 +398,24 @@ Future<Album?> _buildAlbum(String key, List<FileMeta> files) async {
     final name = (t != null && t.trim().isNotEmpty && !looksGarbled(t))
         ? t
         : (stem.isNotEmpty ? stem : 'Track ${i + 1}');
+    
+    // macOS 歌词自动检测：查找同名 .lrc/.vtt/.srt 文件（≤64KB）
+    String? lyricsText;
+    try {
+      final lyricPath = await _findLyricFor(m.path);
+      if (lyricPath != null) {
+        lyricsText = await _readLyricText(lyricPath);
+      }
+    } catch (_) {
+      // 歌词读取失败静默容错
+    }
+    
     tracks.add(Track(
       index: i,
       name: name,
       url: _toFileUrl(m.path),
       duration: m.duration,
+      lyricsText: lyricsText,
     ));
     totalDuration += m.duration;
   }
