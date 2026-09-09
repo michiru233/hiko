@@ -149,12 +149,12 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Column(
         children: [
-          // 封面 - 缩小尺寸
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: SizedBox(
-              width: 160,
-              height: 160,
+          // 封面 - 固定尺寸防止加载时布局抖动
+          SizedBox(
+            width: 160,
+            height: 160,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
               child: AlbumCover(
                 album: album,
                 fit: BoxFit.cover,
@@ -281,25 +281,31 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
           ),
         ),
         const SizedBox(width: 12),
-        // 评分
+        // 评分 - 扩大触摸目标到 48×48px
         IconButton(
           onPressed: () => _showRatingDialog(album),
           icon: Icon(
             album.rating > 0 ? Icons.star : Icons.star_border,
+            size: 24,
             color: album.rating > 0
                 ? Colors.amber
                 : (isDark ? HikoColors.darkMuted : HikoColors.lightMuted),
           ),
           tooltip: '评分',
+          padding: const EdgeInsets.all(12),
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
         ),
-        // 分类
+        // 分类 - 扩大触摸目标到 48×48px
         IconButton(
           onPressed: () => _showCategoryDialog(album),
           icon: Icon(
             Icons.label_outline,
+            size: 24,
             color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
           ),
           tooltip: '分类',
+          padding: const EdgeInsets.all(12),
+          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
         ),
       ],
     );
@@ -420,12 +426,12 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
                       ),
               ),
               const SizedBox(width: 8),
-              // 曲名
+              // 曲名 - 提升到 16px 可读标准
               Expanded(
                 child: Text(
                   track.name,
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: 16,
                     fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
                     color: isCurrent
                         ? theme.colorScheme.primary
@@ -436,11 +442,11 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
                 ),
               ),
               const SizedBox(width: 8),
-              // 时长
+              // 时长 - 提升到 14px
               Text(
                 formatTime(track.duration),
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 14,
                   color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
                 ),
               ),

@@ -154,56 +154,59 @@ class _FullscreenPlayerScreenState
         alignment: Alignment.center,
         clipBehavior: Clip.none,
         children: [
-          // 旋转的黑胶唱片外圈
-          AnimatedBuilder(
-            animation: _rotationController,
-            builder: (context, child) {
-              return Transform.rotate(
-                angle: _rotationController.value * 2 * math.pi,
-                child: child,
-              );
-            },
-            child: Container(
-              width: 320,
-              height: 320,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                // 黑胶唱片外圈：黑色圆环
-                gradient: RadialGradient(
-                  colors: [
-                    const Color(0xFF1a1a1a),
-                    const Color(0xFF0d0d0d),
-                    Colors.black,
-                  ],
-                  stops: const [0.7, 0.85, 1.0],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.5),
-                    blurRadius: 40,
-                    offset: const Offset(0, 15),
-                  ),
-                ],
-              ),
-              child: Center(
-                // 封面图片（占中间部分）
-                child: Container(
-                  width: 220,
-                  height: 220,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        blurRadius: 20,
-                        offset: const Offset(0, 5),
-                      ),
+          // 旋转的黑胶唱片外圈 - 使用 RepaintBoundary 隔离重绘
+          RepaintBoundary(
+            child: AnimatedBuilder(
+              animation: _rotationController,
+              builder: (context, child) {
+                return Transform.rotate(
+                  angle: _rotationController.value * 2 * math.pi,
+                  child: child,
+                );
+              },
+              // 静态黑胶唱片作为 child，不重复构建
+              child: Container(
+                width: 320,
+                height: 320,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  // 黑胶唱片外圈：黑色圆环
+                  gradient: const RadialGradient(
+                    colors: [
+                      Color(0xFF1a1a1a),
+                      Color(0xFF0d0d0d),
+                      Colors.black,
                     ],
+                    stops: [0.7, 0.85, 1.0],
                   ),
-                  child: ClipOval(
-                    child: AlbumCover(
-                      album: album,
-                      fit: BoxFit.cover,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      blurRadius: 40,
+                      offset: const Offset(0, 15),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  // 封面图片（占中间部分）
+                  child: Container(
+                    width: 220,
+                    height: 220,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.3),
+                          blurRadius: 20,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
+                    child: ClipOval(
+                      child: AlbumCover(
+                        album: album,
+                        fit: BoxFit.cover,
+                      ),
                     ),
                   ),
                 ),
@@ -301,7 +304,7 @@ class _FullscreenPlayerScreenState
           Text(
             track?.name ?? album.title,
             style: TextStyle(
-              fontSize: 20,
+              fontSize: 22,
               fontWeight: FontWeight.w700,
               color: isDark ? HikoColors.darkInk : HikoColors.lightInk,
             ),
@@ -313,7 +316,7 @@ class _FullscreenPlayerScreenState
           Text(
             album.artist,
             style: TextStyle(
-              fontSize: 14,
+              fontSize: 16,
               color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
             ),
             textAlign: TextAlign.center,
@@ -372,14 +375,14 @@ class _FullscreenPlayerScreenState
                 Text(
                   formatTime(displayPosition),
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 14,
                     color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
                   ),
                 ),
                 Text(
                   formatTime(duration),
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 14,
                     color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
                   ),
                 ),
@@ -490,11 +493,13 @@ class _FullscreenPlayerScreenState
     required bool isDark,
     required VoidCallback onTap,
   }) {
+    // 扩大触摸目标到 56×56px（图标 28 + padding 14×2）
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Container(
+        constraints: const BoxConstraints(minWidth: 56, minHeight: 56),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -736,7 +741,7 @@ class _FullscreenPlayerScreenState
                             title: Text(
                               track.name,
                               style: TextStyle(
-                                fontSize: 14,
+                                fontSize: 16,
                                 fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
                                 color: isCurrent
                                     ? theme.colorScheme.primary
@@ -748,7 +753,7 @@ class _FullscreenPlayerScreenState
                             trailing: Text(
                               formatTime(track.duration),
                               style: TextStyle(
-                                fontSize: 12,
+                                fontSize: 14,
                                 color: isDark
                                     ? HikoColors.darkMuted
                                     : HikoColors.lightMuted,
