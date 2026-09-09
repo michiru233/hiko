@@ -332,6 +332,9 @@ class _FullscreenPlayerScreenState
     ThemeData theme,
     bool isDark,
   ) {
+    // 拖动时显示拖动位置，否则显示实际播放位置
+    final displayPosition = _dragging ? _dragValue : position;
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
@@ -349,7 +352,7 @@ class _FullscreenPlayerScreenState
               overlayColor: theme.colorScheme.primary.withValues(alpha: 0.2),
             ),
             child: Slider(
-              value: duration > 0 ? position.clamp(0, duration) : 0,
+              value: duration > 0 ? displayPosition.clamp(0, duration) : 0,
               max: duration > 0 ? duration : 1,
               onChanged: (v) => setState(() {
                 _dragging = true;
@@ -367,14 +370,14 @@ class _FullscreenPlayerScreenState
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  formatDuration(position),
+                  formatTime(displayPosition),
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
                   ),
                 ),
                 Text(
-                  formatDuration(duration),
+                  formatTime(duration),
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
@@ -743,7 +746,7 @@ class _FullscreenPlayerScreenState
                               overflow: TextOverflow.ellipsis,
                             ),
                             trailing: Text(
-                              formatDuration(track.duration),
+                              formatTime(track.duration),
                               style: TextStyle(
                                 fontSize: 12,
                                 color: isDark

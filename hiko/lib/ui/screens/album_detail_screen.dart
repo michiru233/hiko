@@ -438,7 +438,7 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
               const SizedBox(width: 8),
               // 时长
               Text(
-                formatDuration(track.duration),
+                formatTime(track.duration),
                 style: TextStyle(
                   fontSize: 12,
                   color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
