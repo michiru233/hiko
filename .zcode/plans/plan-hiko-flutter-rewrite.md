@@ -4,6 +4,35 @@
 > 旧代码（Electron/Capacitor）保留在仓库根目录作参考，功能对等后归档。
 > 本文档为 Flutter 重写的里程碑与修复记录，新改动请追加章节。
 
+### 1.63.0 进度记忆修复与黑胶页播放模式按钮（2026-09-09）
+
+- **需求1：进度记忆功能修复**（跨平台统一）：
+  - **问题根因**：专辑详情页"全部播放"按钮调用 `playAlbum(album)` 未传入 `startPosition`，总是从第0首第0秒开始播放
+  - **修复方案**：检查 `album.resumeTrackIndex`（≥0表示有断点），自动传入 `resumeTrackIndex` 和 `resumePosition` 参数
+  - **用户体验**：点击"全部播放"静默从上次断点继续，无弹窗、无主动提示（符合 Spotify/Apple Music 标准行为）
+  - **保留行为**：点击特定曲目从该曲目第0秒开始（用户明确选择），"从头播放"按钮保持从第0轨开始
+  - **诊断增强**：在保存/恢复路径加 `debugPrint` 日志（`_maybePersistProgress`、`_persistProgress`、`updatePlayed`、`resumePoint`、`playAlbum`），便于后续排查
+  - 文件：`album_detail_screen.dart`、`playback_controller.dart`、`library_provider.dart`、`library_store.dart`、`playback_rules.dart`
+- **需求2：黑胶页播放模式按钮**（UI 增强）：
+  - **功能按钮行扩展**：从3个增加到4个（睡眠定时 / 音频增益 / **播放模式** / 音轨列表）
+  - **按钮样式**：图标+文字纵向布局（图标 28px、文字 12px、间距 4px），匹配现有功能按钮风格
+  - **图标选择**：Material Icons outlined 变体（`repeat_outlined` / `repeat_one_outlined` / `shuffle_outlined` / `album`）
+  - **交互设计**：点击弹出 `MenuAnchor` 菜单，显示4种模式（列表循环/单曲循环/随机/专辑循环）
+  - **菜单项增强**：左侧图标 + 完整名称 + 说明文字，当前模式用浅色背景高亮 + 右侧勾选图标
+  - **状态同步**：通过 `playbackProvider` 全局状态，与底部播放栏的播放模式按钮实时同步
+  - 文件：`fullscreen_player_screen.dart`（新增 `_buildPlayModeButton` 和 `_buildPlayModeMenuItem` 方法）
+- **决策树澄清**（grilling skill 完整对话）：
+  - Q1.1: Android 进度记忆缺失环节 → C（保存和恢复都不工作，实际是恢复未实现）
+  - Q1.2: 恢复触发时机 → D（只保存不自动恢复，手动点击专辑时静默从断点播放）
+  - Q1.5: 手动恢复行为 → A（静默断点续播，不弹窗询问）
+  - Q2.1: 播放模式按钮位置 → A（功能按钮行加第4个）
+  - Q2.3: 按钮样式 → B（图标+文字）
+  - Q2.7: 菜单内容 → C（视觉增强：图标+名称+说明）
+  - Q2.8: 当前模式高亮 → C（颜色高亮+勾选图标）
+- 测试：代码分析通过（仅 info 级别警告）；macOS Release 31MB；Android APK 63MB
+- 版本：`1.62.0+70` → `1.63.0+71`；Git commit `587f14f`；GitHub Release 已发布
+- **待测试**：模拟器/真机验证进度记忆和播放模式切换（已构建 Release 但未实机测试）
+
 ### 1.62.0 macOS 歌词自动检测（2026-09-09）
 
 - **macOS 歌词自动检测**（对齐 Android 1.29.0 行为）：
