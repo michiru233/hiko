@@ -80,10 +80,20 @@ class HikoApp extends ConsumerWidget {
       title: 'Hiko · 音声库',
       debugShowCheckedModeBanner: false,
       theme: buildHikoTheme(settings),
-      builder: (context, child) => ActivityOverlayHost(
-        controller: activityOverlayController,
-        child: child ?? const SizedBox.shrink(),
-      ),
+      builder: (context, child) {
+        // 全局字号大小响应（1.56）：读取 settings.fontScale，应用 TextScaler 覆盖
+        final mediaQuery = MediaQuery.of(context);
+        final scaledMediaQuery = mediaQuery.copyWith(
+          textScaler: TextScaler.linear(settings.fontScale),
+        );
+        return MediaQuery(
+          data: scaledMediaQuery,
+          child: ActivityOverlayHost(
+            controller: activityOverlayController,
+            child: child ?? const SizedBox.shrink(),
+          ),
+        );
+      },
       home: const HomeScreen(),
     );
   }

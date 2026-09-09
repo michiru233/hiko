@@ -221,6 +221,60 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                   ],
                 ),
               ),
+              _SettingRow(
+                label: '字号大小',
+                trailing: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest.withValues(
+                      alpha: 0.6,
+                    ),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final (scale, label) in [
+                        (0.85, '小'),
+                        (1.0, '标准'),
+                        (1.15, '大'),
+                        (1.30, '超大'),
+                      ])
+                        InkWell(
+                          onTap: () => ref
+                              .read(settingsProvider.notifier)
+                              .setFontScale(scale),
+                          mouseCursor: SystemMouseCursors.click,
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: settings.fontScale == scale
+                                  ? theme.colorScheme.surface
+                                  : null,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              label,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: settings.fontScale == scale
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
+                                color: settings.fontScale == scale
+                                    ? theme.colorScheme.onSurface
+                                    : theme.hintColor,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
               // ---- 音频与增益 ----
               _SectionTitle('音频与增益'),
               _SettingRow(
