@@ -33,7 +33,6 @@ import '../widgets/category_dialog.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/context_menu.dart';
 import '../widgets/detail_drawer.dart';
-import '../widgets/glass_container.dart';
 import '../widgets/toast.dart';
 import '../widgets/player_bar.dart';
 import '../widgets/rating_dialog.dart';
@@ -55,7 +54,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   String _view = '全部音声';
   String _filter = 'all';
-  String _query = '';
+  final String _query = ''; // 保留空字符串以兼容 FilterAlbumsMemo，搜索功能已移除
   bool _multiMode = false;
   final Set<String> _multiIds = {};
   Album? _detailAlbum;
@@ -63,8 +62,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _drawerOpen = false;
   bool _importing = false;
   final Set<String> _resumeDismissed = {}; // 本次会话内被 × 关掉的「继续收听」专辑
-  final _searchController = TextEditingController();
-  final _searchFocus = FocusNode();
   final _filterMemo = FilterAlbumsMemo();
   // 1.49「定位当前播放」：网格滚动控制、目标卡 Key 与高亮状态
   final _gridScrollController = ScrollController();
@@ -125,8 +122,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
-    _searchController.dispose();
-    _searchFocus.dispose();
     _gridScrollController.dispose();
     _highlightTimer?.cancel();
     super.dispose();
@@ -269,8 +264,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       setState(() {
         _view = '全部音声';
         _filter = 'all';
-        _query = '';
-        _searchController.clear();
       });
       _showToast(
         albums.isEmpty
@@ -471,11 +464,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: Scaffold(
         body: Shortcuts(
           shortcuts: {
-            // ⌘K / Ctrl+K 聚焦搜索（对应旧版快捷键）
-            const SingleActivator(LogicalKeyboardKey.keyK, meta: true):
-                const _FocusSearchIntent(),
-            const SingleActivator(LogicalKeyboardKey.keyK, control: true):
-                const _FocusSearchIntent(),
             // ⌘O / Ctrl+O 导入（对应旧版菜单「导入音声文件夹」）
             const SingleActivator(LogicalKeyboardKey.keyO, meta: true):
                 const _ImportIntent(),
@@ -506,12 +494,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           },
           child: Actions(
             actions: {
-              _FocusSearchIntent: CallbackAction<_FocusSearchIntent>(
-                onInvoke: (_) {
-                  _searchFocus.requestFocus();
-                  return null;
-                },
-              ),
               _ImportIntent: CallbackAction<_ImportIntent>(
                 onInvoke: (_) {
                   _importFolder();
@@ -751,7 +733,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: BottomNavigationBar(
                       currentIndex: _navIndex,
                       onTap: (i) {
-                        if (i == 4) {
+                        if (i == 2) {
                           _openSettings(context);
                           return;
                         }
@@ -766,14 +748,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         BottomNavigationBarItem(
                           icon: Icon(Icons.grid_view_rounded),
                           label: '全部',
-                        ),
-                        BottomNavigationBarItem(
-                          icon: Icon(Icons.history_rounded),
-                          label: '最近',
-                        ),
-                        BottomNavigationBarItem(
-                          icon: Icon(Icons.play_circle_outline_rounded),
-                          label: '播放',
                         ),
                         BottomNavigationBarItem(
                           icon: Icon(Icons.favorite_border_rounded),
@@ -793,10 +767,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  static const _navViews = ['全部音声', '最近添加', '正在播放', '收藏夹'];
+  static const _navViews = ['全部音声', '收藏夹'];
 
   int get _navIndex {
     final i = _navViews.indexOf(_view);
+    // 设置项不在 _navViews 中，单独处理
     return i < 0 ? 0 : i;
   }
 
@@ -940,7 +915,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   /// 「定位当前播放」（1.49）：网格滚回正在播放的专辑卡并短暂高亮；
-  /// 专辑不在当前列表（搜索/筛选/其它视图/统计）时先清筛选切回「全部音声」
+  /// 专辑不在当前列表（筛选/其它视图/统计）时先清筛选切回「全部音声」
   void _locatePlayingAlbum() {
     final target = ref.read(playbackProvider).album;
     if (target == null) return;
@@ -958,8 +933,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     setState(() {
       if (!inCurrentView) {
         // 与「清除筛选」同语义
-        _query = '';
-        _searchController.clear();
         _filter = 'all';
         _view = '全部音声';
       }
@@ -1038,13 +1011,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       child: Row(
         children: [
-          if (isMobile)
-            IconButton(
-              icon: const Icon(Icons.menu_rounded, size: 22),
-              tooltip: '侧栏',
-              onPressed: () => setState(() => _drawerOpen = true),
-            )
-          else
+          if (!isMobile)
             IconButton(
               icon: Icon(
                 _sidebarCollapsed ? Icons.menu_open : Icons.menu,
@@ -1211,46 +1178,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         children: [
           Row(
             children: [
-              Expanded(
-                child: SizedBox(
-                  height: 38,
-                  child: TextField(
-                    controller: _searchController,
-                    focusNode: _searchFocus,
-                    onChanged: (v) => setState(() => _query = v),
-                    decoration: InputDecoration(
-                      hintText: '搜索标题、社团或声优',
-                      hintStyle: TextStyle(
-                        fontSize: 13,
-                        color: theme.hintColor,
-                      ),
-                      prefixIcon: const Icon(Icons.search_rounded, size: 18),
-                      isDense: true,
-                      filled: true,
-                      fillColor: theme.brightness == Brightness.dark
-                          ? HikoColors.darkGlassCard
-                          : HikoColors.lightGlassCard,
-                      contentPadding: EdgeInsets.zero,
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(
-                          color: theme.brightness == Brightness.dark
-                              ? HikoColors.darkGlassBorderSubtle
-                              : HikoColors.lightGlassBorderSubtle,
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide(
-                          color: theme.colorScheme.primary,
-                          width: 1.5,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
               // 筛选组（玻璃胶囊分段）
               Container(
                 padding: const EdgeInsets.all(3),
@@ -1313,7 +1240,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ],
                 ),
               ),
-              const SizedBox(width: 14),
+              const Spacer(),
               // 排序
               _SortSelector(
                 currentSort: currentSort,
@@ -1435,7 +1362,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildResultsLine(ThemeData theme, int count) {
-    final hasFilter = _query.isNotEmpty || _filter != 'all' || _view != '全部音声';
+    final hasFilter = _filter != 'all' || _view != '全部音声';
     return Padding(
       padding: const EdgeInsets.fromLTRB(48, 8, 48, 0),
       child: Row(
@@ -1448,10 +1375,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           if (hasFilter)
             TextButton(
               onPressed: () => setState(() {
-                _query = '';
                 _filter = 'all';
                 _view = '全部音声';
-                _searchController.clear();
               }),
               child: const Text('清除筛选', style: TextStyle(fontSize: 11)),
             ),
@@ -1795,11 +1720,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _showToast('删除失败：$e');
     }
   }
-}
-
-/// 快捷键 Intent：聚焦搜索框
-class _FocusSearchIntent extends Intent {
-  const _FocusSearchIntent();
 }
 
 /// 快捷键 Intent：导入音声文件夹
