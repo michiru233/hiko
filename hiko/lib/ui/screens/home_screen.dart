@@ -40,6 +40,7 @@ import '../widgets/rating_dialog.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/stats_view.dart';
 import '../widgets/sidebar.dart';
+import 'album_detail_screen.dart';
 
 /// 主界面：桌面三栏布局（侧栏 | 网格 | 详情抽屉）+ 底部播放条；
 /// Android 触屏（≤1000px）切换为移动布局：底部导航 + 抽屉侧栏 + 全屏详情 + 长按菜单 + 系统返回逐层关闭。
@@ -628,7 +629,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           ref.watch(playbackProvider).album != null)
                         PlayerBar(
                           compact: isMobile,
-                          onCoverTap: (a) => setState(() => _detailAlbum = a),
+                          onCoverTap: (a) {
+                            if (isMobile) {
+                              // 1.56 移动端：点击播放条封面进入全屏详情页
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (context) => AlbumDetailScreen(albumId: a.id),
+                                ),
+                              );
+                            } else {
+                              // 桌面端：打开右侧抽屉
+                              setState(() => _detailAlbum = a);
+                            }
+                          },
                         ),
                     ],
                   ),
@@ -804,7 +817,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: _view == '统计'
               ? StatsView(
                   stats: computeLibraryStats(filtered),
-                  onOpenAlbum: (album) => setState(() => _detailAlbum = album),
+                  onOpenAlbum: (album) {
+                    if (isMobile) {
+                      // 1.56 移动端：从统计页打开专辑全屏详情
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => AlbumDetailScreen(albumId: album.id),
+                        ),
+                      );
+                    } else {
+                      // 桌面端：打开右侧抽屉
+                      setState(() => _detailAlbum = album);
+                    }
+                  },
                 )
               : _buildGrid(filtered, theme, isMobile),
         ),
@@ -1498,7 +1523,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ? _multiIds.remove(album.id)
                     : _multiIds.add(album.id);
               });
+            } else if (isMobile) {
+              // 1.56 移动端：点击卡片进入全屏详情页
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => AlbumDetailScreen(albumId: album.id),
+                ),
+              );
             } else {
+              // 桌面端：打开右侧抽屉
               setState(() => _detailAlbum = album);
             }
           },
