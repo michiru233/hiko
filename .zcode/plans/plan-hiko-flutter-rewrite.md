@@ -954,16 +954,25 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 - **验证**：本地编译通过；macOS release 产物 Hiko.app **73.8MB**（`hiko-v1.61.0-macos.zip`）；Android release APK **65.6MB**（`hiko-v1.61.0-android.apk`）；commit **f95749c** 已推送 origin main；GitHub Release **v1.61.0**（https://github.com/michiru233/hiko/releases/tag/v1.61.0）。功能实测（macOS）：歌词自动居中滚动✓，手动滚动暂停自动跟随✓，字号 5 档切换即时生效✓，布局更紧凑歌词区域明显增大✓。
 - **发版**：pubspec 1.61.0+69。
 
-### 1.71.0 修复安卓端歌词当前句居中偏移（2026-09-10）
+### 1.71.1 修复全屏播放页歌词当前句居中偏移（2026-09-10）
 
-- **问题**：安卓端播放时当前高亮句出现在屏幕**偏下 3-5 行甚至更多**位置，需要手动下滑才能看到，桌面端正常。不同字号下偏移量不同。
-- **根因**：`Scrollable.ensureVisible(alignment: 0.5)` 在安卓端计算 viewport 中心时未正确处理 SafeArea 底部 insets（导航栏/手势条），且 `alignment: 0.5` 对齐的是行边界框中心而非视觉质心，大字号时偏移更明显。
-- **修复**：`drawer_lyrics_view.dart::_scrollToActiveLine` 改用手动滚动计算：
-  - 用 `RenderBox.localToGlobal` 获取目标行在 ListView 坐标系中的精确位置
-  - 计算行的实际高度（天然支持字号变化）
-  - 让行**视觉中心**（`position + height/2`）对齐 viewport **真实中心**（`viewportDimension/2`）
-  - 用 `ScrollController.animateTo` 替代 `ensureVisible` 精确滚动
-- **影响范围**：仅安卓端专辑详情页「歌词」tab 的自动滚动行为，不影响手动滚动、桌面端或其他场景。
-- **验证**：待用户真机测试（不同字号下当前句是否始终居中）。
-- **版本**：1.70.0+78 → 1.71.0+79
-- **构建**：Android 65.7MB APK、macOS 31MB zip
+- **问题**：安卓端播放时当前高亮句出现在屏幕**偏下**位置（用户实测「每一个高亮句都在屏幕下方不显示的区域，还要划两到三句才能解决」），桌面端正常。字号不同偏移量不同。
+- **首轮误诊（如实记录）**：1.71.0 首版改的是 `drawer_lyrics_view.dart`（专辑详情页「歌词」tab），用户复测无效。**真正出问题的是全屏播放页 `fullscreen_player_screen.dart::_buildLyricsView`**——安卓端看歌词是在全屏播放页，不是详情页 tab。该误诊改动已 revert，只在全屏页修。
+- **根因（全屏页）**：滚动目标偏移是硬算的——
+  ```dart
+  final itemHeight = 45.0 * lyricsFontScale;
+  final screenHeight = MediaQuery.of(context).size.height;   // ← 整个屏幕，不是歌词区
+  final targetOffset = (currentIndex * itemHeight) - (screenHeight / 2) + (itemHeight / 2);
+  ```
+  两处失准：①`screenHeight` 用的是**整个屏幕高度**，而歌词 ListView 的 viewport 被上方 AppBar + 下方曲目信息/进度条/播放控制/功能键挤压后只剩屏幕一半多 → 每行少滚约半个屏幕 → 高亮句落在可视区**下方**；②`itemHeight` 是写死的估算值（45×scale），与实际行高（字号 × height 1.8 + 16 padding）不符，改字号后偏差更大。
+- **修复**：抽出 `_scrollLyricsToLine(index)`，交给 Flutter 自己算真实几何：
+  - 每行挂 `GlobalKey`（`_lineKeys`），`RenderObject` + `RenderAbstractViewport.getOffsetToReveal(renderObject, 0.5)` 求目标 offset——行高、padding、坐标系换算全部取真实值
+  - `alignment: 0.5` 的参照系是 viewport 自身（`viewportDimension`），天然是歌词区中心而非屏幕中心
+  - 目标行尚未被 ListView 构建时（拖动进度条跨行跳转），先按估算行高 `jumpTo` 粗定位把它带进构建范围，下一帧再精确居中；限 2 次防死循环
+  - 保留 `maxScrollExtent` 钳制（首/末行无法居中属物理限制）
+- **影响范围**：仅全屏播放页歌词层自动滚动；`drawer_lyrics_view.dart`（详情页「歌词」tab）保持原 `ensureVisible` 实现不动。
+- **回归测试**：新增 `test/ui/fullscreen_lyrics_center_test.dart`——手机竖屏 + 60 行歌词 + 播放到第 20 句，直接量「当前句中心 vs 歌词 ListView 中心」的像素偏差，两种字号（1.0 / 1.5）各一条。**反向验证**：临时换回旧硬算公式 → 默认字号下偏差 **182.5px**（远超 16px 容差）测试转红；恢复修复实现 → 2/2 绿。
+- **验证**：`flutter test` 245 passed / 1 skipped / 1 failed（唯一失败为 `update_checker_network_test` 断言最新 Release 含 macos 资产——本次发版后自愈）。真机居中效果待用户确认。
+- **版本**：1.70.0+78 → 1.71.1+80（1.71.0 为误诊版本，已作废）
+
+

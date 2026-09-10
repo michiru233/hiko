@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -34,6 +35,7 @@ class _FullscreenPlayerScreenState
     with SingleTickerProviderStateMixin {
   late AnimationController _rotationController;
   final ScrollController _lyricsScrollController = ScrollController();
+  final Map<int, GlobalKey> _lineKeys = {};
   bool _showLyrics = false;
   bool _dragging = false;
   double _dragValue = 0;
@@ -54,6 +56,49 @@ class _FullscreenPlayerScreenState
     _rotationController.dispose();
     _lyricsScrollController.dispose();
     super.dispose();
+  }
+
+  /// 把第 [index] 行滚动到歌词区垂直中心。
+  ///
+  /// 旧实现按「索引 × 估算行高 − 屏幕高度/2」硬算，用的是**整个屏幕**高度而非歌词
+  /// ListView 自身的可视高度（歌词区被上方曲目信息/进度条/控制栏挤压后只剩屏幕一半
+  /// 多），于是每行少滚约半个屏幕，高亮句落在可视区下方，需手动再滑两三句才看得到；
+  /// 写死的行高估算（45×scale）在改字号后也会失准。
+  ///
+  /// 现在交给 Flutter 自己算：`getOffsetToReveal` 处理行高、padding、坐标系换算，
+  /// `alignment` 的参照系是 viewport 自身（`viewportDimension`）而非屏幕高度。
+  void _scrollLyricsToLine(int index, {int attempt = 0}) {
+    if (!mounted || !_lyricsScrollController.hasClients) return;
+
+    final renderObject = _lineKeys[index]?.currentContext?.findRenderObject();
+    final viewport = RenderAbstractViewport.maybeOf(renderObject);
+
+    if (viewport == null) {
+      // 目标行还没被 ListView 构建（拖动进度条/点击远处行做跨行跳转）。
+      // 先按估算行高粗跳一次把它带进构建范围，下一帧再精确对齐；限次防死循环。
+      if (attempt >= 2) return;
+      final scale = ref.read(settingsProvider).lyricsFontScale;
+      _lyricsScrollController.jumpTo(
+        (index * 45.0 * scale)
+            .clamp(0.0, _lyricsScrollController.position.maxScrollExtent),
+      );
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _scrollLyricsToLine(index, attempt: attempt + 1),
+      );
+      return;
+    }
+
+    // alignment 0.5 = 目标行居中于 viewport（歌词区自身高度，不是屏幕高度）
+    final target = viewport
+        .getOffsetToReveal(renderObject!, 0.5)
+        .offset
+        .clamp(0.0, _lyricsScrollController.position.maxScrollExtent);
+
+    _lyricsScrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
   }
 
   @override
@@ -280,20 +325,7 @@ class _FullscreenPlayerScreenState
     if (currentIndex >= 0 && currentIndex != _lastScrolledIndex && lyrics.autoScrollEnabled) {
       _lastScrolledIndex = currentIndex;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_lyricsScrollController.hasClients) {
-          // 每行高度约为：字体大小 * 行高 + padding
-          // 当前行：18 * 1.8 + 16 = 48.4，非当前行：15 * 1.8 + 16 = 43
-          // 简化计算：平均每行 45，滚动到居中位置
-          final itemHeight = 45.0 * lyricsFontScale;
-          final screenHeight = MediaQuery.of(context).size.height;
-          final targetOffset = (currentIndex * itemHeight) - (screenHeight / 2) + (itemHeight / 2);
-          
-          _lyricsScrollController.animateTo(
-            targetOffset.clamp(0.0, _lyricsScrollController.position.maxScrollExtent),
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          );
-        }
+        _scrollLyricsToLine(currentIndex);
       });
     }
 
@@ -315,6 +347,7 @@ class _FullscreenPlayerScreenState
               final isCurrent = index == currentIndex;
               final line = lines[index];
               return Padding(
+                key: _lineKeys.putIfAbsent(index, () => GlobalKey()),
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Text(
                   line.text,
