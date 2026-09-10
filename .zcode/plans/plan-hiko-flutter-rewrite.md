@@ -4,6 +4,241 @@
 > 旧代码（Electron/Capacitor）保留在仓库根目录作参考，功能对等后归档。
 > 本文档为 Flutter 重写的里程碑与修复记录，新改动请追加章节。
 
+### 1.70.0 修复安卓端双扩展名歌词（`track01.mp3.vtt`）整片丢失（2026-09-10）
+
+- **问题背景**：用户反馈「hiko 安卓端对 vtt 歌词仍然不支持」，测试样本为 `/Users/chenjh/Music/音声/RJ01414585/后辈NTR/mp3`——该专辑 9 轨歌词**全部**命名为「完整音频文件名 + 歌词扩展名」（`track01 柊莉花.mp3.vtt`，DLsite 常见约定）。
+- **根因（不是 VTT 格式问题，是 sidecar 命名匹配问题）**：安卓端音轨 URL 是 `content://`，`LyricsResolver._resolveLocalFilePath` 只认 `file://`/绝对路径，因此播放期**无法**回磁盘找歌词，100% 依赖导入时随专辑事件回传并落库的 `track.lyricsText`。而导入期的匹配器 `ImportScanner.findLyricFor` 两侧都取 `substringBeforeLast('.')`：
+  - 歌词侧 `track01 柊莉花.mp3.vtt` → `track01 柊莉花.mp3`
+  - 音频侧 `track01 柊莉花.mp3` → `track01 柊莉花`
+  - **永不相等 → `lyricsText` 恒为 null → 安卓端这类歌词整片丢失。**
+  桌面端之所以「看起来没事」，是因为 `lyrics_resolver.dart` 另有一条「优先级 1.5 双扩展名匹配」分支在播放期兜底（`:88-100`），把同一处缺陷掩盖了——这也解释了为何问题只在安卓暴露。
+- **实测数据（本机样本 9 轨，脚本比对）**：旧匹配逻辑 **0/9 命中**，新逻辑 **9/9 命中**。
+- **修复（抽出一个共享判定，两端复用，避免再次漂移）**：
+  - 新增 `hiko/lib/utils/lyric_name.dart`：`isLyricFor(audioName, lyricName)` 同时认定两种约定——同名换扩展名（`01.mp3`→`01.lrc`）与完整音频名加后缀（`track01 柊莉花.mp3`→`track01 柊莉花.mp3.vtt`），并把 `lyricExtensions` 收归此处唯一来源。
+  - Android `ImportScanner.kt`：新增同语义的 `isLyricFor`，`findLyricFor` 退化为一行 `files?.firstOrNull { isLyricFor(audioName, it.name) }`。
+  - Dart `scanner.dart`（桌面导入快照）**有同一处缺陷**：`_findLyricFor` 改用共享 `isLyricFor`，删除本地重复的 `lyricExtensions` 常量。
+  - `lyrics_resolver.dart`：删除重复的 `static const lyricExtensions`，改用共享常量（原有四级匹配逻辑不动，零行为变更）。
+- **回归测试**：
+  - Kotlin `ImportScannerTest` 20/20 全绿（+3：双扩展名命中、单扩展名命中、串号/非歌词扩展名/畸形名拒绝）。
+  - Dart 新增 `test/utils/lyric_name_test.dart` 6 例；`flutter test` **243 passed / 1 skipped / 1 failed**，唯一失败是 `update_checker_network_test.dart` 断言「最新 Release 应含 macos 资产」——v1.69.0 只传了 apk（存量问题，本次补 macos 资产后自愈）。
+- **存量库迁移**：修好匹配器不会自动回填已入库的 `lyricsText=null`。安卓端走 设置 →「立即重新扫描」（`full: true` → 原生 `known` 传空 → 全目录重解析 → `mergeWith(tracks: tracks)` 整表替换）即可回填，无需清库。仅「增量自动扫描」会因 `skipDirs` 跳过全已知目录而不回填。
+- **验证状态（如实记录）**：模拟器（kikoeru_test / emulator-5554）**已用 1.69.0 旧版端到端复现**——SAF 导入 `Download/RJ01414585` 后 `library.json` 三轨 `lyricsText` 全为 `NULL`，`.mp3.vtt` 就在同目录。修复版 1.70.0 的模拟器端到端复测**未完成**：为取得干净基线执行 `pm clear` 后该 AVD 的 MediaProvider 索引失效（取件器显示「无任何文件」、应用报「没有在所选文件夹中找到支持的音频文件」），重启模拟器清理后交由用户在真机复测。
+- **构建产物**：Android `flutter build apk --release` → 65.7MB `hiko-v1.70.0-android.apk`；macOS `flutter build macos --release` 同步执行。
+- **版本记录**：`1.69.0+77` → `1.70.0+78`。
+
+### 1.69.0 支持断点续播 - 专辑详情页点击曲目从上次位置继续（2026-09-10）
+
+- **问题背景**：
+  - 用户反馈：专辑详情页点击曲目 → 播放一段时间 → 返回 → 再次点击同一曲目
+  - 预期：从上次中断位置继续播放
+  - 实际：每次都从头开始播放（进度丢失）
+  - 不符合主流音乐 App 行为（Spotify、Apple Music 都支持断点续播）
+- **根本原因**：
+  - `Album` 模型有 `resumeTrackIndex` 和 `resumePosition` 字段保存播放进度
+  - 但专辑详情页点击曲目时没有使用这些字段
+  - `album_detail_screen.dart:419` 调用 `playAlbum(album, index: index)`
+  - `startPosition` 参数默认为 `0`，导致总是从头播放
+- **决策方案（方案 A + A1）**：
+  - **方案 A**：点击已播放曲目时断点续播（推荐）
+    - 判断点击的曲目是否为上次播放的断点曲目
+    - 如果是，从 `album.resumePosition` 继续播放
+    - 如果不是，从头开始播放
+  - **A1 细节**：点击正在播放的曲目也继续播放（不重置进度）
+  - **未采用的备选方案**：
+    - 方案 B：保持当前行为（不修复）
+    - 方案 C：增加长按菜单（过度设计）
+- **修改内容**（`lib/ui/screens/album_detail_screen.dart`）：
+  - 在 `_buildTrackItem` 的 `onTap` 中增加断点判断逻辑：
+    ```dart
+    // 判断点击的曲目是否为上次播放的断点曲目
+    final isResumeTrack = (album.resumeTrackIndex == index);
+    final startPos = isResumeTrack ? album.resumePosition : 0.0;
+    
+    ref.read(playbackProvider.notifier).playAlbum(
+      album, 
+      index: index, 
+      startPosition: startPos,
+    );
+    ```
+- **用户体验改进**：
+  - 符合主流音乐 App 行为
+  - 播放过的曲目可以继续听，不用重新找位置
+  - 未播放的曲目仍从头开始（符合预期）
+  - 播放进度不再丢失
+  - 想重听？手动拖动进度条回到开头即可
+- **测试验证**：
+  - `flutter analyze`：39 个警告，0 个错误
+  - Android APK 构建成功：63 MB
+- **构建产物**：
+  - Android APK：63 MB（`hiko-v1.69.0-android.apk`）
+  - macOS：无改动，不重新构建
+- **版本记录**：
+  - 版本号：`1.68.0+76` → `1.69.0+77`
+  - Git commit：`a8c6a58`
+  - GitHub Release：[v1.69.0](https://github.com/michiru233/hiko/releases/tag/v1.69.0)
+- **影响范围**：
+  - 全平台（macOS / Android / Windows）
+  - 仅影响专辑详情页曲目列表点击行为
+  - 播放器核心逻辑无改动
+
+### 1.68.0 修复专辑详情页曲目时长显示不一致（2026-09-10）
+
+- **问题背景**：
+  - 用户反馈：专辑详情页显示 TR08 时长 **28:05**，播放页显示同一曲目时长 **35:46**
+  - 时长相差近 8 分钟，导致用户困惑和不信任
+- **根本原因**：
+  - **元数据时长不准确**：`Track.duration` 从音频文件 ID3 标签读取
+    - VBR（可变码率）文件的元数据时长常常错误
+    - 某些编码工具写入的时长不准确
+  - **播放器时长准确**：`PlaybackState.duration` 是播放器实际解码后的真实时长
+- **解决方案（方案 A）**：
+  - 专辑详情页优先显示播放器真实时长
+  - 仅对**当前播放曲目**生效（`playbackState.currentTrack`）
+  - 未播放的曲目仍显示元数据时长（无更好选择）
+- **修改内容**（`lib/ui/screens/album_detail_screen.dart`）：
+  - 在 `_buildTrackItem` 方法中监听播放状态
+  - 判断逻辑：
+    ```dart
+    final isCurrentlyPlaying = isCurrent && playbackState.currentTrack?.url == track.url;
+    final realDuration = isCurrentlyPlaying && playbackState.duration > 0
+        ? playbackState.duration  // 播放器真实时长（准确）
+        : track.duration;          // 元数据时长（可能不准）
+    ```
+  - 使用 `formatTime(realDuration)` 替代 `formatTime(track.duration)`
+- **用户体验改进**：
+  - 播放过的曲目时长准确（与播放页一致）
+  - 未播放的曲目显示元数据时长（略有偏差，但用户一旦播放就会更新为准确值）
+  - 消除详情页与播放页时长不一致的困惑
+- **未采用的备选方案**：
+  - **方案 B**：扫描时用播放器验证真实时长（一次性解决，但扫描速度慢）
+  - **方案 C**：显示 "约 XX:XX"（治标不治本）
+  - **选择方案 A 的原因**：风险低、实施简单、大部分用户先播放再看详情
+- **测试验证**：
+  - `flutter analyze`：39 个警告，0 个错误
+  - Android APK 构建成功：63 MB
+- **构建产物**：
+  - Android APK：63 MB（`hiko-v1.68.0-android.apk`）
+  - macOS：无改动，不重新构建
+- **版本记录**：
+  - 版本号：`1.67.0+75` → `1.68.0+76`
+  - Git commit：`340181c`
+  - GitHub Release：[v1.68.0](https://github.com/michiru233/hiko/releases/tag/v1.68.0)
+- **影响范围**：
+  - 全平台（macOS / Android / Windows）
+  - 仅影响专辑详情页曲目列表时长显示
+  - 播放页无改动（本来就使用真实时长）
+
+### 1.67.0 Android 端修复与增强 - 整理元数据 bug + 重置数据库（2026-09-10）
+
+- **问题背景**：
+  - 用户反馈：Android 端点击"整理专辑元数据"后，**所有专辑消失**（严重 bug）
+  - 用户需求：希望增加"重置数据库"功能（清空专辑记录但不删源文件）
+- **根因分析**：
+  - Android SAF（Storage Access Framework）的 `content://` URI 无法用 `Directory.existsSync()` 检查存在性
+  - `library_reorganizer.dart:132` 的预检查逻辑判定"目录不存在"，导致所有专辑被清空
+  - SAF URI 不是传统文件路径，需要通过 DocumentFile API 访问
+- **修复方案 1：整理元数据 bug**（`lib/data/library_reorganizer.dart`）：
+  - **移除 `Directory.exists()` 预检查**：
+    ```dart
+    // ❌ 旧逻辑（有 bug）
+    if (dir == null || !await Directory(dir).exists()) {
+      return _cleanMissingForSingle(oldAlbum);
+    }
+    
+    // ✅ 新逻辑（修复后）
+    if (dir == null) {
+      return _cleanMissingForSingle(oldAlbum);
+    }
+    // 直接尝试扫描，scanner 内部正确处理 SAF
+    final scannedAlbums = await scanner.scanPath(dir);
+    if (scannedAlbums.isEmpty) {
+      // 扫描失败才降级到逐曲目检查
+      return _cleanMissingForSingle(oldAlbum);
+    }
+    ```
+  - **理由**：
+    - `scanner.scanPath()` 内部已正确处理 Android SAF 场景（通过 DocumentFile）
+    - 只有扫描真正失败时才降级到逐文件检查
+    - 保留功能价值（自动同步文件变动、新增、删除）
+- **新增功能 2：重置数据库**（仅 Android 端）：
+  1. **`lib/data/library_provider.dart`**：
+     - 新增 `clearAll()` 方法：
+       ```dart
+       Future<void> clearAll() async {
+         state = [];
+         await _store.save([]);
+       }
+       ```
+  2. **`lib/ui/widgets/settings_dialog.dart`**：
+     - 在"数据"分区新增按钮（`Platform.isAndroid` 条件渲染）
+     - 按钮位置：整理当前专辑下方
+     - UI 文案：
+       - 行标签：`重置数据库`
+       - 按钮：`清空全部专辑`
+     - 二次确认对话框：
+       - 标题：`确认重置数据库`
+       - 内容：说明清空范围（专辑记录）+ 保留内容（设置、音乐目录）+ 不可撤销警告
+       - 按钮：`取消` / `确认清空`（红色文字）
+     - 确认后行为：
+       - 调用 `clearAll()` 清空数据
+       - Toast 提示：`数据库已重置，请重新导入文件夹`
+       - 自动关闭设置对话框
+  3. **设计原则**：
+     - **仅 Android 端显示**（macOS 用户很少需要此功能）
+     - **保留设置**：主题、增益、字号、音乐目录列表等全部保留
+     - **不删源文件**：只清空 library.json，音频文件完整保留
+     - **二次确认必须**：防止误触导致收藏、播放进度、刮削标签丢失
+- **测试验证**：
+  - `flutter analyze`：39 个警告（未使用导入等），0 个错误
+  - Android APK 构建成功：63 MB
+- **构建产物**：
+  - Android APK：63 MB（`hiko-v1.67.0-android.apk`）
+  - macOS：无改动，不重新构建
+- **版本记录**：
+  - 版本号：`1.66.0+74` → `1.67.0+75`
+  - Git commit：`a09ff2f`
+  - GitHub Release：[v1.67.0](https://github.com/michiru233/hiko/releases/tag/v1.67.0)
+- **影响范围**：
+  - **仅 Android 端**受影响（macOS / Windows 端无改动）
+  - 修复严重 bug（整理元数据清空专辑）
+  - 新增维护工具（重置数据库）
+
+### 1.66.0 歌词系统改进 - 双扩展名支持与居中显示（2026-09-10）
+
+- **问题背景**：
+  - 用户反馈：VTT 歌词文件（命名为 `track01.mp3.vtt`）无法被识别
+  - 用户反馈：歌词高亮行不在屏幕正中心，阅读体验不佳
+- **根因分析**：
+  - 歌词匹配逻辑只支持单扩展名格式（`track01.vtt`）
+  - 某些字幕工具（Aegisub、subtitle-edit、whisper）默认保留完整音频文件名，生成 `.mp3.vtt` / `.mp3.lrc` 双扩展名
+  - 歌词滚动使用 `alignment: 0.35`（黄金视线位置），但用户期望居中（`0.5`）
+- **修复内容**：
+  1. **歌词匹配增强**（`lib/lyrics/lyrics_resolver.dart`）：
+     - 新增优先级 1.5：双扩展名匹配（`track01.mp3` → `track01.mp3.vtt`）
+     - 保持原有优先级：
+       - 优先级 1：精确同名（`track01.mp3` → `track01.vtt`）
+       - 优先级 2：编号模糊匹配
+       - 优先级 3：自然序一一对应
+       - 优先级 4：单文件单曲匹配
+     - 兼容大小写扩展名（`.VTT` / `.LRC`）
+  2. **歌词居中显示**（`lib/ui/lyrics/drawer_lyrics_view.dart`）：
+     - `_scrollToActiveLine` 方法：`alignment: 0.35` → `0.5`
+     - 当前播放行现在显示在屏幕正中心
+     - 符合主流音乐应用（Spotify、网易云音乐）行为
+- **测试验证**：
+  - 运行 `flutter test`：237 个测试通过（1 个网络测试正常失败）
+  - 覆盖：LRC/VTT 解析、多编码还原、自然排序、播放模式队列
+- **构建产物**：
+  - Android APK：63 MB（`hiko-v1.66.0-android.apk`）
+  - macOS ZIP：31 MB（`hiko-v1.66.0-macos.zip`）
+- **版本记录**：
+  - 版本号：`1.65.0+73` → `1.66.0+74`
+  - Git commit：`c55e116`
+  - GitHub Release：[v1.66.0](https://github.com/michiru233/hiko/releases/tag/v1.66.0)
+- **影响范围**：
+  - 全平台（macOS / Android / Windows）
+  - 向后兼容：原有单扩展名匹配逻辑保持不变
+
 ### 1.65.0 Android 端顶部工具栏优化（2026-09-09）
 
 - **设计决策**（通过 grilling skill 系统提问确认）：

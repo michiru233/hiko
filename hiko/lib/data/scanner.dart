@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/album.dart';
 import '../models/track.dart';
+import '../utils/lyric_name.dart';
 import '../utils/natural_compare.dart';
 import '../utils/repair_text.dart';
 import '../utils/rj.dart';
@@ -16,7 +17,6 @@ const audioExtensions = {
   '.mp3', '.m4a', '.wav', '.flac', '.ogg', '.aac', '.opus', '.webm',
 };
 const imageExtensions = {'.jpg', '.jpeg', '.png', '.webp', '.gif'};
-const lyricExtensions = {'.lrc', '.vtt', '.srt'};
 const lyricMaxBytes = 64 * 1024; // 64KB 上限（对齐 Android）
 
 String _ext(String path) {
@@ -32,23 +32,16 @@ String _toFileUrl(String path) => Uri.file(path).toString();
 Future<String?> _findLyricFor(String audioPath) async {
   final dir = Directory(audioPath.substring(0, audioPath.lastIndexOf(Platform.pathSeparator)));
   final fileName = _fileName(audioPath);
-  final stem = fileName.substring(0, _stemLength(fileName)).toLowerCase();
-  
+
   try {
     final entries = await dir.list().toList();
     for (final entry in entries) {
-      if (entry is File) {
-        final lyricName = _fileName(entry.path);
-        final lyricStem = lyricName.substring(0, _stemLength(lyricName)).toLowerCase();
-        final lyricExt = _ext(entry.path);
-        
-        if (lyricStem == stem && lyricExtensions.contains(lyricExt)) {
-          return entry.path;
-        }
+      if (entry is File && isLyricFor(fileName, _fileName(entry.path))) {
+        return entry.path;
       }
     }
   } catch (_) {}
-  
+
   return null;
 }
 

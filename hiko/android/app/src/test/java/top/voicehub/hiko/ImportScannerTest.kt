@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.nio.charset.Charset
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -197,6 +198,36 @@ class ImportScannerTest {
         assertEquals(true, ImportScanner.isLyric("03.srt"))
         assertEquals(false, ImportScanner.isLyric("04.mp3"))
         assertEquals(false, ImportScanner.isLyric(null))
+    }
+
+    @Test
+    fun matchesDoubleExtensionLyricNames() {
+        // 1.70 回归：DLsite 常见的歌词命名是「完整音频文件名 + 歌词扩展名」
+        // (RJ01414585「后辈NTR」全部为 track01 柊莉花.mp3.vtt)。
+        // 旧 findLyricFor 两侧都取 substringBeforeLast('.')：歌词侧得 "track01 柊莉花.mp3"、
+        // 音频侧得 "track01 柊莉花"，永不相等 → 安卓端这类 VTT 歌词整片丢失
+        // (桌面靠 lyrics_resolver 的「优先级 1.5 双扩展名」分支侥幸可用，故问题只在安卓暴露)。
+        assertTrue(ImportScanner.isLyricFor("track01 柊莉花.mp3", "track01 柊莉花.mp3.vtt"))
+        assertTrue(ImportScanner.isLyricFor("01.mp3", "01.mp3.vtt"))
+        assertTrue(ImportScanner.isLyricFor("01.mp3", "01.MP3.VTT"))
+    }
+
+    @Test
+    fun matchesSingleExtensionLyricNames() {
+        assertTrue(ImportScanner.isLyricFor("01.mp3", "01.lrc"))
+        assertTrue(ImportScanner.isLyricFor("01.mp3", "01.VTT"))
+        assertTrue(ImportScanner.isLyricFor("01.mp3", "01.srt"))
+    }
+
+    @Test
+    fun rejectsUnrelatedLyricFiles() {
+        // 不同曲目不得串号（02 的歌词不能挂到 01 上）
+        assertFalse(ImportScanner.isLyricFor("01.mp3", "02.lrc"))
+        assertFalse(ImportScanner.isLyricFor("track01.mp3", "track02.mp3.vtt"))
+        // 非歌词扩展名不参与匹配
+        assertFalse(ImportScanner.isLyricFor("01.mp3", "01.txt"))
+        assertFalse(ImportScanner.isLyricFor("01.mp3", "01.mp3"))
+        assertFalse(ImportScanner.isLyricFor("01.mp3", null))
     }
 }
 

@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 
 import '../models/album.dart';
 import '../models/track.dart';
+import '../utils/lyric_name.dart';
 import '../utils/natural_compare.dart';
 import '../utils/repair_text.dart';
 import 'models/lyric_line.dart';
@@ -15,7 +16,6 @@ import 'parsers/vtt_parser.dart';
 
 /// 歌词解析与多编码扫描器
 class LyricsResolver {
-  static const lyricExtensions = {'.lrc', '.vtt', '.srt'};
   static const subfolderNames = {'lyrics', 'lyric', 'lrc', 'sub', 'subs', 'subtitles', 'vtt'};
 
   /// 为指定音轨和专辑解析歌词

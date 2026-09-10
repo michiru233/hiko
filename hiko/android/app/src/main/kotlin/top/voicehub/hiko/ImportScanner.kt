@@ -454,11 +454,18 @@ object ImportScanner {
     }
 
     /** 目录内查找与音频同名的歌词文件(01.mp3 → 01.lrc/01.vtt/01.srt,大小写不敏感) */
-    fun findLyricFor(files: List<DocumentFile>?, audioName: String): DocumentFile? {
-        val stem = audioName.substringBeforeLast('.').lowercase()
-        return files?.firstOrNull { doc ->
-            doc.name?.substringBeforeLast('.')?.lowercase() == stem && isLyric(doc.name)
-        }
+    fun findLyricFor(files: List<DocumentFile>?, audioName: String): DocumentFile? =
+        files?.firstOrNull { isLyricFor(audioName, it.name) }
+
+    /** 判断 [lyricName] 是否为音频 [audioName] 的 sidecar 歌词。两种命名约定都要认:
+     *  - 同名换扩展名: `01.mp3` → `01.lrc`
+     *  - 完整音频名加后缀: `track01 柊莉花.mp3` → `track01 柊莉花.mp3.vtt`(DLsite 常见,1.70 修复)
+     *  旧实现两侧都取 substringBeforeLast('.')，双扩展名时歌词侧多留一个 ".mp3"，永不相等。 */
+    fun isLyricFor(audioName: String, lyricName: String?): Boolean {
+        if (!isLyric(lyricName)) return false
+        val base = lyricName!!.substringBeforeLast('.').lowercase()
+        return base == audioName.lowercase() ||
+            base == audioName.substringBeforeLast('.').lowercase()
     }
 
     /** 单文件解析结果 */
