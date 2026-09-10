@@ -1,5 +1,7 @@
 # Hiko · 音声收藏室
 
+**当前版本**：v1.69.0 | [下载](https://github.com/michiru233/hiko/releases/latest)
+
 本地优先的音声库管理器（DLsite 音声作品），**Flutter 重写版**，当前主线覆盖 **macOS / Windows 桌面端与 Android**。
 
 > 仓库根目录保留旧版 Electron + Capacitor 代码（参考用）；当前主线在 `hiko/`。
