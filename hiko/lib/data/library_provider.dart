@@ -22,6 +22,12 @@ class LibraryNotifier extends StateNotifier<List<Album>> {
     await _store.save(albums);
   }
 
+  /// 清空全部专辑数据（重置数据库，仅清空 library.json，不删除源文件）
+  Future<void> clearAll() async {
+    state = [];
+    await _store.save([]);
+  }
+
   /// 导入合并：新专辑在前，按 id 去重；同时按「曲目 URL」匹配旧专辑并继承已有元数据
   /// （解决分组策略变化导致的 id 漂移——同文件换组后不产生重复专辑，并完整保留分类、收藏、刮削标签与播放进度）
   Future<void> mergeNew(List<Album> incoming) async {

@@ -128,24 +128,19 @@ class LibraryReorganizer {
   Future<ReorganizeResult> reorganizeSingleAlbum(Album oldAlbum) async {
     final dir = _findAlbumDir(oldAlbum);
 
-    // 1. 如果源目录不存在，降级检查各曲目文件有效性（剔除不存在的曲目）
-    if (dir == null || !await Directory(dir).exists()) {
+    // 1. 如果无法提取目录路径，降级检查各曲目文件有效性
+    if (dir == null) {
       return _cleanMissingForSingle(oldAlbum);
     }
 
-    // 2. 源目录存在，重新调用 scanner 扫描最新文件与元数据
+    // 2. 直接尝试扫描目录（不预先检查存在性）
+    // Android SAF content:// URI 无法用 Directory.exists() 检查，
+    // scanner 内部会正确处理 SAF 场景
     final scannedAlbums = await scanner.scanPath(dir);
 
-    // 目录内没有任何音频文件 → 专辑全部歌曲已被删除
+    // 3. 扫描结果为空 → 目录不可访问或无音频文件，降级到逐曲目检查
     if (scannedAlbums.isEmpty) {
-      return ReorganizeResult(
-        stats: ReorganizeStats(
-          scannedAlbums: 1,
-          removedAlbums: 1,
-          tracksRemoved: oldAlbum.tracks.length,
-        ),
-        albums: [],
-      );
+      return _cleanMissingForSingle(oldAlbum);
     }
 
     // 3. 将扫描出的新专辑与旧专辑属性进行合并
