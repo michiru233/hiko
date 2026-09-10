@@ -953,3 +953,17 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 - **布局优化**：①曲目标题字号从 22pt 降至 18pt，艺术家从 16pt 降至 15pt，行间距从 8dp 降至 6dp；②`SafeArea` 下方间距从 20→12、封面与标题间距从 24→16、标题与进度条从 20→12、进度条与播放控制从 20→12、播放控制与功能键从 16→8、底部从 24→16，总计减少 52dp，为歌词区域腾出更多空间。
 - **验证**：本地编译通过；macOS release 产物 Hiko.app **73.8MB**（`hiko-v1.61.0-macos.zip`）；Android release APK **65.6MB**（`hiko-v1.61.0-android.apk`）；commit **f95749c** 已推送 origin main；GitHub Release **v1.61.0**（https://github.com/michiru233/hiko/releases/tag/v1.61.0）。功能实测（macOS）：歌词自动居中滚动✓，手动滚动暂停自动跟随✓，字号 5 档切换即时生效✓，布局更紧凑歌词区域明显增大✓。
 - **发版**：pubspec 1.61.0+69。
+
+### 1.71.0 修复安卓端歌词当前句居中偏移（2026-09-10）
+
+- **问题**：安卓端播放时当前高亮句出现在屏幕**偏下 3-5 行甚至更多**位置，需要手动下滑才能看到，桌面端正常。不同字号下偏移量不同。
+- **根因**：`Scrollable.ensureVisible(alignment: 0.5)` 在安卓端计算 viewport 中心时未正确处理 SafeArea 底部 insets（导航栏/手势条），且 `alignment: 0.5` 对齐的是行边界框中心而非视觉质心，大字号时偏移更明显。
+- **修复**：`drawer_lyrics_view.dart::_scrollToActiveLine` 改用手动滚动计算：
+  - 用 `RenderBox.localToGlobal` 获取目标行在 ListView 坐标系中的精确位置
+  - 计算行的实际高度（天然支持字号变化）
+  - 让行**视觉中心**（`position + height/2`）对齐 viewport **真实中心**（`viewportDimension/2`）
+  - 用 `ScrollController.animateTo` 替代 `ensureVisible` 精确滚动
+- **影响范围**：仅安卓端专辑详情页「歌词」tab 的自动滚动行为，不影响手动滚动、桌面端或其他场景。
+- **验证**：待用户真机测试（不同字号下当前句是否始终居中）。
+- **版本**：1.70.0+78 → 1.71.0+79
+- **构建**：Android 65.7MB APK、macOS 31MB zip

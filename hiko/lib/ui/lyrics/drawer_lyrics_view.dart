@@ -25,17 +25,42 @@ class _DrawerLyricsViewState extends ConsumerState<DrawerLyricsView> {
   }
 
   void _scrollToActiveLine(int index) {
-    if (index < 0) return;
+    if (index < 0 || !_scrollController.hasClients) return;
     final key = _lineKeys[index];
     if (key == null || key.currentContext == null) return;
 
-    final context = key.currentContext!;
-    Scrollable.ensureVisible(
-      context,
-      duration: const Duration(milliseconds: 320),
-      curve: Curves.easeInOutCubic,
-      alignment: 0.5, // 居中显示当前播放行
-    );
+    // 手动计算精确滚动位置，确保当前行视觉中心对齐 viewport 中心
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+
+      final renderBox = key.currentContext!.findRenderObject() as RenderBox?;
+      if (renderBox == null) return;
+
+      // 获取 ListView 的 RenderObject 作为坐标系基准
+      final scrollableContext = _scrollController.position.context.storageContext;
+      final scrollableRenderBox = scrollableContext.findRenderObject() as RenderBox?;
+      if (scrollableRenderBox == null) return;
+
+      // 计算目标行在 ListView 坐标系中的位置
+      final targetOffset = renderBox.localToGlobal(Offset.zero, ancestor: scrollableRenderBox).dy;
+      
+      // ListView viewport 的实际可视高度和中心
+      final viewportHeight = _scrollController.position.viewportDimension;
+      final viewportCenter = viewportHeight / 2;
+      
+      // 目标行的高度
+      final lineHeight = renderBox.size.height;
+      
+      // 计算滚动偏移量：让行中心对齐 viewport 中心
+      final scrollOffset = _scrollController.offset + targetOffset - viewportCenter + (lineHeight / 2);
+      
+      // 平滑滚动到目标位置
+      _scrollController.animateTo(
+        scrollOffset.clamp(0.0, _scrollController.position.maxScrollExtent),
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeInOutCubic,
+      );
+    });
   }
 
   @override
