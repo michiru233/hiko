@@ -416,7 +416,17 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
           borderRadius: BorderRadius.circular(8),
           onTap: () {
             HapticFeedback.selectionClick(); // 列表项选择使用轻量反馈
-            ref.read(playbackProvider.notifier).playAlbum(album, index: index);
+            
+            // 断点续播：如果点击的是上次播放的断点曲目，从断点位置继续
+            final isResumeTrack = (album.resumeTrackIndex == index);
+            final startPos = isResumeTrack ? album.resumePosition : 0.0;
+            
+            ref.read(playbackProvider.notifier).playAlbum(
+              album, 
+              index: index, 
+              startPosition: startPos,
+            );
+            
             // 点击曲目后自动跳转到全屏播放页
             Navigator.of(context).push(
               MaterialPageRoute(
