@@ -398,6 +398,13 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
     bool isCurrent,
     bool isPlaying,
   ) {
+    // 获取播放器真实时长（如果当前曲目正在播放）
+    final playbackState = ref.watch(playbackProvider);
+    final isCurrentlyPlaying = isCurrent && playbackState.currentTrack?.url == track.url;
+    final realDuration = isCurrentlyPlaying && playbackState.duration > 0
+        ? playbackState.duration
+        : track.duration;
+
     // 使用 RepaintBoundary 隔离每个列表项的重绘
     return RepaintBoundary(
       child: Material(
@@ -460,7 +467,7 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
               const SizedBox(width: 8),
               // 时长 - 提升到 14px
               Text(
-                formatTime(track.duration),
+                formatTime(realDuration),
                 style: TextStyle(
                   fontSize: 14,
                   color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
