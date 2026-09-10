@@ -34,7 +34,7 @@ class _DrawerLyricsViewState extends ConsumerState<DrawerLyricsView> {
       context,
       duration: const Duration(milliseconds: 320),
       curve: Curves.easeInOutCubic,
-      alignment: 0.35, // 滚动至可视区域上方 35% 黄金视线处
+      alignment: 0.5, // 居中显示当前播放行
     );
   }
 

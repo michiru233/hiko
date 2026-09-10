@@ -85,6 +85,20 @@ class LyricsResolver {
       }
     }
 
+    // 优先级 1.5: 双扩展名匹配 (e.g. track01.mp3 -> track01.mp3.vtt)
+    // 兼容某些字幕工具保留完整音频文件名的命名习惯
+    final trackFilename = p.basename(trackPath);
+    for (final dir in searchDirs) {
+      for (final ext in lyricExtensions) {
+        final doubleExtCandidate = File(p.join(dir.path, '$trackFilename$ext'));
+        if (await doubleExtCandidate.exists()) return doubleExtCandidate;
+
+        // 大写扩展名检查 (.MP3.LRC, .MP3.VTT)
+        final upperCandidate = File(p.join(dir.path, '$trackFilename${ext.toUpperCase()}'));
+        if (await upperCandidate.exists()) return upperCandidate;
+      }
+    }
+
     // 收集所有歌词文件
     final allLyricFiles = <File>[];
     for (final dir in searchDirs) {
