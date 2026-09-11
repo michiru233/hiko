@@ -30,9 +30,10 @@ class FullscreenPlayerScreen extends ConsumerStatefulWidget {
       _FullscreenPlayerScreenState();
 }
 
-class _FullscreenPlayerScreenState
-    extends ConsumerState<FullscreenPlayerScreen>
-    with SingleTickerProviderStateMixin, LyricsAutoScroll<FullscreenPlayerScreen> {
+class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
+    with
+        SingleTickerProviderStateMixin,
+        LyricsAutoScroll<FullscreenPlayerScreen> {
   late AnimationController _rotationController;
   final ScrollController _lyricsScrollController = ScrollController();
   final Map<int, GlobalKey> _lineKeys = {};
@@ -78,11 +79,12 @@ class _FullscreenPlayerScreenState
 
     // 尊重系统 reduce-motion 设置，禁用动画时停止旋转
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
-    
+
     // 同步旋转动画与播放状态
     if (!reduceMotion && state.playing && !_rotationController.isAnimating) {
       _rotationController.repeat();
-    } else if (reduceMotion || (!state.playing && _rotationController.isAnimating)) {
+    } else if (reduceMotion ||
+        (!state.playing && _rotationController.isAnimating)) {
       _rotationController.stop();
     }
 
@@ -127,7 +129,7 @@ class _FullscreenPlayerScreenState
               _showLyrics ? Icons.album : Icons.lyrics,
               color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
             ),
-            onPressed: () => setState(() => _showLyrics = !_showLyrics),
+            onPressed: () => _setShowLyrics(!_showLyrics),
             tooltip: _showLyrics ? '显示封面' : '显示歌词',
           ),
         ],
@@ -136,11 +138,25 @@ class _FullscreenPlayerScreenState
         child: Column(
           children: [
             const SizedBox(height: 12),
-            // 中央区域：黑胶唱片层或歌词层
+            // 中央区域：黑胶唱片层或歌词层，切换带 220ms 交叉淡入淡出
             Expanded(
-              child: _showLyrics
-                  ? _buildLyricsView(theme, isDark)
-                  : _buildVinylView(album, theme, isDark, state.playing),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                child: _showLyrics
+                    ? KeyedSubtree(
+                        key: const ValueKey('lyrics'),
+                        child: _buildLyricsView(theme, isDark),
+                      )
+                    : KeyedSubtree(
+                        key: const ValueKey('vinyl'),
+                        child: _buildVinylView(
+                          album,
+                          theme,
+                          isDark,
+                          state.playing,
+                        ),
+                      ),
+              ),
             ),
             const SizedBox(height: 16),
             // 曲目信息
@@ -161,6 +177,23 @@ class _FullscreenPlayerScreenState
     );
   }
 
+  /// 切换中央区域显示（黑胶唱片层 / 歌词层）。
+  ///
+  /// 三个入口共用：点中央区域、点歌词页留白、AppBar 图标按钮。
+  /// 进入歌词页时重置滚动记账并恢复自动跟随——歌词列表在切到唱片层时整棵被销毁，
+  /// 重进必然从 offset 0 重建，不重新定位就会看到歌曲开头而不是当前唱到的那句。
+  void _setShowLyrics(bool show) {
+    if (show == _showLyrics) return;
+    HapticFeedback.selectionClick();
+    if (show) {
+      ref.read(lyricsProvider.notifier).resumeAutoScroll();
+    }
+    setState(() {
+      _showLyrics = show;
+      if (show) lastRevealedIndex = -1;
+    });
+  }
+
   /// 黑胶唱片视图：封面旋转 + 唱针联动
   Widget _buildVinylView(
     Album album,
@@ -168,100 +201,104 @@ class _FullscreenPlayerScreenState
     bool isDark,
     bool isPlaying,
   ) {
-    return Center(
-      child: Stack(
-        alignment: Alignment.center,
-        clipBehavior: Clip.none,
-        children: [
-          // 旋转的黑胶唱片外圈 - 使用 RepaintBoundary 隔离重绘
-          RepaintBoundary(
-            child: AnimatedBuilder(
-              animation: _rotationController,
-              builder: (context, child) {
-                return Transform.rotate(
-                  angle: _rotationController.value * 2 * math.pi,
-                  child: child,
-                );
-              },
-              // 静态黑胶唱片作为 child，不重复构建
-              child: Container(
-                width: 320,
-                height: 320,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  // 黑胶唱片外圈：黑色圆环
-                  gradient: const RadialGradient(
-                    colors: [
-                      Color(0xFF1a1a1a),
-                      Color(0xFF0d0d0d),
-                      Colors.black,
-                    ],
-                    stops: [0.7, 0.85, 1.0],
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.5),
-                      blurRadius: 40,
-                      offset: const Offset(0, 15),
-                    ),
-                  ],
-                ),
-                child: Center(
-                  // 封面图片（占中间部分）
-                  child: Container(
-                    width: 220,
-                    height: 220,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.3),
-                          blurRadius: 20,
-                          offset: const Offset(0, 5),
-                        ),
+    return GestureDetector(
+      // 铺满整个中央区域：唱片圆盘之外还有上下各约 50px，点到那里也该有反应
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _setShowLyrics(true),
+      child: Center(
+        child: Stack(
+          alignment: Alignment.center,
+          clipBehavior: Clip.none,
+          children: [
+            // 旋转的黑胶唱片外圈 - 使用 RepaintBoundary 隔离重绘
+            RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: _rotationController,
+                builder: (context, child) {
+                  return Transform.rotate(
+                    angle: _rotationController.value * 2 * math.pi,
+                    child: child,
+                  );
+                },
+                // 静态黑胶唱片作为 child，不重复构建
+                child: Container(
+                  width: 320,
+                  height: 320,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    // 黑胶唱片外圈：黑色圆环
+                    gradient: const RadialGradient(
+                      colors: [
+                        Color(0xFF1a1a1a),
+                        Color(0xFF0d0d0d),
+                        Colors.black,
                       ],
+                      stops: [0.7, 0.85, 1.0],
                     ),
-                    child: ClipOval(
-                      child: AlbumCover(
-                        album: album,
-                        fit: BoxFit.cover,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        blurRadius: 40,
+                        offset: const Offset(0, 15),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    // 封面图片（占中间部分）
+                    child: Container(
+                      width: 220,
+                      height: 220,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            blurRadius: 20,
+                            offset: const Offset(0, 5),
+                          ),
+                        ],
+                      ),
+                      child: ClipOval(
+                        child: AlbumCover(album: album, fit: BoxFit.cover),
                       ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-          // 中心圆孔（在封面上）
-          Container(
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isDark ? const Color(0xFF0d0d0d) : const Color(0xFF2a2a2a),
-              border: Border.all(
+            // 中心圆孔（在封面上）
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
                 color: isDark
-                    ? Colors.white.withValues(alpha: 0.15)
-                    : Colors.white.withValues(alpha: 0.2),
-                width: 2,
+                    ? const Color(0xFF0d0d0d)
+                    : const Color(0xFF2a2a2a),
+                border: Border.all(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.15)
+                      : Colors.white.withValues(alpha: 0.2),
+                  width: 2,
+                ),
               ),
             ),
-          ),
-          // 唱针（右上角）：改为更真实的唱针臂设计
-          Positioned(
-            top: -30,
-            right: 40,
-            child: AnimatedRotation(
-              duration: const Duration(milliseconds: 400),
-              turns: isPlaying ? 0.08 : -0.08, // 播放时落下，暂停时抬起
-              alignment: const Alignment(0.3, -0.8), // 旋转中心靠近唱针臂顶部
-              child: CustomPaint(
-                size: const Size(100, 140),
-                painter: _VinylArmPainter(isDark: isDark),
+            // 唱针（右上角）：改为更真实的唱针臂设计
+            Positioned(
+              top: -30,
+              right: 40,
+              child: AnimatedRotation(
+                duration: const Duration(milliseconds: 400),
+                turns: isPlaying ? 0.08 : -0.08, // 播放时落下，暂停时抬起
+                alignment: const Alignment(0.3, -0.8), // 旋转中心靠近唱针臂顶部
+                child: CustomPaint(
+                  size: const Size(100, 140),
+                  painter: _VinylArmPainter(isDark: isDark),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -270,7 +307,7 @@ class _FullscreenPlayerScreenState
   Widget _buildLyricsView(ThemeData theme, bool isDark) {
     final lyrics = ref.watch(lyricsProvider);
     final settings = ref.watch(settingsProvider);
-    
+
     if (!lyrics.hasLyrics) {
       return Center(
         child: Text(
@@ -308,34 +345,52 @@ class _FullscreenPlayerScreenState
       child: Stack(
         children: [
           // 上下各留半个可视高度，首句与末句才能也滚到正中
+          // 外层手势只包 ListView（不包整个 Stack），右下角浮层按钮才吃得到自己的点击
           LayoutBuilder(
-            builder: (context, constraints) => ListView.builder(
-              controller: _lyricsScrollController,
-              padding: EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: lyricsCenterSlack(constraints.maxHeight),
-              ),
-              itemCount: lines.length,
-              itemBuilder: (context, index) {
-                final isCurrent = index == currentIndex;
-                final line = lines[index];
-                return Padding(
-                  key: _lineKeys.putIfAbsent(index, () => GlobalKey()),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(
-                    line.text,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: (isCurrent ? 18 : 15) * lyricsFontScale,
-                      fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
-                      color: isCurrent
-                          ? (isDark ? HikoColors.darkInk : HikoColors.lightInk)
-                          : (isDark ? HikoColors.darkMuted : HikoColors.lightMuted),
-                      height: 1.8,
+            builder: (context, constraints) => GestureDetector(
+              // 点歌词区的留白（首句之上／末句之下）回到唱片层
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _setShowLyrics(false),
+              child: ListView.builder(
+                controller: _lyricsScrollController,
+                padding: EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: lyricsCenterSlack(constraints.maxHeight),
+                ),
+                itemCount: lines.length,
+                itemBuilder: (context, index) {
+                  final isCurrent = index == currentIndex;
+                  final line = lines[index];
+                  return GestureDetector(
+                    // 故意吸收点击，不是死代码：点在某句歌词文字上不该落进外层的
+                    // 翻页手势里，只有真正的空白处才切回唱片层。
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                    child: Padding(
+                      key: _lineKeys.putIfAbsent(index, () => GlobalKey()),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        line.text,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: (isCurrent ? 18 : 15) * lyricsFontScale,
+                          fontWeight: isCurrent
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                          color: isCurrent
+                              ? (isDark
+                                    ? HikoColors.darkInk
+                                    : HikoColors.lightInk)
+                              : (isDark
+                                    ? HikoColors.darkMuted
+                                    : HikoColors.lightMuted),
+                          height: 1.8,
+                        ),
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
           ),
           // 右下角浮层按钮：手动滑走后给「回到当前句」，下方常驻歌词字号
@@ -361,7 +416,8 @@ class _FullscreenPlayerScreenState
                   icon: Icons.text_fields,
                   tooltip: '调整歌词字号',
                   isDark: isDark,
-                  onPressed: () => _showLyricsFontScaleDialog(settings, theme, isDark),
+                  onPressed: () =>
+                      _showLyricsFontScaleDialog(settings, theme, isDark),
                 ),
               ],
             ),
@@ -444,7 +500,7 @@ class _FullscreenPlayerScreenState
   ) {
     // 拖动时显示拖动位置，否则显示实际播放位置
     final displayPosition = _dragging ? _dragValue : position;
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
@@ -488,14 +544,18 @@ class _FullscreenPlayerScreenState
                   formatTime(displayPosition),
                   style: TextStyle(
                     fontSize: 14,
-                    color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+                    color: isDark
+                        ? HikoColors.darkMuted
+                        : HikoColors.lightMuted,
                   ),
                 ),
                 Text(
                   formatTime(duration),
                   style: TextStyle(
                     fontSize: 14,
-                    color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+                    color: isDark
+                        ? HikoColors.darkMuted
+                        : HikoColors.lightMuted,
                   ),
                 ),
               ],
@@ -507,11 +567,7 @@ class _FullscreenPlayerScreenState
   }
 
   /// 播放控制
-  Widget _buildPlaybackControls(
-    dynamic state,
-    ThemeData theme,
-    bool isDark,
-  ) {
+  Widget _buildPlaybackControls(dynamic state, ThemeData theme, bool isDark) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -700,7 +756,9 @@ class _FullscreenPlayerScreenState
                   modeInfo.label,
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+                    color: isDark
+                        ? HikoColors.darkMuted
+                        : HikoColors.lightMuted,
                   ),
                 ),
               ],
@@ -723,7 +781,8 @@ class _FullscreenPlayerScreenState
         ),
         const Divider(height: 1),
         // 四种播放模式选项
-        for (final mode in PlaybackMode.values) _buildPlayModeMenuItem(mode, currentMode, theme),
+        for (final mode in PlaybackMode.values)
+          _buildPlayModeMenuItem(mode, currentMode, theme),
       ],
     );
   }
@@ -736,7 +795,7 @@ class _FullscreenPlayerScreenState
   ) {
     final info = playModes.firstWhere((m) => m.key == mode.key);
     final isSelected = mode == currentMode;
-    
+
     // 图标
     final IconData leadingIcon;
     switch (mode) {
@@ -759,7 +818,9 @@ class _FullscreenPlayerScreenState
       trailingIcon: isSelected ? const Icon(Icons.check, size: 20) : null,
       style: ButtonStyle(
         backgroundColor: WidgetStateProperty.all(
-          isSelected ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3) : null,
+          isSelected
+              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
+              : null,
         ),
       ),
       onPressed: () async {
@@ -819,7 +880,9 @@ class _FullscreenPlayerScreenState
                 groupValue: settings.lyricsFontScale,
                 onChanged: (value) {
                   if (value != null) {
-                    ref.read(settingsProvider.notifier).setLyricsFontScale(value);
+                    ref
+                        .read(settingsProvider.notifier)
+                        .setLyricsFontScale(value);
                     Navigator.pop(context);
                     showHikoToast(context, '歌词字号已设为 $label');
                   }
@@ -837,7 +900,7 @@ class _FullscreenPlayerScreenState
     final state = ref.read(playbackProvider);
     final sleepMode = state.sleepMode;
     final sleepRemaining = state.sleepRemaining;
-    
+
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -895,7 +958,7 @@ class _FullscreenPlayerScreenState
     bool isDark,
   ) async {
     double tempGain = settings.audioGain;
-    
+
     await showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -956,14 +1019,14 @@ class _FullscreenPlayerScreenState
   /// 音轨列表底部弹窗
   Future<void> _showTrackListSheet(Album? album, int currentIndex) async {
     if (album == null) return;
-    
+
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder: (context) {
         final theme = Theme.of(context);
         final isDark = theme.brightness == Brightness.dark;
-        
+
         return DraggableScrollableSheet(
           initialChildSize: 0.6,
           maxChildSize: 0.9,
@@ -1000,7 +1063,9 @@ class _FullscreenPlayerScreenState
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
-                            color: isDark ? HikoColors.darkInk : HikoColors.lightInk,
+                            color: isDark
+                                ? HikoColors.darkInk
+                                : HikoColors.lightInk,
                           ),
                         ),
                         const Spacer(),
@@ -1008,7 +1073,9 @@ class _FullscreenPlayerScreenState
                           '共 ${album.tracks.length} 首',
                           style: TextStyle(
                             fontSize: 13,
-                            color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+                            color: isDark
+                                ? HikoColors.darkMuted
+                                : HikoColors.lightMuted,
                           ),
                         ),
                       ],
@@ -1055,10 +1122,14 @@ class _FullscreenPlayerScreenState
                               track.name,
                               style: TextStyle(
                                 fontSize: 16,
-                                fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
+                                fontWeight: isCurrent
+                                    ? FontWeight.w600
+                                    : FontWeight.w400,
                                 color: isCurrent
                                     ? theme.colorScheme.primary
-                                    : (isDark ? HikoColors.darkInk : HikoColors.lightInk),
+                                    : (isDark
+                                          ? HikoColors.darkInk
+                                          : HikoColors.lightInk),
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -1073,10 +1144,9 @@ class _FullscreenPlayerScreenState
                               ),
                             ),
                             onTap: () {
-                              ref.read(playbackProvider.notifier).playAlbum(
-                                    album,
-                                    index: index,
-                                  );
+                              ref
+                                  .read(playbackProvider.notifier)
+                                  .playAlbum(album, index: index);
                               Navigator.pop(context);
                             },
                           ),
@@ -1140,11 +1210,7 @@ class _VinylArmPainter extends CustomPainter {
       ..color = isDark ? const Color(0xFF757575) : const Color(0xFF9e9e9e)
       ..style = PaintingStyle.fill;
 
-    canvas.drawCircle(
-      Offset(size.width * 0.5, 8),
-      8,
-      pivotPaint,
-    );
+    canvas.drawCircle(Offset(size.width * 0.5, 8), 8, pivotPaint);
 
     // 阴影
     final shadowPath = armPath.shift(const Offset(3, 3));
