@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/settings_store.dart';
 import '../../lyrics/lyrics_controller.dart';
 import '../../lyrics/models/lyric_line.dart';
 import '../../utils/time.dart';
+import 'lyrics_auto_scroll.dart';
 
 /// 抽屉歌词视图组件（支持垂直平滑滚动、高亮当前句、悬停显示时间点、点击跳转、角色 Badge）
 class DrawerLyricsView extends ConsumerStatefulWidget {
@@ -13,29 +15,25 @@ class DrawerLyricsView extends ConsumerStatefulWidget {
   ConsumerState<DrawerLyricsView> createState() => _DrawerLyricsViewState();
 }
 
-class _DrawerLyricsViewState extends ConsumerState<DrawerLyricsView> {
+class _DrawerLyricsViewState extends ConsumerState<DrawerLyricsView>
+    with LyricsAutoScroll<DrawerLyricsView> {
   final ScrollController _scrollController = ScrollController();
   final Map<int, GlobalKey> _lineKeys = {};
-  int _lastActiveIndex = -1;
+
+  @override
+  ScrollController get lyricsScrollController => _scrollController;
+
+  @override
+  Map<int, GlobalKey> get lyricsLineKeys => _lineKeys;
+
+  @override
+  double get lyricsEstimatedLineHeight =>
+      45.0 * ref.read(settingsProvider).lyricsFontScale;
 
   @override
   void dispose() {
     _scrollController.dispose();
     super.dispose();
-  }
-
-  void _scrollToActiveLine(int index) {
-    if (index < 0) return;
-    final key = _lineKeys[index];
-    if (key == null || key.currentContext == null) return;
-
-    final context = key.currentContext!;
-    Scrollable.ensureVisible(
-      context,
-      duration: const Duration(milliseconds: 320),
-      curve: Curves.easeInOutCubic,
-      alignment: 0.5, // 居中显示当前播放行
-    );
   }
 
   @override
@@ -46,12 +44,12 @@ class _DrawerLyricsViewState extends ConsumerState<DrawerLyricsView> {
 
     // 监听高亮行变化并在允许自动滚动时触发丝滑平移
     if (lyricsState.autoScrollEnabled &&
-        lyricsState.activeIndex != _lastActiveIndex &&
+        lyricsState.activeIndex != lastRevealedIndex &&
         lyricsState.activeIndex >= 0) {
-      _lastActiveIndex = lyricsState.activeIndex;
+      lastRevealedIndex = lyricsState.activeIndex;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          _scrollToActiveLine(lyricsState.activeIndex);
+          revealLyricsLine(lyricsState.activeIndex);
         }
       });
     }
@@ -117,26 +115,32 @@ class _DrawerLyricsViewState extends ConsumerState<DrawerLyricsView> {
       },
       child: Stack(
         children: [
-          ListView.separated(
-            controller: _scrollController,
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-            itemCount: lines.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
-            itemBuilder: (context, index) {
-              final line = lines[index];
-              final isActive = index == lyricsState.activeIndex;
-              final key = _lineKeys.putIfAbsent(index, () => GlobalKey());
+          // 上下各留半个可视高度，首句与末句才能也滚到正中
+          LayoutBuilder(
+            builder: (context, constraints) => ListView.separated(
+              controller: _scrollController,
+              physics: const BouncingScrollPhysics(),
+              padding: EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: lyricsCenterSlack(constraints.maxHeight),
+              ),
+              itemCount: lines.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final line = lines[index];
+                final isActive = index == lyricsState.activeIndex;
+                final key = _lineKeys.putIfAbsent(index, () => GlobalKey());
 
-              return _LyricLineWidget(
-                key: key,
-                line: line,
-                isActive: isActive,
-                onTap: () {
-                  ref.read(lyricsProvider.notifier).seekToLine(index);
-                },
-              );
-            },
+                return _LyricLineWidget(
+                  key: key,
+                  line: line,
+                  isActive: isActive,
+                  onTap: () {
+                    ref.read(lyricsProvider.notifier).seekToLine(index);
+                  },
+                );
+              },
+            ),
           ),
           // 若用户手动滑动中断了自动跟随，显示浮动恢复按钮
           if (!lyricsState.autoScrollEnabled && lyricsState.activeIndex >= 0)
@@ -146,7 +150,7 @@ class _DrawerLyricsViewState extends ConsumerState<DrawerLyricsView> {
               child: FloatingActionButton.small(
                 onPressed: () {
                   ref.read(lyricsProvider.notifier).resumeAutoScroll();
-                  _scrollToActiveLine(lyricsState.activeIndex);
+                  revealLyricsLine(lyricsState.activeIndex);
                 },
                 backgroundColor: theme.colorScheme.primary,
                 foregroundColor: Colors.white,

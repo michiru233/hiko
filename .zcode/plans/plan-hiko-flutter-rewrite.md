@@ -4,6 +4,35 @@
 > 旧代码（Electron/Capacitor）保留在仓库根目录作参考，功能对等后归档。
 > 本文档为 Flutter 重写的里程碑与修复记录，新改动请追加章节。
 
+### 1.72.0 修复「拖进度条到歌的后段歌词不居中」（首尾留白 + 共用滚动定位 + 拖后立即归位）（2026-09-11）
+
+- **问题**：用户报「安卓端歌词界面，歌曲开头高亮句能正常居中，一旦把进度条拖到后方位置就不能正确居中显示当前句」，并提议「当前句不在歌词区正中时加个自动定位按钮」。用户同时澄清：**安卓端只有全屏播放页有歌词功能，专辑详情页没有**——所以故障界面是 `fullscreen_player_screen.dart` 而非 `drawer_lyrics_view.dart`。
+- **决策过程（本次新增两份文档）**：先按 grilling 走了一轮设计树评审，产出决策书 `.zcode/plans/decision-hiko-lyrics-center.md`（含全部实测数字与选项权衡），再由其写出任务书 `.zcode/plans/goal-hiko-lyrics-center.md`（4000 字符）。三条用户裁决：①加首尾留白让首末句也能居中；②修根因＋全屏页也加按钮；③拖完进度条松手即恢复跟随并立即居中。我另替领导拍的板（含猜错代价）记在任务书「我替领导拍的板」一节。
+- **三个根因（全部实测取证，非推断）**：
+  1. **R1 列表首尾没有滚动余量**：歌词列表 `padding` 固定 `vertical: 40`，首句/末句的滚动目标被 `clamp(0, maxScrollExtent)` 夹住，**物理上没有空间可滚**。实测（合成 140 行 / 300 秒，歌词区 viewport 高 418px）第 0 句偏 **145.0px**、第 2 句 59.0px、第 138 句 102.0px、第 139 句 **145.0px**，而第 5–135 句全部 0.0px——与「开头正常、越往后方越不居中」的症状完全吻合（真实歌词最后一句往往覆盖长尾奏，拖到后段高亮的正是这几句）。
+  2. **R2 专辑详情页歌词 tab 跨行远跳完全不动**：`_scrollToActiveLine` 里 `if (key == null || key.currentContext == null) return;` 静默放弃，而 `_lineKeys[index]` 只在 itemBuilder 里建立，跨行远跳必落这一支。实测跳到第 83 句后列表 `offset` 停在 67、该行**根本没被构建**（偏差无穷大）。全屏页在 1.71.1 引入的「粗跳 + 重试」从未同步过来，且 `git show 1a9e454` 显示 1.71.1 把该文件整段 revert 过。
+  3. **R4 拖完进度条不恢复跟随**：用户此前手动滑走歌词时 `autoScrollEnabled` 被关掉并挂 3 秒恢复定时器，而 `resumeAutoScroll()` 只翻转标志、不触发滚动，这段窗口里落地不居中。
+- **「只加按钮」被否决的技术理由（如实记录）**：R1 场景下按钮按下去不会有任何位移（无空间可滚）；R2 场景下该按钮**已经存在**（`drawer_lyrics_view.dart` 的 `FloatingActionButton.small`），且它的 `onPressed` 调的正是那个静默 return 的函数——按了没反应。加按钮不能关闭本次故障，但按用户裁决仍作为补充保留在全屏页。
+- **修复**：
+  - 新增 `lib/ui/lyrics/lyrics_auto_scroll.dart`：`mixin LyricsAutoScroll`，只共享**滚动定位**（粗 `jumpTo` 把未构建的目标行带进构建范围 → 下一帧 `RenderAbstractViewport.getOffsetToReveal(ro, 0.5)` → `clamp` 后 `animateTo`，重试限 2 次），不共享行渲染；`mounted` / `hasClients` 不成立时改为安排下一帧重试而非静默返回。两个歌词视图各删本地实现改调它——这段逻辑此前被复制成两份、在 1.71.0/1.71.1 之间来回误诊两次，共用一份后改一处两处生效。
+  - 两个视图的 ListView 各包一层 `LayoutBuilder`，`vertical` 内边距由固定值改为 `lyricsCenterSlack(maxHeight)` = 半个可视高度，首末句因此也能滚到正中。
+  - 全屏页 `onChangeEnd` 在 `seek(v)` 后追加 `resumeAutoScroll()` + `lastRevealedIndex = -1`：拖动进度条即「我要跳到那一刻」，落地强制重新居中（含拖回同一句内、索引没变的场景）。
+  - 全屏页右下角新增「回到当前句」胶囊按钮，仅在 `!autoScrollEnabled && activeIndex >= 0` 时显示；顺手把原 `_buildLyricsFontScaleButton` 泛化成 `_buildLyricsOverlayButton` 供两个按钮复用。
+- **回归测试（新增 16 条，全绿）**：
+  - `test/ui/lyrics_center_sweep_test.dart`（12 条）：冷启动跳到第 0/2/5/10/20/60/100/120/130/135/138/139 句，逐条量「当前句中心 − 歌词列表中心」< 16px。
+  - `test/ui/drawer_lyrics_center_test.dart`：详情页歌词 tab 跳到第 83 句后该行必须被构建且居中。
+  - `test/ui/lyrics_drag_follow_test.dart`（2 条）：真实 `tester.startGesture`/`moveTo` 手势，手动滑走歌词后拖进度条——拖到不同句、拖回同一句内两个场景都要立即居中。
+  - `test/ui/lyrics_recenter_button_test.dart`：未滑走时无按钮、滑走后出现、点按后归位且按钮收起。
+  - `test/ui/lyrics_fixture.dart`：共用合成歌词夹具。
+- **反向验证（三次，红→绿证据均已落盘）**：
+  1. 内边距改回 `40` → 扫描测试恰好首末 4 句转红，偏差 **145.0 / 59.0 / 102.0 / 145.0px**，与修复前实测一字不差；中段 8 点仍绿。还原 → 12/12 绿。
+  2. 把粗定位分支改成直接 `return`（恢复「静默放弃」）→ 详情页用例转红：`Found 0 widgets with text "第 83 句"`。还原 → 绿。
+  3. 删掉 `onChangeEnd` 里的 `lastRevealedIndex = -1` → 拖动测试**只**「拖回同一句内」那条转红（偏 **196.0px**），「拖到不同句」那条仍绿——精确证明该行是它的承重点。还原 → 2/2 绿。
+- **验证**：`flutter test` **262 passed / 1 skipped / 0 failed**（1.71.1 记录基线 245 passed / 1 skipped / 1 failed，净增 16 条、skip 数未增；失败项 `update_checker_network_test` 为实网用例，本次转绿）。`flutter analyze` 我改动的文件**无新增问题**（顺带消掉 1 条 `unnecessary_underscores`、1 条多余 import），全库 38 issues 均为历史遗留。
+- **未完成项（如实记录）**：安卓模拟器未启动，**未做模拟器/真机端到端复测**；本次修复的验证依据是 16 条 widget 测试在真机同尺寸视口（1080×2340 @3.0）下量到的真实像素几何 + 真实手势路径。真机确认待用户复测（与 1.71.1 的收尾方式一致）。已记入 `hiko/BLOCKED.md`。
+- **构建产物**：Android `flutter build apk --release` → 65.7MB `hiko-v1.72.0-android.apk`（aapt2 校验 `versionCode='81' versionName='1.72.0'`）；macOS `flutter build macos --release` → Hiko.app 73.8MB → `hiko-v1.72.0-macos.zip` 32,629,801B。
+- **版本记录**：1.71.1+80 → **1.72.0+81**。
+
 ### 1.71.1 修复全屏播放页歌词当前句居中偏移（2026-09-10）
 
 - **问题**：安卓端播放时当前高亮句出现在屏幕**偏下**位置（用户实测「每一个高亮句都在屏幕下方不显示的区域，还要划两到三句才能解决」），桌面端正常。字号不同偏移量不同。

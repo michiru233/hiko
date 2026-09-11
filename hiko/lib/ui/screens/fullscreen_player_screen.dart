@@ -2,7 +2,6 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,6 +14,7 @@ import '../../playback/playback_rules.dart';
 import '../../playback/sleep_timer.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
+import '../lyrics/lyrics_auto_scroll.dart';
 import '../theme.dart';
 import '../widgets/toast.dart';
 
@@ -32,14 +32,23 @@ class FullscreenPlayerScreen extends ConsumerStatefulWidget {
 
 class _FullscreenPlayerScreenState
     extends ConsumerState<FullscreenPlayerScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, LyricsAutoScroll<FullscreenPlayerScreen> {
   late AnimationController _rotationController;
   final ScrollController _lyricsScrollController = ScrollController();
   final Map<int, GlobalKey> _lineKeys = {};
   bool _showLyrics = false;
   bool _dragging = false;
   double _dragValue = 0;
-  int _lastScrolledIndex = -1;
+
+  @override
+  ScrollController get lyricsScrollController => _lyricsScrollController;
+
+  @override
+  Map<int, GlobalKey> get lyricsLineKeys => _lineKeys;
+
+  @override
+  double get lyricsEstimatedLineHeight =>
+      45.0 * ref.read(settingsProvider).lyricsFontScale;
 
   @override
   void initState() {
@@ -56,49 +65,6 @@ class _FullscreenPlayerScreenState
     _rotationController.dispose();
     _lyricsScrollController.dispose();
     super.dispose();
-  }
-
-  /// 把第 [index] 行滚动到歌词区垂直中心。
-  ///
-  /// 旧实现按「索引 × 估算行高 − 屏幕高度/2」硬算，用的是**整个屏幕**高度而非歌词
-  /// ListView 自身的可视高度（歌词区被上方曲目信息/进度条/控制栏挤压后只剩屏幕一半
-  /// 多），于是每行少滚约半个屏幕，高亮句落在可视区下方，需手动再滑两三句才看得到；
-  /// 写死的行高估算（45×scale）在改字号后也会失准。
-  ///
-  /// 现在交给 Flutter 自己算：`getOffsetToReveal` 处理行高、padding、坐标系换算，
-  /// `alignment` 的参照系是 viewport 自身（`viewportDimension`）而非屏幕高度。
-  void _scrollLyricsToLine(int index, {int attempt = 0}) {
-    if (!mounted || !_lyricsScrollController.hasClients) return;
-
-    final renderObject = _lineKeys[index]?.currentContext?.findRenderObject();
-    final viewport = RenderAbstractViewport.maybeOf(renderObject);
-
-    if (viewport == null) {
-      // 目标行还没被 ListView 构建（拖动进度条/点击远处行做跨行跳转）。
-      // 先按估算行高粗跳一次把它带进构建范围，下一帧再精确对齐；限次防死循环。
-      if (attempt >= 2) return;
-      final scale = ref.read(settingsProvider).lyricsFontScale;
-      _lyricsScrollController.jumpTo(
-        (index * 45.0 * scale)
-            .clamp(0.0, _lyricsScrollController.position.maxScrollExtent),
-      );
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _scrollLyricsToLine(index, attempt: attempt + 1),
-      );
-      return;
-    }
-
-    // alignment 0.5 = 目标行居中于 viewport（歌词区自身高度，不是屏幕高度）
-    final target = viewport
-        .getOffsetToReveal(renderObject!, 0.5)
-        .offset
-        .clamp(0.0, _lyricsScrollController.position.maxScrollExtent);
-
-    _lyricsScrollController.animateTo(
-      target,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-    );
   }
 
   @override
@@ -322,10 +288,12 @@ class _FullscreenPlayerScreenState
     final lyricsFontScale = settings.lyricsFontScale;
 
     // 自动滚动到当前行
-    if (currentIndex >= 0 && currentIndex != _lastScrolledIndex && lyrics.autoScrollEnabled) {
-      _lastScrolledIndex = currentIndex;
+    if (currentIndex >= 0 &&
+        currentIndex != lastRevealedIndex &&
+        lyrics.autoScrollEnabled) {
+      lastRevealedIndex = currentIndex;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollLyricsToLine(currentIndex);
+        revealLyricsLine(currentIndex);
       });
     }
 
@@ -339,36 +307,64 @@ class _FullscreenPlayerScreenState
       },
       child: Stack(
         children: [
-          ListView.builder(
-            controller: _lyricsScrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-            itemCount: lines.length,
-            itemBuilder: (context, index) {
-              final isCurrent = index == currentIndex;
-              final line = lines[index];
-              return Padding(
-                key: _lineKeys.putIfAbsent(index, () => GlobalKey()),
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  line.text,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: (isCurrent ? 18 : 15) * lyricsFontScale,
-                    fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
-                    color: isCurrent
-                        ? (isDark ? HikoColors.darkInk : HikoColors.lightInk)
-                        : (isDark ? HikoColors.darkMuted : HikoColors.lightMuted),
-                    height: 1.8,
+          // 上下各留半个可视高度，首句与末句才能也滚到正中
+          LayoutBuilder(
+            builder: (context, constraints) => ListView.builder(
+              controller: _lyricsScrollController,
+              padding: EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: lyricsCenterSlack(constraints.maxHeight),
+              ),
+              itemCount: lines.length,
+              itemBuilder: (context, index) {
+                final isCurrent = index == currentIndex;
+                final line = lines[index];
+                return Padding(
+                  key: _lineKeys.putIfAbsent(index, () => GlobalKey()),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    line.text,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: (isCurrent ? 18 : 15) * lyricsFontScale,
+                      fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
+                      color: isCurrent
+                          ? (isDark ? HikoColors.darkInk : HikoColors.lightInk)
+                          : (isDark ? HikoColors.darkMuted : HikoColors.lightMuted),
+                      height: 1.8,
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
-          // 歌词字号调节按钮（右下角）
+          // 右下角浮层按钮：手动滑走后给「回到当前句」，下方常驻歌词字号
           Positioned(
             right: 16,
             bottom: 16,
-            child: _buildLyricsFontScaleButton(settings, theme, isDark),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!lyrics.autoScrollEnabled && currentIndex >= 0) ...[
+                  _buildLyricsOverlayButton(
+                    icon: Icons.vertical_align_center_rounded,
+                    tooltip: '回到当前句',
+                    isDark: isDark,
+                    onPressed: () {
+                      ref.read(lyricsProvider.notifier).resumeAutoScroll();
+                      revealLyricsLine(currentIndex);
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                _buildLyricsOverlayButton(
+                  icon: Icons.text_fields,
+                  tooltip: '调整歌词字号',
+                  isDark: isDark,
+                  onPressed: () => _showLyricsFontScaleDialog(settings, theme, isDark),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -413,12 +409,13 @@ class _FullscreenPlayerScreenState
     );
   }
 
-  /// 歌词字号调节按钮
-  Widget _buildLyricsFontScaleButton(
-    AppSettings settings,
-    ThemeData theme,
-    bool isDark,
-  ) {
+  /// 歌词层右下角的浮层胶囊按钮（半透明底，压在歌词之上）
+  Widget _buildLyricsOverlayButton({
+    required IconData icon,
+    required String tooltip,
+    required bool isDark,
+    required VoidCallback onPressed,
+  }) {
     return Container(
       decoration: BoxDecoration(
         color: isDark
@@ -428,12 +425,12 @@ class _FullscreenPlayerScreenState
       ),
       child: IconButton(
         icon: Icon(
-          Icons.text_fields,
+          icon,
           color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
           size: 20,
         ),
-        onPressed: () => _showLyricsFontScaleDialog(settings, theme, isDark),
-        tooltip: '调整歌词字号',
+        onPressed: onPressed,
+        tooltip: tooltip,
       ),
     );
   }
@@ -474,6 +471,11 @@ class _FullscreenPlayerScreenState
               onChangeEnd: (v) {
                 ref.read(playbackProvider.notifier).seek(v);
                 setState(() => _dragging = false);
+                // 拖进度条就是「我要跳到那一刻」：落地即恢复跟随并强制重新居中。
+                // 若用户在拖动前手动滑走过歌词，自动跟随正处在暂停窗口里，
+                // 不重置这份记账的话歌词会停在原处，要等下一句变化才自愈。
+                ref.read(lyricsProvider.notifier).resumeAutoScroll();
+                lastRevealedIndex = -1;
               },
             ),
           ),
