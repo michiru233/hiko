@@ -52,15 +52,34 @@ Mimosa 在 1.48.0 commit 前全库扫描报告 12 个 high，均**非本次改�
 1.（1.72.0 未完成项）安卓模拟器未启动，本版**未做模拟器/真机端到端复测**。验证依据为 16 条 widget 测试在真机同尺寸视口（1080×2340 @3.0）下量到的真实像素几何 + 真实手势路径。请用户在真机复测「拖动进度条到歌曲后段，当前高亮句是否落在歌词区正中」。若真机仍有偏差，需带该曲目的歌词文件与拖到的进度位置回来定位。
 2.（1.72.0 遗留）专辑详情页「歌词」tab 现在会走共用定位并加了首尾留白，但该界面在安卓上不出现（`hasLyrics` 门控 + 用户澄清安卓不用它），仅 macOS 桌面端 `DetailDrawer` 会走到。桌面端该处的半屏留白是否需要单独调小，待裁决。
 
+### 1.73.0 收尾：实网用例改为默认跳过（用户 2026-09-11 拍板「那改吧」）
+
+第 4、5 条已按用户裁决落地，`update_checker_network_test.dart` 现在是**默认跳过、按需启用**，与 `dlsite_scraper_network_test.dart` 的既有惯例一致：
+
+```bash
+# 平时：裸跑不碰网络，结果确定
+flutter test
+
+# 要验实网时（现在带 token 真的有效了）：
+HIKO_NETWORK_TESTS=1 flutter test \
+  --dart-define=GITHUB_TOKEN="$(gh auth token)" \
+  test/data/update_checker_network_test.dart
+```
+
+- **效果**：`flutter test` 裸跑在**匿名额度 remaining=0** 的情况下依然全绿——**268 passed / 2 skipped / 0 failed**（跳过数由 1 升 2，这是本改动的**目的**本身：把一条依赖外部额度的实网用例移出默认路径，不是把失败藏起来）。
+- **反作弊反向验证（三条，均已实测）**：①裸跑 → `All tests skipped`，不碰网络；②门控打开 + 真 token → 真跑实网并通过（真实断言全部执行）；③**门控打开 + 故意传无效 token → 报 `HttpException: GitHub API 401`**。第三条是关键：它证明门控打开后 HTTP 请求确实发出去了、断言确实跑了，跳过逻辑不可能掩盖住一个坏掉的 API 路径。
+- **为什么会有这个限流（实测结论）**：GitHub 匿名额度是「60 次/小时/**出口 IP**」，鉴权后是 5000 次/小时。本机所有 GitHub 流量都走本地代理（`127.0.0.1:7897`，git 也单独配了），实测出口 IP 为 `203.27.106.243`（新加坡，注册主体 globalsecurelayer.com），且**加 `--noproxy '*'` 出口 IP 不变**——代理在网卡层接管流量，程序里的代理开关绕不开。机房 IP 通常由同一代理服务的多个用户共用（推断），所以那 60 个号不归本机独占；本次本机只发了约 8–10 次匿名请求，额度已被用光。这也解释了此前 `git push` 报 `SSL_ERROR_SYSCALL`——同一个出口的稳定性问题。
+- **本改动为纯测试基础设施，不影响任何已发布产物**：故**不 bump 版本、不发新 Release**（pubspec 仍为 1.73.0+82，v1.73.0 的 APK／macOS 包与当前源码行为完全一致）。若领导要求按「每次改动都发版」严格执行，说一声即补发 1.73.1。
+
 既有 1.42.0 深色主题 tag 对比度问题与本仓库历史高危记录（1.48.0 未裁决）保持不变。
 
-1.73.0（点唱片看歌词 / 点歌词留白回唱片）：发版记录——pubspec 1.73.0+82，`hiko-v1.73.0-android.apk` 65,756,059B（aapt2 校验 versionCode='82' versionName='1.73.0'）、`hiko-v1.73.0-macos.zip` 32,624,992B，GitHub Release v1.73.0 附双资产。终验 `flutter test` **269 passed/1 skipped/0 failed** 全绿（净增 7 条、skip 未增；裸跑需带 `--dart-define=GITHUB_TOKEN=$(gh auth token)` 才能免于匿名限流，见下条待裁决）。`flutter analyze` 改动文件无新增问题。
+1.73.0（点唱片看歌词 / 点歌词留白回唱片）：发版记录——pubspec 1.73.0+82，`hiko-v1.73.0-android.apk` 65,756,059B（aapt2 校验 versionCode='82' versionName='1.73.0'）、`hiko-v1.73.0-macos.zip` 32,624,992B，GitHub Release v1.73.0 附双资产。终验 `flutter test` **269 passed/1 skipped/0 failed** 全绿（净增 7 条；裸跑当时需带 `--dart-define=GITHUB_TOKEN=$(gh auth token)` 才能免于匿名限流，同批已按第 5 条裁决改为默认跳过，见下方「1.73.0 收尾」）。`flutter analyze` 改动文件无新增问题。
 
 1.73.0 新增待裁决：
 1.（1.73.0 未完成项）安卓模拟器未启动，本版**未做模拟器/真机端到端复测**。请用户在真机复测三件事：①点中央区域（唱片）能否切到歌词页；②点歌词页留白（首句之上／末句之下）能否切回唱片页；③切到歌词页后当前高亮句是否落在正中（含切走再切回）。
 2.（1.73.0 顺带发现，未修）本仓库 `HEAD` 不是 `dart format` clean，本次对改动文件跑 format 顺带带出 3 处无关换行／空白整理。是否全库跑一次 `dart format` 统一格式，待裁决（会污染 git blame）。
 3.（1.73.0 留给后续）全屏歌词行目前点按无效（正是为了让「点文字不翻页」成立）。详情页歌词 tab 已支持「点某句跳播」，全屏页是否跟进待裁决。
-4.（1.73.0 白名单外改动，请追认）修掉 `test/data/update_checker_network_test.dart` 里一处**死代码**：`final token = String.fromEnvironment('GITHUB_TOKEN');` 必须写成 `const` 才读得到 `--dart-define`，否则静默取空串——这条「带 token 绕开匿名限流」的分支从未生效，该用例一直裸奔匿名请求，是 1.49.0 起记录的「实网用例波动」的一半根因。本次已改为 `const`（只动这一行，未改断言／未加 skip／未放宽阈值），实测在匿名额度仍为 0 时带 token 即可通过。**该文件在本版任务书白名单之外**（白名单是 `hiko/test/ui/`），按纪律记此待追认。
+4.（1.73.0 白名单外改动，**用户已追认**）修掉 `test/data/update_checker_network_test.dart` 里一处**死代码**：`final token = String.fromEnvironment('GITHUB_TOKEN');` 必须写成 `const` 才读得到 `--dart-define`，否则静默取空串——这条「带 token 绕开匿名限流」的分支从未生效，该用例一直裸奔匿名请求，是 1.49.0 起记录的「实网用例波动」的一半根因。本次已改为 `const`（只动这一行，未改断言／未加 skip／未放宽阈值），实测在匿名额度仍为 0 时带 token 即可通过。**该文件在本版任务书白名单之外**（白名单是 `hiko/test/ui/`），按纪律记此待追认。
 5.（1.73.0 建议，待裁决）`flutter test` 裸跑仍会在匿名额度耗尽时因该实网用例转红。仓库已有既成惯例：`dlsite_scraper_network_test.dart` 用 `HIKO_NETWORK_TESTS=1` 门控、默认 `markTestSkipped`。是否把 `update_checker_network_test.dart` 也改成同样的**默认跳过、按需启用**（跑实网时用 `HIKO_NETWORK_TESTS=1 flutter test --dart-define=GITHUB_TOKEN=... `），让 `flutter test` 不再依赖外部额度、恢复确定性，待裁决。
 
 既有 1.42.0 深色主题 tag 对比度问题与本仓库历史高危记录（1.48.0 未裁决）保持不变。
