@@ -382,14 +382,16 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                 itemBuilder: (context, index) {
                   final isCurrent = index == currentIndex;
                   final line = lines[index];
-                  return GestureDetector(
-                    // 故意吸收点击，不是死代码：点在某句歌词文字上不该落进外层的
-                    // 翻页手势里，只有真正的空白处才切回唱片层。
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {},
-                    child: Padding(
-                      key: _lineKeys.putIfAbsent(index, () => GlobalKey()),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                  return Padding(
+                    key: _lineKeys.putIfAbsent(index, () => GlobalKey()),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    // 吸收点击的范围只限文字渲染框（1.75.0 收窄）：点歌词文字
+                    // 仍不翻页（1.73.0 裁决），行与行之间的空隙落回外层的
+                    // 翻页手势——此前整行（含间距）都被吸收，密歌词时几乎
+                    // 没有可点的空白，用户实测「点空白回唱片不流畅」。
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {},
                       child: Text(
                         line.text,
                         textAlign: TextAlign.center,
