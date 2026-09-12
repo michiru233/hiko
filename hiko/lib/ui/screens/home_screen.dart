@@ -54,6 +54,9 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   String _view = '全部音声';
   String _filter = 'all';
+  // 1.77 详情页胶囊回传的社团/声优点选筛选（至多一个生效，kind: 'circle' | 'voice'）
+  String? _personFilterKind;
+  String? _personFilterName;
   final String _query = ''; // 保留空字符串以兼容 FilterAlbumsMemo，搜索功能已移除
   bool _multiMode = false;
   final Set<String> _multiIds = {};
@@ -434,6 +437,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             filter: _filter,
             query: _query,
             sort: currentSort,
+            circleFilter: _personFilterKind == 'circle' ? _personFilterName : null,
+            voiceFilter: _personFilterKind == 'voice' ? _personFilterName : null,
           );
     final theme = Theme.of(context);
     // 移动布局仅 Android 触屏（≤1000px，与旧版桥接层一致）；桌面永远桌面布局
@@ -775,6 +780,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return i < 0 ? 0 : i;
   }
 
+  /// 移动端打开全屏详情页；详情页胶囊点选时回传 ('circle'|'voice', 名字) 应用为列表筛选
+  Future<void> _openMobileDetail(String albumId) async {
+    final picked = await Navigator.of(context).push<(String, String)>(
+      MaterialPageRoute(
+        builder: (context) => AlbumDetailScreen(albumId: albumId),
+      ),
+    );
+    if (picked != null && mounted) {
+      setState(() {
+        _personFilterKind = picked.$1;
+        _personFilterName = picked.$2;
+      });
+    }
+  }
+
   Widget _buildMain(
     List<Album> filtered,
     ThemeData theme,
@@ -796,11 +816,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   onOpenAlbum: (album) {
                     if (isMobile) {
                       // 1.56 移动端：从统计页打开专辑全屏详情
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => AlbumDetailScreen(albumId: album.id),
-                        ),
-                      );
+                      _openMobileDetail(album.id);
                     } else {
                       // 桌面端：打开右侧抽屉
                       setState(() => _detailAlbum = album);
@@ -958,6 +974,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         filter: _filter,
         query: _query,
         sort: settings.albumSort,
+        circleFilter: _personFilterKind == 'circle' ? _personFilterName : null,
+        voiceFilter: _personFilterKind == 'voice' ? _personFilterName : null,
       ),
       albumId: albumId,
       metrics: MasonryLayoutMetrics(
@@ -1374,23 +1392,65 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   Widget _buildResultsLine(ThemeData theme, int count) {
     final hasFilter = _filter != 'all' || _view != '全部音声';
+    final hasPersonFilter = _personFilterName != null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(48, 8, 48, 0),
       child: Row(
         children: [
+          if (hasPersonFilter) ...[
+            _buildPersonFilterChip(theme),
+            const SizedBox(width: 8),
+          ],
           Text(
             '显示 $count 张专辑',
             style: TextStyle(fontSize: 11, color: theme.hintColor),
           ),
           const Spacer(),
-          if (hasFilter)
+          if (hasFilter || hasPersonFilter)
             TextButton(
               onPressed: () => setState(() {
                 _filter = 'all';
                 _view = '全部音声';
+                _personFilterKind = null;
+                _personFilterName = null;
               }),
               child: const Text('清除筛选', style: TextStyle(fontSize: 11)),
             ),
+        ],
+      ),
+    );
+  }
+
+  /// 1.77 详情页胶囊回传筛选的可关闭标记（社团紫 / 声优蓝）
+  Widget _buildPersonFilterChip(ThemeData theme) {
+    final isCircle = _personFilterKind == 'circle';
+    final color = isCircle ? const Color(0xFFB39DDB) : const Color(0xFF90CAF9);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '${isCircle ? "社团" : "声优"}：$_personFilterName',
+            style: TextStyle(fontSize: 11, color: color),
+          ),
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: () => setState(() {
+              _personFilterKind = null;
+              _personFilterName = null;
+            }),
+            borderRadius: BorderRadius.circular(10),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(Icons.close, size: 14, color: color),
+            ),
+          ),
         ],
       ),
     );
@@ -1461,12 +1521,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     : _multiIds.add(album.id);
               });
             } else if (isMobile) {
-              // 1.56 移动端：点击卡片进入全屏详情页
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => AlbumDetailScreen(albumId: album.id),
-                ),
-              );
+              // 1.56 移动端：点击卡片进入全屏详情页；1.77 接收胶囊回传筛选
+              _openMobileDetail(album.id);
             } else {
               // 桌面端：打开右侧抽屉
               setState(() => _detailAlbum = album);

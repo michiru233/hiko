@@ -9,6 +9,8 @@ List<Album> filterAlbums({
   required String filter, // all / unplayed / favorite
   required String query,
   required String sort, // recent_desc / recent_asc / title_asc / title_desc / duration_desc / duration_asc
+  String? circleFilter, // 社团（albumArtist）点选筛选，详情页胶囊回传（1.77）
+  String? voiceFilter, // 声优（artist）点选筛选；与 circleFilter 同时至多一个非空
 }) {
   final q = query.trim().toLowerCase();
   final result = albums.where((a) {
@@ -19,6 +21,11 @@ List<Album> filterAlbums({
     }
     if (filter == 'unplayed' && a.played >= a.totalDuration) return false;
     if (filter == 'favorite' && !a.favorite) return false;
+    // 详情页胶囊回传的社团/声优点选筛选：contains 匹配容忍旧库数据里的尾随空格
+    final cf = circleFilter?.trim();
+    final vf = voiceFilter?.trim();
+    if (cf != null && cf.isNotEmpty && !a.albumArtist.contains(cf)) return false;
+    if (vf != null && vf.isNotEmpty && !a.artist.contains(vf)) return false;
     if (q.isNotEmpty) {
       final haystack = [a.title, a.artist, a.group, a.genre];
       if (!haystack.any((v) => v.toLowerCase().contains(q))) return false;
@@ -110,6 +117,8 @@ class FilterAlbumsMemo {
   String? _lastFilter;
   String? _lastQuery;
   String? _lastSort;
+  String? _lastCircle;
+  String? _lastVoice;
   List<Album>? _result;
   int hits = 0; // 缓存命中计数（测试观测用）
 
@@ -119,12 +128,16 @@ class FilterAlbumsMemo {
     required String filter,
     required String query,
     required String sort,
+    String? circleFilter,
+    String? voiceFilter,
   }) {
     if (identical(_lastAlbums, albums) &&
         _lastView == view &&
         _lastFilter == filter &&
         _lastQuery == query &&
-        _lastSort == sort) {
+        _lastSort == sort &&
+        _lastCircle == circleFilter &&
+        _lastVoice == voiceFilter) {
       hits++;
       return _result!;
     }
@@ -134,12 +147,16 @@ class FilterAlbumsMemo {
       filter: filter,
       query: query,
       sort: sort,
+      circleFilter: circleFilter,
+      voiceFilter: voiceFilter,
     );
     _lastAlbums = albums;
     _lastView = view;
     _lastFilter = filter;
     _lastQuery = query;
     _lastSort = sort;
+    _lastCircle = circleFilter;
+    _lastVoice = voiceFilter;
     _result = result;
     return result;
   }

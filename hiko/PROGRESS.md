@@ -122,3 +122,16 @@
 ## 备注
 - Android 未知来源:REQUEST_INSTALL_PACKAGES 声明后,系统首次安装会引导用户为 Hiko 开启「安装未知应用」授权,属预期流程。
 - macOS 不做自动替换(签名/公证约束),下载 zip + Finder 定位,用户解压拖入 /Applications 一步完成。
+
+## 1.77.0 开工回执（Android 详情页改版）
+- 目标：详情页整页 CustomScrollView、全宽1:1封面、社团紫/声优蓝分色胶囊、点胶囊回列表筛选（可关闭胶囊）；标签/发售日不做；桌面端零变化。
+- 顺序：filterAlbums 加参+单测 → home_screen 筛选胶囊 → 详情页重构 → 封包发版。
+- 基线：flutter test 274 通过/2 跳过；analyze 0 error（41 条既有 warning）。
+- 最大风险：home_screen 状态接入筛选胶囊与列表缓存（FilterAlbumsMemo）需同步参数。
+
+## 1.77.0（Android 详情页整页滚动改版 + 社团/声优胶囊筛选）
+- 详情页重构为 CustomScrollView：全宽 1:1 封面（去掉模糊背景 Stack）→标题→RJ/时长/进度胶囊→「社团｜声优」分节→操作按钮→曲目/歌词（SliverList/SliverFillRemaining），可一直往下滑。
+- filterAlbums 新增可选 circleFilter/voiceFilter 参数（contains 匹配，容忍旧库尾随空格），FilterAlbumsMemo 缓存键同步扩展；补 4 条单测 test/data/person_filter_test.dart。
+- 详情页社团（紫）/声优（蓝，按 、，,／/;； 拆分）胶囊点选后 pop 回列表页；列表页 results 行显示可关闭筛选胶囊，「清除筛选」一并清除。
+- 模拟器端到端（kikoeru_test，注入测试 library.json）：详情页整页滚动/全宽封面/分色胶囊渲染 ✓；点声优胶囊回列表→蓝色「声优：えもこ」筛选 2 张 ✓；点社团胶囊→紫色「社团：えもこ本舗」筛选 1 张 ✓；✕ 关闭恢复全量 ✓（✕ 热区已按触控规范加大）。
+- 发版：pubspec 1.77.0+86，hiko-v1.77.0-android.apk 65.8MB（aapt2 校验 versionCode='86' versionName='1.77.0'）。

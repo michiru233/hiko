@@ -1065,3 +1065,15 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 - **验证**：本地编译通过；macOS release 产物 Hiko.app **73.8MB**（`hiko-v1.61.0-macos.zip`）；Android release APK **65.6MB**（`hiko-v1.61.0-android.apk`）；commit **f95749c** 已推送 origin main；GitHub Release **v1.61.0**（https://github.com/michiru233/hiko/releases/tag/v1.61.0）。功能实测（macOS）：歌词自动居中滚动✓，手动滚动暂停自动跟随✓，字号 5 档切换即时生效✓，布局更紧凑歌词区域明显增大✓。
 - **发版**：pubspec 1.61.0+69。
 
+
+## 1.77.0 Android 详情页整页滚动改版 + 社团/声优胶囊筛选（2026-09-12）
+
+需求（用户参考截图，仅 Android 端）：详情页仿参考图整页可下滑、封面全宽展示、社团（元数据专辑艺术家）/声优（艺术家）做分色胶囊、标签暂不做。经 grill-me 决策：整页 CustomScrollView、全宽 1:1 封面并去掉模糊背景、胶囊可点击回列表筛选、声优串按分隔符拆分、现有元素全保留。列表页搜索框已在早期版本移除，故筛选落地为「回列表页 + 顶部可关闭筛选胶囊」（filterAlbums 新增 circleFilter/voiceFilter 可选参数，memo 缓存键同步）。
+
+改动：
+- `lib/ui/screens/album_detail_screen.dart`：重构为 CustomScrollView（全宽封面→标题→元信息胶囊→社团｜声优分色胶囊→操作按钮→Tab→SliverList 曲目 / SliverFillRemaining 歌词），去掉封面高斯模糊背景与 dart:ui 依赖；社团紫 0xFFB39DDB、声优蓝 0xFF90CAF9，点选胶囊 pop(('circle'|'voice', 名字))。
+- `lib/ui/screens/home_screen.dart`：`_openMobileDetail` 接收回传值，`_personFilterKind/Name` 状态接入两处 `_filterMemo.get`；results 行新增分色可关闭筛选胶囊（✕ 热区加大），「清除筛选」一并清除。
+- `lib/data/filter.dart`：filterAlbums 可选 circleFilter/voiceFilter（contains 匹配）；FilterAlbumsMemo 键扩展。
+- 新增 `test/data/person_filter_test.dart` 4 条；桌面端 detail_drawer.dart 零改动。
+
+验证：flutter test 278 passed/2 skipped（基线 274/2/0）；analyze 0 error；模拟器端到端（注入 dataURL 封面测试库）：整页滚动、全宽封面、点声优/社团胶囊回列表筛选、✕ 关闭恢复全量均实测通过；aapt2 校验 versionCode=86/versionName=1.77.0。
