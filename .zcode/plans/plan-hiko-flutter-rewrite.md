@@ -1077,3 +1077,7 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 - 新增 `test/data/person_filter_test.dart` 4 条；桌面端 detail_drawer.dart 零改动。
 
 验证：flutter test 278 passed/2 skipped（基线 274/2/0）；analyze 0 error；模拟器端到端（注入 dataURL 封面测试库）：整页滚动、全宽封面、点声优/社团胶囊回列表筛选、✕ 关闭恢复全量均实测通过；aapt2 校验 versionCode=86/versionName=1.77.0。
+
+## 1.78.0 修复防社死模糊溢出糊住详情页标题（2026-09-12）
+
+用户报告：Android 端 1.77 详情页开启防社死模式后，模糊遮罩把专辑标题挡住（关闭则正常）。根因：`AlbumCover`（1.52 起共享组件）的模糊层 `ImageFiltered` 不裁剪滤镜输出，σ20 + `TileMode.clamp` 把边缘像素溢出到组件边界外；1.77 全宽封面紧贴标题后向下溢出 ~80px 正好糊住标题。修复：模糊层外包 `ClipRect`（一处根因修复，所有封面场景受益）；补结构回归测试（模糊层必须有 ClipRect 祖先）。模拟器高对比条纹封面端到端验证：模糊止于封面边界、标题完整清晰。

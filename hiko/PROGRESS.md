@@ -135,3 +135,9 @@
 - 详情页社团（紫）/声优（蓝，按 、，,／/;； 拆分）胶囊点选后 pop 回列表页；列表页 results 行显示可关闭筛选胶囊，「清除筛选」一并清除。
 - 模拟器端到端（kikoeru_test，注入测试 library.json）：详情页整页滚动/全宽封面/分色胶囊渲染 ✓；点声优胶囊回列表→蓝色「声优：えもこ」筛选 2 张 ✓；点社团胶囊→紫色「社团：えもこ本舗」筛选 1 张 ✓；✕ 关闭恢复全量 ✓（✕ 热区已按触控规范加大）。
 - 发版：pubspec 1.77.0+86，hiko-v1.77.0-android.apk 65.8MB（aapt2 校验 versionCode='86' versionName='1.77.0'）。
+
+## 1.78.0（修复防社死模糊溢出糊住详情页标题）
+- 根因：AlbumCover 的防社死模糊用 ImageFiltered 包住封面，但 ImageFiltered 不裁剪滤镜输出——σ20 + TileMode.clamp 会把边缘像素溢出到组件边界外。1.77 详情页全宽封面紧贴标题，向下溢出的模糊正好糊住标题；旧版布局标题离得远且背景本就是整屏模糊，故未暴露。
+- 修复：共享组件 AlbumCover 的模糊层外包 ClipRect 裁剪到自身边界（cover_art.dart 一处，列表卡片/详情页/全屏播放页全部受益）；补 1 条结构回归测试（privacy_blur_test.dart：模糊层必须有 ClipRect 祖先）。
+- 模拟器端到端（kikoeru_test，高对比条纹封面 + 防社死开启）：模糊止于封面 1:1 底缘，标题完整清晰 ✓；关闭防社死恢复正常 ✓。
+- 发版：pubspec 1.78.0+87，hiko-v1.78.0-android.apk 65.8MB（aapt2 校验 versionCode='87'）、hiko-v1.78.0-macos.zip 31MB。

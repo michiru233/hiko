@@ -60,4 +60,15 @@ void main() {
     await pumpCover(tester);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('1.78 回归：模糊层被 ClipRect 裁剪，不向组件边界外溢出糊住相邻内容', (tester) async {
+    await pumpCover(tester);
+    // ImageFiltered 不裁剪滤镜输出，σ20+TileMode.clamp 会把边缘像素溢出到封面
+    // 边界外——1.77 详情页全宽封面紧贴标题时会把标题糊住，故必须包 ClipRect
+    final clipRect = find.ancestor(
+      of: find.byType(ImageFiltered),
+      matching: find.byType(ClipRect),
+    );
+    expect(clipRect, findsOneWidget);
+  });
 }

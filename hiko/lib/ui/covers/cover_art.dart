@@ -69,12 +69,16 @@ class AlbumCover extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // child 只构建一次，切换开关仅替换模糊包装层
+    // child 只构建一次，切换开关仅替换模糊包装层。
+    // ClipRect（1.78）：ImageFiltered 不裁剪滤镜输出，σ20+TileMode.clamp 会把
+    // 边缘像素溢出到组件边界外——详情页全宽封面紧贴标题时会糊住标题。
     return ValueListenableBuilder<bool>(
       valueListenable: privacyBlur,
       child: _cover(),
       builder: (_, blurred, child) => blurred
-          ? ImageFiltered(imageFilter: _blurFilter, child: child)
+          ? ClipRect(
+              child: ImageFiltered(imageFilter: _blurFilter, child: child),
+            )
           : child!,
     );
   }
