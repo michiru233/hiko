@@ -1254,39 +1254,45 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ref.read(settingsProvider.notifier).setAlbumSort(val),
               ),
               const SizedBox(width: 14),
-              // 多选
-              OutlinedButton(
-                onPressed: () {
+              // 多选（玻璃胶囊，与筛选 chips 同底；激活时反色填充）
+              InkWell(
+                onTap: () {
                   setState(() {
                     _multiMode = !_multiMode;
                     _multiIds.clear();
                   });
                 },
-                style: OutlinedButton.styleFrom(
+                mouseCursor: SystemMouseCursors.click,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 9,
                   ),
-                  backgroundColor: _multiMode
-                      ? theme.colorScheme.primary
-                      : null,
-                  foregroundColor: _multiMode
-                      ? theme.colorScheme.onPrimary
-                      : null,
-                  side: BorderSide(
+                  decoration: BoxDecoration(
                     color: _multiMode
                         ? theme.colorScheme.primary
-                        : theme.dividerColor,
+                        : (theme.brightness == Brightness.dark
+                              ? HikoColors.darkGlassCard
+                              : HikoColors.lightGlassCard),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _multiMode
+                          ? theme.colorScheme.primary
+                          : (theme.brightness == Brightness.dark
+                                ? HikoColors.darkGlassBorderSubtle
+                                : HikoColors.lightGlassBorderSubtle),
+                    ),
                   ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                ),
-                child: Text(
-                  _multiMode ? '退出多选' : '多选',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
+                  child: Text(
+                    _multiMode ? '退出多选' : '多选',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: _multiMode
+                          ? theme.colorScheme.onPrimary
+                          : theme.hintColor,
+                    ),
                   ),
                 ),
               ),
@@ -1838,14 +1844,20 @@ class _SortSelector extends StatelessWidget {
     return InkWell(
       onTap: () => _openSortMenu(context),
       mouseCursor: SystemMouseCursors.click,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(10),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        // 与筛选 chips 同款玻璃胶囊底，工具栏三控件视觉统一
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(
-            alpha: 0.6,
+          color: theme.brightness == Brightness.dark
+              ? HikoColors.darkGlassCard
+              : HikoColors.lightGlassCard,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: theme.brightness == Brightness.dark
+                ? HikoColors.darkGlassBorderSubtle
+                : HikoColors.lightGlassBorderSubtle,
           ),
-          borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

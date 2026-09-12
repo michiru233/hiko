@@ -309,12 +309,33 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     final settings = ref.watch(settingsProvider);
 
     if (!lyrics.hasLyrics) {
-      return Center(
-        child: Text(
-          '暂无歌词',
-          style: TextStyle(
-            fontSize: 16,
-            color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+      // 无歌词时整个中央区可点回唱片层，与有歌词时的留白手势同语义
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _setShowLyrics(false),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '暂无歌词',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '点击返回唱片',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: (isDark
+                          ? HikoColors.darkMuted
+                          : HikoColors.lightMuted)
+                      .withValues(alpha: 0.6),
+                ),
+              ),
+            ],
           ),
         ),
       );

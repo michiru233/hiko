@@ -83,3 +83,5 @@ HIKO_NETWORK_TESTS=1 flutter test \
 5.（1.73.0 建议，待裁决）`flutter test` 裸跑仍会在匿名额度耗尽时因该实网用例转红。仓库已有既成惯例：`dlsite_scraper_network_test.dart` 用 `HIKO_NETWORK_TESTS=1` 门控、默认 `markTestSkipped`。是否把 `update_checker_network_test.dart` 也改成同样的**默认跳过、按需启用**（跑实网时用 `HIKO_NETWORK_TESTS=1 flutter test --dart-define=GITHUB_TOKEN=... `），让 `flutter test` 不再依赖外部额度、恢复确定性，待裁决。
 
 既有 1.42.0 深色主题 tag 对比度问题与本仓库历史高危记录（1.48.0 未裁决）保持不变。
+
+1.74.0（筛选栏统一玻璃胶囊 + 无歌词点击回唱片）：发版记录——pubspec 1.74.0+83，`hiko-v1.74.0-android.apk` 65.8MB（aapt2 校验 versionCode='83' versionName='1.74.0'）、`hiko-v1.74.0-macos.zip` 32,641,027B，GitHub Release v1.74.0 附双资产。终验 `flutter test` 270 passed/2 skipped/0 failed（基线 268/2/0，净增 2 条）、`flutter analyze` 改动文件 0 error。**模拟器端到端（kikoeru_test）本版已补做**：SAF 导入无歌词 WAV → 点唱片进歌词页 → 「暂无歌词/点击返回唱片」→ 点留白回唱片层，亮/暗主题筛选栏玻璃胶囊均统一，1.73.0 的待复测项①②随之在模拟器上验证通过（③歌词居中属 1.72.0 范围未单独复测）。本版无新增待裁决；既有 1.42.0 深色主题 tag 对比度、1.53.0/1.54.0 各两项与 Mimosa 历史 high 遗留保持不变。

@@ -4,6 +4,19 @@
 > 旧代码（Electron/Capacitor）保留在仓库根目录作参考，功能对等后归档。
 > 本文档为 Flutter 重写的里程碑与修复记录，新改动请追加章节。
 
+### 1.74.0 筛选栏统一玻璃胶囊 + 无歌词点击任意处回唱片（2026-09-12）
+
+- **需求**：①用户圈出「全部音声」筛选栏反馈 UI 按钮不一致要求重绘；②全屏播放页「暂无歌词」时点击中心无法回到唱片页。
+- **决策过程**：grilling 一轮三项用户裁决——①筛选栏统一为 chips 同款**玻璃胶囊体系**（否决「统一简洁 Material 风」与「只微调不换体系」）；②无歌词时**点击任意处回唱片**，文案下加小字「点击返回唱片」（我替领导拍的板，验收时可删）；③桌面 macOS 同步统一（组件两端共用同代码，不加平台分支）。
+- **根因与修复（两文件）**：
+  1. `home_screen.dart` `_buildToolbar` 三控件三套容器体系：chips=玻璃卡片胶囊（`HikoColors.dark/lightGlassCard` 底+10px 圆角+玻璃边框）、`_SortSelector`=surfaceContainerHighest 半透明无边框容器（8px 圆角）、多选=Material `OutlinedButton`（7px 圆角描边）。修法：排序与多选改为 chips 同款玻璃容器（10px 圆角、玻璃边框、horizontal 12×vertical 9 内边距，与 chips 组总高一致），交互全保留（排序菜单、多选激活反色填充、字号 11）。桌面/移动同代码自然一致。
+  2. `fullscreen_player_screen.dart` `_buildLyricsView` 无歌词提前 return 的裸 `Center(Text('暂无歌词'))` 不在任何手势树上（1.73.0 的「点留白回唱片」外层 GestureDetector 只包歌词 ListView）。修法：该分支包同款 `GestureDetector(HitTestBehavior.opaque, onTap: _setShowLyrics(false))`，文案下加 12px 小字「点击返回唱片」。
+- **回归测试（新增 2 条，`test/ui/lyrics_empty_tap_back_test.dart`）**：①无歌词进歌词页显示两条提示文案、点「暂无歌词」文字回唱片层；②点中央区非文字处（距顶 40px）也回唱片层（证明手势铺满整个中央区）。
+- **端到端（kikoeru_test 模拟器，补上 1.55.0 起历版欠的模拟器复测）**：ffmpeg 生成无歌词 WAV（RJ01432301/Track1）推到 `/sdcard/Music` → 设置页 SAF 导入成功 → 亮色主题筛选栏三控件玻璃胶囊统一 → 播放进入全屏页 → 点唱片进歌词页显示「暂无歌词/点击返回唱片」→ 点留白回唱片层 ✓ → 应用内切深色主题再验筛选栏（`darkGlassCard` 底）同样统一 ✓。截图存 `.shots/hiko-174-*.png`（不入 git）。
+- **验证**：`flutter test` **270 passed / 2 skipped / 0 failed**（基线 268/2/0，净增 2 条、skip 未增）；`flutter analyze` 改动文件 0 error（4 条 info 为历史遗留 deprecation：groupValue/onChanged/cacheExtent）。
+- **构建产物**：Android `flutter build apk --release` → 65.8MB `hiko-v1.74.0-android.apk`（aapt2 校验 `versionCode='83' versionName='1.74.0'`）；macOS `flutter build macos --release` → Hiko.app 73.8MB → `hiko-v1.74.0-macos.zip` 32,641,027B（`unzip -t` OK）。
+- **版本记录**：1.73.0+82 → **1.74.0+83**。
+
 ### 1.73.0 全屏播放页点唱片看歌词、点歌词留白回唱片（2026-09-11）
 
 - **需求**：用户提「在全屏播放页点击中间的唱片能够跳转歌词页面，在歌词页的空白处点击也能跳转回唱片页」。此前全屏播放页切换唱片层／歌词层**只有** AppBar 右上角那个图标按钮一个入口。
