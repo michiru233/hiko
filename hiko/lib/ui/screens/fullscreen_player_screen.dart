@@ -194,6 +194,21 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     });
   }
 
+  /// 点某句歌词：跳播到该句开头并立即居中（1.76.0，对齐详情页歌词 tab）。
+  ///
+  /// 与拖进度条 onChangeEnd 同语义——「我要跳到那一刻」，落地即恢复跟随并
+  /// 重置滚动记账，否则用户手动滑走过歌词时会停在原处等下一句才自愈。
+  void _seekToLine(int index) {
+    final lines = ref.read(lyricsProvider).lines;
+    if (index < 0 || index >= lines.length) return;
+    HapticFeedback.selectionClick();
+    ref
+        .read(playbackProvider.notifier)
+        .seek(lines[index].startTime.inMilliseconds / 1000.0);
+    ref.read(lyricsProvider.notifier).resumeAutoScroll();
+    setState(() => lastRevealedIndex = -1);
+  }
+
   /// 黑胶唱片视图：封面旋转 + 唱针联动
   Widget _buildVinylView(
     Album album,
@@ -385,13 +400,12 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                   return Padding(
                     key: _lineKeys.putIfAbsent(index, () => GlobalKey()),
                     padding: const EdgeInsets.symmetric(vertical: 8),
-                    // 吸收点击的范围只限文字渲染框（1.75.0 收窄）：点歌词文字
-                    // 仍不翻页（1.73.0 裁决），行与行之间的空隙落回外层的
-                    // 翻页手势——此前整行（含间距）都被吸收，密歌词时几乎
-                    // 没有可点的空白，用户实测「点空白回唱片不流畅」。
+                    // 手势分层（1.73/1.75/1.76 语义）：点歌词文字=跳播该句
+                    // （仅限文字渲染框），行间空隙与首末句之外留白=回唱片层，
+                    // 拖动滚动由竞技场判给 ListView，不会误触点击。
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: () {},
+                      onTap: () => _seekToLine(index),
                       child: Text(
                         line.text,
                         textAlign: TextAlign.center,

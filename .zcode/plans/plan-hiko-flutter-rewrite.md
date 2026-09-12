@@ -4,6 +4,17 @@
 > 旧代码（Electron/Capacitor）保留在仓库根目录作参考，功能对等后归档。
 > 本文档为 Flutter 重写的里程碑与修复记录，新改动请追加章节。
 
+### 1.76.0 全屏歌词页点某句跳播（对齐详情页）（2026-09-12）
+
+- **需求**：用户确认 1.75.0 后拍板把 1.73.0 留下的待裁决项落地——全屏歌词页点某句歌词跳播到该句开头（详情页歌词 tab 已有此能力，`LyricsController.seekToLine` 现成）。
+- **用户裁决（grilling）**：①**单击即跳播**（否决双击防误触，与详情页行为一致）；②跳播后**立即居中被点句 + 恢复自动跟随 + 触觉反馈**（与拖进度条 onChangeEnd 同语义）。
+- **修复（`fullscreen_player_screen.dart`）**：itemBuilder 内层 GestureDetector 的 `onTap: () {}` 纯吸收改为调新增私有方法 `_seekToLine(index)`：`playbackProvider.notifier.seek(line.startTime 秒)` → `lyricsProvider.notifier.resumeAutoScroll()` → `lastRevealedIndex = -1` 强制重新居中 → `HapticFeedback.selectionClick()`。手势分层语义完整：点文字=跳播该句、点行间空隙/留白=回唱片层（1.75.0）、拖动=滚动（竞技场），三层互不干扰。
+- **回归测试（新增 2 条，`test/ui/lyrics_tap_seek_test.dart`）**：①点视口内的「第 53 句」→ `playbackProvider.position` 落在该句起点 106s（容差 <0.5s）且仍停在歌词页（跳播不翻页，1.75.0 用例语义保持）；②跳播后被点句立即居中（偏差 <16px）。1.75.0 两条手势用例不改一字保持全绿。
+- **端到端（kikoeru_test 模拟器，深色主题，真实 vtt 歌词专辑）**：暂停在 4:13，像素分析（PIL 按行亮度找文字带与空隙带）精确定位后点「本来我能加入这家公司……」文字带正中 → 进度跳到 **4:20**（该句起点）、被点句立即高亮居中、仍停歌词页 ✓。**排障记录**：首测按截图目测坐标 y=1255 点到了空隙带（1237-1313）翻回唱片层——并非代码缺陷；改用像素带分析后一次点中。另：`monkey`/`adb shell am` 拉起应用在该模拟器上不稳定，点桌面图标可靠。
+- **验证**：`flutter test` **274 passed / 2 skipped / 0 failed**（1.75.0 基线 272/2/0，净增 2 条）；`flutter analyze` 改动文件 0 error。
+- **构建产物**：Android apk 65.8MB（aapt2 校验 `versionCode='85' versionName='1.76.0'`）；macOS Hiko.app 73.8MB → `hiko-v1.76.0-macos.zip` 32,641,029B（`unzip -t` OK）。
+- **版本记录**：1.75.0+84 → **1.76.0+85**。
+
 ### 1.75.0 歌词页行间空隙可点回唱片（吸收手势收窄到文字框）（2026-09-12）
 
 - **需求**：用户实测「有歌词的界面，点击空白的地方返回唱片页还是不那么流畅」。
