@@ -102,6 +102,9 @@ void main() {
     await tester.tap(find.text('打开设置'));
     await tester.pumpAndSettle();
     expect(find.byType(SettingsDialog), findsOneWidget);
+    // 1.85 分类导航：「立即重新扫描」位于「音乐目录」二级页
+    await tester.tap(find.text('音乐目录'));
+    await tester.pumpAndSettle();
     final rescan = find.ancestor(
       of: find.text('立即重新扫描'),
       matching: find.byType(OutlinedButton),

@@ -14,7 +14,32 @@ import '../../platform/platform_service.dart';
 import '../background.dart';
 import 'toast.dart';
 
+/// 设置分类（1.85）：首页分类列表 → 点进二级页；key 对应各 _xxPage 方法
+class _SettingsCategory {
+  final String key;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+
+  const _SettingsCategory(this.key, this.title, this.subtitle, this.icon);
+}
+
+const _categories = [
+  _SettingsCategory('appearance', '外观', '主题 · 强调色 · 字号 · 背景图',
+      Icons.palette_outlined),
+  _SettingsCategory('audio', '音频与增益', '增益放大 · 输出重接 · 快进快退',
+      Icons.graphic_eq_rounded),
+  _SettingsCategory('home', '主界面', '刮削标签 · 每行专辑数',
+      Icons.grid_view_outlined),
+  _SettingsCategory('data', '数据', '导入 · 整理 · 失效清理 · 刮削代理',
+      Icons.storage_outlined),
+  _SettingsCategory('folders', '音乐目录', '常驻目录 · 自动扫描',
+      Icons.folder_outlined),
+  _SettingsCategory('about', '关于', '版本信息 · 软件更新', Icons.info_outline),
+];
+
 /// 偏好设置弹窗（对应旧版 settings-overlay）
+/// 1.85 起分类导航：首页列出全部分类，点进二级页（三端统一 drill-in）
 class SettingsDialog extends ConsumerStatefulWidget {
   const SettingsDialog({
     super.key,
@@ -44,18 +69,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   double? _gainDrag; // 增益滑动条拖动中的临时值（松手才提交）
   double? _bgBlurDrag; // 背景模糊度拖动中的临时值（松手才提交）
   double? _bgOpacityDrag; // 背景不透明度拖动中的临时值（松手才提交）
-
-  Future<void> _pickBackground() async {
-    try {
-      final path = await pickAndStoreBackgroundImage(
-        ref.read(settingsProvider).backgroundPath,
-      );
-      if (path == null || !mounted) return;
-      ref.read(settingsProvider.notifier).setBackgroundImage(path);
-    } catch (e) {
-      if (mounted) _toast('选择背景图失败:$e');
-    }
-  }
+  String? _category; // 当前所在分类 key；null = 分类首页
 
   // ---- 软件更新状态 ----
   String? _appVersion; // PackageInfo 异步加载
@@ -116,39 +130,25 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     widget.onRescanRequested?.call();
   }
 
+  Future<void> _pickBackground() async {
+    try {
+      final path = await pickAndStoreBackgroundImage(
+        ref.read(settingsProvider).backgroundPath,
+      );
+      if (path == null || !mounted) return;
+      ref.read(settingsProvider.notifier).setBackgroundImage(path);
+    } catch (e) {
+      if (mounted) _toast('选择背景图失败:$e');
+    }
+  }
+
+  void _openCategory(String key) => setState(() => _category = key);
+  void _backToCategories() => setState(() => _category = null);
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final settings = ref.watch(settingsProvider);
-
-    // 每行专辑数选择 chip（1.54：移动端独立档位 2/3/4，桌面 0=自动 + 4~12）
-    Widget columnChip(
-      double columns, {
-      required bool selected,
-      bool auto = false,
-      required VoidCallback onTap,
-    }) {
-      return InkWell(
-        onTap: onTap,
-        mouseCursor: SystemMouseCursors.click,
-        borderRadius: BorderRadius.circular(6),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: selected ? theme.colorScheme.surface : null,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Text(
-            auto && columns == 0 ? '自动' : columns.toStringAsFixed(0),
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-              color: selected ? theme.colorScheme.onSurface : theme.hintColor,
-            ),
-          ),
-        ),
-      );
-    }
 
     return AlertDialog(
       titlePadding: const EdgeInsets.fromLTRB(24, 22, 16, 0),
@@ -159,759 +159,9 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ---- 外观 ----
-              _SectionTitle('外观'),
-              _SettingRow(
-                label: '主题',
-                trailing: Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withValues(
-                      alpha: 0.6,
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final (key, label) in [
-                        ('light', '浅色'),
-                        ('dark', '深色'),
-                      ])
-                        InkWell(
-                          onTap: () =>
-                              ref.read(settingsProvider.notifier).setTheme(key),
-                          mouseCursor: SystemMouseCursors.click,
-                          borderRadius: BorderRadius.circular(6),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: settings.theme == key
-                                  ? theme.colorScheme.surface
-                                  : null,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              label,
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              _SettingRow(
-                label: '强调色',
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (final accent in AppSettings.accents)
-                      InkWell(
-                        onTap: () => ref
-                            .read(settingsProvider.notifier)
-                            .setAccent(accent),
-                        mouseCursor: SystemMouseCursors.click,
-                        child: Container(
-                          width: 22,
-                          height: 22,
-                          margin: const EdgeInsets.only(left: 8),
-                          decoration: BoxDecoration(
-                            color: Color(
-                              int.parse('FF${accent.substring(1)}', radix: 16),
-                            ),
-                            shape: BoxShape.circle,
-                            border: settings.accent == accent
-                                ? Border.all(
-                                    color: theme.colorScheme.onSurface,
-                                    width: 2,
-                                  )
-                                : null,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              _SettingRow(
-                label: '字号大小',
-                trailing: Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest.withValues(
-                      alpha: 0.6,
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final (scale, label) in [
-                        (0.85, '小'),
-                        (1.0, '标准'),
-                        (1.15, '大'),
-                        (1.30, '超大'),
-                      ])
-                        InkWell(
-                          onTap: () => ref
-                              .read(settingsProvider.notifier)
-                              .setFontScale(scale),
-                          mouseCursor: SystemMouseCursors.click,
-                          borderRadius: BorderRadius.circular(6),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: settings.fontScale == scale
-                                  ? theme.colorScheme.surface
-                                  : null,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              label,
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: settings.fontScale == scale
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
-                                color: settings.fontScale == scale
-                                    ? theme.colorScheme.onSurface
-                                    : theme.hintColor,
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-              // ---- 背景图（1.84）----
-              _SectionTitle('背景图'),
-              _SettingRow(
-                label: '自定义背景',
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (settings.backgroundPath.isEmpty)
-                      TextButton.icon(
-                        onPressed: _pickBackground,
-                        icon: const Icon(Icons.image_outlined, size: 18),
-                        label: const Text('选择图片'),
-                      )
-                    else ...[
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: Image.file(
-                          File(settings.backgroundPath),
-                          width: 56,
-                          height: 36,
-                          fit: BoxFit.cover,
-                          cacheWidth: 112,
-                          errorBuilder: (_, _, _) =>
-                              const SizedBox(width: 56, height: 36),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      TextButton.icon(
-                        onPressed: _pickBackground,
-                        icon: const Icon(Icons.swap_horiz, size: 18),
-                        label: const Text('更换'),
-                      ),
-                      TextButton.icon(
-                        onPressed: () {
-                          final old = settings.backgroundPath;
-                          try {
-                            File(old).deleteSync();
-                          } catch (_) {}
-                          ref
-                              .read(settingsProvider.notifier)
-                              .setBackgroundImage('');
-                        },
-                        icon: const Icon(Icons.close, size: 18),
-                        label: const Text('清除'),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (settings.backgroundPath.isNotEmpty) ...[
-                _SettingRow(
-                  label: '模糊度',
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 180,
-                        child: Slider(
-                          min: 0,
-                          max: 30,
-                          divisions: 30,
-                          value:
-                              (_bgBlurDrag ?? settings.backgroundBlur).clamp(0, 30),
-                          label:
-                              '${(_bgBlurDrag ?? settings.backgroundBlur).round()}',
-                          mouseCursor: SystemMouseCursors.click,
-                          onChanged: (v) => setState(() => _bgBlurDrag = v),
-                          onChangeEnd: (v) {
-                            setState(() => _bgBlurDrag = null);
-                            ref
-                                .read(settingsProvider.notifier)
-                                .setBackgroundBlur(v);
-                          },
-                        ),
-                      ),
-                      SizedBox(
-                        width: 42,
-                        child: Text(
-                          '${(_bgBlurDrag ?? settings.backgroundBlur).round()}',
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: (_bgBlurDrag ?? settings.backgroundBlur) > 0
-                                ? theme.colorScheme.primary
-                                : theme.hintColor,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                _SettingRow(
-                  label: '不透明度',
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 180,
-                        child: Slider(
-                          min: 0,
-                          max: 1,
-                          divisions: 20,
-                          value: (_bgOpacityDrag ?? settings.backgroundOpacity)
-                              .clamp(0, 1),
-                          label:
-                              '${(((_bgOpacityDrag ?? settings.backgroundOpacity) * 100).round())}%',
-                          mouseCursor: SystemMouseCursors.click,
-                          onChanged: (v) => setState(() => _bgOpacityDrag = v),
-                          onChangeEnd: (v) {
-                            setState(() => _bgOpacityDrag = null);
-                            ref
-                                .read(settingsProvider.notifier)
-                                .setBackgroundOpacity(v);
-                          },
-                        ),
-                      ),
-                      SizedBox(
-                        width: 42,
-                        child: Text(
-                          '${(((_bgOpacityDrag ?? settings.backgroundOpacity) * 100).round())}%',
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: theme.colorScheme.primary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    '背景应用于主界面、专辑详情、全屏播放页等全部界面；不透明度调低会透出当前主题底色。',
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      height: 1.5,
-                      color: theme.hintColor,
-                    ),
-                  ),
-                ),
-              ],
-              // ---- 音频与增益 ----
-              _SectionTitle('音频与增益'),
-              _SettingRow(
-                label: '默认增益放大',
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: 180,
-                      child: Slider(
-                        min: 1.0,
-                        max: desktopGainCap(),
-                        divisions: desktopGainCap() > 1.3 ? 30 : 3,
-                        value: (_gainDrag ?? settings.audioGain).clamp(
-                          1.0,
-                          desktopGainCap(),
-                        ),
-                        label:
-                            'x${(_gainDrag ?? settings.audioGain).toStringAsFixed(1)}',
-                        mouseCursor: SystemMouseCursors.click,
-                        onChanged: (v) =>
-                            setState(() => _gainDrag = _snapGain(v)),
-                        onChangeEnd: (v) {
-                          final g = _snapGain(v);
-                          setState(() => _gainDrag = null);
-                          ref.read(settingsProvider.notifier).setAudioGain(g);
-                          ref.read(playbackProvider.notifier).setAudioGain(g);
-                        },
-                      ),
-                    ),
-                    SizedBox(
-                      width: 42,
-                      child: Text(
-                        'x${(_gainDrag ?? settings.audioGain).toStringAsFixed(1)}',
-                        textAlign: TextAlign.right,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: (_gainDrag ?? settings.audioGain) > 1.0
-                              ? theme.colorScheme.primary
-                              : theme.hintColor,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Builder(builder: (context) {
-                  final cap = desktopGainCap();
-                  final isMac = UniversalPlatform.isMacOS;
-                  return Text(
-                    isMac
-                        ? '此平台（macOS）因底层解码库未随附音量滤镜，增益并入主音量调节（上限 ${cap}x，过高会削波破音）。Windows 版走滤镜链软增益+软限幅，可到 4.0x 不削波。'
-                        : '增益在音频滤镜链内以浮点精度放大，并经 -1dB 软限幅器兜底，高增益下不会削波破音。亦可在播放底栏音量图标处快捷调节。',
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      height: 1.5,
-                      color: theme.hintColor,
-                    ),
-                  );
-                }),
-              ),
-              _SettingRow(
-                label: '重置音频输出',
-                trailing: TextButton.icon(
-                  onPressed: () async {
-                    await ref.read(playbackProvider.notifier).resetAudioOutput();
-                    if (mounted) _toast('已重接音频输出（audio-device=auto）');
-                  },
-                  icon: const Icon(Icons.restart_alt, size: 18),
-                  label: const Text('立即重接'),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  '蓝牙耳机断连/切换后若出现「进度在走但没声音」，点此把音频输出重接回当前可用设备；播放中检测到输出异常时也会自动重接。',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    height: 1.5,
-                    color: theme.hintColor,
-                  ),
-                ),
-              ),
-              _SettingRow(
-                label: '快进/快退秒数',
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // 键盘 ←→ 快退/快进的步长，白名单 3/5/10/30 秒
-                    for (final step in const [3.0, 5.0, 10.0, 30.0])
-                      InkWell(
-                        onTap: () => ref
-                            .read(settingsProvider.notifier)
-                            .setSeekStep(step),
-                        mouseCursor: SystemMouseCursors.click,
-                        borderRadius: BorderRadius.circular(6),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: settings.seekStepSeconds == step
-                                ? theme.colorScheme.surface
-                                : null,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            '${step.toStringAsFixed(0)}秒',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: settings.seekStepSeconds == step
-                                  ? FontWeight.w600
-                                  : FontWeight.w400,
-                              color: settings.seekStepSeconds == step
-                                  ? theme.colorScheme.onSurface
-                                  : theme.hintColor,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              // ---- 主界面 ----
-              _SectionTitle('主界面'),
-              _SettingRow(
-                label: '显示刮削标签',
-                trailing: Switch(
-                  value: settings.showScrapedTags,
-                  onChanged: (v) => ref
-                      .read(settingsProvider.notifier)
-                      .setShowScrapedTags(v),
-                ),
-              ),
-              // 1.54：移动端独立档位 2/3/4（默认 2），与桌面互不影响
-              if (Platform.isAndroid)
-                _SettingRow(
-                  label: '每行专辑数',
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (final columns in const [2.0, 3.0, 4.0])
-                        columnChip(
-                          columns,
-                          selected: settings.mobileGridColumns == columns,
-                          onTap: () => ref
-                              .read(settingsProvider.notifier)
-                              .setMobileGridColumns(columns),
-                        ),
-                    ],
-                  ),
-                )
-              else
-                _SettingRow(
-                  label: '每行专辑数',
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // 0=自动（按窗口宽度），其余为固定每行数量；1.79 补 2/3 档
-                      for (final columns in const [
-                        0.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 12.0,
-                      ])
-                        columnChip(
-                          columns,
-                          auto: true,
-                          selected: settings.gridColumns == columns,
-                          onTap: () => ref
-                              .read(settingsProvider.notifier)
-                              .setGridColumns(columns),
-                        ),
-                    ],
-                  ),
-                ),
-              // ---- 数据 ----
-              _SectionTitle('数据'),
-              _SettingRow(
-                label: '导入音声',
-                trailing: _ActionButton(
-                  label: '导入文件夹',
-                  onTap: () => widget.onImportRequested?.call(),
-                ),
-              ),
-              // ---- 音乐目录（常驻自动扫描）----
-              _SectionTitle('音乐目录'),
-              if (settings.musicFolders.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Text(
-                    '尚未设置音乐目录。导入音声文件夹时会自动记住；之后每次启动自动扫描新增内容。',
-                    style: TextStyle(
-                      fontSize: 11,
-                      height: 1.6,
-                      color: theme.hintColor,
-                    ),
-                  ),
-                ),
-              for (final folder in settings.musicFolders)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.folder_outlined,
-                        size: 15,
-                        color: theme.hintColor,
-                      ),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          _displayFolder(folder),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 14),
-                        tooltip: '移除目录',
-                        visualDensity: VisualDensity.compact,
-                        onPressed: () => ref
-                            .read(settingsProvider.notifier)
-                            .removeMusicFolder(folder),
-                      ),
-                    ],
-                  ),
-                ),
-              Row(
-                children: [
-                  _ActionButton(label: '立即重新扫描', onTap: _startRescan),
-                  if (settings.musicFolders.isNotEmpty) ...[
-                    const SizedBox(width: 8),
-                    Text(
-                      '共 ${settings.musicFolders.length} 个目录',
-                      style: TextStyle(fontSize: 10, color: theme.hintColor),
-                    ),
-                  ],
-                ],
-              ),
-              _SettingRow(
-                label: '库文件位置',
-                trailing: _ActionButton(
-                  label: '打开数据目录',
-                  onTap: () => ref.read(platformServiceProvider).openDataDir(),
-                ),
-              ),
-              _SettingRow(
-                label: '整理当前专辑',
-                trailing: _ActionButton(
-                  label: '整理专辑元数据',
-                  onTap: _reorganizeLibrary,
-                ),
-              ),
-              // 1.79 起全平台开放：重置数据库（清空所有专辑，不删除源文件）
-              _SettingRow(
-                label: '重置数据库',
-                trailing: _ActionButton(
-                  label: '清空全部专辑',
-                  onTap: () async {
-                    // 二次确认对话框
-                    final confirmed = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('确认重置数据库'),
-                        content: const Text(
-                          '将清空所有专辑记录，但不会删除源文件。\n'
-                          '您的设置（主题、增益、音乐目录）将保留。\n\n'
-                          '清空后需重新导入文件夹恢复专辑。\n\n'
-                          '此操作无法撤销，确认继续？',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('取消'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, true),
-                            child: Text(
-                              '确认清空',
-                              style: TextStyle(color: theme.colorScheme.error),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-
-                    if (confirmed == true) {
-                      await ref.read(libraryProvider.notifier).clearAll();
-                      if (mounted) {
-                        _toast('数据库已重置，请重新导入文件夹');
-                        if (context.mounted) Navigator.pop(context);
-                      }
-                    }
-                  },
-                ),
-              ),
-              _SettingRow(
-                label: '失效记录',
-                trailing: _ActionButton(label: '清理失效记录', onTap: _cleanMissing),
-              ),
-              _SettingRow(
-                label: '刮削代理',
-                trailing: SizedBox(
-                  width: 220,
-                  child: TextField(
-                    controller: TextEditingController(
-                      text: settings.scrapeProxy,
-                    ),
-                    onChanged: (v) => ref
-                        .read(settingsProvider.notifier)
-                        .setScrapeProxy(v.trim()),
-                    decoration: InputDecoration(
-                      hintText: '留空使用系统代理',
-                      hintStyle: TextStyle(
-                        fontSize: 11,
-                        color: theme.hintColor,
-                      ),
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(7),
-                        borderSide: BorderSide(color: theme.dividerColor),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(7),
-                        borderSide: BorderSide(color: theme.dividerColor),
-                      ),
-                    ),
-                    style: const TextStyle(fontSize: 11),
-                  ),
-                ),
-              ),
-              // ---- 关于 ----
-              _SectionTitle('关于'),
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primary,
-                      borderRadius: BorderRadius.circular(11),
-                    ),
-                    child: const Center(
-                      child: Text(
-                        'K',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Hiko · 音声收藏室',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        Text(
-                          '版本 ${_appVersion ?? '…'} · 本地优先的音声库管理器',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: theme.hintColor,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              // 软件更新(两端):检查 GitHub 最新 Release → 一键下载安装
-              if (_latestRelease == null)
-                _SettingRow(
-                  label: '软件更新',
-                  trailing: _ActionButton(
-                    label: _updateChecking ? '检查中...' : '检查更新',
-                    loading: _updateChecking,
-                    onTap: _updateChecking ? null : _checkUpdate,
-                  ),
-                ),
-              if (_latestRelease != null) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer.withValues(
-                      alpha: 0.35,
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.4),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.system_update_alt_rounded,
-                            size: 14,
-                            color: theme.colorScheme.primary,
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '发现新版本 ${_latestRelease!.tagName}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: theme.colorScheme.primary,
-                            ),
-                          ),
-                        ],
-                      ),
-                      if (_latestRelease!.body.trim().isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 110),
-                          child: SingleChildScrollView(
-                            child: Text(
-                              _latestRelease!.body.trim(),
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                height: 1.5,
-                                color: theme.hintColor,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          _ActionButton(
-                            label: Platform.isAndroid ? '下载并安装' : '下载更新包',
-                            onTap: () {
-                              final release = _latestRelease;
-                              if (release == null) return;
-                              Navigator.pop(context);
-                              widget.onDownloadUpdateRequested?.call(release);
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          TextButton(
-                            onPressed: () =>
-                                setState(() => _latestRelease = null),
-                            child: Text(
-                              '暂不更新',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: theme.hintColor,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-              ],
-            ],
+            children: _category == null
+                ? _categoryListPage(theme)
+                : _categoryPage(theme, settings),
           ),
         ),
       ),
@@ -926,26 +176,880 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       ],
     );
   }
+
+  // ---- 分类首页 ----
+
+  List<Widget> _categoryListPage(ThemeData theme) => [
+        const SizedBox(height: 8),
+        for (final cat in _categories)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: InkWell(
+              onTap: () => _openCategory(cat.key),
+              mouseCursor: SystemMouseCursors.click,
+              borderRadius: BorderRadius.circular(9),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 11,
+                ),
+                child: Row(
+                  children: [
+                    Icon(cat.icon, size: 18, color: theme.hintColor),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            cat.title,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            cat.subtitle,
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              color: theme.hintColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, size: 18, color: theme.hintColor),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        const SizedBox(height: 8),
+      ];
+
+  List<Widget> _categoryPage(ThemeData theme, AppSettings settings) {
+    switch (_category!) {
+      case 'appearance':
+        return _appearancePage(theme, settings);
+      case 'audio':
+        return _audioPage(theme, settings);
+      case 'home':
+        return _homePage(theme, settings);
+      case 'data':
+        return _dataPage(theme, settings);
+      case 'folders':
+        return _foldersPage(theme, settings);
+      case 'about':
+        return _aboutPage(theme, settings);
+    }
+    return _categoryListPage(theme);
+  }
+
+  // ---- 二级页公共头 ----
+
+  Widget _pageHeader(ThemeData theme, String title) => Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back, size: 18),
+              tooltip: '返回',
+              visualDensity: VisualDensity.compact,
+              onPressed: _backToCategories,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              title,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+      );
+
+  // ---- 外观 ----
+
+  List<Widget> _appearancePage(ThemeData theme, AppSettings settings) => [
+        _pageHeader(theme, '外观'),
+        _SettingRow(
+          label: '主题',
+          trailing: Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest.withValues(
+                alpha: 0.6,
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final (key, label) in [
+                  ('light', '浅色'),
+                  ('dark', '深色'),
+                ])
+                  InkWell(
+                    onTap: () =>
+                        ref.read(settingsProvider.notifier).setTheme(key),
+                    mouseCursor: SystemMouseCursors.click,
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: settings.theme == key
+                            ? theme.colorScheme.surface
+                            : null,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        label,
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        _SettingRow(
+          label: '强调色',
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final accent in AppSettings.accents)
+                InkWell(
+                  onTap: () => ref
+                      .read(settingsProvider.notifier)
+                      .setAccent(accent),
+                  mouseCursor: SystemMouseCursors.click,
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    width: 20,
+                    height: 20,
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    decoration: BoxDecoration(
+                      color: Color(
+                          int.parse('FF${accent.substring(1)}', radix: 16)),
+                      shape: BoxShape.circle,
+                      border: settings.accent == accent
+                          ? Border.all(
+                              color: theme.colorScheme.onSurface,
+                              width: 2,
+                            )
+                          : null,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        _SettingRow(
+          label: '字号大小',
+          trailing: _SettingDropdown<double>(
+            value: settings.fontScale,
+            items: const [
+              (0.85, '小'),
+              (1.0, '标准'),
+              (1.15, '大'),
+              (1.30, '超大'),
+            ],
+            onChanged: (v) =>
+                ref.read(settingsProvider.notifier).setFontScale(v),
+          ),
+        ),
+        _SettingRow(
+          label: '自定义背景',
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (settings.backgroundPath.isEmpty)
+                TextButton.icon(
+                  onPressed: _pickBackground,
+                  icon: const Icon(Icons.image_outlined, size: 18),
+                  label: const Text('选择图片'),
+                )
+              else ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: Image.file(
+                    File(settings.backgroundPath),
+                    width: 56,
+                    height: 36,
+                    fit: BoxFit.cover,
+                    cacheWidth: 112,
+                    errorBuilder: (_, _, _) =>
+                        const SizedBox(width: 56, height: 36),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                TextButton.icon(
+                  onPressed: _pickBackground,
+                  icon: const Icon(Icons.swap_horiz, size: 18),
+                  label: const Text('更换'),
+                ),
+                TextButton.icon(
+                  onPressed: () {
+                    final old = settings.backgroundPath;
+                    try {
+                      File(old).deleteSync();
+                    } catch (_) {}
+                    ref
+                        .read(settingsProvider.notifier)
+                        .setBackgroundImage('');
+                  },
+                  icon: const Icon(Icons.close, size: 18),
+                  label: const Text('清除'),
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (settings.backgroundPath.isNotEmpty) ...[
+          _SettingRow(
+            label: '模糊度',
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 180,
+                  child: Slider(
+                    min: 0,
+                    max: 30,
+                    divisions: 30,
+                    value:
+                        (_bgBlurDrag ?? settings.backgroundBlur).clamp(0, 30),
+                    label:
+                        '${(_bgBlurDrag ?? settings.backgroundBlur).round()}',
+                    mouseCursor: SystemMouseCursors.click,
+                    onChanged: (v) => setState(() => _bgBlurDrag = v),
+                    onChangeEnd: (v) {
+                      setState(() => _bgBlurDrag = null);
+                      ref
+                          .read(settingsProvider.notifier)
+                          .setBackgroundBlur(v);
+                    },
+                  ),
+                ),
+                SizedBox(
+                  width: 42,
+                  child: Text(
+                    '${(_bgBlurDrag ?? settings.backgroundBlur).round()}',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: (_bgBlurDrag ?? settings.backgroundBlur) > 0
+                          ? theme.colorScheme.primary
+                          : theme.hintColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _SettingRow(
+            label: '不透明度',
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 180,
+                  child: Slider(
+                    min: 0,
+                    max: 1,
+                    divisions: 20,
+                    value: (_bgOpacityDrag ?? settings.backgroundOpacity)
+                        .clamp(0, 1),
+                    label:
+                        '${(((_bgOpacityDrag ?? settings.backgroundOpacity) * 100).round())}%',
+                    mouseCursor: SystemMouseCursors.click,
+                    onChanged: (v) => setState(() => _bgOpacityDrag = v),
+                    onChangeEnd: (v) {
+                      setState(() => _bgOpacityDrag = null);
+                      ref
+                          .read(settingsProvider.notifier)
+                          .setBackgroundOpacity(v);
+                    },
+                  ),
+                ),
+                SizedBox(
+                  width: 42,
+                  child: Text(
+                    '${(((_bgOpacityDrag ?? settings.backgroundOpacity) * 100).round())}%',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              '背景应用于主界面、专辑详情、全屏播放页等全部界面；不透明度调低会透出当前主题底色。',
+              style: TextStyle(
+                fontSize: 10.5,
+                height: 1.5,
+                color: theme.hintColor,
+              ),
+            ),
+          ),
+        ],
+      ];
+
+  // ---- 音频与增益 ----
+
+  List<Widget> _audioPage(ThemeData theme, AppSettings settings) => [
+        _pageHeader(theme, '音频与增益'),
+        _SettingRow(
+          label: '默认增益放大',
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 180,
+                child: Slider(
+                  min: 1.0,
+                  max: desktopGainCap(),
+                  divisions: desktopGainCap() > 1.3 ? 30 : 3,
+                  value: (_gainDrag ?? settings.audioGain).clamp(
+                    1.0,
+                    desktopGainCap(),
+                  ),
+                  label:
+                      'x${(_gainDrag ?? settings.audioGain).toStringAsFixed(1)}',
+                  mouseCursor: SystemMouseCursors.click,
+                  onChanged: (v) =>
+                      setState(() => _gainDrag = _snapGain(v)),
+                  onChangeEnd: (v) {
+                    final g = _snapGain(v);
+                    setState(() => _gainDrag = null);
+                    ref.read(settingsProvider.notifier).setAudioGain(g);
+                    ref.read(playbackProvider.notifier).setAudioGain(g);
+                  },
+                ),
+              ),
+              SizedBox(
+                width: 42,
+                child: Text(
+                  'x${(_gainDrag ?? settings.audioGain).toStringAsFixed(1)}',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: (_gainDrag ?? settings.audioGain) > 1.0
+                        ? theme.colorScheme.primary
+                        : theme.hintColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Builder(builder: (context) {
+            final cap = desktopGainCap();
+            final isMac = UniversalPlatform.isMacOS;
+            return Text(
+              isMac
+                  ? '此平台（macOS）因底层解码库未随附音量滤镜，增益并入主音量调节（上限 ${cap}x，过高会削波破音）。Windows 版走滤镜链软增益+软限幅，可到 4.0x 不削波。'
+                  : '增益在音频滤镜链内以浮点精度放大，并经 -1dB 软限幅器兜底，高增益下不会削波破音。亦可在播放底栏音量图标处快捷调节。',
+              style: TextStyle(
+                fontSize: 10.5,
+                height: 1.5,
+                color: theme.hintColor,
+              ),
+            );
+          }),
+        ),
+        _SettingRow(
+          label: '重置音频输出',
+          trailing: TextButton.icon(
+            onPressed: () async {
+              await ref.read(playbackProvider.notifier).resetAudioOutput();
+              if (mounted) _toast('已重接音频输出（audio-device=auto）');
+            },
+            icon: const Icon(Icons.restart_alt, size: 18),
+            label: const Text('立即重接'),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            '蓝牙耳机断连/切换后若出现「进度在走但没声音」，点此把音频输出重接回当前可用设备；播放中检测到输出异常时也会自动重接。',
+            style: TextStyle(
+              fontSize: 10.5,
+              height: 1.5,
+              color: theme.hintColor,
+            ),
+          ),
+        ),
+        _SettingRow(
+          label: '快进/快退秒数',
+          trailing: _SettingDropdown<double>(
+            value: settings.seekStepSeconds,
+            items: const [
+              (3.0, '3秒'),
+              (5.0, '5秒'),
+              (10.0, '10秒'),
+              (30.0, '30秒'),
+            ],
+            onChanged: (v) =>
+                ref.read(settingsProvider.notifier).setSeekStep(v),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            '键盘 ←→ 快退/快进的步长，播放底栏对应按钮同此步长。',
+            style: TextStyle(
+              fontSize: 10.5,
+              height: 1.5,
+              color: theme.hintColor,
+            ),
+          ),
+        ),
+      ];
+
+  // ---- 主界面 ----
+
+  List<Widget> _homePage(ThemeData theme, AppSettings settings) => [
+        _pageHeader(theme, '主界面'),
+        _SettingRow(
+          label: '显示刮削标签',
+          trailing: Switch(
+            value: settings.showScrapedTags,
+            onChanged: (v) => ref
+                .read(settingsProvider.notifier)
+                .setShowScrapedTags(v),
+          ),
+        ),
+        // 1.54：移动端独立档位 2/3/4（默认 2），与桌面互不影响
+        if (Platform.isAndroid)
+          _SettingRow(
+            label: '每行专辑数',
+            trailing: _SettingDropdown<double>(
+              value: settings.mobileGridColumns,
+              items: const [(2.0, '2'), (3.0, '3'), (4.0, '4')],
+              onChanged: (v) =>
+                  ref.read(settingsProvider.notifier).setMobileGridColumns(v),
+            ),
+          )
+        else
+          _SettingRow(
+            label: '每行专辑数',
+            trailing: _SettingDropdown<double>(
+              value: settings.gridColumns,
+              // 0=自动（按窗口宽度），其余为固定每行数量；1.79 补 2/3 档
+              items: const [
+                (0.0, '自动'),
+                (2.0, '2'),
+                (3.0, '3'),
+                (4.0, '4'),
+                (5.0, '5'),
+                (6.0, '6'),
+                (7.0, '7'),
+                (8.0, '8'),
+                (10.0, '10'),
+                (12.0, '12'),
+              ],
+              onChanged: (v) =>
+                  ref.read(settingsProvider.notifier).setGridColumns(v),
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            Platform.isAndroid
+                ? '移动端网格每行显示的专辑数，与桌面端档位独立。'
+                : '「自动」按窗口宽度计算每行数量；固定档位在窗口缩放时保持不变。',
+            style: TextStyle(
+              fontSize: 10.5,
+              height: 1.5,
+              color: theme.hintColor,
+            ),
+          ),
+        ),
+      ];
+
+  // ---- 数据 ----
+
+  List<Widget> _dataPage(ThemeData theme, AppSettings settings) => [
+        _pageHeader(theme, '数据'),
+        _SettingRow(
+          label: '导入音声',
+          trailing: _ActionButton(
+            label: '导入文件夹',
+            onTap: () => widget.onImportRequested?.call(),
+          ),
+        ),
+        _SettingRow(
+          label: '整理当前专辑',
+          trailing: _ActionButton(
+            label: '整理专辑元数据',
+            onTap: _reorganizeLibrary,
+          ),
+        ),
+        _SettingRow(
+          label: '失效记录',
+          trailing: _ActionButton(label: '清理失效记录', onTap: _cleanMissing),
+        ),
+        _SettingRow(
+          label: '库文件位置',
+          trailing: _ActionButton(
+            label: '打开数据目录',
+            onTap: () => ref.read(platformServiceProvider).openDataDir(),
+          ),
+        ),
+        // 1.79 起全平台开放：重置数据库（清空所有专辑，不删除源文件）
+        _SettingRow(
+          label: '重置数据库',
+          trailing: _ActionButton(
+            label: '清空全部专辑',
+            onTap: () async {
+              // 二次确认对话框
+              final confirmed = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('确认重置数据库'),
+                  content: const Text(
+                    '将清空所有专辑记录，但不会删除源文件。\n'
+                    '您的设置（主题、增益、音乐目录）将保留。\n\n'
+                    '清空后需重新导入文件夹恢复专辑。\n\n'
+                    '此操作无法撤销，确认继续？',
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('取消'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: Text(
+                        '确认清空',
+                        style: TextStyle(color: theme.colorScheme.error),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+
+              if (confirmed == true) {
+                await ref.read(libraryProvider.notifier).clearAll();
+                if (mounted) {
+                  _toast('数据库已重置，请重新导入文件夹');
+                  if (context.mounted) Navigator.pop(context);
+                }
+              }
+            },
+          ),
+        ),
+        _SettingRow(
+          label: '刮削代理',
+          trailing: SizedBox(
+            width: 220,
+            child: TextField(
+              controller: TextEditingController(
+                text: settings.scrapeProxy,
+              ),
+              onChanged: (v) => ref
+                  .read(settingsProvider.notifier)
+                  .setScrapeProxy(v.trim()),
+              decoration: InputDecoration(
+                hintText: '留空使用系统代理',
+                hintStyle: TextStyle(
+                  fontSize: 11,
+                  color: theme.hintColor,
+                ),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(7),
+                  borderSide: BorderSide(color: theme.dividerColor),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(7),
+                  borderSide: BorderSide(color: theme.dividerColor),
+                ),
+              ),
+              style: const TextStyle(fontSize: 11),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            '刮削代理用于访问 DLsite 元数据与封面，留空走系统代理。',
+            style: TextStyle(
+              fontSize: 10.5,
+              height: 1.5,
+              color: theme.hintColor,
+            ),
+          ),
+        ),
+      ];
+
+  // ---- 音乐目录 ----
+
+  List<Widget> _foldersPage(ThemeData theme, AppSettings settings) => [
+        _pageHeader(theme, '音乐目录'),
+        if (settings.musicFolders.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+              '尚未设置音乐目录。导入音声文件夹时会自动记住；之后每次启动自动扫描新增内容。',
+              style: TextStyle(
+                fontSize: 11,
+                height: 1.6,
+                color: theme.hintColor,
+              ),
+            ),
+          ),
+        for (final folder in settings.musicFolders)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.folder_outlined,
+                  size: 15,
+                  color: theme.hintColor,
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    _displayFolder(folder),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 14),
+                  tooltip: '移除目录',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () => ref
+                      .read(settingsProvider.notifier)
+                      .removeMusicFolder(folder),
+                ),
+              ],
+            ),
+          ),
+        Row(
+          children: [
+            _ActionButton(label: '立即重新扫描', onTap: _startRescan),
+            if (settings.musicFolders.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Text(
+                '共 ${settings.musicFolders.length} 个目录',
+                style: TextStyle(fontSize: 10, color: theme.hintColor),
+              ),
+            ],
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            '每次启动会静默扫描常驻目录同步新增专辑；目录被移动/删除后请更新此处设置。',
+            style: TextStyle(
+              fontSize: 10.5,
+              height: 1.5,
+              color: theme.hintColor,
+            ),
+          ),
+        ),
+      ];
+
+  // ---- 关于 ----
+
+  List<Widget> _aboutPage(ThemeData theme, AppSettings settings) => [
+        _pageHeader(theme, '关于'),
+        Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary,
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: const Center(
+                child: Text(
+                  'K',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Hiko · 音声收藏室',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    '版本 ${_appVersion ?? '…'} · 本地优先的音声库管理器',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: theme.hintColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // 软件更新(两端):检查 GitHub 最新 Release → 一键下载安装
+        if (_latestRelease == null)
+          _SettingRow(
+            label: '软件更新',
+            trailing: _ActionButton(
+              label: _updateChecking ? '检查中...' : '检查更新',
+              loading: _updateChecking,
+              onTap: _updateChecking ? null : _checkUpdate,
+            ),
+          ),
+        if (_latestRelease != null) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.primaryContainer.withValues(
+                alpha: 0.35,
+              ),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: theme.colorScheme.primary.withValues(alpha: 0.4),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.system_update_alt_rounded,
+                      size: 14,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '发现新版本 ${_latestRelease!.tagName}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                if (_latestRelease!.body.trim().isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 110),
+                    child: SingleChildScrollView(
+                      child: Text(
+                        _latestRelease!.body.trim(),
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          height: 1.5,
+                          color: theme.hintColor,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    _ActionButton(
+                      label: Platform.isAndroid ? '下载并安装' : '下载更新包',
+                      onTap: () {
+                        final release = _latestRelease;
+                        if (release == null) return;
+                        Navigator.pop(context);
+                        widget.onDownloadUpdateRequested?.call(release);
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: () =>
+                          setState(() => _latestRelease = null),
+                      child: Text(
+                        '暂不更新',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: theme.hintColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+      ];
 }
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.title);
+/// 档位下拉选择（1.85）：替代原横排 chip 组，三端交互一致
+class _SettingDropdown<T> extends StatelessWidget {
+  const _SettingDropdown({
+    required this.value,
+    required this.items,
+    required this.onChanged,
+  });
 
-  final String title;
+  final T value;
+  final List<(T, String)> items; // (值, 显示名)
+  final ValueChanged<T> onChanged;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(top: 16, bottom: 12),
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 10,
-          letterSpacing: 1.2,
-          color: theme.hintColor,
-          fontWeight: FontWeight.w600,
-        ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: DropdownButton<T>(
+        value: value,
+        underline: const SizedBox.shrink(),
+        isDense: true,
+        borderRadius: BorderRadius.circular(8),
+        dropdownColor: theme.cardColor,
+        style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
+        icon: Icon(Icons.arrow_drop_down, size: 18, color: theme.hintColor),
+        items: [
+          for (final (v, label) in items)
+            DropdownMenuItem<T>(value: v, child: Text(label)),
+        ],
+        onChanged: (v) {
+          if (v != null) onChanged(v);
+        },
       ),
     );
   }

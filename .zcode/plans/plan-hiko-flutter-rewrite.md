@@ -1183,3 +1183,15 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 验证：flutter test 283 passed / 2 skipped；analyze 0 error（新增 2 条 lint 已修，其余 44 条为既有基线）。
 
 发版：pubspec 1.84.0+93；macOS/Android 双资产 GitHub Release v1.84.0。
+
+## 1.85.0 设置分类导航（一级菜单→二级页）+ 档位行改下拉（2026-09-13）
+
+需求（用户提出，AskUserQuestion 定案）：①设置所有功能堆叠单页需从头滚到尾，改为分类导航——用户示例"点一级菜单『外观』进二级界面"；经确认三端统一 drill-in 二级页（不做桌面左右分栏）；②档位选择横排 chip 组改下拉——经确认全部档位行都改（字号大小/每行专辑数/移动端每行专辑数/快进快退秒数），主题（两键）与强调色（色点）保持现状。
+
+改动（settings_dialog.dart 整体重写）：
+- 新增 `_SettingsCategory` + `_categories` 六分类：外观 / 音频与增益 / 主界面 / 数据 / 音乐目录 / 关于。首页分类列表（图标+标题+副标题+chevron），点进二级页，左上角返回。
+- 原 build 中的单页内容按区块拆为 `_appearancePage/_audioPage/_homePage/_dataPage/_foldersPage/_aboutPage` 六个方法（行内容原样搬运，未改逻辑），`_category` state 控制页面切换。
+- 新增 `_SettingDropdown<T>` 通用档位下拉（DropdownButton + 圆角容器包裹），替换 4 处横排 chip：字号大小（小/标准/大/超大）、每行专辑数（桌面 自动+2~12 / Android 2/3/4，平台分流保留）、快进/快退秒数（3/5/10/30秒）。`columnChip` 助手与 `_SectionTitle` 随之删除。
+- 数据/音乐目录/主界面页各补一条说明文字；音频页快进快退说明迁移。
+
+验证：flutter analyze 0 error（42 条既有基线）；flutter test 283 passed / 2 skipped（activity_overlay_test 更新为走「音乐目录」二级页导航后通过）。macOS 实机目视：分类首页六项渲染正确 → 点「外观」进二级页（返回头 + 主题两键/强调色圆点/字号下拉/背景图区完整）→ 字号下拉菜单正常展开（当前值高亮）→ 返回键回到首页。
