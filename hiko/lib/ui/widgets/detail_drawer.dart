@@ -10,6 +10,7 @@ import '../../models/album.dart';
 import '../../models/track.dart';
 import '../../playback/playback_controller.dart';
 import '../../utils/rj.dart';
+import '../../utils/person_names.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
 import '../lyrics/drawer_lyrics_view.dart';
@@ -21,10 +22,22 @@ import 'toast.dart';
 
 /// 详情抽屉：沉浸式玻璃拟态界面（背景大图虚化 + 拟态高光药丸按钮 + 晶透曲目项）
 class DetailDrawer extends ConsumerStatefulWidget {
-  const DetailDrawer({super.key, required this.album, required this.onClose});
+  const DetailDrawer({
+    super.key,
+    required this.album,
+    required this.onClose,
+    this.personFilterKind,
+    this.personFilterName,
+    this.onPersonFilter,
+  });
 
   final Album album;
   final VoidCallback onClose;
+  /// 1.81 当前生效的社团/声优筛选（用于胶囊选中态；kind: 'circle' | 'voice'）
+  final String? personFilterKind;
+  final String? personFilterName;
+  /// 点胶囊回传筛选；传 (null, null) 表示清除（点已选中胶囊 = toggle 关）
+  final void Function(String? kind, String? name)? onPersonFilter;
 
   @override
   ConsumerState<DetailDrawer> createState() => _DetailDrawerState();
@@ -32,6 +45,55 @@ class DetailDrawer extends ConsumerStatefulWidget {
 
 class _DetailDrawerState extends ConsumerState<DetailDrawer> {
   int _selectedTabIndex = 0; // 0: 曲目列表, 1: 歌词字幕
+
+  static const _circleColor = Color(0xFFB39DDB); // 社团紫（1.77 同色）
+  static const _voiceColor = Color(0xFF90CAF9); // 声优蓝
+
+  /// 1.81 社团/声优分色胶囊行：点选应用/切换筛选，点已选中胶囊取消（抽屉不关，列表同屏）
+  Widget _buildPersonPills(Album album, ThemeData theme) {
+    final circle = album.albumArtist.trim();
+    final voices = splitVoiceNames(album.artist);
+    if (circle.isEmpty && voices.isEmpty) return const SizedBox.shrink();
+    Widget pill(String kind, String name, Color color) {
+      final selected =
+          widget.personFilterKind == kind && widget.personFilterName == name;
+      return InkWell(
+        onTap: () => widget.onPersonFilter
+            ?.call(selected ? null : kind, selected ? null : name),
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: selected ? 0.32 : 0.15),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: color.withValues(alpha: selected ? 0.7 : 0.4),
+            ),
+          ),
+          child: Text(
+            name,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: color,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          if (circle.isNotEmpty) pill('circle', circle, _circleColor),
+          for (final name in voices) pill('voice', name, _voiceColor),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -184,6 +246,8 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                       '${album.artist} · ${album.rjCode ?? '本地导入'}',
                       style: TextStyle(fontSize: 12, color: theme.hintColor),
                     ),
+                    // 1.81 社团（紫）/声优（蓝）胶囊：点选筛选主列表，抽屉保持打开
+                    _buildPersonPills(album, theme),
                     const SizedBox(height: 20),
                     // 操作胶囊按钮
                     Wrap(

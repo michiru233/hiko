@@ -1130,3 +1130,17 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 验证：flutter test 279 passed / 2 skipped；analyze 0 error（39 条基线）。
 
 发版：pubspec 1.80.0+89；macOS/Android 双资产 GitHub Release v1.80.0。
+
+## 1.81.0 详情抽屉接入社团/声优分色胶囊筛选（1.77 能力移植桌面）（2026-09-13）
+
+需求：1.79 待办最后遗留项。经 grill-with-docs 定案（Q1 用户选 a）：**保留桌面详情抽屉**，把 1.77 的社团紫/声优蓝胶囊搬进抽屉，点选直接筛选主列表（宽屏"胶囊+结果同屏"优于整页跳转）；不做整页详情桌面版，移动端零改动。
+
+改动：
+- 新增 `lib/utils/person_names.dart`：`splitVoiceNames` 抽出 1.77 的声优串拆分正则（顿号/逗号/斜杠/分号，去空白滤空项）为可单测共享函数；移动端 album_detail_screen.dart 不动。
+- `lib/ui/widgets/detail_drawer.dart`：`DetailDrawer` 新增 `personFilterKind/personFilterName`（选中态）与 `onPersonFilter(kind,name)`（null=清除）参数；艺术家行下新增胶囊行（社团不拆分、声优逐人拆分；点已选中胶囊 toggle 取消；选中态加透明度+加粗）。样式对齐 1.77 分色（紫 0xFFB39DDB / 蓝 0xFF90CAF9）。
+- `lib/ui/screens/home_screen.dart`：桌面抽屉实例接入现有 `_personFilterKind/Name` 状态与回调（筛选消费端 `filterAlbums` 的 circleFilter/voiceFilter 与结果线分色胶囊/清除筛选均为共享组件，桌面天然生效，零改动）。
+- 新增 `test/utils/person_names_test.dart` 3 条（分隔符全集/去空滤空/单人与空串）。
+
+验证：flutter test 282 passed / 2 skipped；analyze 0 error。macOS 端到端（flutter run 实机目视）：抽屉胶囊渲染正确（社团紫/声优蓝）→ 点「バイコーンの森」列表 75→10 张、结果线出现紫色「社团：バイコーンの森 ✕」、抽屉保持打开且胶囊选中高亮 → 再点同胶囊筛选取消恢复 75 张、胶囊回退未选中态。
+
+发版：pubspec 1.81.0+90；macOS/Android 双资产 GitHub Release v1.81.0。

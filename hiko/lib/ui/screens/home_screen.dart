@@ -704,6 +704,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       child: DetailDrawer(
                         album: _detailAlbum!,
                         onClose: () => setState(() => _detailAlbum = null),
+                        // 1.81 抽屉社团/声优胶囊点选筛选（抽屉保持打开，结果线显示分色胶囊）
+                        personFilterKind: _personFilterKind,
+                        personFilterName: _personFilterName,
+                        onPersonFilter: (kind, name) => setState(() {
+                          _personFilterKind = kind;
+                          _personFilterName = name;
+                        }),
                       ),
                     ),
                 ],
