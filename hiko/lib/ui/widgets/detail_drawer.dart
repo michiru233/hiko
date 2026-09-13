@@ -130,7 +130,8 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? HikoColors.darkGlassSurface : HikoColors.lightGlassSurface,
+        // 1.83 视觉统一：面板改主界面同款实底（原半透明玻璃 surface），层级靠边框+投影
+        color: isDark ? HikoColors.darkBg : HikoColors.lightBg,
         border: Border(
           left: BorderSide(
             color: isDark ? HikoColors.darkGlassBorder : HikoColors.lightGlassBorder,
@@ -153,10 +154,11 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
             right: -60,
             width: 320,
             height: 320,
-            child: IgnorePointer(
-              child: Opacity(
-                opacity: isDark ? 0.22 : 0.16,
-                child: ImageFiltered(
+              child: IgnorePointer(
+                child: Opacity(
+                  // 1.83 随实底化压暗：保留沉浸氛围但不与主界面争对比
+                  opacity: isDark ? 0.10 : 0.07,
+                  child: ImageFiltered(
                   imageFilter: ImageFilter.blur(sigmaX: 55, sigmaY: 55),
                   child: AlbumCover(album: album),
                 ),

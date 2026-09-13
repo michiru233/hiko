@@ -99,6 +99,10 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     final position = _dragging ? _dragValue : state.position;
     final duration = state.duration;
 
+    // 1.83 宽屏并排：窗口 ≥1000px 时左唱片右歌词同屏（唱片区含曲目信息与进度），
+    // 窄窗与移动端回退原有"唱片⇄歌词"切换式；两套布局共用同一份视图与状态代码。
+    final wide = MediaQuery.sizeOf(context).width >= 1000;
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       backgroundColor: isDark ? HikoColors.darkBg : HikoColors.lightBg,
@@ -123,49 +127,80 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
-          // 歌词/封面切换按钮
-          IconButton(
-            icon: Icon(
-              _showLyrics ? Icons.album : Icons.lyrics,
-              color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+          // 歌词/封面切换按钮（仅窄窗切换式需要；宽屏并排两块同屏无切换概念）
+          if (!wide)
+            IconButton(
+              icon: Icon(
+                _showLyrics ? Icons.album : Icons.lyrics,
+                color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+              ),
+              onPressed: () => _setShowLyrics(!_showLyrics),
+              tooltip: _showLyrics ? '显示封面' : '显示歌词',
             ),
-            onPressed: () => _setShowLyrics(!_showLyrics),
-            tooltip: _showLyrics ? '显示封面' : '显示歌词',
-          ),
         ],
       ),
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 12),
-            // 中央区域：黑胶唱片层或歌词层，切换带 220ms 交叉淡入淡出
+            // 中央区域：宽屏并排 / 窄窗切换（220ms 交叉淡入淡出）
+            if (!wide) const SizedBox(height: 12),
             Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                child: _showLyrics
-                    ? KeyedSubtree(
-                        key: const ValueKey('lyrics'),
-                        child: _buildLyricsView(theme, isDark),
-                      )
-                    : KeyedSubtree(
-                        key: const ValueKey('vinyl'),
-                        child: _buildVinylView(
-                          album,
-                          theme,
-                          isDark,
-                          state.playing,
+              child: wide
+                  ? Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        // 左：唱片区（曲名与进度落在唱片下方，构成独立锚点块）
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Expanded(
+                                child: _buildVinylView(
+                                  album,
+                                  theme,
+                                  isDark,
+                                  state.playing,
+                                  allowToggle: false,
+                                ),
+                              ),
+                              _buildTrackInfo(album, track, theme, isDark),
+                              const SizedBox(height: 12),
+                              _buildProgressBar(position, duration, theme, isDark),
+                            ],
+                          ),
                         ),
-                      ),
-              ),
+                        // 右：歌词区（更宽，自动跟随+点句跳播）
+                        Expanded(
+                          child: _buildLyricsView(theme, isDark, allowToggle: false),
+                        ),
+                      ],
+                    )
+                  : AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 220),
+                      child: _showLyrics
+                          ? KeyedSubtree(
+                              key: const ValueKey('lyrics'),
+                              child: _buildLyricsView(theme, isDark),
+                            )
+                          : KeyedSubtree(
+                              key: const ValueKey('vinyl'),
+                              child: _buildVinylView(
+                                album,
+                                theme,
+                                isDark,
+                                state.playing,
+                              ),
+                            ),
+                    ),
             ),
             const SizedBox(height: 16),
-            // 曲目信息
-            _buildTrackInfo(album, track, theme, isDark),
-            const SizedBox(height: 12),
-            // 进度条
-            _buildProgressBar(position, duration, theme, isDark),
-            const SizedBox(height: 12),
-            // 播放控制
+            // 曲目信息与进度条：宽屏时已并入左侧唱片块
+            if (!wide) ...[
+              _buildTrackInfo(album, track, theme, isDark),
+              const SizedBox(height: 12),
+              _buildProgressBar(position, duration, theme, isDark),
+              const SizedBox(height: 12),
+            ],
+            // 播放控制（通栏）
             _buildPlaybackControls(state, theme, isDark),
             const SizedBox(height: 8),
             // 三核心功能键
@@ -210,16 +245,19 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
   }
 
   /// 黑胶唱片视图：封面旋转 + 唱针联动
+  ///
+  /// [allowToggle] 为 false（1.83 宽屏并排模式）时点按不切歌词——两块同屏无切换概念。
   Widget _buildVinylView(
     Album album,
     ThemeData theme,
     bool isDark,
-    bool isPlaying,
-  ) {
+    bool isPlaying, {
+    bool allowToggle = true,
+  }) {
     return GestureDetector(
       // 铺满整个中央区域：唱片圆盘之外还有上下各约 50px，点到那里也该有反应
       behavior: HitTestBehavior.opaque,
-      onTap: () => _setShowLyrics(true),
+      onTap: allowToggle ? () => _setShowLyrics(true) : null,
       child: Center(
         child: Stack(
           alignment: Alignment.center,
@@ -319,7 +357,9 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
   }
 
   /// 歌词视图（带自动滚动）
-  Widget _buildLyricsView(ThemeData theme, bool isDark) {
+  ///
+  /// [allowToggle] 为 false（1.83 宽屏并排模式）时留白点按不切唱片。
+  Widget _buildLyricsView(ThemeData theme, bool isDark, {bool allowToggle = true}) {
     final lyrics = ref.watch(lyricsProvider);
     final settings = ref.watch(settingsProvider);
 
@@ -327,7 +367,7 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
       // 无歌词时整个中央区可点回唱片层，与有歌词时的留白手势同语义
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => _setShowLyrics(false),
+        onTap: allowToggle ? () => _setShowLyrics(false) : null,
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -339,17 +379,20 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                   color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                '点击返回唱片',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: (isDark
-                          ? HikoColors.darkMuted
-                          : HikoColors.lightMuted)
-                      .withValues(alpha: 0.6),
+              // 宽屏并排模式下没有"返回唱片"概念，提示文案随之隐藏
+              if (allowToggle) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '点击返回唱片',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: (isDark
+                            ? HikoColors.darkMuted
+                            : HikoColors.lightMuted)
+                        .withValues(alpha: 0.6),
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -386,7 +429,7 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
             builder: (context, constraints) => GestureDetector(
               // 点歌词区的留白（首句之上／末句之下）回到唱片层
               behavior: HitTestBehavior.opaque,
-              onTap: () => _setShowLyrics(false),
+              onTap: allowToggle ? () => _setShowLyrics(false) : null,
               child: ListView.builder(
                 controller: _lyricsScrollController,
                 padding: EdgeInsets.symmetric(

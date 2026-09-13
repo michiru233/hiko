@@ -1154,3 +1154,15 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 验证：analyze 0 error（39 条基线）；flutter test 282 passed / 2 skipped。macOS 实机（flutter run）：抽屉开 + 指针悬停主界面滚动 → 网格滚动、抽屉内容不动；点空白处抽屉正常关闭。
 
 发版：pubspec 1.82.0+91；macOS/Android 双资产 GitHub Release v1.82.0。
+
+## 1.83.0 宽屏全屏播放页并排布局 + 详情抽屉视觉统一（2026-09-13）
+
+需求（用户提出，经 grill-with-docs 定案 Q1-Q4 全按推荐）：①详情抽屉半透明玻璃与主界面实底不一致；②宽屏下点歌进全屏页还要"唱片⇄歌词"切换很怪，应利用宽屏优势并排同屏。设计阶段按要求加载 ui-ux-pro-max 技能（检索无音乐播放页专门条目，按其优先级表 breakpoint-consistency/motion 原则执行）。
+
+改动：
+- `lib/ui/screens/fullscreen_player_screen.dart`：`build` 按 `MediaQuery.sizeOf(context).width >= 1000` 分流——**宽屏并排**：Row 左唱片区（Expanded 内 Column：唱片 + 曲目信息 + 进度条，构成独立锚点块）右歌词区（更宽），播放控制与功能键底部通栏；AppBar 唱片⇄歌词切换按钮仅窄窗显示。**窄窗/移动端**：回退原 220ms 交叉淡入切换式（原代码路径不变）。`_buildVinylView`/`_buildLyricsView` 新增 `allowToggle` 参数（并排模式下点唱片/点歌词留白不再切换，"点击返回唱片"提示随之隐藏；点歌词跳播、自动跟随、字号调节全保留）。
+- `lib/ui/widgets/detail_drawer.dart`：面板背景 `darkGlassSurface/lightGlassSurface`（72%/70% 半透明）→ `darkBg/lightBg` 实底，与主界面一致；虚化封面氛围背板透明度 0.22/0.16 → 0.10/0.07 压暗；边框+投影保留层级。玻璃拟态语言保留在控件层。
+
+验证：analyze 0 error（39 条基线）；flutter test 282 passed / 2 skipped。macOS 实机（flutter run）：宽屏并排渲染正确（左唱片+曲名+进度、右歌词区、底部控制通栏、切换按钮隐藏、无歌词空态无"返回唱片"提示）；抽屉实底化后与主界面观感一致、氛围背板压暗生效。（窄窗回退路径为原有未改动代码，窗口缩放被 macOS 拒绝未实测，回归风险为零。）
+
+发版：pubspec 1.83.0+92；macOS/Android 双资产 GitHub Release v1.83.0。
