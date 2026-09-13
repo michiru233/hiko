@@ -1109,3 +1109,24 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 验证：`flutter test` 279 passed / 2 skipped；`flutter analyze` 0 error（39 条既有基线 warning/info）。
 
 发版：pubspec 1.79.0+88；macOS Hiko.app（hiko-v1.79.0-macos.zip）+ Android APK（hiko-v1.79.0-android.zip）双资产上传 GitHub Release v1.79.0。
+
+## 1.80.0 macOS 增益上限追平 4.0x（2026-09-13）
+
+需求：macOS 增益上限 1.3x 追平 Android/Windows 的 4.0x（1.79 待办遗留项之一，用户定序"从易到难"先做本项）。
+
+**技术验证（实测二进制，非文档推断）**：
+- media_kit_libs_macos_audio 1.1.4（v0.6.0 库）的 Avfilter 只有 aresample/abuffer/afifo，无 volume/alimiter（1.46 结论成立）。
+- media_kit_libs_macos_video 1.1.4（video-default v0.6.0）实测同样裁剪——官方 darwin 全系变体均无全量 avfilter，换官方库包路径堵死。
+- libmpv-darwin-build v0.7.2（2026-06）新增 `encodersgpl` 变体，实测其 Avfilter（2MB）**含 volume 与 alimiter**——后续若要免削波软限幅，可 fork 库包 pin v0.7.2 audio-encodersgpl（代价：mpv 大版本升级回归 + GPL + 体积 +10~15MB，作为升级路径备选）。
+- 本轮决策（AskUserQuestion 未获答复，按保守判断）：走**放开 mpv `volume-max`** 路径——零依赖变动，>1.3x 属裸放大（高增益可能硬削波），与 Android LoudnessEnhancer 纯增益行为精确对齐。
+
+改动：
+- `lib/playback/gain_chain.dart`：`desktopGainCap()` macOS 1.3→4.0（函数不再分支）；文档注释全面改写（volume-max=400 机制、削波性质、v0.7.2 升级路径）。
+- `lib/playback/hiko_media_kit_player.dart`：HikoMediaKitPlayer 构造时（macOS）`setProperty('volume-max','400')` 放开 mpv 默认 130 钳制，失败容忍（退回 130 只影响高增益档）；过时注释同步。
+- `test/playback/gain_chain_test.dart`：cap 断言 macOS 1.3→4.0；desktopVolumeFor mac 用例改全量程（1.5→1.5、0.8×4.0→3.2、超限 5.0 封顶 4.0）。
+
+**macOS 端到端验证**（flutter run debug 实机）：设置页增益滑杆 UI 自动放开至 3.9x；日志 `[gain] macOS volume-max=400 已设置` + `[gain] macOS volume=3.9 (readBack=390.000000)`——mpv 接受 400 钳制且 volume 属性未被 130 截断，增益通道打通（播放器创建即补挂全局增益的既有路径，hiko_media_kit_player.dart:72）。验证后用户增益偏好已由 3.9 恢复 1.1（defaults 直写）。
+
+验证：flutter test 279 passed / 2 skipped；analyze 0 error（39 条基线）。
+
+发版：pubspec 1.80.0+89；macOS/Android 双资产 GitHub Release v1.80.0。

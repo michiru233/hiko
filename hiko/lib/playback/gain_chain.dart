@@ -1,28 +1,26 @@
 /// 音频增益 af 链构建（mpv lavfi 滤镜串，纯函数可单测）。
 ///
-/// 破音根因：libmpv 的 volume 属性 clamp 130，>1.3x 部分被硬削波；
-/// 增益必须在 af 滤镜链内以 64-bit 浮点域完成，volume 属性只承担 0~1 常规音量。
+/// Windows：libavfilter 带 `volume`/`alimiter`，增益走 af 滤镜链浮点软增益 + 软限幅。
+/// macOS：media_kit 预编译的 libavfilter 全系（v0.6.0 audio/video/default/full）只带
+/// 缓冲/重采样滤镜，**没有** `volume`/`alimiter`，给 mpv 设任何 `af` 链都会解析失败
+/// → 音频输出链建不起来 → 静音；mpv 0.36 又移除了内建 `af_volume`，故增益并入
+/// mpv `volume` 属性在 ao 层承载（播放器初始化时已设 `volume-max=400` 放开钳制，
+/// 见 HikoMediaKitPlayer）。>1.3x 属裸放大，高增益可能硬削波——与 Android
+/// LoudnessEnhancer 的纯增益行为一致（1.79 待办曾验证 v0.7.2 `audio-encodersgpl`
+/// 变体带全滤镜，可作为后续免削波升级路径）。
 library;
 
 import 'dart:math';
 
 import 'package:universal_platform/universal_platform.dart';
 
-/// 桌面端（macOS/Windows）增益上限。
-///
-/// macOS：media_kit 预编译的 libavfilter 只带了缓冲/重采样滤镜
-/// （aresample/abuffer/afifo），**没有** `volume`/`alimiter` 滤镜，给 mpv 设
-/// 任何 `af` 链都会解析失败 → 音频输出链建不起来 → 静音。而 mpv 0.36 又移除了
-/// 内建 `af_volume`，所以 macOS 上增益只能并入 mpv `volume` 属性承载；
-/// 该属性在 ao 层放大，超过约 1.3x 会硬削波，故限幅到 1.3x。
-/// Windows：走 af 链（见 [gainAfChain]），可到 4.0x。
 double desktopGainCap() {
-  return UniversalPlatform.isMacOS ? 1.3 : 4.0;
+  return 4.0;
 }
 
 /// 桌面端合成后的有效音量（绝对值，0 ~ 上限）。
 ///
-/// macOS：base×gain 合并进 mpv `volume` 属性，cap 防削波；
+/// macOS：base×gain 合并进 mpv `volume` 属性（volume-max=400，1.80 起 cap=4.0）；
 /// Windows：volume 只承载 base（gain 走 af 链），故此值即 base。
 double desktopEffectiveVolume(double baseVolume, double gain) {
   if (UniversalPlatform.isWindows) return baseVolume.clamp(0.0, 1.0);
@@ -32,7 +30,7 @@ double desktopEffectiveVolume(double baseVolume, double gain) {
 }
 
 /// 供测试注入的平台判定，与 [desktopGainCap]/[desktopEffectiveVolume] 逻辑一致。
-double desktopGainCapFor(bool isMac) => isMac ? 1.3 : 4.0;
+double desktopGainCapFor(bool isMac) => 4.0;
 
 /// 供测试注入的平台判定，与 [desktopEffectiveVolume] 逻辑一致。
 double desktopVolumeFor(bool isMac, double baseVolume, double gain) {

@@ -21,8 +21,8 @@ class HikoJustAudioMediaKit extends JustAudioPlatform {
   static final _players = HashMap<String, HikoMediaKitPlayer>();
   static final _disposingPlayers = HashMap<String, Future<void>>();
 
-  /// 全局增益当前值：af 链软增益 + 软限幅（mpv volume 属性 clamp 130，
-  /// >1.3x 硬削波，增益必须走 af 浮点域；volume 属性只留 0~1 常规音量）。
+  /// 全局增益当前值：Windows 走 af 链软增益 + 软限幅；macOS 并入 mpv volume 属性
+  /// （初始化已设 volume-max=400 放开默认 130 钳制，>1.3x 属裸放大，见 gain_chain.dart）。
   static double _globalGain = 1.0;
 
   /// 当前全局增益（供实例在 macOS 上合成 volume 用）。
@@ -132,6 +132,22 @@ class HikoMediaKitPlayer extends AudioPlayerPlatform {
         logLevel: MPVLogLevel.warn,
       ),
     );
+
+    // 1.80 macOS：放开 mpv volume 属性默认 clamp 130（=1.3x），
+    // 允许增益通道最高 4.0x（与 Android LoudnessEnhancer 行为对齐）。
+    // 失败容忍：volume-max 未放开时 volume 属性退回 130 上限，只影响高增益档。
+    if (UniversalPlatform.isMacOS) {
+      unawaited(() async {
+        try {
+          final platform = _player.platform;
+          if (platform is! NativePlayer) return;
+          await platform.setProperty('volume-max', '400');
+          debugPrint('[gain] macOS volume-max=400 已设置');
+        } catch (e) {
+          debugPrint('[gain] volume-max 设置失败（容忍）: $e');
+        }
+      }());
+    }
 
     _streamSubscriptions = [
       _player.stream.duration.listen((duration) {
@@ -400,7 +416,7 @@ class HikoMediaKitPlayer extends AudioPlayerPlatform {
   Future<SetVolumeResponse> setVolume(SetVolumeRequest request) async {
     _baseVolume = request.volume.clamp(0.0, 1.0);
     if (UniversalPlatform.isMacOS) {
-      // macOS：volume 属性同时承载 base×gain，避免重复设 af 链导致静音。
+      // macOS：volume 属性（volume-max=400）同时承载 base×gain，避免重复设 af 链导致静音。
       final merged = desktopEffectiveVolume(_baseVolume, HikoJustAudioMediaKit.globalGain);
       await _player.setVolume(merged * 100.0);
       return SetVolumeResponse();
@@ -413,7 +429,8 @@ class HikoMediaKitPlayer extends AudioPlayerPlatform {
   /// 应用增益：
   /// - Windows：设置 `af` 链（lavfi volume + alimiter，浮点域软增益 + 软限幅）。
   /// - macOS：media_kit 库缺 volume/alimiter 滤镜，af 链必然失败导致静音，
-  ///   故把 base×gain 并入 mpv `volume` 属性（上限见 [desktopGainCap]）。
+  ///   故把 base×gain 并入 mpv `volume` 属性（初始化已设 volume-max=400，
+  ///   上限见 [desktopGainCap]）。
   Future<void> applyGain(double gain) async {
     if (UniversalPlatform.isMacOS) {
       try {
