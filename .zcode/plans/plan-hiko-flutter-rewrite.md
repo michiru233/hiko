@@ -1166,3 +1166,20 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 验证：analyze 0 error（39 条基线）；flutter test 282 passed / 2 skipped。macOS 实机（flutter run）：宽屏并排渲染正确（左唱片+曲名+进度、右歌词区、底部控制通栏、切换按钮隐藏、无歌词空态无"返回唱片"提示）；抽屉实底化后与主界面观感一致、氛围背板压暗生效。（窄窗回退路径为原有未改动代码，窗口缩放被 macOS 拒绝未实测，回归风险为零。）
 
 发版：pubspec 1.83.0+92；macOS/Android 双资产 GitHub Release v1.83.0。
+
+## 1.84.0 自定义背景图全局生效（macOS/Windows/Android）（2026-09-13）
+
+需求（用户提出，经 ask-matt 流程定案）：主界面/专辑详情页/唱片歌词页等可自定义背景图。定案：**统一管理一张全局背景**而非逐页设置——根层铺底后全部页面自动继承，工作量最小且玻璃拟态（GlassContainer 的 BackdropFilter）直接糊在图片上出毛玻璃质感；每页单独选图的收益撑不起三倍的设置面。用户追加"模糊/透明度"调节，定案**只暴露两个滑杆**：模糊度（0-30px，默认 12）+ 不透明度（0-100%，叠在主题底色上，默认 65%）；可读性兜底做成自动薄纱（浅色叠 15% 白纱/深色叠 25% 黑纱，写死不暴露）。全屏播放页经核实本无"封面铺底"逻辑（纯色底 + 黑胶唱片），故砍掉原方案里的"封面默认/全局覆盖"开关，背景启用时直接透出全局背景（YAGNI）。
+
+改动：
+- `lib/data/settings_store.dart`：AppSettings 新增 `backgroundPath`（空=未启用）/`backgroundBlur`/`backgroundOpacity` 三项 + setter + 持久化；load 时文件不存在的路径静默回退空（防系统清理/残留）。
+- 新增 `lib/ui/background.dart`：`pickAndStoreBackgroundImage`（file_selector 三端通吃选图——Android 端插件会把 SAF 内容拷到缓存真路径；原图直拷进 Application Support `background.<ext>`，不解码重压，显示端 cacheWidth 限解码分辨率控内存）+ `BackgroundLayer`（底色 → 图片[不透明度+ImageFiltered 模糊] → 主题薄纱）。
+- `lib/main.dart`：HikoApp.builder 在 Navigator 之下叠 `BackgroundLayer`（仅启用时），Scaffold 透明即透出。
+- `lib/ui/theme.dart`：背景启用时 `scaffoldBackgroundColor` 透明（底色改由 BackgroundLayer 铺，观感不变）。
+- `lib/ui/screens/fullscreen_player_screen.dart`：显式 backgroundColor 改为背景启用时透明。
+- `lib/ui/widgets/settings_dialog.dart`：外观区新增「背景图」小节：选图/更换/清除（含 56×36 预览缩略图）+ 模糊度/不透明度两滑杆（沿用增益滑杆"拖动临时值松手提交"模式，改动实时生效）。
+- `test/data/settings_store_test.dart`：新增 1 条（默认值/夹取/持久化往返/文件丢失回退空路径）。
+
+验证：flutter test 283 passed / 2 skipped；analyze 0 error（新增 2 条 lint 已修，其余 44 条为既有基线）。
+
+发版：pubspec 1.84.0+93；macOS/Android 双资产 GitHub Release v1.84.0。

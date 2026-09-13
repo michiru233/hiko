@@ -61,7 +61,10 @@ ThemeData buildHikoTheme(AppSettings settings) {
   final base = ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
-    scaffoldBackgroundColor: bg,
+    // 自定义背景启用时交给根层 BackgroundLayer 铺底（主题底色 + 图片 + 薄纱），
+    // Scaffold 全透明让背景透出（1.84）
+    scaffoldBackgroundColor:
+        settings.backgroundPath.isNotEmpty ? Colors.transparent : bg,
   );
 
   // 全局 Ink 按压反馈（1.32）：M3 水波纹 + 按压 overlay ≥0.12 alpha

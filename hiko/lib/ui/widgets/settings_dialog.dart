@@ -11,6 +11,7 @@ import '../../data/update_checker.dart';
 import '../../playback/gain_chain.dart';
 import '../../playback/playback_controller.dart';
 import '../../platform/platform_service.dart';
+import '../background.dart';
 import 'toast.dart';
 
 /// 偏好设置弹窗（对应旧版 settings-overlay）
@@ -41,6 +42,20 @@ class SettingsDialog extends ConsumerStatefulWidget {
 
 class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   double? _gainDrag; // 增益滑动条拖动中的临时值（松手才提交）
+  double? _bgBlurDrag; // 背景模糊度拖动中的临时值（松手才提交）
+  double? _bgOpacityDrag; // 背景不透明度拖动中的临时值（松手才提交）
+
+  Future<void> _pickBackground() async {
+    try {
+      final path = await pickAndStoreBackgroundImage(
+        ref.read(settingsProvider).backgroundPath,
+      );
+      if (path == null || !mounted) return;
+      ref.read(settingsProvider.notifier).setBackgroundImage(path);
+    } catch (e) {
+      if (mounted) _toast('选择背景图失败:$e');
+    }
+  }
 
   // ---- 软件更新状态 ----
   String? _appVersion; // PackageInfo 异步加载
@@ -276,6 +291,150 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                   ),
                 ),
               ),
+              // ---- 背景图（1.84）----
+              _SectionTitle('背景图'),
+              _SettingRow(
+                label: '自定义背景',
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (settings.backgroundPath.isEmpty)
+                      TextButton.icon(
+                        onPressed: _pickBackground,
+                        icon: const Icon(Icons.image_outlined, size: 18),
+                        label: const Text('选择图片'),
+                      )
+                    else ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.file(
+                          File(settings.backgroundPath),
+                          width: 56,
+                          height: 36,
+                          fit: BoxFit.cover,
+                          cacheWidth: 112,
+                          errorBuilder: (_, _, _) =>
+                              const SizedBox(width: 56, height: 36),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      TextButton.icon(
+                        onPressed: _pickBackground,
+                        icon: const Icon(Icons.swap_horiz, size: 18),
+                        label: const Text('更换'),
+                      ),
+                      TextButton.icon(
+                        onPressed: () {
+                          final old = settings.backgroundPath;
+                          try {
+                            File(old).deleteSync();
+                          } catch (_) {}
+                          ref
+                              .read(settingsProvider.notifier)
+                              .setBackgroundImage('');
+                        },
+                        icon: const Icon(Icons.close, size: 18),
+                        label: const Text('清除'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (settings.backgroundPath.isNotEmpty) ...[
+                _SettingRow(
+                  label: '模糊度',
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 180,
+                        child: Slider(
+                          min: 0,
+                          max: 30,
+                          divisions: 30,
+                          value:
+                              (_bgBlurDrag ?? settings.backgroundBlur).clamp(0, 30),
+                          label:
+                              '${(_bgBlurDrag ?? settings.backgroundBlur).round()}',
+                          mouseCursor: SystemMouseCursors.click,
+                          onChanged: (v) => setState(() => _bgBlurDrag = v),
+                          onChangeEnd: (v) {
+                            setState(() => _bgBlurDrag = null);
+                            ref
+                                .read(settingsProvider.notifier)
+                                .setBackgroundBlur(v);
+                          },
+                        ),
+                      ),
+                      SizedBox(
+                        width: 42,
+                        child: Text(
+                          '${(_bgBlurDrag ?? settings.backgroundBlur).round()}',
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: (_bgBlurDrag ?? settings.backgroundBlur) > 0
+                                ? theme.colorScheme.primary
+                                : theme.hintColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _SettingRow(
+                  label: '不透明度',
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 180,
+                        child: Slider(
+                          min: 0,
+                          max: 1,
+                          divisions: 20,
+                          value: (_bgOpacityDrag ?? settings.backgroundOpacity)
+                              .clamp(0, 1),
+                          label:
+                              '${(((_bgOpacityDrag ?? settings.backgroundOpacity) * 100).round())}%',
+                          mouseCursor: SystemMouseCursors.click,
+                          onChanged: (v) => setState(() => _bgOpacityDrag = v),
+                          onChangeEnd: (v) {
+                            setState(() => _bgOpacityDrag = null);
+                            ref
+                                .read(settingsProvider.notifier)
+                                .setBackgroundOpacity(v);
+                          },
+                        ),
+                      ),
+                      SizedBox(
+                        width: 42,
+                        child: Text(
+                          '${(((_bgOpacityDrag ?? settings.backgroundOpacity) * 100).round())}%',
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    '背景应用于主界面、专辑详情、全屏播放页等全部界面；不透明度调低会透出当前主题底色。',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      height: 1.5,
+                      color: theme.hintColor,
+                    ),
+                  ),
+                ),
+              ],
               // ---- 音频与增益 ----
               _SectionTitle('音频与增益'),
               _SettingRow(

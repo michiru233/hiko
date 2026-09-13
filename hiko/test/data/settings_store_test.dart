@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hiko/data/settings_store.dart';
 import 'package:hiko/playback/gain_chain.dart';
@@ -206,5 +208,46 @@ void main() {
     final bad = SettingsNotifier();
     await bad.load();
     expect(bad.state.mobileGridColumns, 2);
+  });
+
+  test('1.84 背景图：默认未启用 + 参数往返与夹取 + 文件丢失回退空路径', () async {
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.backgroundPath, '', reason: '默认未启用');
+    expect(notifier.state.backgroundBlur, 12);
+    expect(notifier.state.backgroundOpacity, 0.65);
+
+    // 参数夹取：blur 0-30，opacity 0-1
+    await notifier.setBackgroundBlur(50);
+    expect(notifier.state.backgroundBlur, 30);
+    await notifier.setBackgroundBlur(-1);
+    expect(notifier.state.backgroundBlur, 0);
+    await notifier.setBackgroundOpacity(2.0);
+    expect(notifier.state.backgroundOpacity, 1.0);
+    await notifier.setBackgroundBlur(18);
+    await notifier.setBackgroundOpacity(0.8);
+
+    // 真实存在的文件路径可持久化往返
+    final tmp = File(
+      '${Directory.systemTemp.createTempSync('hiko-bg').path}${Platform.pathSeparator}bg.png',
+    )..writeAsBytesSync([1, 2, 3]);
+    addTearDown(() {
+      try {
+        tmp.parent.deleteSync(recursive: true);
+      } catch (_) {}
+    });
+    await notifier.setBackgroundImage(tmp.path);
+
+    final reloaded = SettingsNotifier();
+    await reloaded.load();
+    expect(reloaded.state.backgroundPath, tmp.path);
+    expect(reloaded.state.backgroundBlur, 18);
+    expect(reloaded.state.backgroundOpacity, 0.8);
+
+    // 文件已被清理 → load 静默回退空路径（未启用）
+    tmp.deleteSync();
+    final missing = SettingsNotifier();
+    await missing.load();
+    expect(missing.state.backgroundPath, '');
   });
 }

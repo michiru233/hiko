@@ -105,7 +105,10 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
 
     return Scaffold(
       extendBodyBehindAppBar: true,
-      backgroundColor: isDark ? HikoColors.darkBg : HikoColors.lightBg,
+      // 自定义背景启用时透出根层背景层（1.84）
+      backgroundColor: settings.backgroundPath.isNotEmpty
+          ? Colors.transparent
+          : (isDark ? HikoColors.darkBg : HikoColors.lightBg),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,

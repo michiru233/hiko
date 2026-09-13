@@ -13,6 +13,7 @@ import 'data/settings_store.dart';
 import 'playback/audio_handler.dart';
 import 'playback/hiko_media_kit_player.dart';
 import 'playback/playback_controller.dart';
+import 'ui/background.dart';
 import 'ui/covers/cover_cache.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/theme.dart';
@@ -86,11 +87,22 @@ class HikoApp extends ConsumerWidget {
         final scaledMediaQuery = mediaQuery.copyWith(
           textScaler: TextScaler.linear(settings.fontScale),
         );
+        // 自定义背景（1.84）：根层铺「底色 + 图片 + 薄纱」，Navigator 之下，
+        // Scaffold 透明即透出（外观区里未启用时零开销）
+        Widget content = child ?? const SizedBox.shrink();
+        if (settings.backgroundPath.isNotEmpty) {
+          content = Stack(
+            children: [
+              BackgroundLayer(settings: settings),
+              Positioned.fill(child: content),
+            ],
+          );
+        }
         return MediaQuery(
           data: scaledMediaQuery,
           child: ActivityOverlayHost(
             controller: activityOverlayController,
-            child: child ?? const SizedBox.shrink(),
+            child: content,
           ),
         );
       },

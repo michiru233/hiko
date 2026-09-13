@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -29,6 +31,9 @@ class AppSettings {
   final double lyricsFontScale; // 歌词字号缩放比例，档位 0.85/1.0/1.15/1.30/1.50，默认 1.0（1.61）
   final String scrapeProxy;
   final List<String> musicFolders; // 常驻音乐目录（桌面：路径；Android：SAF tree URI）
+  final String backgroundPath; // 自定义背景图（已复制进应用数据目录的绝对路径，空=未启用，1.84）
+  final double backgroundBlur; // 背景图模糊度 0-30px，默认 12
+  final double backgroundOpacity; // 背景图不透明度 0-1（叠在主题底色上），默认 0.65
 
   const AppSettings({
     this.theme = 'light',
@@ -47,6 +52,9 @@ class AppSettings {
     this.lyricsFontScale = 1.0,
     this.scrapeProxy = '',
     this.musicFolders = const [],
+    this.backgroundPath = '',
+    this.backgroundBlur = 12,
+    this.backgroundOpacity = 0.65,
   });
 
   static const defaultAccent = '#6559d8';
@@ -76,6 +84,9 @@ class AppSettings {
     double? lyricsFontScale,
     String? scrapeProxy,
     List<String>? musicFolders,
+    String? backgroundPath,
+    double? backgroundBlur,
+    double? backgroundOpacity,
   }) =>
       AppSettings(
         theme: theme ?? this.theme,
@@ -94,6 +105,9 @@ class AppSettings {
         lyricsFontScale: lyricsFontScale ?? this.lyricsFontScale,
         scrapeProxy: scrapeProxy ?? this.scrapeProxy,
         musicFolders: musicFolders ?? this.musicFolders,
+        backgroundPath: backgroundPath ?? this.backgroundPath,
+        backgroundBlur: backgroundBlur ?? this.backgroundBlur,
+        backgroundOpacity: backgroundOpacity ?? this.backgroundOpacity,
       );
 }
 
@@ -133,6 +147,9 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kLyricsFontScale = 'hiko-lyrics-font-scale';
   static const _kProxy = 'hiko-scrape-proxy';
   static const _kMusicFolders = 'hiko-music-folders';
+  static const _kBackgroundPath = 'hiko-background-path';
+  static const _kBackgroundBlur = 'hiko-background-blur';
+  static const _kBackgroundOpacity = 'hiko-background-opacity';
 
   static const _validSorts = {
     'recent_desc',
@@ -206,6 +223,10 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       lyricsFontScale: _normalizeLyricsFontScale(prefs.getDouble(_kLyricsFontScale)),
       scrapeProxy: prefs.getString(_kProxy) ?? '',
       musicFolders: prefs.getStringList(_kMusicFolders) ?? const [],
+      // 背景图文件若已被系统清理/卸载残留则静默回退默认背景
+      backgroundPath: await _existingBackground(prefs.getString(_kBackgroundPath) ?? ''),
+      backgroundBlur: (prefs.getDouble(_kBackgroundBlur) ?? 12).clamp(0.0, 30.0),
+      backgroundOpacity: (prefs.getDouble(_kBackgroundOpacity) ?? 0.65).clamp(0.0, 1.0),
     );
   }
 
@@ -268,6 +289,24 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
 
   Future<void> setScrapeProxy(String proxy) =>
       _save(_kProxy, proxy, state.copyWith(scrapeProxy: proxy));
+
+  static Future<String> _existingBackground(String path) async {
+    if (path.isEmpty) return '';
+    try {
+      return await File(path).exists() ? path : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<void> setBackgroundImage(String path) =>
+      _save(_kBackgroundPath, path, state.copyWith(backgroundPath: path));
+  Future<void> setBackgroundBlur(double blur) =>
+      _save(_kBackgroundBlur, blur.clamp(0.0, 30.0),
+          state.copyWith(backgroundBlur: blur.clamp(0.0, 30.0)));
+  Future<void> setBackgroundOpacity(double opacity) =>
+      _save(_kBackgroundOpacity, opacity.clamp(0.0, 1.0),
+          state.copyWith(backgroundOpacity: opacity.clamp(0.0, 1.0)));
 
   /// 添加音乐目录（去重）并持久化
   Future<void> addMusicFolder(String path) {
