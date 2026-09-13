@@ -161,8 +161,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static double _normalizeSeekStep(double? val) =>
       val != null && _validSeekSteps.contains(val) ? val : 3;
 
-  /// 每行专辑数档位：0=自动，其余为固定列数（存 double 以走 _save 的 setDouble 分支）
-  static const _validGridColumns = [0.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 12.0];
+  /// 每行专辑数档位：0=自动，其余为固定列数（存 double 以走 _save 的 setDouble 分支）；1.79 补 2/3 档
+  static const _validGridColumns = [0.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 12.0];
 
   static double _normalizeGridColumns(double? val) =>
       val != null && _validGridColumns.contains(val) ? val : 0;

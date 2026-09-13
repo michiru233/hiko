@@ -165,9 +165,13 @@ void main() {
     await reloaded.load();
     expect(reloaded.state.gridColumns, 6);
 
-    // 白名单外（3、9、99）回退 0=自动
+    // 1.79 白名单补 2/3 档
+    await notifier.setGridColumns(2);
+    expect(notifier.state.gridColumns, 2);
     await notifier.setGridColumns(3);
-    expect(notifier.state.gridColumns, 0);
+    expect(notifier.state.gridColumns, 3);
+
+    // 白名单外（9、99）回退 0=自动
     await notifier.setGridColumns(9);
     expect(notifier.state.gridColumns, 0);
     await notifier.setGridColumns(99);

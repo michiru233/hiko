@@ -1081,3 +1081,31 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 ## 1.78.0 修复防社死模糊溢出糊住详情页标题（2026-09-12）
 
 用户报告：Android 端 1.77 详情页开启防社死模式后，模糊遮罩把专辑标题挡住（关闭则正常）。根因：`AlbumCover`（1.52 起共享组件）的模糊层 `ImageFiltered` 不裁剪滤镜输出，σ20 + `TileMode.clamp` 把边缘像素溢出到组件边界外；1.77 全宽封面紧贴标题后向下溢出 ~80px 正好糊住标题。修复：模糊层外包 `ClipRect`（一处根因修复，所有封面场景受益）；补结构回归测试（模糊层必须有 ClipRect 祖先）。模拟器高对比条纹封面端到端验证：模糊止于封面边界、标题完整清晰。
+
+## 待办：macOS 端接入全屏播放页入口（2026-09-13 排查）
+
+用户要求：专辑详情页点击歌曲后自动跳转到播放页；点播放栏封面也应跳转。排查结论：`FullscreenPlayerScreen`（黑胶唱片页 + 歌词页，1263 行）本身是全平台共享代码，但**三个入口全部只在移动端生效，macOS 端目前不可达（死代码）**：
+
+- `home_screen.dart:623` 播放条封面点击包在 `if (isMobile)` 分支内，桌面端同位点改为打开详情抽屉（`home_screen.dart:630`）；
+- `album_detail_screen.dart:306/432` 位于 1.77 移动端专属详情页，桌面端不使用该屏；
+- 桌面详情抽屉 `detail_drawer.dart:369-374` 点歌曲只 `playAlbum` 不跳转。
+
+待做（实现时需 grill 决策桌面交互模型）：
+1. 桌面播放条封面点击 → 改为（或新增）跳转 `FullscreenPlayerScreen`；
+2. 桌面详情抽屉点歌曲 → 播放并跳转 `FullscreenPlayerScreen`；
+3. 确认与现有桌面交互（详情抽屉、桌面歌词 HUD、菜单栏快捷键）不冲突。
+
+## 1.79.0 macOS 端接入全屏播放页入口 + 两项 Android 功能同步（2026-09-13）
+
+来源：待办「macOS 端接入全屏播放页入口」+ 用户要求同步 Android 端已有功能。经 grill-with-docs 定案（Q1-Q7）：封面点击桌面/移动统一跳全屏页；抽屉点当前曲目不打断播放（用户特别要求"继续播放而不是重新播放"）；重置数据库全平台开放；桌面列数白名单补 2/3。明确不在本轮：增益上限追平 4.0x、1.77 整页详情页移植桌面（各自单独开轮）。
+
+改动：
+- `lib/ui/screens/home_screen.dart`：播放条 `onCoverTap` 删除 isMobile 分支，桌面与移动统一 push `FullscreenPlayerScreen`（详情抽屉仍可从专辑卡片/统计页进入）。
+- `lib/ui/widgets/detail_drawer.dart`：曲目点击语义改为——播放中的当前曲目仅跳转全屏页（原为暂停，该特判移除）；当前专辑暂停中的曲目 `toggle()` 恢复播放 + 跳转；其他曲目 `playAlbum` + 跳转。抽屉保留在底层，全屏页 pop 回来可继续选歌。抽屉头部 ▶ 整张播放按钮行为不变（不跳转）。
+- `lib/ui/widgets/settings_dialog.dart`：「重置数据库」删除 `Platform.isAndroid` 门，全平台开放（文案/`clearAll()` 逻辑零改动）；桌面「每行专辑数」chips 行补 2/3 档。
+- `lib/data/settings_store.dart`：`_validGridColumns` 白名单补 2.0/3.0（复用现有 `hiko-grid-columns` key，消费端直接取值无需改动）。
+- `test/data/settings_store_test.dart`：原「白名单外（3、9、99）回退自动」用例更新——3 改为合法档位断言，非法值保留 9/99。
+
+验证：`flutter test` 279 passed / 2 skipped；`flutter analyze` 0 error（39 条既有基线 warning/info）。
+
+发版：pubspec 1.79.0+88；macOS Hiko.app（hiko-v1.79.0-macos.zip）+ Android APK（hiko-v1.79.0-android.zip）双资产上传 GitHub Release v1.79.0。

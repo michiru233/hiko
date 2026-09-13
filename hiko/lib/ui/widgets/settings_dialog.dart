@@ -438,9 +438,9 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // 0=自动（按窗口宽度），其余为固定每行数量
+                      // 0=自动（按窗口宽度），其余为固定每行数量；1.79 补 2/3 档
                       for (final columns in const [
-                        0.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 12.0,
+                        0.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 10.0, 12.0,
                       ])
                         columnChip(
                           columns,
@@ -532,50 +532,49 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                   onTap: _reorganizeLibrary,
                 ),
               ),
-              // Android 端专属：重置数据库（清空所有专辑，不删除源文件）
-              if (Platform.isAndroid)
-                _SettingRow(
-                  label: '重置数据库',
-                  trailing: _ActionButton(
-                    label: '清空全部专辑',
-                    onTap: () async {
-                      // 二次确认对话框
-                      final confirmed = await showDialog<bool>(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          title: const Text('确认重置数据库'),
-                          content: const Text(
-                            '将清空所有专辑记录，但不会删除源文件。\n'
-                            '您的设置（主题、增益、音乐目录）将保留。\n\n'
-                            '清空后需重新导入文件夹恢复专辑。\n\n'
-                            '此操作无法撤销，确认继续？',
-                          ),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx, false),
-                              child: const Text('取消'),
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx, true),
-                              child: Text(
-                                '确认清空',
-                                style: TextStyle(color: theme.colorScheme.error),
-                              ),
-                            ),
-                          ],
+              // 1.79 起全平台开放：重置数据库（清空所有专辑，不删除源文件）
+              _SettingRow(
+                label: '重置数据库',
+                trailing: _ActionButton(
+                  label: '清空全部专辑',
+                  onTap: () async {
+                    // 二次确认对话框
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('确认重置数据库'),
+                        content: const Text(
+                          '将清空所有专辑记录，但不会删除源文件。\n'
+                          '您的设置（主题、增益、音乐目录）将保留。\n\n'
+                          '清空后需重新导入文件夹恢复专辑。\n\n'
+                          '此操作无法撤销，确认继续？',
                         ),
-                      );
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('取消'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: Text(
+                              '确认清空',
+                              style: TextStyle(color: theme.colorScheme.error),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
 
-                      if (confirmed == true) {
-                        await ref.read(libraryProvider.notifier).clearAll();
-                        if (mounted) {
-                          _toast('数据库已重置，请重新导入文件夹');
-                          if (context.mounted) Navigator.pop(context);
-                        }
+                    if (confirmed == true) {
+                      await ref.read(libraryProvider.notifier).clearAll();
+                      if (mounted) {
+                        _toast('数据库已重置，请重新导入文件夹');
+                        if (context.mounted) Navigator.pop(context);
                       }
-                    },
-                  ),
+                    }
+                  },
                 ),
+              ),
               _SettingRow(
                 label: '失效记录',
                 trailing: _ActionButton(label: '清理失效记录', onTap: _cleanMissing),

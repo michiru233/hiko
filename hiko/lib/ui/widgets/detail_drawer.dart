@@ -13,6 +13,7 @@ import '../../utils/rj.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
 import '../lyrics/drawer_lyrics_view.dart';
+import '../screens/fullscreen_player_screen.dart';
 import '../theme.dart';
 import 'category_dialog.dart';
 import 'rating_dialog.dart';
@@ -368,11 +369,18 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                           playing: isCurrentAlbum && currentIndex == i && isPlaying,
                           onTap: () {
                             final controller = ref.read(playbackProvider.notifier);
-                            if (isCurrentAlbum && currentIndex == i && isPlaying) {
-                              controller.pause();
+                            if (isCurrentAlbum && currentIndex == i) {
+                              // 1.79 点当前曲目不打断播放：播放中仅跳转；暂停中恢复播放再跳转
+                              if (!isPlaying) controller.toggle();
                             } else {
                               controller.playAlbum(album, index: i);
                             }
+                            // 1.79 桌面端点曲目后跳转全屏播放页（抽屉保留在底层）
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => const FullscreenPlayerScreen(),
+                              ),
+                            );
                           },
                         ),
                     ] else ...[

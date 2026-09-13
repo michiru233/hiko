@@ -617,18 +617,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           ref.watch(playbackProvider).album != null)
                         PlayerBar(
                           compact: isMobile,
-                          onCoverTap: (a) {
-                            if (isMobile) {
-                              // 1.57 移动端：点击播放条封面进入全屏播放页
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (context) => const FullscreenPlayerScreen(),
-                                ),
-                              );
-                            } else {
-                              // 桌面端：打开右侧抽屉
-                              setState(() => _detailAlbum = a);
-                            }
+                          onCoverTap: (_) {
+                            // 1.79 桌面对齐移动端：点击播放条封面进入全屏播放页
+                            // （详情抽屉仍可从专辑卡片/统计页进入）
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => const FullscreenPlayerScreen(),
+                              ),
+                            );
                           },
                         ),
                     ],
