@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:flutter/gestures.dart' show PointerScrollEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -676,13 +677,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   // Stack hit test 短路保证上层抽屉命中时遮罩不参与）；遮罩非按钮不加水波纹
                   if (_detailAlbum != null && !isMobile)
                     Positioned.fill(
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () => setState(() => _detailAlbum = null),
-                          splashFactory: NoSplash.splashFactory,
-                          highlightColor: Colors.transparent,
-                          hoverColor: Colors.transparent,
+                      child: Listener(
+                        // 1.82 遮罩会吞掉滚轮命中（InkWell 不处理 PointerSignal），
+                        // 转发给主网格：抽屉开着时指针悬停主界面仍可滚动专辑列表
+                        onPointerSignal: (event) {
+                          if (event is PointerScrollEvent) {
+                            _gridScrollController.position
+                                .pointerScroll(event.scrollDelta.dy);
+                          }
+                        },
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => setState(() => _detailAlbum = null),
+                            splashFactory: NoSplash.splashFactory,
+                            highlightColor: Colors.transparent,
+                            hoverColor: Colors.transparent,
+                          ),
                         ),
                       ),
                     ),

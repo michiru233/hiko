@@ -1144,3 +1144,13 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 验证：flutter test 282 passed / 2 skipped；analyze 0 error。macOS 端到端（flutter run 实机目视）：抽屉胶囊渲染正确（社团紫/声优蓝）→ 点「バイコーンの森」列表 75→10 张、结果线出现紫色「社团：バイコーンの森 ✕」、抽屉保持打开且胶囊选中高亮 → 再点同胶囊筛选取消恢复 75 张、胶囊回退未选中态。
 
 发版：pubspec 1.81.0+90；macOS/Android 双资产 GitHub Release v1.81.0。
+
+## 1.82.0 抽屉开启时主界面滚轮穿透修复（2026-09-13）
+
+用户需求：详情抽屉开着时，指针悬停在左侧主界面上滚轮应仍滚动专辑列表。实机探针确认这是真缺陷：抽屉打开时全屏 `Positioned.fill` InkWell 点击遮罩（点空白关抽屉用）对命中测试不透明，`PointerScrollEvent` 落在遮罩上被吞（InkWell 无 PointerSignal 处理），下层网格 Scrollable 不在命中路径——抽屉开着时主界面完全滚不动。
+
+修复（home_screen.dart 桌面遮罩一处，移动端遮罩不动）：遮罩外包 `Listener.onPointerSignal`，收到 `PointerScrollEvent` 转发给主网格现有 `_gridScrollController.position.pointerScroll(delta)`（走标准 physics，越界自动 clamp）。点空白关抽屉、抽屉自身滚动两条既有行为不受影响（抽屉是更上层 Stack 子级，命中短路不受转发影响）。
+
+验证：analyze 0 error（39 条基线）；flutter test 282 passed / 2 skipped。macOS 实机（flutter run）：抽屉开 + 指针悬停主界面滚动 → 网格滚动、抽屉内容不动；点空白处抽屉正常关闭。
+
+发版：pubspec 1.82.0+91；macOS/Android 双资产 GitHub Release v1.82.0。
