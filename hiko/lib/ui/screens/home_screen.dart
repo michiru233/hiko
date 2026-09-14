@@ -181,11 +181,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     showHikoToast(context, message);
   }
 
-  /// 输入框（搜索框等 EditableText）有焦点时为 true——
-  /// 此时空格/方向键必须走打字与光标移动，不触发播放快捷键
-  bool _typingFocusActive() =>
-      isFocusInsideEditable(FocusManager.instance.primaryFocus?.context);
-
   /// 防社死隐私模糊开关（1.52）：顶栏按钮与 Cmd/Ctrl+Shift+H 共用。
   /// 开启时顺带隐藏 macOS 桌面歌词（浮动歌词裸奔曲名/台词，等于没防）；
   /// 解除模糊后不自动恢复歌词，由用户自行再开。
@@ -475,19 +470,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 const _ImportIntent(),
             const SingleActivator(LogicalKeyboardKey.keyO, control: true):
                 const _ImportIntent(),
-            // 空格播放/暂停；←→ 快退/快进；↑↓ 切曲（输入框聚焦时不触发）
-            const SingleActivator(LogicalKeyboardKey.space):
-                const _TogglePlaybackIntent(),
-            const SingleActivator(LogicalKeyboardKey.arrowLeft): _SeekIntent(
-              -1,
-            ),
-            const SingleActivator(LogicalKeyboardKey.arrowRight): _SeekIntent(
-              1,
-            ),
-            const SingleActivator(LogicalKeyboardKey.arrowUp):
-                const _StepTrackIntent(-1),
-            const SingleActivator(LogicalKeyboardKey.arrowDown):
-                const _StepTrackIntent(1),
+            // Esc 逐层退回：多选 → 详情页 → 抽屉 → 视图（无浮层不退出应用；
+            // 空格/方向键播放类快捷键已上提至全局层，1.86）
+            const SingleActivator(LogicalKeyboardKey.escape):
+                const _CloseOverlayIntent(),
             // ⌘⇧H / Ctrl+Shift+H 防社死隐私模糊（1.52）
             const SingleActivator(LogicalKeyboardKey.keyH, meta: true, shift: true):
                 const _TogglePrivacyBlurIntent(),
@@ -506,31 +492,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   return null;
                 },
               ),
-              _TogglePlaybackIntent: CallbackAction<_TogglePlaybackIntent>(
+              _CloseOverlayIntent: CallbackAction<_CloseOverlayIntent>(
                 onInvoke: (_) {
-                  if (_typingFocusActive()) return null;
-                  ref.read(playbackProvider.notifier).toggle();
-                  return null;
-                },
-              ),
-              _SeekIntent: CallbackAction<_SeekIntent>(
-                onInvoke: (intent) {
-                  if (_typingFocusActive()) return null;
-                  final controller = ref.read(playbackProvider.notifier);
-                  final pos = ref.read(playbackProvider).position;
-                  final step = ref.read(settingsProvider).seekStepSeconds;
-                  controller.seek(pos + intent.direction * step);
-                  return null;
-                },
-              ),
-              _StepTrackIntent: CallbackAction<_StepTrackIntent>(
-                onInvoke: (intent) {
-                  if (_typingFocusActive()) return null;
-                  final controller = ref.read(playbackProvider.notifier);
-                  if (intent.direction < 0) {
-                    controller.prev();
-                  } else {
-                    controller.next();
+                  if (_multiMode) {
+                    setState(() {
+                      _multiMode = false;
+                      _multiIds.clear();
+                    });
+                  } else if (_detailAlbum != null) {
+                    setState(() => _detailAlbum = null);
+                  } else if (_drawerOpen) {
+                    setState(() => _drawerOpen = false);
+                  } else if (_view != '全部音声') {
+                    setState(() => _view = '全部音声');
                   }
                   return null;
                 },
@@ -1808,34 +1782,14 @@ class _ImportIntent extends Intent {
   const _ImportIntent();
 }
 
-/// 快捷键 Intent：播放/暂停
-class _TogglePlaybackIntent extends Intent {
-  const _TogglePlaybackIntent();
-}
-
-/// 快捷键 Intent：快退/快进（direction: -1 / 1，步长取设置 seekStepSeconds）
-class _SeekIntent extends Intent {
-  final int direction;
-  const _SeekIntent(this.direction);
-}
-
-/// 快捷键 Intent：上一首/下一首（direction: -1 / 1）
-class _StepTrackIntent extends Intent {
-  final int direction;
-  const _StepTrackIntent(this.direction);
+/// 快捷键 Intent：Esc 逐层关闭主页内浮层（多选/详情/抽屉/视图）
+class _CloseOverlayIntent extends Intent {
+  const _CloseOverlayIntent();
 }
 
 /// 快捷键 Intent：防社死隐私模糊切换（⌘⇧H / Ctrl+Shift+H，1.52）
 class _TogglePrivacyBlurIntent extends Intent {
   const _TogglePrivacyBlurIntent();
-}
-
-/// 焦点落在输入框（EditableText 及其后代）内时返回 true。
-/// 顶层的可单测守卫：Flutter 的 Shortcuts 在焦点链祖先上先于文本输入判定，
-/// 不挡住的话搜索框里打空格会误触发播放/暂停。
-bool isFocusInsideEditable(BuildContext? context) {
-  if (context == null) return false;
-  return context.findAncestorStateOfType<EditableTextState>() != null;
 }
 
 /// 与筛选栏视觉一致的精致排序下拉组件

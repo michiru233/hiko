@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hiko/ui/screens/home_screen.dart';
+import 'package:hiko/ui/global_shortcuts.dart';
 
 /// 1.41 快捷键焦点守卫：输入框有焦点时空格/方向键不触发播放快捷键。
-/// 与 home_screen 相同的接线方式（Shortcuts→Actions→守卫），
-/// 守卫函数直接引用被测实现 isFocusInsideEditable。
+/// 守卫函数与全局快捷键（1.86 起挂 MaterialApp.builder）同源，
+/// 直接引用被测实现 isFocusInsideEditable。
 void main() {
   testWidgets('搜索框聚焦时按 Space 走打字不触发播放；失焦后触发', (tester) async {
     var toggled = 0;

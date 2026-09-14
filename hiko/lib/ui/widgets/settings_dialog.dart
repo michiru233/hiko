@@ -600,7 +600,9 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
               (3.0, '3秒'),
               (5.0, '5秒'),
               (10.0, '10秒'),
+              (15.0, '15秒'),
               (30.0, '30秒'),
+              (60.0, '60秒'),
             ],
             onChanged: (v) =>
                 ref.read(settingsProvider.notifier).setSeekStep(v),

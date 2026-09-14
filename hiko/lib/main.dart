@@ -15,9 +15,12 @@ import 'playback/hiko_media_kit_player.dart';
 import 'playback/playback_controller.dart';
 import 'ui/background.dart';
 import 'ui/covers/cover_cache.dart';
+import 'ui/global_shortcuts.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/theme.dart';
 import 'ui/widgets/activity_overlay.dart';
+
+final GlobalKey<NavigatorState> hikoNavigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -71,15 +74,23 @@ Future<void> _requestNotificationPermission() async {
   }
 }
 
-class HikoApp extends ConsumerWidget {
+class HikoApp extends ConsumerStatefulWidget {
   const HikoApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HikoApp> createState() => _HikoAppState();
+}
+
+class _HikoAppState extends ConsumerState<HikoApp> {
+  String _bgPathRequested = '';
+
+  @override
+  Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     return MaterialApp(
       title: 'Hiko · 音声库',
       debugShowCheckedModeBanner: false,
+      navigatorKey: hikoNavigatorKey,
       theme: buildHikoTheme(settings),
       builder: (context, child) {
         // 全局字号大小响应（1.56）：读取 settings.fontScale，应用 TextScaler 覆盖
@@ -88,8 +99,13 @@ class HikoApp extends ConsumerWidget {
           textScaler: TextScaler.linear(settings.fontScale),
         );
         // 自定义背景（1.84）：根层铺「底色 + 图片 + 薄纱」，Navigator 之下，
-        // Scaffold 透明即透出（外观区里未启用时零开销）
+        // Scaffold 透明即透出（外观区里未启用时零开销）。
+        // 背景图经 loadBackgroundImage 一次性解码常驻（1.86），路径变更时重载。
         Widget content = child ?? const SizedBox.shrink();
+        if (_bgPathRequested != settings.backgroundPath) {
+          _bgPathRequested = settings.backgroundPath;
+          unawaited(loadBackgroundImage(settings.backgroundPath));
+        }
         if (settings.backgroundPath.isNotEmpty) {
           content = Stack(
             children: [
@@ -100,9 +116,12 @@ class HikoApp extends ConsumerWidget {
         }
         return MediaQuery(
           data: scaledMediaQuery,
-          child: ActivityOverlayHost(
-            controller: activityOverlayController,
-            child: content,
+          child: HikoGlobalShortcuts(
+            navigatorKey: hikoNavigatorKey,
+            child: ActivityOverlayHost(
+              controller: activityOverlayController,
+              child: content,
+            ),
           ),
         );
       },

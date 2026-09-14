@@ -173,7 +173,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     return 'artist_asc';
   }
 
-  static const _validSeekSteps = [3.0, 5.0, 10.0, 30.0];
+  static const _validSeekSteps = [3.0, 5.0, 10.0, 15.0, 30.0, 60.0];
 
   static double _normalizeSeekStep(double? val) =>
       val != null && _validSeekSteps.contains(val) ? val : 3;
