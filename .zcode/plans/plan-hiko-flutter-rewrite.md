@@ -1195,3 +1195,27 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 - 数据/音乐目录/主界面页各补一条说明文字；音频页快进快退说明迁移。
 
 验证：flutter analyze 0 error（42 条既有基线）；flutter test 283 passed / 2 skipped（activity_overlay_test 更新为走「音乐目录」二级页导航后通过）。macOS 实机目视：分类首页六项渲染正确 → 点「外观」进二级页（返回头 + 主题两键/强调色圆点/字号下拉/背景图区完整）→ 字号下拉菜单正常展开（当前值高亮）→ 返回键回到首页。
+
+## 1.86.0 全局快捷键上提 + 背景图常驻解码修复换页卡顿（2026-09-14）
+
+需求（用户三问）：①安卓设自定义背景后，进专辑详情页背景"过一会才出现"、切回主页卡顿；②mac 加快捷键——Esc 退回上一级、播放时有歌时空格播放/暂停、←→ 快进/退 X 秒（可自定义）；③mac 自定义界面后进全屏播放页卡顿。
+
+根因定位：
+- ①③同源。1.84 的 BackgroundLayer 用 `Image.file`（走 ImageCache）+ `ImageFiltered` 全屏模糊，且图层**无 RepaintBoundary**：主页网格滚动、路由切换动画等任何页面重绘都把全屏高斯模糊一起重新栅格化（解码宽 = 屏宽×DPR，安卓可达 3240px），大图与封面缩略图挤同一份 100MB 缓存还有被挤出重解码的风险——表现为换页时背景延迟出现/整页卡顿。
+- ②根因：空格/←→/↑↓ 快捷键 1.41 起只挂在 HomeScreen 的 Shortcuts 里，push 出去的专辑详情页（Android）与全屏播放页收不到任何按键；Esc 全端未实现。
+
+改动：
+- `lib/ui/background.dart`：背景图改模块级 `ui.Image` 常驻解码缓存（`loadBackgroundImage` 幂等，同路径只解一次、永不逐出，换路径 dispose 旧图），固定 2560px 解码宽（`ponytail:` 注释标注 >4K 关模糊会略软的升级路径）；BackgroundLayer 图层整体包 RepaintBoundary，模糊只在图片变化时重栅格化；显示改 RawImage。
+- `lib/ui/global_shortcuts.dart`（新增）：`HikoGlobalShortcuts` 挂 MaterialApp.builder——Navigator 之上，全页面生效。空格=播放/暂停、←→=快进/退（步长=设置 seekStepSeconds）、↑↓=切曲（沿用 1.41 输入框聚焦守卫 `isFocusInsideEditable`，自 home_screen 迁来）、Esc=`Navigator.maybePop`（退最顶层路由，无可退 no-op）。
+- `lib/ui/screens/home_screen.dart`：删播放类三 Intent/Action/`_typingFocusActive`；新增 `_CloseOverlayIntent`（Esc 逐层关闭 多选→详情页→抽屉→视图，无浮层不退出应用）。
+- `lib/main.dart`：HikoApp 转 ConsumerStatefulWidget，跟踪 backgroundPath 变化触发解码；MaterialApp 挂 navigatorKey + 全局快捷键层。
+- `lib/data/settings_store.dart` + settings_dialog：快进秒数白名单补 15/60。
+- `test/ui/background_image_loader_test.dart`（新增）：解码缓存幂等/空路径清空；`test/ui/playback_shortcut_guard_test.dart` 改 import 至新位置。
+
+验证：flutter analyze 改动文件 0 error（基线 39 条均为既有）；flutter test 284 passed / 2 skipped / 0 failed（净增 1 条）。macOS/Android 双端 release 构建通过。
+
+发版：pubspec 1.86.0+95；`hiko-v1.86.0-macos.zip`（32.9MB）+ `hiko-v1.86.0-android.apk`（66.1MB）双资产 GitHub Release v1.86.0（https://github.com/michiru233/hiko/releases/tag/v1.86.0），commit `fe9f998` 已推送。
+
+待复测：①Android 真机/模拟器：设背景图后反复进出详情页与主页，背景应常显不闪、无卡顿；②mac：详情抽屉/全屏播放页内按空格、←→、↑↓、Esc，行为同主页。
+
+1.86.0（全局快捷键 + 背景图常驻解码）：本版无新增待裁决；既有 1.42.0 深色主题 tag 对比度、1.53.0/1.54.0 各两项与 Mimosa 历史 high 遗留保持不变。BLOCKED.md 无新增（无阻塞）。
