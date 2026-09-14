@@ -93,3 +93,7 @@ HIKO_NETWORK_TESTS=1 flutter test \
 1.77.0（Android 详情页改版）：发版记录——pubspec 1.77.0+86，`hiko-v1.77.0-android.apk` 65.8MB（aapt2 校验 versionCode='86' versionName='1.77.0'），GitHub Release v1.77.0 附 android 资产（macOS 桌面端零改动，本版未单独出 macos zip，与 1.53.0 起「双资产」惯例的差异：本版改动仅 Android 端）。终验 `flutter test` 278 passed/2 skipped/0 failed（基线 274/2/0，净增 4 条）、`flutter analyze` 改动文件 0 error、模拟器端到端通过（见 PROGRESS.md）。本版无新增待裁决；既有 1.42.0 深色主题 tag 对比度、1.53.0/1.54.0 各两项与 Mimosa 历史 high 遗留保持不变。
 
 1.78.0（防社死模糊溢出修复）：发版记录——pubspec 1.78.0+87，`hiko-v1.78.0-android.apk` 65.8MB（aapt2 校验 versionCode='87' versionName='1.78.0'）、`hiko-v1.78.0-macos.zip` 31MB，GitHub Release v1.78.0 附双资产。终验 `flutter test` 279 passed/2 skipped/0 failed（基线 278/2/0，净增 1 条）、`flutter analyze` 改动文件 0 error、模拟器高对比条纹封面端到端通过（模糊止于封面边界，标题完整）。本版无新增待裁决；既有 1.42.0 深色主题 tag 对比度、1.53.0/1.54.0 各两项与 Mimosa 历史 high 遗留保持不变。
+
+1.79.0–1.85.0（补记，2026-09-14 洁癖收尾）：这 7 个版本发版时未逐版补记本清单，现一次性补齐——期内**无新增待裁决项**，各版发版记录见 `.zcode/plans/plan-hiko-flutter-rewrite.md` 对应章节。既有 1.42.0 深色主题 tag 对比度、1.53.0 两项、1.54.0 两项与 Mimosa 历史 high 遗留保持不变。**自 1.79.0 起，本文件不再逐版追加「无新增待裁决」流水账，各版待裁决状态以 plan 文件对应章节为准**（AGENTS.md 已同步该约定）。
+
+1.86.0（全局快捷键 + 背景图常驻解码）：无新增待裁决。发版记录见 plan 文件 1.86.0 章节。

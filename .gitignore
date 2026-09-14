@@ -21,3 +21,6 @@ hiko/*.zip
 # Mimosa 安全扫描 hook 运行时产物（不入库）
 .mimosa/
 hiko/.mimosa/
+
+# 会话调试截图（一次性验收留档，不入库）
+.shots/
