@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/album.dart';
+import '../../utils/person_names.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
 import '../theme.dart';
@@ -168,7 +169,8 @@ class AlbumCard extends ConsumerWidget {
                               runSpacing: 4,
                               children: [
                                 _Pill(
-                                  text: album.artist,
+                                  // 1.87：卡片胶囊不拆成多人，只把分隔符归一化为顿号
+                                  text: normalizeVoiceSeparators(album.artist),
                                   bg: isDark
                                       ? Colors.white.withValues(alpha: 0.08)
                                       : Colors.black.withValues(alpha: 0.05),

@@ -7,6 +7,7 @@ import '../../models/album.dart';
 import '../../models/track.dart';
 import '../../playback/playback_controller.dart';
 import '../../lyrics/lyrics_controller.dart';
+import '../../utils/person_names.dart';
 import '../../utils/rj.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
@@ -35,14 +36,8 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
   static const _circleColor = Color(0xFFB39DDB); // 社团紫
   static const _voiceColor = Color(0xFF90CAF9); // 声优蓝
 
-  /// 声优串拆分：多轨 TPE1 常见分隔符（全半角）
-  static final _voiceSplitPattern = RegExp(r'[、，,／/;；]');
-
-  List<String> _voiceNames(Album album) => album.artist
-      .split(_voiceSplitPattern)
-      .map((s) => s.trim())
-      .where((s) => s.isNotEmpty)
-      .toList();
+  /// 声优串拆分：走共享实现，与桌面详情抽屉同源（1.87 删掉本地重复正则）
+  List<String> _voiceNames(Album album) => splitVoiceNames(album.artist);
 
   @override
   Widget build(BuildContext context) {

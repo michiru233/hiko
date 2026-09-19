@@ -245,7 +245,8 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '${album.artist} · ${album.rjCode ?? '本地导入'}',
+                      // 1.87：此处为「多人一行」概览，不拆成多个胶囊，只归一化分隔符
+                      '${normalizeVoiceSeparators(album.artist)} · ${album.rjCode ?? '本地导入'}',
                       style: TextStyle(fontSize: 12, color: theme.hintColor),
                     ),
                     // 1.81 社团（紫）/声优（蓝）胶囊：点选筛选主列表，抽屉保持打开

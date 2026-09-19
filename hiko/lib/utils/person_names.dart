@@ -1,8 +1,14 @@
 /// 声优/社团人名拆分（1.77 移动端详情页同款分隔符语义，1.81 抽出共享供抽屉胶囊用）。
 library;
 
-/// 声优串分隔符：顿号/逗号/斜杠/分号（中日输入习惯全覆盖）
-final voiceSplitPattern = RegExp(r'[、，,／/;；]');
+/// 声优串分隔符：顿号/逗号/斜杠/分号/反斜杠/竖线/中点（中日输入习惯全覆盖）
+///
+/// 1.87 追加 `\` `＼` `|` `｜` `・`(U+30FB) `･`(U+FF65)：
+/// 标签里多声优常用反斜杠与中点分隔，缺了会把「柚木つばめ \ 逢坂成美」当成一个人。
+/// 已知权衡：`・` 也可能是单人名内部字符（外国人名 エマ・ワトソン），
+/// 会误拆成两人——音声标签里作分隔符的频率远高于此，用户已裁决接受该误伤。
+/// 注意 U+00B7（`·`，拉丁中点）**不在**集合内：既有测试钉其为名字内部字符。
+final voiceSplitPattern = RegExp(r'[、，,／/;；\\＼|｜・･]');
 
 /// 把声优串拆成逐人名单（去空白、滤空项）；社团名不做拆分（社团是单值）。
 List<String> splitVoiceNames(String artist) => artist
@@ -10,3 +16,9 @@ List<String> splitVoiceNames(String artist) => artist
     .map((s) => s.trim())
     .where((s) => s.isNotEmpty)
     .toList();
+
+/// 把声优串里的分隔符统一成顿号（卡片胶囊 / 抽屉灰字行用）：
+/// 这两个位置按 1.87 裁决**不拆成多个胶囊**，只归一化分隔符保证观感一致。
+/// 单人串原样返回；空串返回空串。
+String normalizeVoiceSeparators(String artist) =>
+    splitVoiceNames(artist).join('、');

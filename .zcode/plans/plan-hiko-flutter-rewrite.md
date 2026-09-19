@@ -4,6 +4,44 @@
 > 旧代码（Electron/Capacitor）保留在仓库根目录作参考，功能对等后归档。
 > 本文档为 Flutter 重写的里程碑与修复记录，新改动请追加章节。
 
+## 1.87.0 修复声优串「反斜杠等分隔符不拆分」（2026-09-19）
+
+需求（用户报 bug + 截图）：专辑 artist 标签为 `柚木つばめ \ 逢坂成美` 时，详情抽屉的声优胶囊把整串当成**一个人**，
+无法正确分隔。
+
+根因定位：`lib/utils/person_names.dart` 的 `voiceSplitPattern` 白名单只有 `[、，,／/;；]`，**不含反斜杠**；
+且 `lib/ui/screens/album_detail_screen.dart` 在 1.81 抽共享 util 时漏改，本地仍留着一份同内容的重复正则
+`_voiceSplitPattern`（Android 详情页走它，改共享也修不到）。
+
+### 用户裁决（grill-me）
+| 决策点 | 裁决 |
+|---|---|
+| Q1 分隔符集合 | **B 档**：追加 `\` `＼` `|` `｜` `・`(U+30FB) `･`(U+FF65) |
+| Q1-b `・` 误伤 | **照加，接受误伤**（外国人名 `エマ・ワトソン` 会被拆成两人；音声标签里作分隔符频率远高于此） |
+| Q2 卡片胶囊 / 抽屉灰字行 | **B**：不拆成多个胶囊，只把分隔符**归一化成顿号** |
+| Q3 声优胶囊筛选语义 | 按推荐：**保持** `filter.dart` 的 `artist.contains(名字)` 子串匹配 |
+| Q4 Android 重复正则 | 按推荐：**统一**到共享 `splitVoiceNames` |
+| Q5 存储层归一化 | 按推荐：**不做**，纯显示层拆分（不动 library.json、不碰 `tag:$albumArtist|$album` 分组键、存量库零迁移） |
+
+### 改动
+- `lib/utils/person_names.dart`：`voiceSplitPattern` 扩为 `[、，,／/;；\\＼|｜・･]`；新增 `normalizeVoiceSeparators`
+  （= `splitVoiceNames().join('、')`，供"多人一行"位置用，归一化与拆分同源）。注释写明 `・` 的误伤权衡，
+  并显式标注 U+00B7（`·`）**不在**集合内（既有测试钉其为名字内部字符）。
+- `lib/ui/widgets/album_card.dart`：卡片艺术家胶囊 `album.artist` → `normalizeVoiceSeparators(album.artist)`。
+- `lib/ui/widgets/detail_drawer.dart`：灰字概览行 `'${album.artist} · ${rjCode}'` 同样走归一化；
+  胶囊行（`_buildPersonPills`）本就调 `splitVoiceNames`，扩分隔符后自动正确拆成两人。
+- `lib/ui/screens/album_detail_screen.dart`：删本地 `_voiceSplitPattern` 与 `_voiceNames` 内联实现，改 import 共享 util。
+- `test/utils/person_names_test.dart`：3 → 7 条；新增分隔符用例（含半角/全角反斜杠、竖线、U+30FB/U+FF65 中点、
+  混用分隔符）、U+00B7 非分隔符回归、归一化用例（幂等/单人/空串/连用分隔符）与"归一化再拆分同源"断言。
+
+### 验证
+- `flutter test` **288 passed / 2 skipped**（基线 284/2，净增 4 条）；`flutter analyze` **39 issues 与基线一致**，
+  改动文件 0 新增 error（唯一命中 `album_card.dart:40 cardBorder` 为既有告警）。
+- 环境坑（记录备查）：本会话全局设了 `HTTP_PROXY=http://127.0.0.1:54545`，Dart 测试进程连 flutter_tester 的
+  WebSocket 被代理吃掉，报 `Unable to connect to flutter_tester process: WebSocketException: Invalid WebSocket
+  upgrade request`，51 条测试集体 load 失败。**用 `env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy
+  flutter test` 绕过后全绿**——不是代码问题，勿误判为回归。
+
 ### 1.76.0 全屏歌词页点某句跳播（对齐详情页）（2026-09-12）
 
 - **需求**：用户确认 1.75.0 后拍板把 1.73.0 留下的待裁决项落地——全屏歌词页点某句歌词跳播到该句开头（详情页歌词 tab 已有此能力，`LyricsController.seekToLine` 现成）。
