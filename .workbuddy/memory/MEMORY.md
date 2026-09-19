@@ -31,7 +31,13 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
    `hiko/BLOCKED.md` 只记待裁决项（1.79 起各版状态以 plan 文件为准）。
 6. 发版 zip/apk 只入 GitHub Releases，不入 git；`.shots/` 调试截图不入库。
 7. 测试：内容以日文为主，覆盖 UTF-8 与 Shift-JIS 编码标签；实网用例默认跳过、按需启用。
-8. 验证基线：`flutter test` 284 passed / 2 skipped；`flutter analyze` 39 条既有 lint 基线，改动文件应 0 新增 error。
+8. ⚠️ **跑 `flutter test` 必须先摘掉代理**：本会话环境全局设了 `HTTP_PROXY/HTTPS_PROXY=http://127.0.0.1:54545`，
+   Dart 测试进程连 flutter_tester 的 WebSocket 会被代理吃掉，报 `Unable to connect to flutter_tester process:
+   WebSocketException: Invalid WebSocket upgrade request`，几十条测试集体 load 失败（**不是代码回归**）。
+   正确姿势：`env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy NO_PROXY=localhost,127.0.0.1 flutter test`。
+   `flutter build macos` 需写 `~/Library/Developer/Xcode/DerivedData`（工作区外），沙箱会拦，需放行；
+   且放行标志在后台任务里不生效，要前台跑。
+9. 验证基线（1.87.0 后）：`flutter test` 288 passed / 2 skipped；`flutter analyze` 39 条既有 lint 基线，改动文件应 0 新增 error。
 9. 环境：Flutter 3.47.0 / Dart 3.13.0（/opt/homebrew/bin/flutter）；Android 模拟器 AVD 名 `kikoeru_test`；
    SDK `/opt/homebrew/share/android-commandlinetools`，JDK `/opt/homebrew/opt/openjdk@21`。
 
@@ -40,3 +46,5 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
 - 1.53.0：Android 详情页「整理专辑」入口语义不成立（SAF 下 library_reorganizer 无效）；多行 TALB 参与分组键会把专辑拆散（需两端同改）。
 - 1.54.0：Android 左缘右滑受系统手势排除区 200dp 限制；同名文件原位替换不触发增量重扫（需 size/mtime 指纹）。
 - Mimosa 历史 high 12 项（旧 Electron main.js/server.js、Android ImportScanner SHA-1、测试脚本 path-traversal），非本版引入，未裁决。
+- 1.87.0 已知权衡：`・`(U+30FB) 既是多声优分隔符也是外国人名内部字符（`エマ・ワトソン`），
+  用户裁决**照拆、接受误伤**。U+00B7（`·`）刻意不在分隔符集合内（既有单测钉死）。
