@@ -16,7 +16,18 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
 - `platform/` platform_service 抽象 + android_platform_service（MethodChannel `top.voicehub.hiko/plugin`，原生 HikoPlugin.kt / ImportScanner.kt / Id3v2Parser.kt）。
 - `lyrics/` resolver（LRC/VTT/SRT，多编码，Android 走 track.lyricsText）+ controller + 桌面悬浮窗服务。
 - `ui/` screens（home 1919 行、fullscreen_player、album_detail）、widgets（sidebar/player_bar/detail_drawer/settings_dialog/stats_view/album_card/activity_overlay/glass_container/context_menu/toast）、
-  covers（三级缓存：内存 LRU → 磁盘 LRU → Isolate 解码）、theme（浅/深 + 6 强调色 + 玻璃拟态 token）、background、global_shortcuts。
+  covers（三级缓存：内存 LRU → 磁盘 LRU → Isolate 解码）、theme（浅/深 + 6 强调色 + 玻璃拟态 token + **全局 pageTransitionsTheme**）、background、global_shortcuts、
+  transitions/fullscreen_player_route.dart（1.88 全应用转场器）。
+
+## 动效约定（1.88 起，来源 transitions.dev motion token）
+- 全应用路由转场挂在 `theme.dart` 的 `pageTransitionsTheme`（不是单个路由）——
+  **退场由「被覆盖那一级」的 secondaryAnimation 驱动，只能全局改**。
+- 打开 250ms / 关闭 200ms（关闭要让路）；退场前载到 150ms；
+  缓动 `cubic-bezier(0.22, 1, 0.36, 1)`；升起 8px（返回减半）；退场 0.98 微缩 + 3px 模糊。
+- **硬约束**：全局转场器每个路由都在，`_CoveredPageExit` 静息态必须直接交还子树、不叠图层，
+  模糊层仅 `sigma > 0.05 && opacity > 0.12` 时挂载——常态挂全屏高斯模糊会拖垮滚动帧率。
+  若低端机掉帧，第一个该调的旋钮是 `_exitBlurSigma`（3px → 2px 或去掉）。
+- 已知副作用：移动端 `AlbumDetailScreen` 的推入也用这套（有意为之，保持一致）。
 - `utils/` rj、natural_compare、repair_text（GBK/Shift-JIS 乱码打分还原）、masonry_layout、grid_locate、lyric_name、person_names、time。
 
 ## 默认规则（必须遵守，来自 AGENTS.md + 历史约定）
@@ -31,13 +42,15 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
    `hiko/BLOCKED.md` 只记待裁决项（1.79 起各版状态以 plan 文件为准）。
 6. 发版 zip/apk 只入 GitHub Releases，不入 git；`.shots/` 调试截图不入库。
 7. 测试：内容以日文为主，覆盖 UTF-8 与 Shift-JIS 编码标签；实网用例默认跳过、按需启用。
-8. ⚠️ **跑 `flutter test` 必须先摘掉代理**：本会话环境全局设了 `HTTP_PROXY/HTTPS_PROXY=http://127.0.0.1:54545`，
-   Dart 测试进程连 flutter_tester 的 WebSocket 会被代理吃掉，报 `Unable to connect to flutter_tester process:
-   WebSocketException: Invalid WebSocket upgrade request`，几十条测试集体 load 失败（**不是代码回归**）。
-   正确姿势：`env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy NO_PROXY=localhost,127.0.0.1 flutter test`。
-   `flutter build macos` 需写 `~/Library/Developer/Xcode/DerivedData`（工作区外），沙箱会拦，需放行；
-   且放行标志在后台任务里不生效，要前台跑。
-9. 验证基线（1.87.0 后）：`flutter test` 288 passed / 2 skipped；`flutter analyze` 39 条既有 lint 基线，改动文件应 0 新增 error。
+8. ⚠️ **跑 `flutter test` / `flutter build macos` 必须先摘掉代理**：本会话全局设了
+   `HTTP_PROXY/HTTPS_PROXY=http://127.0.0.1:54545`。测试侧 Dart 进程连 flutter_tester 的 WebSocket 被代理吃掉，
+   报 `Unable to connect to flutter_tester process: WebSocketException: Invalid WebSocket upgrade request`，
+   几十条集体 load 失败；构建侧 Xcode SPM 解析同样被拦，报 `Xcode failed to resolve Swift Package Manager
+   dependencies`。**两者都不是代码/环境问题里的回归**。
+   正确姿势：`env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy NO_PROXY=localhost,127.0.0.1 <命令>`。
+   另外 `flutter build macos` 需写 `~/Library/Developer/Xcode/DerivedData`（工作区外），沙箱会拦，需放行；
+   且放行标志在后台任务里不生效，必须前台跑。
+9. 验证基线（1.88.0 后）：`flutter test` 292 passed / 2 skipped；`flutter analyze` 39 条既有 lint 基线，改动文件应 0 新增 error。
 9. 环境：Flutter 3.47.0 / Dart 3.13.0（/opt/homebrew/bin/flutter）；Android 模拟器 AVD 名 `kikoeru_test`；
    SDK `/opt/homebrew/share/android-commandlinetools`，JDK `/opt/homebrew/opt/openjdk@21`。
 
