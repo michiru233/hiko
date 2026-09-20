@@ -41,6 +41,13 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
   bool _dragging = false;
   double _dragValue = 0;
 
+  /// 1.88 入场动效结束后才起转：转场期间两页同时绘制，唱片继续自转等于
+  /// 每帧多一份全盘重绘；观感上也更对——唱针落下（400ms）之后唱片再转起来。
+  bool _entryFinished = false;
+  bool _routeAnimationBound = false;
+  Animation<double>? _routeAnimation;
+  void Function(AnimationStatus)? _entryStatusListener;
+
   @override
   ScrollController get lyricsScrollController => _lyricsScrollController;
 
@@ -54,15 +61,47 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
   @override
   void initState() {
     super.initState();
-    // 黑胶旋转动画：持续旋转，播放时运行，暂停时停止
+    // 黑胶旋转动画：转场结束后才起转（1.88），由 didChangeDependencies 绑定路由动画。
+    // 这里**不能** repeat()——转场期间两页叠加绘制，自转是白花的每帧开销。
     _rotationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 20),
-    )..repeat();
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_routeAnimationBound) return;
+    _routeAnimationBound = true;
+
+    final route = ModalRoute.of(context);
+    final animation = route?.animation;
+    // 三种情况视为「已经到位」：无路由动画（单测直接挂 widget）、动画早已完成
+    // （该页是首帧路由）、系统减弱动态效果开启——都不该挡住唱片起转。
+    if (animation == null ||
+        animation.isCompleted ||
+        MediaQuery.disableAnimationsOf(context)) {
+      _entryFinished = true;
+      return;
+    }
+    _routeAnimation = animation;
+    void onStatus(AnimationStatus status) {
+      if (status == AnimationStatus.completed && mounted) {
+        setState(() => _entryFinished = true);
+      }
+    }
+    _entryStatusListener = onStatus;
+    animation.addStatusListener(onStatus);
   }
 
   @override
   void dispose() {
+    final animation = _routeAnimation;
+    final listener = _entryStatusListener;
+    if (animation != null && listener != null) {
+      animation.removeStatusListener(listener);
+    }
     _rotationController.dispose();
     _lyricsScrollController.dispose();
     super.dispose();
@@ -80,11 +119,11 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     // 尊重系统 reduce-motion 设置，禁用动画时停止旋转
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
 
-    // 同步旋转动画与播放状态
-    if (!reduceMotion && state.playing && !_rotationController.isAnimating) {
+    // 同步旋转动画与播放状态（1.88 增加入场完成门控：转场期间不起转）
+    final shouldSpin = !reduceMotion && _entryFinished && state.playing;
+    if (shouldSpin && !_rotationController.isAnimating) {
       _rotationController.repeat();
-    } else if (reduceMotion ||
-        (!state.playing && _rotationController.isAnimating)) {
+    } else if (!shouldSpin && _rotationController.isAnimating) {
       _rotationController.stop();
     }
 

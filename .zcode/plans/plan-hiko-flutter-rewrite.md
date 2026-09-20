@@ -4,6 +4,77 @@
 > 旧代码（Electron/Capacitor）保留在仓库根目录作参考，功能对等后归档。
 > 本文档为 Flutter 重写的里程碑与修复记录，新改动请追加章节。
 
+## 1.88.0 全屏播放页转场重做（2026-09-20）
+
+需求（用户提出 + 录屏）：点曲目或播放条封面进全屏播放页的过渡动画「还是太不流畅」，
+要求参考 transitions.dev 的动效调优。
+
+### 根因（三条，第一条是主因）
+1. **结构性重影**：四处跳转都是裸 `MaterialPageRoute`，macOS 默认解析到
+   `CupertinoPageTransitionsBuilder`（整页横向滑入）。而 1.84 起启用自定义背景图时
+   全屏页 Scaffold 是 `Colors.transparent`（刻意透出根层 BackgroundLayer），
+   `MaterialPageRoute.opaque = true` 又只在**动画进行中**绘制下层路由、结束即停止绘制。
+   透明页面 + 下层仍被绘制 = 过渡全程两页叠加，结尾再一次性丢弃 → 逐帧核对录屏可见
+   「中段几乎不动、首页一直不褪、最后啪地硬切」。
+2. **隐喻不对**：音声库与「正在播放」是上下关系（底部播放条 → 全屏），不是左右关系，
+   横向滑入没有空间依据。
+3. **次生开销**：`initState` 里 `_rotationController..repeat()` 无条件起转，
+   转场期间两页叠加绘制时唱片还在自转。
+
+### 用户裁决（grill-me）
+| 决策点 | 裁决 |
+|---|---|
+| Q1 转场隐喻 | **B**：底部升起 + 淡入（否决横向滑入与共享元素飞行） |
+| Q2 全屏页是否继续透出全局背景 | **A**：保留透明，靠首页快速退场消除重影（否决"自己铺实底"） |
+| Q3 进/退对称 | 按推荐：**不对称**——进 250ms，退 200ms 且位移减半 |
+| Q4 唱片起转时机 | 按推荐：**延后到入场动画结束**后再起转 |
+
+Q2 选 A 带来一条硬约束：退场效果由「被覆盖的那一级」自己的 `secondaryAnimation` 驱动，
+只能靠**全局 `pageTransitionsTheme`** 实现，无法只在播放页路由内解决。
+
+### 改动
+- 新增 `lib/ui/transitions/fullscreen_player_route.dart`：
+  - `FullscreenPlayerRoute`（继承 MaterialPageRoute，只覆盖 250/200ms 与路由名）
+  - `HikoPageTransitionsBuilder`：**入场**底部 8px 升起 + 淡入；
+    **退场**（被覆盖时）淡出 + 0.98 微缩 + 3px 渐变模糊，用 `_FrontLoadedCurve(150/250)`
+    前载到前 150ms——把重影窗口从「整个转场」压到 150ms。
+  - `_CoveredPageExit` 在静息态（t≈0）**直接交还子树、不叠任何图层**，
+    模糊层仅当 `sigma > 0.05 && opacity > 0.12` 时挂载。这条是硬约束：转场器挂在全局
+    主题上、每个路由都在，常态挂着全屏高斯模糊会直接拖垮滚动帧率。
+- `lib/ui/theme.dart`：全局 `pageTransitionsTheme` 六个平台全部指向新转场器。
+  **副作用（已知且有意）**：移动端 `AlbumDetailScreen` 的推入也一并改成这套，
+  保持全应用动效语言一致；如不喜欢，退回方式是把非播放页路由改回走平台默认 builder。
+- 四处跳转改用 `FullscreenPlayerRoute()`：`home_screen.dart:598`（播放条封面）、
+  `detail_drawer.dart:446`（抽屉点曲目）、`album_detail_screen.dart:299`（全部播放）、
+  `album_detail_screen.dart:423`（曲目行）。原 `fullscreen_player_screen.dart` 的
+  直接 import 随之删除（避免 unused_import）。
+- `lib/ui/screens/fullscreen_player_screen.dart`：删掉 `initState` 的 `..repeat()`；
+  新增 `_entryFinished` 门控，在 `didChangeDependencies` 监听 `ModalRoute.animation`
+  的 completed 状态后 `setState` 起转，dispose 里移除监听。三种「已到位」特例放行：
+  无路由动画（单测直接挂 widget）、动画早已完成（首帧路由）、系统减弱动态效果开启。
+- `test/ui/fullscreen_player_route_test.dart`（新增 4 条）：时长/路由名；推入 75ms 时
+  覆盖页 opacity 落在 0.1–0.9 且挂有 ImageFiltered；**静息态零开销**（settle 后全树
+  无 ImageFiltered、入场页无 Opacity 图层）；减弱动态效果开启时不挂任何图层。
+
+### 参数（对齐 transitions.dev motion token）
+打开 250ms `--duration-fast` ｜ 关闭 200ms（open/close 不对称）｜ 退场窗口 150ms
+`--duration-quick` ｜ `cubic-bezier(0.22, 1, 0.36, 1)` `--ease-smooth-out` ｜
+升起 8px（返回减半）`--distance-base` ｜ 退场缩放 0.98 `--scale-small` ｜
+退场模糊 3px `--blur-medium`
+
+### 验证
+- `flutter test` **292 passed / 2 skipped**（基线 288/2，净增 4）；
+  `flutter analyze` **39 issues 与基线一致**，改动文件 0 新增 error。
+- 环境坑补记：`flutter build macos` 的 Xcode SPM 依赖解析**同样**被
+  `HTTP_PROXY=127.0.0.1:54545` 拦截（报 `Xcode failed to resolve Swift Package Manager
+  dependencies`），需一并 `env -u HTTP_PROXY ...` 才能构建成功。
+
+### 待用户实机复测
+①点曲目 / 点播放条封面进全屏页：应无重影，首页在 ~150ms 内退干净，结尾无硬切；
+②返回：200ms 回落，比进入略快；③唱片应在页面到位后才起转；
+④移动端专辑详情页的推入观感是否接受（本次一并改成了同一套）；
+⑤若低端机仍掉帧，第一个该调的旋钮是 `_exitBlurSigma`(3px → 2px 或直接去掉模糊层)。
+
 ## 1.87.0 修复声优串「反斜杠等分隔符不拆分」（2026-09-19）
 
 需求（用户报 bug + 截图）：专辑 artist 标签为 `柚木つばめ \ 逢坂成美` 时，详情抽屉的声优胶囊把整串当成**一个人**，

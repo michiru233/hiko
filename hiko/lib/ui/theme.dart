@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/settings_store.dart';
+import 'transitions/fullscreen_player_route.dart';
 
 /// 主题：移植旧版 styles.css 的浅/深两套配色 + 6 强调色，
 /// 用 Material 3 ColorScheme.fromSeed 生成组件色，覆盖表面色保持原观感。
@@ -112,6 +113,20 @@ ThemeData buildHikoTheme(AppSettings settings) {
       overlayColor: accent.withValues(alpha: 0.12),
       trackHeight: 4,
       thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+    ),
+    // 1.88 应用统一转场语言：整页「底部 8px 升起 + 淡入」入场，
+    // 被新页覆盖时「150ms 前载退场（淡出 + 0.98 微缩 + 3px 渐变模糊）」。
+    // 挂在主题上而非单个路由：退场由「被覆盖的那一级」自己的 secondaryAnimation
+    // 驱动，只能靠全局转场器统一。静态路由（如首页）静息态零图层开销。
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: <TargetPlatform, PageTransitionsBuilder>{
+        TargetPlatform.android: HikoPageTransitionsBuilder(),
+        TargetPlatform.iOS: HikoPageTransitionsBuilder(),
+        TargetPlatform.macOS: HikoPageTransitionsBuilder(),
+        TargetPlatform.windows: HikoPageTransitionsBuilder(),
+        TargetPlatform.linux: HikoPageTransitionsBuilder(),
+        TargetPlatform.fuchsia: HikoPageTransitionsBuilder(),
+      },
     ),
     appBarTheme: AppBarTheme(
       backgroundColor: bg,

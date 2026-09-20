@@ -41,7 +41,7 @@ import '../widgets/settings_dialog.dart';
 import '../widgets/stats_view.dart';
 import '../widgets/sidebar.dart';
 import 'album_detail_screen.dart';
-import 'fullscreen_player_screen.dart';
+import '../transitions/fullscreen_player_route.dart';
 
 /// 主界面：桌面三栏布局（侧栏 | 网格 | 详情抽屉）+ 底部播放条；
 /// Android 触屏（≤1000px）切换为移动布局：底部导航 + 抽屉侧栏 + 全屏详情 + 长按菜单 + 系统返回逐层关闭。
@@ -595,11 +595,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           onCoverTap: (_) {
                             // 1.79 桌面对齐移动端：点击播放条封面进入全屏播放页
                             // （详情抽屉仍可从专辑卡片/统计页进入）
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => const FullscreenPlayerScreen(),
-                              ),
-                            );
+                            Navigator.of(context).push(FullscreenPlayerRoute());
                           },
                         ),
                     ],

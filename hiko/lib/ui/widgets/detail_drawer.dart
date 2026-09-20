@@ -14,7 +14,7 @@ import '../../utils/person_names.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
 import '../lyrics/drawer_lyrics_view.dart';
-import '../screens/fullscreen_player_screen.dart';
+import '../transitions/fullscreen_player_route.dart';
 import '../theme.dart';
 import 'category_dialog.dart';
 import 'rating_dialog.dart';
@@ -443,11 +443,7 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                               controller.playAlbum(album, index: i);
                             }
                             // 1.79 桌面端点曲目后跳转全屏播放页（抽屉保留在底层）
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (context) => const FullscreenPlayerScreen(),
-                              ),
-                            );
+                            Navigator.of(context).push(FullscreenPlayerRoute());
                           },
                         ),
                     ] else ...[

@@ -16,7 +16,7 @@ import '../theme.dart';
 import '../widgets/category_dialog.dart';
 import '../widgets/rating_dialog.dart';
 import '../widgets/toast.dart';
-import 'fullscreen_player_screen.dart';
+import '../transitions/fullscreen_player_route.dart';
 
 /// 移动端专辑详情全屏页面（1.56；1.77 重构为整页 CustomScrollView）：
 /// 全宽封面→标题→元信息胶囊→社团/声优分色胶囊→操作按钮→曲目/歌词，一直往下滑。
@@ -296,11 +296,7 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
               startPosition: resumePos,
             );
             // 自动跳转到全屏播放页
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => const FullscreenPlayerScreen(),
-              ),
-            );
+            Navigator.of(context).push(FullscreenPlayerRoute());
           },
           icon: const Icon(Icons.play_arrow, size: 20),
           label: const Text('全部播放'),
@@ -422,11 +418,7 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
               );
 
               // 点击曲目后自动跳转到全屏播放页
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => const FullscreenPlayerScreen(),
-                ),
-              );
+              Navigator.of(context).push(FullscreenPlayerRoute());
             },
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
