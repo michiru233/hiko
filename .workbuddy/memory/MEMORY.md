@@ -23,10 +23,16 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
 - 全应用路由转场挂在 `theme.dart` 的 `pageTransitionsTheme`（不是单个路由）——
   **退场由「被覆盖那一级」的 secondaryAnimation 驱动，只能全局改**。
 - 打开 250ms / 关闭 200ms（关闭要让路）；退场前载到 150ms；
-  缓动 `cubic-bezier(0.22, 1, 0.36, 1)`；升起 8px（返回减半）；退场 0.98 微缩 + 3px 模糊。
-- **硬约束**：全局转场器每个路由都在，`_CoveredPageExit` 静息态必须直接交还子树、不叠图层，
-  模糊层仅 `sigma > 0.05 && opacity > 0.12` 时挂载——常态挂全屏高斯模糊会拖垮滚动帧率。
-  若低端机掉帧，第一个该调的旋钮是 `_exitBlurSigma`（3px → 2px 或去掉）。
+  缓动 `cubic-bezier(0.22, 1, 0.36, 1)`；升起 8px（返回减半）；退场 0.98 微缩。
+- **硬约束 1（1.88.1）**：转场**不得引入任何 `ImageFiltered`**。
+  `ImageFiltered` 强制把子树栅格化进离屏图层，被覆盖页里二十来张封面模糊（隐私模糊 σ20，
+  **默认每次启动开启**）与 σ80/σ55 光晕会被逐帧重算，外面再叠一层全屏高斯——
+  M5/24G 也会卡。退场只许用能走合成器的淡出与微缩。测试里有 `findsNothing` 回归锁。
+  transitions.dev 的 `3px blur` 是 CSS 配方，照抄数字到这里性价比是负的。
+- **硬约束 2**：全局转场器每个路由都在，`_CoveredPageExit` 静息态必须直接交还子树、不叠图层。
+- **重滤波必须有 RepaintBoundary**：封面 σ20（`cover_art`）、主界面光晕 σ80（`home_screen`）、
+  抽屉背板 σ55（`detail_drawer`）、背景图 σ12（`background`）、播放条玻璃（`player_bar`）。
+  缺一个就会在整页重绘时把昂贵高斯重算一遍。
 - 已知副作用：移动端 `AlbumDetailScreen` 的推入也用这套（有意为之，保持一致）。
 - `utils/` rj、natural_compare、repair_text（GBK/Shift-JIS 乱码打分还原）、masonry_layout、grid_locate、lyric_name、person_names、time。
 
