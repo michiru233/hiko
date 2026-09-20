@@ -158,12 +158,16 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                 child: Opacity(
                   // 1.83 随实底化压暗：保留沉浸氛围但不与主界面争对比
                   opacity: isDark ? 0.10 : 0.07,
-                  child: ImageFiltered(
-                  imageFilter: ImageFilter.blur(sigmaX: 55, sigmaY: 55),
-                  child: AlbumCover(album: album),
+                  // RepaintBoundary（1.88.1）：σ55 里层还套着封面的 σ20。
+                  // 它只随专辑变化，不该每次父级重绘都重算。
+                  child: RepaintBoundary(
+                    child: ImageFiltered(
+                      imageFilter: ImageFilter.blur(sigmaX: 55, sigmaY: 55),
+                      child: AlbumCover(album: album),
+                    ),
+                  ),
                 ),
               ),
-            ),
           ),
           Positioned.fill(
             child: SelectionArea(

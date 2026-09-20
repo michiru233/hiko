@@ -22,7 +22,7 @@ void main() {
     expect(route.reverseTransitionDuration, lessThan(route.transitionDuration));
   });
 
-  testWidgets('推入时：被覆盖页在前 150ms 内退场（淡出 + 微缩 + 模糊）',
+  testWidgets('推入时：被覆盖页在前 150ms 内退场（淡出 + 微缩，无模糊层）',
       (tester) async {
     final navKey = GlobalKey<NavigatorState>();
     await tester.pumpWidget(MaterialApp(
@@ -43,14 +43,10 @@ void main() {
     );
     expect(homeOpacity.opacity, inInclusiveRange(0.1, 0.9));
 
-    // 退场模糊只在仍可见时挂载——这是最贵的一项，不能常态挂着
-    expect(
-      find.ancestor(
-        of: find.byKey(_homeKey),
-        matching: find.byType(ImageFiltered),
-      ),
-      findsOneWidget,
-    );
+    // 1.88.1 关键断言：转场**不得引入任何模糊层**。
+    // `ImageFiltered` 会强制把子树重新栅格化，被覆盖页里那二十来张封面模糊
+    // 与光晕就会被每帧重算一遍——退场只许用能走合成器的淡出与微缩。
+    expect(find.byType(ImageFiltered), findsNothing);
     // 入场页此时已部分升起淡入
     final pageOpacity = tester.widget<Opacity>(
       find.ancestor(of: find.byKey(_pageKey), matching: find.byType(Opacity)),

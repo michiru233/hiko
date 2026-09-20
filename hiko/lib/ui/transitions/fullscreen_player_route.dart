@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import '../screens/fullscreen_player_screen.dart';
@@ -18,9 +16,18 @@ import '../screens/fullscreen_player_screen.dart';
 // 「重影一段，然后啪地硬切」。
 //
 // ## 改法
-// 被覆盖的那一页（首页 / 详情页）在 **150ms** 内快速退场（淡出 + 0.98 微缩 +
-// 3px 模糊），把重影窗口压到 150ms 以内；全屏页从底部 **8px** 升起淡入，
+// 被覆盖的那一页（首页 / 详情页）在 **150ms** 内快速退场（淡出 + 0.98 微缩），
+// 把重影窗口压到 150ms 以内；全屏页从底部 **8px** 升起淡入，
 // 250ms 打开 / 200ms 关闭（关闭要让路，比打开快）。
+//
+// ## 1.88.1：为什么退场不带模糊
+// transitions.dev 的 page-slide 配方给的是 3px blur，那是写给 CSS 的——浏览器
+// 合成器处理模糊的成本，和 Skia 在桌面 Retina 窗口上跑全屏高斯不是一个量级。
+// 这里翻车的方式是：`ImageFiltered` 要求先把子树栅格化进离屏图层，于是被覆盖页
+// 里所有重滤波（二十来张封面 σ20 + 光晕 σ80/σ55）全被强制每帧重新栅格化，
+// 外面再叠一层全屏高斯。换来的只是"更软的淡出观感"——性价比是负的。
+// 应当翻译它的**原则**（位移小、时长 250ms、smooth-out、关闭快于打开），
+// 而不是照抄那个数字。
 //
 // 注意：退场效果必须由「被覆盖的那一级」自己的转场器实现（它的
 // `secondaryAnimation` 才是驱动退场的那一根），所以本文件的
@@ -35,7 +42,7 @@ import '../screens/fullscreen_player_screen.dart';
 // | 缓动 | `cubic-bezier(0.22, 1, 0.36, 1)` | `--ease-smooth-out` |
 // | 升起距离 | 8px（返回减半） | `--distance-base` |
 // | 退场缩放 | 0.98 | `--scale-small` |
-// | 退场模糊 | 3px | `--blur-medium` |
+// | 退场模糊 | 不使用 | 1.88.1 移除，见上方「为什么退场不带模糊」 |
 
 /// 供转场器识别「这是全屏播放页」的路由名
 const String fullscreenPlayerRouteName = 'fullscreenPlayer';
@@ -52,9 +59,6 @@ const double _risePixels = 8.0;
 
 /// scale-small：被覆盖时的退场微缩
 const double _exitScale = 0.98;
-
-/// blur-medium：退场模糊（最贵的一项，仅在仍可见时挂载）
-const double _exitBlurSigma = 3.0;
 
 /// duration-quick：退场窗口 150ms。转场总长按 250ms 计，
 /// 即退场只占动画的前 60%，其余时间下层已不可见。
@@ -123,10 +127,10 @@ class _FrontLoadedCurve extends Curve {
   double transform(double t) => (t / window).clamp(0.0, 1.0);
 }
 
-/// 被覆盖页的退场：淡出 + 微缩 + 模糊，全部前载到退场窗口内。
+/// 被覆盖页的退场：淡出 + 微缩，前载到退场窗口内。
 ///
-/// 模糊只在页面仍可见时挂载（透明度 > 0.12）——透明到看不见了还在做
-/// 全屏高斯模糊是白花的每帧开销，而这个转场修的正是流畅度。
+/// **不挂任何模糊层**——见下方 cycle 说明。退场的表达靠淡出与 0.98 微缩，
+/// 二者都能走合成器，不需要把子树重新栅格化。
 class _CoveredPageExit extends StatelessWidget {
   const _CoveredPageExit({
     required this.secondaryAnimation,
@@ -153,17 +157,15 @@ class _CoveredPageExit extends StatelessWidget {
         final opacity = 1.0 - t;
         // 已褪到看不见：只留一层透明度为 0，省掉缩放与模糊
         if (opacity <= 0.01) return Opacity(opacity: 0.0, child: child);
+        // 只有缩放，绝不加模糊层。
+        //
+        // 1.88.1 移除了 1.88.0 的退场模糊：`ImageFiltered` 要求把子树先栅格化进
+        // 离屏图层再做高斯——被覆盖页里那二十来张封面模糊（隐私模糊 σ20，默认
+        // 每次启动开启）与 σ80/σ55 的氛围光晕会被**强制每帧重新栅格化一遍**，
+        // 外面再叠一层全屏高斯。机器再快也扛不住这种每帧同步工作量。
+        // 去掉模糊后子树可以被复用，淡出 + 微缩已足够表达"退到后面去"。
         final scale = 1.0 - (1.0 - _exitScale) * t;
         Widget out = child!;
-        // 模糊随退场进度渐强，且仅在仍可见时挂载：
-        // 看不见了还在做全屏高斯模糊是白花的每帧开销，而这个转场修的正是流畅度
-        final sigma = _exitBlurSigma * t;
-        if (sigma > 0.05 && opacity > 0.12) {
-          out = ImageFiltered(
-            imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-            child: out,
-          );
-        }
         if ((scale - 1.0).abs() > 0.0005) {
           out = Transform.scale(scale: scale, child: out);
         }

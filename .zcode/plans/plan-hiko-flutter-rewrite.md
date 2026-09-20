@@ -4,6 +4,70 @@
 > 旧代码（Electron/Capacitor）保留在仓库根目录作参考，功能对等后归档。
 > 本文档为 Flutter 重写的里程碑与修复记录，新改动请追加章节。
 
+## 1.88.1 转场流畅度：去掉退场模糊 + 给重滤波补缓存层（2026-09-20）
+
+用户反馈 1.88.0 装完「还是特别卡」，并质疑是不是自定义背景图导致的。
+用户机器为 MacBook M5 / 24G——**算力不是瓶颈**，说明存在同步阻塞路径而非算力不足。
+
+### 诊断
+录屏（`iShot_2026-09-20_14.35.09.mp4`，25fps/2436×1626）逐帧核对确认：
+1. 1.88.0 **确实在生效**——盘片一开始就停在终位（宽屏布局左栏），整个被覆盖页
+   （网格 + 侧栏 + 抽屉）是虚的、盘片是实的，正是设计的退场模糊。
+2. 转场时序也对：被覆盖页的虚化只持续 ~3 帧（≈120ms），符合 150ms 的前载窗口。
+   所以**不是动画参数问题**，是每帧的工作量问题。
+3. **自定义背景图不是原因**：1.86 已把它包进 RepaintBoundary，σ12 只在图片变化时
+   栅格化一次，转场时只参与合成。
+
+清点全应用滤波器（桌面 + 抽屉打开），发现真正的开销：
+
+| 位置 | 滤波器 | RepaintBoundary（修复前） |
+|---|---|---|
+| 根层背景图 | ImageFiltered σ12 + Opacity | ✅ 已有 |
+| 主界面环境光晕 `home_screen:552` | ImageFiltered **σ80**（里层还套封面 σ20） | ❌ |
+| 抽屉氛围背板 `detail_drawer:161` | ImageFiltered **σ55**（同理嵌套） | ❌ |
+| 每张封面（隐私模糊，默认每次启动开启）`cover_art:80` | ImageFiltered σ20 × 视口约 20 张 | ❌ |
+| 播放条玻璃 `player_bar:119` | BackdropFilter | ✅ 已有 |
+| 转场退场（1.88.0 引入） | ImageFiltered σ3 **全屏** | 必然每帧 |
+
+**关键机制**：`ImageFiltered` 要求先把子树栅格化进离屏图层再做高斯。被覆盖页一旦
+被它包住，里面那 20 张封面模糊与 σ80/σ55 光晕就**全部被强制每帧重新栅格化**，
+外面再叠一层全屏高斯。机器再快也扛不住这种每帧同步工作量——这是 1.88.0 按
+transitions.dev 的 `3px blur`（CSS 配方）照抄数字导致的判断失误：浏览器合成器处理
+模糊的成本，和 Skia 在桌面 Retina 窗口上跑全屏高斯不是一个量级。
+
+### 用户裁决（grill-me）
+Q1 转场退场模糊 → **去掉**（只留淡出 + 0.98 微缩）｜Q2 给三处重滤波补
+RepaintBoundary → **全加**｜Q3 隐私模糊保持 σ20，先靠缓存层看效果。
+
+### 改动
+- `ui/transitions/fullscreen_player_route.dart`：移除 `_CoveredPageExit` 的
+  ImageFiltered 与 `_exitBlurSigma`，去掉 `dart:ui` import；补「为什么退场不带模糊」
+  的注释（记录 CSS 与 Skia 的成本模型差异，避免以后又抄回来）。
+- `ui/covers/cover_art.dart`：隐私模糊的 `ImageFiltered` 外包 `RepaintBoundary`
+  （封面内容静态，只在专辑/开关变化时重算；顺带利好网格滚动）。
+- `ui/screens/home_screen.dart`：σ80 环境光晕外包 `RepaintBoundary`。
+- `ui/widgets/detail_drawer.dart`：σ55 抽屉背板外包 `RepaintBoundary`。
+- **额外发现并修**：`fullscreen_player_screen.dart` 的 `_entryFinished` 原先走
+  `setState`，会在转场刚结束那一帧把整页播放页重建一遍（正卡在收尾处）；改为
+  在路由动画 completed 回调里**命令式**起转（`_rotationController.repeat()`），
+  不再触发重建，build 里的同步逻辑继续维持一致性。
+- 测试：把「退场应挂模糊层」的断言反转为**「转场不得引入任何 ImageFiltered」**
+  （回归锁），静息态零开销断言保留。`flutter test` 296 passed / 2 skipped。
+
+### 遗留（下一轮候选，未做）
+**点击瞬间的那一帧**仍偏重：抽屉/详情页点曲目时，`playAlbum()` 里的
+`updatePlayedInMemory()` 会同步让 `libraryProvider` 发新列表 →
+`home_screen:424` 的 `ref.watch(libraryProvider)` 触发**整个 HomeScreen 重建**
+（网格 20 张卡片 + 侧栏计数 + 统计），同时 `playbackProvider` 变化又让 σ80 光晕
+重新栅格化，而 `Navigator.push` 正在同一帧起步。这一帧很可能就是用户感知到的
+「起手一顿」。候选方案：①把 push 延后一帧；②让环境光晕在换专辑时保留旧光晕
+直到新一帧就绪；③收窄 HomeScreen 的 watch 粒度。需要 grill 后再定。
+
+### 关于 25fps 录屏（重要观察提醒）
+iShot 录屏固定 25fps。250ms 的转场最多只能记录 ~6 帧，**在回放里必然显得一格一格**，
+与 app 实际是否流畅无关。判断流畅度应以肉眼为准，或改用 60fps 录屏 / `flutter run --profile`
+看帧时间。
+
 ## 1.88.0 全屏播放页转场重做（2026-09-20）
 
 需求（用户提出 + 录屏）：点曲目或播放条封面进全屏播放页的过渡动画「还是太不流畅」，

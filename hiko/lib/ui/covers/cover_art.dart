@@ -72,12 +72,18 @@ class AlbumCover extends StatelessWidget {
     // child 只构建一次，切换开关仅替换模糊包装层。
     // ClipRect（1.78）：ImageFiltered 不裁剪滤镜输出，σ20+TileMode.clamp 会把
     // 边缘像素溢出到组件边界外——详情页全宽封面紧贴标题时会糊住标题。
+    //
+    // RepaintBoundary（1.88.1）：封面内容是静态的，但 σ20 高斯此前**每次父级
+    // 重绘都要重算**。网格里有二十来张封面，路由转场一要求整页重绘，就是
+    // 二十次全尺寸高斯；加了缓存层后只在专辑切换/隐私开关切换时算一次。
     return ValueListenableBuilder<bool>(
       valueListenable: privacyBlur,
       child: _cover(),
       builder: (_, blurred, child) => blurred
           ? ClipRect(
-              child: ImageFiltered(imageFilter: _blurFilter, child: child),
+              child: RepaintBoundary(
+                child: ImageFiltered(imageFilter: _blurFilter, child: child),
+              ),
             )
           : child!,
     );

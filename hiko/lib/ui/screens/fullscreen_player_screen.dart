@@ -87,8 +87,13 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     }
     _routeAnimation = animation;
     void onStatus(AnimationStatus status) {
-      if (status == AnimationStatus.completed && mounted) {
-        setState(() => _entryFinished = true);
+      if (status != AnimationStatus.completed || !mounted) return;
+      _entryFinished = true;
+      // 命令式起转，**不走 setState**——转场刚结束那一帧本来就要合成整页，
+      // 再叠一次全页重建就是肉眼可见的一顿（1.88.1）。
+      // build 里的同步逻辑会继续维持与播放状态一致，这里只是把起转提前。
+      if (ref.read(playbackProvider).playing && !_rotationController.isAnimating) {
+        _rotationController.repeat();
       }
     }
     _entryStatusListener = onStatus;

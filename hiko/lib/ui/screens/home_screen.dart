@@ -551,9 +551,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       child: IgnorePointer(
                         child: Opacity(
                           opacity: theme.brightness == Brightness.dark ? 0.15 : 0.08,
-                          child: ImageFiltered(
-                            imageFilter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
-                            child: AlbumCover(album: ref.watch(playbackProvider).album!),
+                          // RepaintBoundary（1.88.1）：σ80 是本应用里最贵的一个
+                          // 滤镜（且里层还套着封面的 σ20）。它只在正在播放的专辑
+                          // 变化时才会变，此前却每次父级重绘都重算——路由转场要求
+                          // 整页重绘时，这一层就能吃掉半个帧预算。
+                          child: RepaintBoundary(
+                            child: ImageFiltered(
+                              imageFilter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+                              child: AlbumCover(album: ref.watch(playbackProvider).album!),
+                            ),
                           ),
                         ),
                       ),
