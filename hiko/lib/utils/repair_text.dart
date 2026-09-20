@@ -2,9 +2,10 @@ import 'dart:convert';
 
 import 'package:charset/charset.dart';
 
-/// 修复非 UTF-8 标签的乱码（对应旧版 ImportScanner.repairText）：
-/// 中文标签字节常被按 ISO-8859-1 解码成拉丁字符（你好 → ÄãºÃ），日文（Shift-JIS）同理。
-/// 用 GBK（GB18030 常见范围）/ Shift_JIS 逐一还原并打分（假名 +3、汉字 +2、日文标点 +1），
+/// 修复非 UTF-8 标签/歌词的乱码（对应旧版 ImportScanner.repairText）：
+/// ①UTF-8 内容被按 ISO-8859-1 读取（你好 → ä½ å¥½，歌词库里的常见形态）——字节还原后
+/// 严格 UTF-8 解码即无损还原；②真·非 UTF-8 文件（GBK 中文 / Shift-JIS 日文）——用
+/// GBK（GB18030 常见范围）/ Shift_JIS 逐一还原并打分（假名 +3、汉字 +2、日文标点 +1），
 /// 取分最高的结果；仅当得分 >0 才采纳，避免误伤正常 Latin-1 文本（如 Cafe）。
 String? repairText(String? s) {
   if (s == null || s.trim().isEmpty) return s;
@@ -17,6 +18,17 @@ String? repairText(String? s) {
     bytes = latin1.encode(s);
   } catch (_) {
     return s; // 含 Latin-1 范围外的字符，非可还原的乱码特征
+  }
+
+  // UTF-8 内容被按 Latin-1 读取（你好 → ä½ å¥½、带 BOM 则多出 ï»¿）是最常见的一类：
+  // 字节原样取出后严格 UTF-8 解码即可无损还原，优先于下面的候选评分。
+  try {
+    final restored = utf8.decode(bytes);
+    if (isUsableText(restored)) {
+      return restored.startsWith('\uFEFF') ? restored.substring(1) : restored;
+    }
+  } catch (_) {
+    // 不是合法 UTF-8，落入多字符集评分
   }
 
   var best = '';

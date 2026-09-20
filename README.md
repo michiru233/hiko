@@ -75,7 +75,7 @@
 
 ## 下载
 
-macOS 与 Android 安装包在 [Releases](https://github.com/michiru233/hiko/releases) 页面，当前现役版本 [v1.88.1](https://github.com/michiru233/hiko/releases/tag/v1.88.1)。
+macOS 与 Android 安装包在 [Releases](https://github.com/michiru233/hiko/releases) 页面，当前现役版本 [v1.89.0](https://github.com/michiru233/hiko/releases/tag/v1.89.0)。
 
 ## 开发
 

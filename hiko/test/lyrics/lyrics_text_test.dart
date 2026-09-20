@@ -1,8 +1,24 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hiko/lyrics/lyrics_resolver.dart';
 import 'package:hiko/models/track.dart';
 
 void main() {
+  test('旧库 lyricsText 乱码自愈：UTF-8 被按 Latin-1 存进库的老数据无需重扫', () async {
+    // 旧扫描器 String.fromCharCodes(bytes) 的产物，原样躺在 library.json 里
+    final garbled = latin1.decode(utf8.encode('\uFEFF[00:11.54]学长，还醒着吗？\r\n'));
+    final track = Track(
+      index: 7,
+      name: '08',
+      url: 'file:///tmp/08.mp3', // 路径不存在，只能靠嵌入式文本
+      lyricsText: garbled,
+    );
+    final lyrics = await LyricsResolver.resolve(track);
+    expect(lyrics, isNotNull);
+    expect(lyrics!.lines.first.text, '学长，还醒着吗？');
+  });
+
   test('lyricsText 字段优先:content:// 音轨直接解析嵌入文本,不碰磁盘', () async {
     final track = Track(
       index: 0,

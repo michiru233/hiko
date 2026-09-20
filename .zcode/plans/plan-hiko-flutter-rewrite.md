@@ -4,6 +4,30 @@
 > 旧代码（Electron/Capacitor）保留在仓库根目录作参考，功能对等后归档。
 > 本文档为 Flutter 重写的里程碑与修复记录，新改动请追加章节。
 
+## 1.89.0 旧库歌词乱码修复（UTF-8 被按 Latin-1 读取）（2026-09-20）
+
+> **提交说明**：这批改动由工作区中另一路工作于 14:13 产生（非本会话所写），
+> 曾被 1.88.1 的 `git add -A` 一并扫入、并被误降到 1.88.1；已拆分为独立提交并恢复版本号。
+> 本会话只负责分流与记录，未改动其实现。
+
+**症状（用户上报）**：全屏播放页 LRC 显示 `å­¦é¿ï¼è¿éçåï¼`，VTT 同样乱码。
+
+**根因**：旧扫描器用 `String.fromCharCodes(bytes)` 把 UTF-8 歌词字节逐字节当
+Latin-1 存进 library.json；而 `repairText` 原来只试 GBK/Shift-JIS/EUC-JP，缺
+「UTF-8 被按 Latin-1 读取」这一条，两类都还原不了，乱码一路透传到 UI。
+
+**修复**：
+- `lib/utils/repair_text.dart`：在多字符集评分**之前**加一条快速路径——把 Latin-1
+  字节原样取出后**严格 UTF-8 解码**，成功且 `isUsableText` 通过即返回（并剥离 BOM）；
+  仅当不是合法 UTF-8 时才落入原有的候选评分。
+- `lib/lyrics/lyrics_resolver.dart`：优先级 0 的嵌入歌词文本
+  （`track.lyricsText`）在解析前先 `repairText()` 抢救一次。
+- **老库无需重扫**，原样即可恢复；正常文本 `repairText` 原样返回。
+
+**测试**：`test/utils/repair_text_test.dart`（+17）、`test/lyrics/lyrics_text_test.dart`（+16）、
+新增 `test/ui/lyrics_legacy_mojibake_test.dart`（128 行，含 LRC/VTT 同源回归与
+端到端走到 UI 的乱码串断言）。
+
 ## 1.88.1 转场流畅度：去掉退场模糊 + 给重滤波补缓存层（2026-09-20）
 
 用户反馈 1.88.0 装完「还是特别卡」，并质疑是不是自定义背景图导致的。

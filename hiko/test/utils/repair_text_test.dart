@@ -6,6 +6,23 @@ import 'package:hiko/utils/repair_text.dart';
 
 void main() {
   group('repairText', () {
+    test('还原 UTF-8 被按 Latin-1 读取的乱码（歌词/字幕常见）', () {
+      // 真实场景：.lrc/.vtt 是 UTF-8，旧扫描器 String.fromCharCodes 逐字节转码
+      final mojibake = latin1.decode(utf8.encode('我和千花完成了赔罪的义务'));
+      expect(mojibake, isNot('我和千花完成了赔罪的义务'));
+      expect(repairText(mojibake), '我和千花完成了赔罪的义务');
+
+      // 带 BOM 的 .lrc：还原后 BOM 一并去掉
+      final withBom = latin1.decode(utf8.encode('\uFEFF[00:14.11]我和千花'));
+      expect(repairText(withBom), '[00:14.11]我和千花');
+
+      // VTT 形态（含 â€¦ 类标点，无 CJK 字符可作线索）
+      final vtt = latin1.decode(
+          utf8.encode('WEBVTT\n\n00:00:05.750 --> 00:00:11.720\n我…我喜欢你'));
+      expect(repairText(vtt),
+          'WEBVTT\n\n00:00:05.750 --> 00:00:11.720\n我…我喜欢你');
+    });
+
     test('还原 GBK 中文乱码（ÄãºÃ 型）', () {
       // 你好世界 的 GBK 字节被按 ISO-8859-1 解码
       final mojibake = latin1.decode(gbk.encode('你好世界'));

@@ -22,9 +22,11 @@ class LyricsResolver {
   static Future<ParsedLyrics?> resolve(Track track, {Album? album}) async {
     // 优先级 0:导入时随专辑事件回传的歌词全文(Android SAF 场景,content:// URL
     // 无法映射到本地路径)。字段命中不碰磁盘。
+    // 旧扫描器把 UTF-8 歌词按 Latin-1 存进了库("å±åç"型乱码),解析前抢救一次,
+    // 老库无需重扫即恢复;正常文本 repairText 原样返回。
     final embedded = track.lyricsText;
     if (embedded != null && embedded.trim().isNotEmpty) {
-      return _parseLyricContent(embedded);
+      return _parseLyricContent(repairText(embedded) ?? embedded);
     }
 
     final trackPath = _resolveLocalFilePath(track.url);
