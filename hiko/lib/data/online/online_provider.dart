@@ -30,27 +30,27 @@ final onlineAudioCacheProvider = Provider<OnlineAudioCache>((ref) {
   return cache;
 });
 
-/// 在线浏览入口
-enum OnlineFeed {
-  popular('热门', '按下载量排序'),
-  latest('最新', '按发售日期排序'),
-  search('搜索', '关键词搜索'),
-  tag('标签', '按标签筛选');
-
-  const OnlineFeed(this.label, this.description);
-
-  final String label;
-  final String description;
+/// 在线浏览的**数据来源**：决定请求哪个端点。
+///
+/// 1.92.0 起与排序彻底解耦（裁决 Q8=A）。「热门」「最新」不再是来源 ——
+/// 它们只是 [OnlineSort] 的两个预设，数据都走 [browse] 这条 `/api/works`。
+/// 旧的 `OnlineFeed` 把「榜单」和「排序」搅在一起，于是「热门榜按价格排序」
+/// 这种自相矛盾的状态在类型上就是可表达的。
+enum OnlineSource {
+  /// 无关键词、无标签的全站浏览（`/api/works`）
+  browse,
+  search,
+  tag,
 }
 
 @immutable
 class OnlineBrowseState {
   const OnlineBrowseState({
-    this.feed = OnlineFeed.popular,
+    this.source = OnlineSource.browse,
+    // 冷启动落在热门榜（销量倒序），与旧行为一致
+    this.sort = OnlineSort.popularPreset,
     this.keyword = '',
     this.tag,
-    this.order = OnlineOrder.dlCount,
-    this.descending = true,
     this.subtitleOnly = false,
     this.works = const [],
     this.totalCount = 0,
@@ -60,11 +60,13 @@ class OnlineBrowseState {
     this.error,
   });
 
-  final OnlineFeed feed;
+  /// 数据从哪来（不影响怎么排）
+  final OnlineSource source;
+
+  /// 怎么排（不影响数据从哪来）
+  final OnlineSort sort;
   final String keyword;
   final OnlineTag? tag;
-  final OnlineOrder order;
-  final bool descending;
   final bool subtitleOnly;
 
   /// 当前页的作品（1.91.0 起为整页替换，不再跨页累加）
@@ -81,13 +83,24 @@ class OnlineBrowseState {
   bool get hasNext => page < totalPages;
   bool get isEmpty => !loading && works.isEmpty;
 
+  /// 「只看带字幕」只对全站浏览有意义：它是 `/api/works` 这类列表端点的参数，
+  /// 搜索与标签端点没有这个筛选。所以可用性挂**数据来源**，不挂榜单（裁决 Q8=A）。
+  bool get canFilterSubtitle => source == OnlineSource.browse;
+
+  /// 预设 chip 的高亮判定：**只有当前正好停在该预设上**才亮。
+  /// 改了排序就不再属于任何榜单 —— 否则会出现「热门亮着、实际按评价排」的错位。
+  bool isPresetActive(OnlineSort preset) =>
+      source == OnlineSource.browse && sort == preset;
+
+  bool get isPopularPreset => isPresetActive(OnlineSort.popularPreset);
+  bool get isLatestPreset => isPresetActive(OnlineSort.latestPreset);
+
   OnlineBrowseState copyWith({
-    OnlineFeed? feed,
+    OnlineSource? source,
+    OnlineSort? sort,
     String? keyword,
     OnlineTag? tag,
     bool clearTag = false,
-    OnlineOrder? order,
-    bool? descending,
     bool? subtitleOnly,
     List<OnlineWork>? works,
     int? totalCount,
@@ -98,11 +111,10 @@ class OnlineBrowseState {
     bool clearError = false,
   }) =>
       OnlineBrowseState(
-        feed: feed ?? this.feed,
+        source: source ?? this.source,
+        sort: sort ?? this.sort,
         keyword: keyword ?? this.keyword,
         tag: clearTag ? null : (tag ?? this.tag),
-        order: order ?? this.order,
-        descending: descending ?? this.descending,
         subtitleOnly: subtitleOnly ?? this.subtitleOnly,
         works: works ?? this.works,
         totalCount: totalCount ?? this.totalCount,
@@ -113,7 +125,7 @@ class OnlineBrowseState {
       );
 }
 
-/// 在线浏览控制器：热门 / 最新 / 搜索 / 标签筛选 + 翻页
+/// 在线浏览控制器：来源（全站浏览 / 搜索 / 标签）× 排序（5 项扁平菜单）× 翻页
 class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
   OnlineBrowseNotifier(this._ref) : super(const OnlineBrowseState());
 
@@ -123,22 +135,25 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
   /// 全站 6 万余件，20 条/页要翻 3000 多页，所以提供更大档位。
   static const pageSizeOptions = <int>[20, 60, 100];
 
-  Future<void> loadFeed(OnlineFeed feed) async {
+  /// 预设入口：热门 / 最新。只切排序，不换数据来源（裁决 Q4=A）。
+  Future<void> applyPreset(OnlineSort preset) async {
+    if (state.source == OnlineSource.browse &&
+        state.sort == preset &&
+        state.works.isNotEmpty) {
+      return; // 已经停在这个榜上且页面上有数据，点它不该白刷一次
+    }
     state = state.copyWith(
-      feed: feed,
+      source: OnlineSource.browse,
+      sort: preset,
+      keyword: '',
+      clearTag: true,
       works: const [],
       page: 1,
       totalCount: 0,
       loading: true,
       clearError: true,
-      clearTag: feed != OnlineFeed.tag,
-      order: switch (feed) {
-        OnlineFeed.popular => OnlineOrder.dlCount,
-        OnlineFeed.latest => OnlineOrder.release,
-        OnlineFeed.search => state.order,
-        OnlineFeed.tag => OnlineOrder.dlCount,
-      },
     );
+    // 注意：刻意不清 subtitleOnly —— 它是与来源正交的筛选，切榜不该悄悄关掉它
     await _fetch(1);
   }
 
@@ -146,8 +161,12 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
     final kw = keyword.trim();
     if (kw.isEmpty) return;
     state = state.copyWith(
-      feed: OnlineFeed.search,
+      source: OnlineSource.search,
       keyword: kw,
+      // 离开全站浏览就清掉字幕筛选：搜索/标签下这个 chip 是隐藏的，
+      // 留着会让「看不见的筛选」在切回浏览时突然生效
+      subtitleOnly: false,
+      clearTag: true,
       works: const [],
       page: 1,
       totalCount: 0,
@@ -159,8 +178,10 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
 
   Future<void> selectTag(OnlineTag tag) async {
     state = state.copyWith(
-      feed: OnlineFeed.tag,
+      source: OnlineSource.tag,
       tag: tag,
+      subtitleOnly: false,
+      keyword: '',
       works: const [],
       page: 1,
       totalCount: 0,
@@ -170,27 +191,21 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
     await _fetch(1);
   }
 
-  /// 切换排序维度（再次选同一维度则反转升降序）
-  Future<void> setOrder(OnlineOrder order) async {
-    if (state.feed == OnlineFeed.popular || state.feed == OnlineFeed.latest) {
-      return; // 这两个入口的排序语义固定，不参与自定义排序
-    }
-    final same = state.order == order;
+  /// 换排序项：保持当前数据来源与页码语义（回第 1 页），旧结果留在屏上不闪白
+  Future<void> setSort(OnlineSort sort) async {
+    if (state.sort == sort) return;
     state = state.copyWith(
-      order: order,
-      descending: same ? !state.descending : true,
-      works: const [],
+      sort: sort,
       page: 1,
       loading: true,
+      clearError: true,
     );
     await _fetch(1);
   }
 
-  /// 只看带字幕的作品（仅热门/最新入口生效）
+  /// 只看带字幕（仅全站浏览可用）
   Future<void> toggleSubtitleOnly() async {
-    if (state.feed != OnlineFeed.popular && state.feed != OnlineFeed.latest) {
-      return;
-    }
+    if (!state.canFilterSubtitle) return;
     state = state.copyWith(
       subtitleOnly: !state.subtitleOnly,
       works: const [],
@@ -228,32 +243,26 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
   Future<void> _fetch(int page) async {
     final client = _ref.read(onlineClientProvider);
     final size = state.pageSize;
+    final sort = state.sort;
     try {
-      final result = await switch (state.feed) {
-        OnlineFeed.popular => client.fetchWorks(
+      final result = await switch (state.source) {
+        OnlineSource.browse => client.fetchWorks(
             page: page,
             pageSize: size,
-            order: OnlineOrder.dlCount,
+            sort: sort,
             subtitleOnly: state.subtitleOnly,
           ),
-        OnlineFeed.latest => client.fetchWorks(
-            page: page,
-            pageSize: size,
-            order: OnlineOrder.release,
-            subtitleOnly: state.subtitleOnly,
-          ),
-        OnlineFeed.search => client.searchWorks(
+        OnlineSource.search => client.searchWorks(
             state.keyword,
             page: page,
             pageSize: size,
-            order: state.order,
-            desc: state.descending,
+            sort: sort,
           ),
-        OnlineFeed.tag => client.fetchWorksByTag(
+        OnlineSource.tag => client.fetchWorksByTag(
             state.tag?.id ?? 0,
             page: page,
             pageSize: size,
-            order: state.order,
+            sort: sort,
           ),
       };
       if (!mounted) return;

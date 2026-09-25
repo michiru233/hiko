@@ -383,19 +383,73 @@ class OnlineTag {
   }
 }
 
-/// 在线列表排序维度（服务端 `order` 参数白名单，已实测可用）
-enum OnlineOrder {
-  createDate('create_date', '上架时间'),
-  release('release', '发售日期'),
-  dlCount('dl_count', '下载量'),
-  rateAverage('rate_average_2dp', '评分'),
-  reviewCount('review_count', '评论数'),
-  price('price', '价格');
+/// 在线列表排序项（1.92.0 起对齐 asmr.one 的「排序」菜单形态）。
+///
+/// 与旧 `OnlineOrder` 的区别：**方向写进条目名**（「销量倒序」而不是「销量」+ 一个
+/// 独立的升降序开关），所以整份菜单是一个扁平列表，没有「再点一次反转」这种隐藏状态。
+/// 条目名、顺序、以及 5 项的取舍都来自用户裁决（Q5=甲）。
+///
+/// 服务端 `order` 参数走白名单，白名单外的值一律 **400**（实测 `source_id` 就 400）。
+/// 已实测可用的键：`create_date` / `release` / `dl_count` / `price` /
+/// `rate_average_2dp` / `review_count` / `id` / `rating`。
+/// 其中 `rating`（asmr.one 的「我的评价倒序」）匿名请求返回 0 条 —— 它要登录，
+/// Hiko 不做账号体系，因此**刻意不在枚举里**。
+enum OnlineSort {
+  /// 本站最近收录（`create_date`）。实测与「发售日期倒序」第一页结果完全相同，
+  /// 但深层会分叉，两者都留（用户裁决甲方案）。
+  createDate('create_date', '最新收录'),
 
-  const OnlineOrder(this.key, this.label);
+  releaseDesc('release', '发售日期倒序'),
+
+  dlCountDesc('dl_count', '销量倒序'),
+
+  rateDesc('rate_average_2dp', '评价倒序'),
+
+  /// asmr.one 菜单上的「RJ 号倒序」。实测服务端的 `id` 对 RJ 作品**数值上就等于
+  /// RJ 号**（`id=1657200` ↔ `RJ01657200`），近年的 BJ/VJ 作品才被塞进 `1000000xx`
+  /// 段，所以这一项约等于「DLsite 上新顺序」，与「本站最近收录」不是一回事。
+  rjDesc('id', 'RJ 号倒序');
+
+  const OnlineSort(this.key, this.label);
 
   final String key;
   final String label;
+
+  /// 甲方案 5 项**全部是倒序**，所以不设方向字段、客户端直接拼 `sort=desc`。
+  /// asmr.one 菜单里的「顺序」变体（发售日期顺序 / 价格顺序 / RJ 号顺序）本轮未采纳；
+  /// 将来要加就把方向加回枚举，别在调用点散落魔法值。
+  static const sortParam = 'desc';
+
+  /// 预设（列表页顶部那两个 chip）指向的排序项：热门 = 销量，最新 = 发售日期。
+  /// chip 点击后就把排序切到这里，之后用户可自由改排序（裁决 Q4=A）。
+  static const popularPreset = OnlineSort.dlCountDesc;
+  static const latestPreset = OnlineSort.releaseDesc;
+}
+
+/// 从根到 [hash] 所在文件之间的**目录路径链**（每一级都需要展开才能露出该文件），
+/// 由浅到深排列，可直接丢进详情页的展开集合。
+///
+/// 供详情页「把正在播放的那一行展开出来」用（裁决 Q2）。两种「无事可做」都返回
+/// 空列表：文件不在任何目录里（直接在作品根下，本来就可见），以及 hash 不在树里。
+///
+/// 路径键与 [OnlineTrack.relativePath] / [folderKeysIn] 同一套拼法。
+List<String> pathToHash(List<OnlineNode> nodes, String hash, [String parent = '']) {
+  for (final node in nodes) {
+    switch (node) {
+      case OnlineFolderNode(:final title, :final children):
+        final path = parent.isEmpty ? title : '$parent/$title';
+        // 文件直接躺在这一层
+        final here = children.any(
+          (child) => child is OnlineFileNode && child.track.hash == hash,
+        );
+        if (here) return [path];
+        final deeper = pathToHash(children, hash, path);
+        if (deeper.isNotEmpty) return [path, ...deeper];
+      case OnlineFileNode():
+        break; // 根级文件无目录可展开
+    }
+  }
+  return const [];
 }
 
 /// 音轨标题展示：剥掉扩展名。在线作品的标题一律带 `.mp3` / `.wav` 这类后缀

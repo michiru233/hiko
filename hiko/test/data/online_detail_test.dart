@@ -103,4 +103,55 @@ void main() {
       expect(OnlineBrowseNotifier.pageSizeOptions, [20, 60, 100]);
     });
   });
+
+  group('OnlineBrowseState 来源 × 排序解耦（裁决 Q8=A）', () {
+    test('冷启动落在热门预设，字幕筛选可用', () {
+      const state = OnlineBrowseState();
+      expect(state.source, OnlineSource.browse);
+      expect(state.sort, OnlineSort.popularPreset);
+      expect(state.isPopularPreset, isTrue);
+      expect(state.isLatestPreset, isFalse);
+      expect(state.canFilterSubtitle, isTrue);
+    });
+
+    test('改了排序则两个预设 chip 都不亮', () {
+      // 「热门亮着、实际按 RJ 号排」这种错位正是 Q8=A 要消掉的东西
+      const state = OnlineBrowseState(sort: OnlineSort.rjDesc);
+      expect(state.isPopularPreset, isFalse);
+      expect(state.isLatestPreset, isFalse);
+      // 排序不影响字幕筛选的可用性：可用性挂的是来源
+      expect(state.canFilterSubtitle, isTrue);
+    });
+
+    test('停在最新预设时只有最新亮', () {
+      const state = OnlineBrowseState(sort: OnlineSort.latestPreset);
+      expect(state.isLatestPreset, isTrue);
+      expect(state.isPopularPreset, isFalse);
+    });
+
+    test('搜索 / 标签来源下字幕筛选不可用，预设也不高亮', () {
+      const search =
+          OnlineBrowseState(source: OnlineSource.search, keyword: 'ASMR');
+      expect(search.canFilterSubtitle, isFalse);
+      expect(search.isPopularPreset, isFalse);
+
+      final tag = OnlineBrowseState(
+        source: OnlineSource.tag,
+        tag: const OnlineTag(id: 1, name: 'ASMR'),
+      );
+      expect(tag.canFilterSubtitle, isFalse);
+      expect(tag.isPopularPreset, isFalse);
+    });
+
+    test('排序与来源是两个独立维度，可自由组合', () {
+      // 旧枚举把「榜单」和排序搅在一起时，「标签页按 RJ 号倒序」无法表达
+      final state = OnlineBrowseState(
+        source: OnlineSource.tag,
+        sort: OnlineSort.rjDesc,
+        tag: const OnlineTag(id: 1, name: 'ASMR'),
+      );
+      expect(state.source, OnlineSource.tag);
+      expect(state.sort, OnlineSort.rjDesc);
+    });
+  });
 }

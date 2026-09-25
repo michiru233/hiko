@@ -10,15 +10,24 @@ import '../../data/online/online_provider.dart';
 import '../widgets/online_cover.dart';
 import '../widgets/online_detail_panel.dart';
 
+/// 顶部两个预设入口：chip 上的短名 + 它指向的排序项。
+///
+/// 1.92.0 起 chip **只是排序预设**（裁决 Q4=A），不再是「数据来源」——
+/// 两者都走 `/api/works`，区别仅在于把排序切到销量还是发售日期。
+const List<(OnlineSort, String)> _onlinePresets = [
+  (OnlineSort.popularPreset, '热门'),
+  (OnlineSort.latestPreset, '最新'),
+];
+
 /// 在线音声视图（Kikoeru / asmr.one）。
 ///
-/// 三入口：热门（下载量）/ 最新（发售日）/ 搜索。数据完全来自远程服务，
-/// 不进本地库——在线专辑只在播放时构造为内存态 `Album`（见 OnlinePlayback）。
+/// 数据完全来自远程服务，不进本地库——在线专辑只在播放时构造为内存态 `Album`。
 ///
 /// 桌面端：左侧列表 + 右侧详情面板；移动端：详情走全屏页。
 ///
-/// 1.91.0：列表改为**经典分页条**（裁决 Q7=C），替换原先的无限滚动——
-/// 全站 6 万余件，滚动加载既到不了深处也判不清自己在哪一页。
+/// 1.92.0：筛选条改版（裁决 Q4=A / Q6=① / Q7=A / Q8=A / Q11=A）——
+/// 热门/最新 退化为排序预设，「排序」改成一列扁平下拉（方向写进条目名，对齐
+/// asmr.one），「只看带字幕」独立成 chip 且只对全站浏览可用。
 class OnlineScreen extends ConsumerStatefulWidget {
   const OnlineScreen({super.key, required this.isMobile});
 
@@ -50,7 +59,9 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     final state = ref.read(onlineBrowseProvider);
     if (state.works.isEmpty && !state.loading) {
       unawaited(
-        ref.read(onlineBrowseProvider.notifier).loadFeed(OnlineFeed.popular),
+        ref
+            .read(onlineBrowseProvider.notifier)
+            .applyPreset(OnlineSort.popularPreset),
       );
     }
   }
@@ -58,7 +69,9 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
   Future<void> _submitSearch(String value) async {
     final keyword = value.trim();
     if (keyword.isEmpty) {
-      await ref.read(onlineBrowseProvider.notifier).loadFeed(OnlineFeed.popular);
+      await ref
+          .read(onlineBrowseProvider.notifier)
+          .applyPreset(OnlineSort.popularPreset);
       return;
     }
     await ref.read(onlineBrowseProvider.notifier).search(keyword);
@@ -154,15 +167,17 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
         children: [
           Row(
             children: [
-              for (final feed in [OnlineFeed.popular, OnlineFeed.latest])
+              for (final (preset, label) in _onlinePresets)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ChoiceChip(
-                    label: Text(feed.label, style: const TextStyle(fontSize: 12)),
-                    selected: state.feed == feed,
+                    label: Text(label, style: const TextStyle(fontSize: 12)),
+                    selected: state.isPresetActive(preset),
                     visualDensity: VisualDensity.compact,
                     onSelected: (_) => unawaited(
-                      ref.read(onlineBrowseProvider.notifier).loadFeed(feed),
+                      ref
+                          .read(onlineBrowseProvider.notifier)
+                          .applyPreset(preset),
                     ),
                   ),
                 ),
@@ -203,7 +218,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                     setState(() {});
                     unawaited(ref
                         .read(onlineBrowseProvider.notifier)
-                        .loadFeed(OnlineFeed.popular));
+                        .applyPreset(OnlineSort.popularPreset));
                   },
                 ),
           suffixIconConstraints:
@@ -215,13 +230,13 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     );
   }
 
-  /// 两行筛选/状态：热门·最新显示「只看带字幕」；搜索·标签显示排序与当前筛选
+  /// 第二行：字幕筛选（仅全站浏览可用）+ 排序下拉 + 状态行。
+  ///
+  /// 状态行右对齐并留出固定间距 —— 旧版紧贴在左边控件后面，读起来像它的后缀。
   Widget _buildFilterLine(OnlineBrowseState state, ThemeData theme) {
-    final isFeed = state.feed == OnlineFeed.popular ||
-        state.feed == OnlineFeed.latest;
     return Row(
       children: [
-        if (isFeed)
+        if (state.canFilterSubtitle) ...[
           FilterChip(
             label: const Text('只看带字幕', style: TextStyle(fontSize: 11)),
             selected: state.subtitleOnly,
@@ -230,51 +245,48 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
               ref.read(onlineBrowseProvider.notifier).toggleSubtitleOnly(),
             ),
           ),
-        if (!isFeed) ...[
-          PopupMenuButton<OnlineOrder>(
-            tooltip: '排序方式',
-            onSelected: (order) => unawaited(
-              ref.read(onlineBrowseProvider.notifier).setOrder(order),
-            ),
-            itemBuilder: (_) => [
-              for (final order in OnlineOrder.values)
-                PopupMenuItem(
-                  value: order,
-                  child: Text(order.label, style: const TextStyle(fontSize: 12)),
-                ),
-            ],
-            child: Chip(
-              label: Text(
-                '${state.order.label}${state.descending ? ' ↓' : ' ↑'}',
-                style: const TextStyle(fontSize: 11),
-              ),
-              visualDensity: VisualDensity.compact,
-            ),
-          ),
           const SizedBox(width: 8),
         ],
+        _SortMenu(
+          current: state.sort,
+          onSelected: (sort) =>
+              ref.read(onlineBrowseProvider.notifier).setSort(sort),
+        ),
         Expanded(
-          child: Text(
-            _statusLine(state),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 11, color: theme.hintColor),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 16),
+            child: Text(
+              _statusLine(state),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+              style: TextStyle(fontSize: 11, color: theme.hintColor),
+            ),
           ),
         ),
       ],
     );
   }
 
+  /// 状态行文案 = 数据来源 + 当前排序（裁决 Q11=A）。
+  /// 命中预设时用榜单名（热门榜 / 最新上架），否则老实说出「全部作品 · 评价倒序」。
   String _statusLine(OnlineBrowseState state) {
-    if (state.loading) return '正在连接在线服务器…';
-    if (state.error != null) return '';
-    final total = state.totalCount > 0 ? '共 ${formatOnlineCount(state.totalCount)} 件' : '';
-    return switch (state.feed) {
-      OnlineFeed.popular => '热门榜 · $total',
-      OnlineFeed.latest => '最新上架 · $total',
-      OnlineFeed.search => '搜索「${state.keyword}」 · $total',
-      OnlineFeed.tag => '标签「${state.tag?.name ?? ''}」 · $total',
+    // 换页期间旧结果还留在屏上（顶上压着进度条），不算「正在连接」
+    if (state.loading && state.works.isEmpty) return '正在连接在线服务器…';
+    if (state.error != null && state.works.isEmpty) return '';
+    final head = switch (state.source) {
+      OnlineSource.browse => switch (state.sort) {
+          OnlineSort.dlCountDesc => '热门榜',
+          OnlineSort.releaseDesc => '最新上架',
+          final other => '全部作品 · ${other.label}',
+        },
+      OnlineSource.search => '搜索「${state.keyword}」',
+      OnlineSource.tag => '标签「${state.tag?.name ?? ''}」',
     };
+    final total = state.totalCount > 0
+        ? '共 ${formatOnlineCount(state.totalCount)} 件'
+        : '';
+    return total.isEmpty ? head : '$head · $total';
   }
 
   // ---------------------------------------------------------------- 结果
@@ -305,7 +317,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
             Icon(Icons.cloud_off_outlined, size: 30, color: theme.hintColor),
             const SizedBox(height: 10),
             Text(
-              state.feed == OnlineFeed.search ? '没有找到匹配的作品' : '没有拿到数据',
+              state.source == OnlineSource.search ? '没有找到匹配的作品' : '没有拿到数据',
               style: TextStyle(fontSize: 12, color: theme.hintColor),
             ),
           ],
@@ -585,6 +597,76 @@ class _PageJumpFieldState extends State<_PageJumpField> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 排序下拉（裁决 Q6=①）。
+///
+/// 形态对齐 asmr.one 的「排序」菜单：**一条扁平列表，方向写进条目名**
+/// （「销量倒序」而不是「销量」+独立箭头），因此没有「再点一次反转」这种隐藏状态。
+///
+/// 限高是为了安卓：竖屏高度有限，菜单不该顶到天花板。`PopupMenu` 的菜单体本来就是
+/// `SingleChildScrollView`，所以给出 `maxHeight` 即自动获得滚动，不必自己实现。
+/// 当前 5 项在桌面与多数手机上都不会触发滚动，护栏留给以后加条目时用。
+class _SortMenu extends StatelessWidget {
+  const _SortMenu({required this.current, required this.onSelected});
+
+  final OnlineSort current;
+  final Future<void> Function(OnlineSort sort) onSelected;
+
+  /// min(320, 屏高 × 0.45)：小屏按比例缩，大屏封顶
+  static double _menuMaxHeight(BuildContext context) {
+    final screen = MediaQuery.sizeOf(context).height;
+    final scaled = screen * 0.45;
+    return scaled < 320 ? scaled : 320;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return PopupMenuButton<OnlineSort>(
+      tooltip: '排序方式',
+      constraints: BoxConstraints(
+        minWidth: 200,
+        maxWidth: 280,
+        maxHeight: _menuMaxHeight(context),
+      ),
+      onSelected: (sort) => unawaited(onSelected(sort)),
+      itemBuilder: (_) => [
+        for (final sort in OnlineSort.values)
+          PopupMenuItem<OnlineSort>(
+            value: sort,
+            height: 38,
+            child: SizedBox(
+              // 固定宽度让条目里的 Expanded 有确定边界，菜单宽度也就可预期
+              width: 168,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      sort.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                  if (sort == current)
+                    Icon(
+                      Icons.check_rounded,
+                      size: 14,
+                      color: theme.colorScheme.primary,
+                    ),
+                ],
+              ),
+            ),
+          ),
+      ],
+      child: Chip(
+        label: Text('排序：${current.label}', style: const TextStyle(fontSize: 11)),
+        avatar: const Icon(Icons.swap_vert_rounded, size: 13),
+        visualDensity: VisualDensity.compact,
+      ),
     );
   }
 }

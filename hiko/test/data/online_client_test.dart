@@ -495,6 +495,115 @@ void main() {
     });
   });
 
+  group('pathToHash（自动展开正在播放的那一行）', () {
+    // L1 下既有直属音频（a.mp3）又有更深的目录链，用来区分
+    // 「命中直属子文件」与「命中深层文件」两种返回形态
+    List<OnlineNode> buildTree() {
+      final nodes = [
+        {'type': 'audio', 'title': 'root.mp3', 'hash': '1/1', 'duration': 10},
+        {
+          'type': 'folder',
+          'title': 'L1',
+          'children': [
+            {'type': 'audio', 'title': 'a.mp3', 'hash': '1/2', 'duration': 5},
+            {
+              'type': 'folder',
+              'title': 'L2',
+              'children': [
+                {
+                  'type': 'folder',
+                  'title': 'L3',
+                  'children': [
+                    {
+                      'type': 'audio',
+                      'title': 'deep.mp3',
+                      'hash': '1/3',
+                      'duration': 5,
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ];
+      return KikoeruClient.parseTrackNodes(
+        nodes,
+        KikoeruClient.parseTrackTree(nodes),
+      );
+    }
+
+    test('深层文件返回由浅到深的完整目录链', () {
+      // 第一版实现「先递归再检查 children」，深层命中时把上层路径丢了，
+      // 只返回 L1/L2/L3，于是展开集合里缺了父级、目标行照样看不见。
+      expect(pathToHash(buildTree(), '1/3'), ['L1', 'L1/L2', 'L1/L2/L3']);
+    });
+
+    test('文件直属该目录时只返回这一层', () {
+      expect(pathToHash(buildTree(), '1/2'), ['L1']);
+    });
+
+    test('根级文件与不在树里的 hash 都返回空', () {
+      // 根级文件本来就可见，没有目录要展开 —— 空列表不是错误
+      expect(pathToHash(buildTree(), '1/1'), isEmpty);
+      expect(pathToHash(buildTree(), '1657200/1937305'), isEmpty);
+      expect(pathToHash(const [], '1/3'), isEmpty);
+    });
+
+    test('返回的路径键与 folderKeysIn 同一套拼法', () {
+      // 两者拼法一旦漂移，「展开全部」的判定和自动展开就会各说各话
+      final tree = buildTree();
+      final keys = folderKeysIn(tree).toSet();
+      expect(pathToHash(tree, '1/3'), isNotEmpty);
+      for (final path in pathToHash(tree, '1/3')) {
+        expect(keys, contains(path));
+      }
+    });
+  });
+
+  group('OnlineSort（asmr.one 形态的扁平排序菜单）', () {
+    test('5 项、顺序固定、方向写进条目名', () {
+      // 方向写进名字是 1.92.0 的关键取舍：菜单里没有「再点一次反转」
+      // 这种隐藏状态，所以条目名必须自带升降序语义。
+      expect(OnlineSort.values.map((s) => s.label).toList(), [
+        '最新收录',
+        '发售日期倒序',
+        '销量倒序',
+        '评价倒序',
+        'RJ 号倒序',
+      ]);
+    });
+
+    test('order 键全在服务端白名单内且不重复', () {
+      // 白名单外的值实测一律 400（source_id / work_id / release_date …）；
+      // rating 在白名单里但匿名请求返回 0 条（要登录），所以刻意不收。
+      const whitelist = {
+        'create_date',
+        'release',
+        'dl_count',
+        'price',
+        'rate_average_2dp',
+        'review_count',
+        'id',
+      };
+      final keys = OnlineSort.values.map((s) => s.key).toList();
+      expect(keys.toSet().length, keys.length);
+      for (final key in keys) {
+        expect(whitelist, contains(key));
+      }
+      expect(keys, isNot(contains('rating')));
+    });
+
+    test('甲方案 5 项全为倒序，方向是常量不是参数', () {
+      expect(OnlineSort.sortParam, 'desc');
+    });
+
+    test('预设指向：热门 = 销量倒序，最新 = 发售日期倒序', () {
+      expect(OnlineSort.popularPreset, OnlineSort.dlCountDesc);
+      expect(OnlineSort.latestPreset, OnlineSort.releaseDesc);
+    });
+  });
+
   group('播放 URL 反查 hash', () {
     test('流播 URL 与缓存文件两种形态都能反解', () {
       // 流播

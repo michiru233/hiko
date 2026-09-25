@@ -156,8 +156,19 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
   /// 0: 曲目列表, 1: 歌词字幕（裁决 Q12=A）
   int _tabIndex = 0;
 
-  /// 已折叠的目录路径键。默认空集 = 全展开（裁决 Q4=A，忠实呈现服务器内容）
-  final Set<String> _collapsed = <String>{};
+  /// **已展开**的目录路径键。初始为空集 = 全部折叠（裁决 Q9 改判）。
+  ///
+  /// 1.91.0 用的是「已折叠」集合 + 默认全展开；1.92.0 反过来 ——
+  /// 展开这个动作交给用户，比替他猜「哪个目录值得开」更省事，
+  /// 也顺带消掉了「第一个目录没有直属音频」那条边角规则。
+  final Set<String> _expanded = <String>{};
+
+  /// 正在播放的那一行，供自动滚动定位
+  final GlobalKey _activeRowKey = GlobalKey();
+
+  /// 已经自动展开过的曲目 hash。两重作用：
+  /// ① 同一首不会反复触发；② 用户手动把它折回去后，下一帧不会被强行再打开。
+  String? _revealedHash;
 
   @override
   Widget build(BuildContext context) {
@@ -199,8 +210,18 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     final currentHash = _hashOf(currentUrl);
 
     final folderKeys = folderKeysIn(detail.tree);
-    final allCollapsed =
-        folderKeys.isNotEmpty && _collapsed.length >= folderKeys.length;
+    // 用 every 而不是比长度：`_expanded` 里理论上不会留文件夹之外的键，
+    // 但「长度相等 ≠ 全展开」这种不变量没必要靠约定维持。
+    final allExpanded =
+        folderKeys.isNotEmpty && folderKeys.every(_expanded.contains);
+
+    // 裁决 Q2：正在播的那一行必须看得见。默认全折叠之后这条更必要 ——
+    // 切歌切进别的目录，当前行会彻底隐形。
+    _maybeRevealPlaying(
+      detail: detail,
+      isCurrentWork: isCurrentWork,
+      hash: currentHash,
+    );
 
     return SelectionArea(
       child: SingleChildScrollView(
@@ -261,7 +282,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
               ),
             ],
             const SizedBox(height: 20),
-            _buildActions(context, detail, folderKeys, allCollapsed),
+            _buildActions(context, detail, folderKeys, allExpanded),
             const SizedBox(height: 20),
             HikoInfoRow(
               label: '总时长',
@@ -330,7 +351,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     BuildContext context,
     OnlineDetail detail,
     List<String> folderKeys,
-    bool allCollapsed,
+    bool allExpanded,
   ) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final work = detail.work;
@@ -369,22 +390,22 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
           OutlinedButton.icon(
             style: hikoOutlinedPillStyle(isDark: isDark),
             onPressed: () => setState(() {
-              if (allCollapsed) {
-                _collapsed.clear();
+              if (allExpanded) {
+                _expanded.clear();
               } else {
-                _collapsed
+                _expanded
                   ..clear()
                   ..addAll(folderKeys);
               }
             }),
             icon: Icon(
-              allCollapsed
-                  ? Icons.unfold_more_rounded
-                  : Icons.unfold_less_rounded,
+              allExpanded
+                  ? Icons.unfold_less_rounded
+                  : Icons.unfold_more_rounded,
               size: 15,
             ),
             label: Text(
-              allCollapsed ? '展开全部' : '折叠全部',
+              allExpanded ? '折叠全部' : '展开全部',
               style: const TextStyle(fontSize: 11),
             ),
           ),
@@ -450,7 +471,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
         if (node.audioCount == 0) continue;
         final path =
             parentPath.isEmpty ? node.title : '$parentPath/${node.title}';
-        final collapsed = _collapsed.contains(path);
+        final collapsed = !_expanded.contains(path);
         out.add(_FolderRow(
           title: node.title,
           audioCount: node.audioCount,
@@ -458,7 +479,8 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
           depth: depth,
           collapsed: collapsed,
           onToggle: () => setState(() {
-            if (!_collapsed.remove(path)) _collapsed.add(path);
+            // 与 1.91.0 同样的「先试着删，删不掉就加」写法，只是集合反了过来
+            if (!_expanded.remove(path)) _expanded.add(path);
           }),
           onPlay: () => unawaited(
             _playFrom(detail: detail, queue: playableIn(node)),
@@ -534,6 +556,9 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
   }) {
     final active = isCurrentWork && currentHash == track.hash;
     return HikoTrackRow(
+      // 当前行挂全局 key，供「自动滚到正在播放的那一行」定位（裁决 Q2）。
+      // 同一时刻只可能有一行 active，所以这个 key 不会撞。
+      key: active ? _activeRowKey : null,
       index: index,
       name: onlineTrackDisplayName(track.title),
       durationSeconds: track.duration,
@@ -555,6 +580,62 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
         track,
         active: active,
         isPlaying: isPlaying,
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------- 自动展开
+
+  /// 裁决 Q2：正在播放的那一行必须看得见。
+  ///
+  /// 默认全折叠（Q9）之后这条从「锦上添花」变成必需品 —— 切歌切进别的目录时，
+  /// 当前行会彻底隐形，用户根本不知道播的是哪一首。
+  ///
+  /// 只在**当前曲目 hash 变化**时动手（靠 `_revealedHash` 去重），因此：
+  /// ① 同一首不会每帧重复触发；② 用户手动把它折回去后，下一帧不会被强行再打开。
+  /// 展开只**增不减** —— 用户自己开过的目录不会被顺手关掉。
+  void _maybeRevealPlaying({
+    required OnlineDetail detail,
+    required bool isCurrentWork,
+    required String? hash,
+  }) {
+    if (!isCurrentWork || hash == null || _revealedHash == hash) return;
+    // 歌词页时曲目行根本没构建，等用户切回曲目页再说：
+    // 那次 setState 会重新走一遍 build，这里仍会被调用。
+    if (_tabIndex != 0) return;
+    // 先记账再调度：同一帧内 build 可能被调用多次，避免重复排回调
+    _revealedHash = hash;
+
+    final chain = pathToHash(detail.tree, hash);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (chain.isEmpty) {
+        // 文件就躺在作品根下，本来就渲染了，当前帧即可滚动
+        _scrollToActiveRow();
+        return;
+      }
+      setState(() => _expanded.addAll(chain));
+      // 展开要等下一帧 build + layout 才生效，届时目标行才有 RenderObject，
+      // 所以滚动必须再挂一次 post-frame。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _scrollToActiveRow();
+      });
+    });
+  }
+
+  /// 把当前播放行滚进视野（停在视口上三分之一处，上下都留出上下文）。
+  ///
+  /// 行不存在时静默跳过：歌词页未渲染曲目、或服务端把该曲目从树里剔除了，
+  /// 都不该影响别的逻辑。
+  void _scrollToActiveRow() {
+    final target = _activeRowKey.currentContext;
+    if (target == null) return;
+    unawaited(
+      Scrollable.ensureVisible(
+        target,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+        alignment: 0.35,
       ),
     );
   }

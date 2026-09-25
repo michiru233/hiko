@@ -94,15 +94,14 @@ class KikoeruClient {
   Future<OnlineWorkPage> fetchWorks({
     int page = 1,
     int pageSize = defaultPageSize,
-    OnlineOrder order = OnlineOrder.createDate,
-    bool desc = true,
+    OnlineSort sort = OnlineSort.createDate,
     bool subtitleOnly = false,
   }) async {
     final json = await _getObject('/api/works', {
       'page': '$page',
       'pageSize': '$pageSize',
-      'order': order.key,
-      'sort': desc ? 'desc' : 'asc',
+      'order': sort.key,
+      'sort': OnlineSort.sortParam,
       if (subtitleOnly) 'subtitle': '1',
     });
     return OnlineWorkPage.fromJson(json);
@@ -113,8 +112,7 @@ class KikoeruClient {
     String keyword, {
     int page = 1,
     int pageSize = defaultPageSize,
-    OnlineOrder order = OnlineOrder.createDate,
-    bool desc = true,
+    OnlineSort sort = OnlineSort.createDate,
   }) async {
     final kw = keyword.trim();
     if (kw.isEmpty) {
@@ -124,8 +122,8 @@ class KikoeruClient {
     final json = await _getObject('/api/search/${Uri.encodeComponent(kw)}', {
       'page': '$page',
       'pageSize': '$pageSize',
-      'order': order.key,
-      'sort': desc ? 'desc' : 'asc',
+      'order': sort.key,
+      'sort': OnlineSort.sortParam,
     });
     return OnlineWorkPage.fromJson(json);
   }
@@ -135,13 +133,13 @@ class KikoeruClient {
     int tagId, {
     int page = 1,
     int pageSize = defaultPageSize,
-    OnlineOrder order = OnlineOrder.dlCount,
+    OnlineSort sort = OnlineSort.dlCountDesc,
   }) async {
     final json = await _getObject('/api/tags/$tagId/works', {
       'page': '$page',
       'pageSize': '$pageSize',
-      'order': order.key,
-      'sort': 'desc',
+      'order': sort.key,
+      'sort': OnlineSort.sortParam,
     });
     return OnlineWorkPage.fromJson(json);
   }
