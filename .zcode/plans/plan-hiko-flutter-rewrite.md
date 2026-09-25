@@ -1526,3 +1526,12 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
   `flutter build macos --config-only`（照样走迁移，同样失败）
 - 副作用：全局降低了 Xcode 解析 SPM manifest 时的沙箱强度。如需还原：
   `defaults delete com.apple.dt.Xcode IDEPackageSupportDisableManifestSandbox`（其余同理）
+
+**本版待裁决**：
+- 代码层**无新增待裁决**。
+- 环境层留一项给用户定：上述 `IDEPackageSupportDisable*Sandbox` 三个 user default **目前保持开启**
+  （否则本机每次 `flutter build macos` 都会失败）。它降低了 Xcode 解析 SPM manifest 时的沙箱强度，
+  属全局设置。保留 = 构建可用；还原 = 环境恢复原状但构建需另想办法（例如改用 CocoaPods 回退）。**待裁决。**
+
+Release：https://github.com/michiru233/hiko/releases/tag/v1.90.0（`hiko-v1.90.0-macos.zip` 32 MB + `hiko-v1.90.0-android.apk` 64 MB）。
+提交：`5e53bba`（feat）+ `4330944`（docs）。
