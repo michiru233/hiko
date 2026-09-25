@@ -56,7 +56,15 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
    正确姿势：`env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy NO_PROXY=localhost,127.0.0.1 <命令>`。
    另外 `flutter build macos` 需写 `~/Library/Developer/Xcode/DerivedData`（工作区外），沙箱会拦，需放行；
    且放行标志在后台任务里不生效，必须前台跑。
-9. 验证基线（1.88.0 后）：`flutter test` 292 passed / 2 skipped；`flutter analyze` 39 条既有 lint 基线，改动文件应 0 新增 error。
+8b. ⚠️ **`flutter build macos` 报 `sandbox-exec: sandbox_apply: Operation not permitted`**（2026-09-25 新坑，
+   与代理无关）：本机 macOS 27 + Xcode 27 已不允许应用**限制性** sandbox profile
+   （`sandbox-exec -p '(version 1)(deny default)'` 必挂，`allow default` 能过）。
+   flutter 硬编码 `xcrun xcodebuild -resolvePackageDependencies` 解析 SPM manifest，撞上即失败。
+   **解法**（两个 defaults 域都要写）：
+   `for d in com.apple.dt.xcodebuild com.apple.dt.Xcode; do for k in IDEPackageSupportDisableManifestSandbox IDEPackageSupportDisablePluginExecutionSandbox IDEPackageSupportDisablePackageSandbox; do defaults write $d $k -bool YES; done; done`
+   已排除无效路径：`XCODE_XCCONFIG_FILE`（键属命令行参数级，非构建设置）、`--config-only`（照样跑迁移）、
+   单独手跑 resolve（flutter 会用不同 container 重新解析）。
+9. 验证基线（1.90.0 后）：`flutter test` 337 passed / 2 skipped；`flutter analyze` 39 条既有 lint 基线，改动文件应 0 新增 error。
 9. 环境：Flutter 3.47.0 / Dart 3.13.0（/opt/homebrew/bin/flutter）；Android 模拟器 AVD 名 `kikoeru_test`；
    SDK `/opt/homebrew/share/android-commandlinetools`，JDK `/opt/homebrew/opt/openjdk@21`。
 
