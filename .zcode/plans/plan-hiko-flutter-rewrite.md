@@ -1650,3 +1650,124 @@ Release：https://github.com/michiru233/hiko/releases/tag/v1.90.0（`hiko-v1.90.
 Release：https://github.com/michiru233/hiko/releases/tag/v1.91.0（`hiko-v1.91.0-macos.zip` 32 MB + `hiko-v1.91.0-android.apk` 64 MB）。
 提交：`9f89239`（feat）。构建坑沿用 1.90.0 的结论（摘代理 + `IDEPackageSupportDisable*Sandbox`），本轮 `flutter build macos` 一次通过。
 
+## 1.92.0 详情页目录默认全折叠 + 列表筛选改下拉菜单（2026-09-25）
+
+**动机**：用户在 1.91.0 上实测（macOS，Android 未实机验证）提出两项不满，并明确「图里的筛选方案不是都需要的，你给出几个，我来选」：
+1. 专辑详情页的文件夹**默认只展开一个**，其余折叠（1.91.0 是默认全展开，几十个目录一起铺开太吵）
+2. 筛选改成**下拉菜单**，形态仿 asmr.one 网页版
+
+**两轮 grilling 裁决（Q1–Q11，全部落地）**：
+
+| # | 裁决 |
+|---|---|
+| Q1 | **A** 只展开第一个顶层目录，其子目录也折叠 |
+| Q2 | **做** 切歌时自动展开该曲所在目录链 + 滚动到可见 |
+| Q3 | 按推荐 —— 换作品重置，不留跨作品记忆 |
+| Q4 | **A** 热门/最新保留为 chip，但**降级为排序预设**（点击 = 切排序），之后可自由改排序 |
+| Q5 | **甲** 排序项 5 个（最新收录 / 发售日期倒序 / 销量倒序 / 评价倒序 / RJ 号倒序） |
+| Q6 | **①** 照搬 asmr.one 单列扁平菜单，**但限高可滚动**（考虑安卓屏高） |
+| Q7 | **A** 「只看带字幕」保持独立 toggle chip |
+| Q8 | **A** 改了排序则两个 chip **都不高亮**；「只看带字幕」可用性改挂**数据来源** |
+| Q9 | **改判** —— Q1 的「第一个顶层目录没有直属音频」边角规则**太麻烦**，改成**默认全折叠** |
+| Q10 | **A** 本版不做标签筛选下拉 |
+| Q11 | **A** 保留状态行，文案随「来源 + 排序」走 |
+| 追加 | 状态行**不要太紧贴左边的文字**（原左对齐紧贴前一个控件） |
+
+**Kikoeru API 补测结论（本轮新增）**：
+- 排序键白名单实测可用的有 `create_date` / `release` / `dl_count` / `price` / `rate_average_2dp` /
+  `review_count` / `id` / `rating`；**白名单外一律 400**（`source_id` / `work_id` / `rj` / `source` /
+  `release_date` / `created_at` / `dl_count_asc` / `score` … 全 400）。
+- **`rating` 匿名请求返回 0 条**（要登录）→ Hiko 不做账号体系 → **刻意不收进枚举**
+  （对应 asmr.one 菜单上的「我的评价倒序」）。
+- **`order=id` 对 RJ 作品数值上就等于 RJ 号**（`id=1657200` ↔ `RJ01657200`）；近年的 BJ/VJ 作品被塞进
+  `1000000xx` 段，所以这一项约等于「DLsite 上新顺序」，与「本站最近收录」不是一回事。
+- **`create_date` 与 `release` 的 desc 第一页完全相同**（8 条逐条一致），asc 只差两条；
+  两者都留，因为深层会分叉。
+- `/api/search/{kw}` **支持全部排序键**（total 20645）；`/api/tags/{id}/works` 同样支持 —— 且**修掉了一个既有 bug**：
+  该端点此前把 `sort` 写死成 `desc`，升序静默失效。
+- **`PopupMenuButton.constraints` 确实存在**（SDK `popup_menu.dart:669/676/760`），且菜单体本身就是
+  `SingleChildScrollView`（`:771`）→ 给 `maxHeight` **自动获得滚动**，无需自己实现。
+  菜单宽度由 `IntrinsicWidth(stepWidth: _kMenuWidthStep)` 决定，所以条目内容包一层
+  `SizedBox(width: 168)` 让宽度可预期。
+
+**改动文件**：
+- `lib/data/online/online_models.dart`：
+  - **删掉 `OnlineOrder` 枚举**（6 维 + 独立 `descending`），换成 `OnlineSort` 5 项 ——
+    **方向写进条目名**（「销量倒序」而不是「销量」+ 一个独立升降序开关），
+    整份菜单是扁平列表、没有「再点一次反转」这种隐藏状态。5 项全为倒序，故不设方向字段，
+    统一用 `static const sortParam = 'desc'`。另带 `popularPreset` / `latestPreset` 两个预设常量。
+  - 新增 `pathToHash(nodes, hash, [parent])`：返回从根到该文件之间的**目录路径链**（由浅到深）。
+    **第一版写成「先递归再检查 children」导致深层命中时丢了上层路径**，已重写为
+    「先查本层 `here` → 命中返回 `[path]`；否则递归，命中返回 `[path, ...deeper]`」。
+- `lib/data/online/kikoeru_client.dart`：`fetchWorks` / `searchWorks` / `fetchWorksByTag`
+  三个方法签名从 `OnlineOrder order / bool desc` 改为 `OnlineSort sort`；3 处统一 `'sort': OnlineSort.sortParam`，
+  并修掉 tags 端点写死 `'desc'` 的 bug。
+- `lib/data/online/online_provider.dart`（**状态机重构**）：
+  - `enum OnlineFeed {popular, latest, search, tag}` **删除** → `enum OnlineSource {browse, search, tag}`
+    （只表达数据来源，不含排序）。旧枚举把「榜单」和排序搅在一起，于是「热门榜按价格排序」
+    这种自相矛盾的状态在类型上就可表达 —— 拆开后这条约束随之消失。
+  - `OnlineBrowseState`：`feed` / `order` / `descending` → `source` + `sort`（默认 `popularPreset`）；
+    新增派生量 `canFilterSubtitle`（挂**来源**）、`isPresetActive(preset)`、`isPopularPreset` / `isLatestPreset`
+  - `OnlineBrowseNotifier`：删 `loadFeed` / `setOrder`；新增 `applyPreset`（切 source+sort、回第 1 页，
+    **刻意不清 `subtitleOnly`** —— 与来源正交）与 `setSort`（保持来源、回第 1 页、**旧结果留屏不闪白**）；
+    `search` / `selectTag` 现在会 `subtitleOnly: false`（离开 browse 就清掉「看不见的筛选」）；
+    `toggleSubtitleOnly` 守卫改挂 `canFilterSubtitle`；`_fetch` 按 `state.source` 分发、三支都传 `sort`
+- `lib/ui/screens/online_screen.dart`：
+  - 新增顶层常量 `_onlinePresets = [(popularPreset,'热门'), (latestPreset,'最新')]`，
+    顶部 chip 循环改为预设驱动（`selected: state.isPresetActive(preset)`）
+  - 新增 **`_SortMenu`**（Q6=①）：`PopupMenuButton<OnlineSort>` + `Chip('排序：${label}')`，
+    `constraints` 的 `maxHeight` 取 `min(320, 屏高 × 0.45)` —— 小屏按比例缩、大屏封顶，
+    菜单体自带滚动；条目宽 `SizedBox(width: 168)`，当前项右侧打勾
+  - `_buildFilterLine` 重写：`canFilterSubtitle` 才显示「只看带字幕」chip + `_SortMenu`；
+    状态行改 `textAlign: TextAlign.right` + `EdgeInsets.only(left: 16)`（用户追加的间距要求）
+  - `_statusLine` 重写（Q11=A）：按 `source` × `sort` 出文案（`dlCountDesc` → 「热门榜」、
+    `releaseDesc` → 「最新上架」、其余 → 「全部作品 · ${label}」；搜索/标签出「搜索「kw」」/「标签「name」」）
+- `lib/ui/widgets/online_detail_panel.dart`：
+  - `Set<String> _collapsed` → `Set<String> _expanded`，**初始空集 = 全折叠**（Q9 改判）。
+    `_walkNodes` 的 `collapsed = !_expanded.contains(path)`，toggle 仍是「先试着删，删不掉就加」；
+    `_buildActions` 的按钮语义翻转为 `allExpanded ? 折叠全部 : 展开全部`，
+    `allExpanded` 判定用 `folderKeys.every(_expanded.contains)` 而不是比长度
+  - 新增 `_maybeRevealPlaying`（Q2）：只在**当前曲目 hash 变化**时动手（`_revealedHash` 去重 →
+    ① 同一首不每帧重复触发 ② 用户手动折回去后不会被强行再打开），展开**只增不减**；
+    歌词 Tab 下直接 return，等切回曲目页的 setState 再走一遍
+  - 新增 `_scrollToActiveRow`：`_activeRowKey.currentContext` + `Scrollable.ensureVisible(alignment: 0.35)`
+  - `_trackRow` 给 active 行挂 `_activeRowKey`（同一时刻只可能一行 active，key 不会撞）
+- `pubspec.yaml`：`1.91.0+101 → 1.92.0+102`
+
+**关键设计决策**：
+- **预设 chip 退化为「排序快捷方式」**：点了「最新」之后用户仍可换成「销量倒序」，此时两个 chip
+  **都不高亮**（`isPresetActive` 同时校验 `source == browse && sort == preset`）——
+  否则会出现「热门亮着、实际按评价排」的错位。
+- **`subtitleOnly` 与来源正交**：`applyPreset` 不动它（切榜不该悄悄关掉筛选），
+  但 `search` / `selectTag` 会清掉它（搜索/标签下这个 chip 是隐藏的，留着会变成「看不见的筛选」）。
+- **展开只增不减**：自动展开不会顺手关掉用户自己开的目录，避免「我刚打开就被你合上」。
+- **两跳 post-frame**：`_maybeRevealPlaying` 在 build 里被调用，不能直接 setState，
+  所以排 post-frame → setState → 再排一个 post-frame 才 `ensureVisible`
+  （展开要等下一帧 build+layout 生效，届时目标行才有 RenderObject）。
+
+**测试**：新增 18 条 —— `test/data/online_client_test.dart` 补 `pathToHash`（4 条：深层链完整 /
+直属子文件只返一层 / 根级与不存在的 hash 返空 / 路径键与 `folderKeysIn` 同拼法）与 `OnlineSort`
+（4 条：5 项顺序与名字 / order 键全在白名单内且不重复 / 方向是常量 / 预设指向）；
+`test/data/online_detail_test.dart` 补「来源 × 排序解耦」5 条；新增
+`test/ui/online_detail_fold_test.dart` 5 条 widget 回归锁（默认全折叠 / 点目录只开它自己 /
+展开全部↔折叠全部 / 播放曲目自动展开且滚到可见 / 手动折回后不被强行再打开）。
+全量 `flutter test` → **379 passed / 2 skipped**（基线 361/2，净增 18，0 回归）；
+`flutter analyze` **39 条既有 lint，新增代码 0 error / 0 新增 lint**。
+
+**踩坑记录**：widget 测试里滚动断言首版失败（`pixels` 恒 0）。根因不是逻辑 ——
+`AnimationController` 的 ticker **首帧只是在打点（elapsed = 0）**，动画要再走一帧才真正位移，
+所以 `ensureVisible(duration: 280ms)` 后需要两次 `pump(duration)` 起步。已写进测试注释。
+
+版本 1.92.0+102。
+
+**本版待裁决**：
+- 1.91.0 遗留的三项**仍未裁决**：① 在线曲目行点击是否跳全屏播放页；② 移动端无 hover →
+  目录行「播放该目录」在触屏上没有入口；③ `IDEPackageSupportDisable*Sandbox` 三个 user default 保持开启。
+- 本版新增可选项（未做，Q10 已明确本轮不做）：**标签筛选下拉**、asmr.one 菜单里的「顺序」变体
+  （发售日期顺序 / 价格顺序 / RJ 号顺序）。将来要加就把方向加回 `OnlineSort` 枚举，别在调用点散落魔法值。
+- Android 端仍未实机验证：`_SortMenu` 的 `min(320, 屏高 × 0.45)` 限高在窄屏/横屏的实际观感、
+  以及默认全折叠后「展开全部」按钮在小屏上的换行表现，需要在 `kikoeru_test` 模拟器上过一遍。
+
+Release：https://github.com/michiru233/hiko/releases/tag/v1.92.0（`hiko-v1.92.0-macos.zip` 32 MB + `hiko-v1.92.0-android.apk` 64 MB）。
+构建坑沿用 1.90.0 / 1.91.0 的结论（摘代理 + `IDEPackageSupportDisable*Sandbox` + 沙箱外前台跑），本轮双端一次通过。
+

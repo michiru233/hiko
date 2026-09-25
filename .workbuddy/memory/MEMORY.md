@@ -3,7 +3,7 @@
 ## 定位
 Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter 重写版，`hiko/` 为唯一主线；
 仓库根目录的 Electron + Capacitor 旧代码仅作参考，不再新增功能。GitHub: https://github.com/michiru233/hiko
-当前版本 1.86.0+95（2026-09-14）。平台：macOS（发布）/ Windows（需 Windows 机构建）/ Android（已恢复开发）。
+当前版本 1.92.0+102（2026-09-25）。平台：macOS（发布）/ Windows（需 Windows 机构建）/ Android（已恢复开发）。
 
 ## 架构速查（hiko/lib）
 - `models/` Album / Track / CategoryItem —— Album 是核心，含 played、resumeTrackIndex/Position、rating、tags、genre、favorite、localCover。
@@ -64,9 +64,31 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
    `for d in com.apple.dt.xcodebuild com.apple.dt.Xcode; do for k in IDEPackageSupportDisableManifestSandbox IDEPackageSupportDisablePluginExecutionSandbox IDEPackageSupportDisablePackageSandbox; do defaults write $d $k -bool YES; done; done`
    已排除无效路径：`XCODE_XCCONFIG_FILE`（键属命令行参数级，非构建设置）、`--config-only`（照样跑迁移）、
    单独手跑 resolve（flutter 会用不同 container 重新解析）。
-9. 验证基线（1.90.0 后）：`flutter test` 337 passed / 2 skipped；`flutter analyze` 39 条既有 lint 基线，改动文件应 0 新增 error。
-9. 环境：Flutter 3.47.0 / Dart 3.13.0（/opt/homebrew/bin/flutter）；Android 模拟器 AVD 名 `kikoeru_test`；
+9. 验证基线（1.92.0 后）：`flutter test` **379 passed / 2 skipped**；`flutter analyze` **39 条**既有 lint 基线，改动文件应 0 新增 error。
+10. 环境：Flutter 3.47.0 / Dart 3.13.0（/opt/homebrew/bin/flutter）；Android 模拟器 AVD 名 `kikoeru_test`；
    SDK `/opt/homebrew/share/android-commandlinetools`，JDK `/opt/homebrew/opt/openjdk@21`。
+
+## 在线（Kikoeru / asmr.one）模块（1.90.0 起）
+- 代码全在 `lib/data/online/` + `lib/ui/screens/online_screen.dart` + `lib/ui/widgets/online_{cover,detail_panel}.dart`。
+  1.91.0 起本地 `DetailDrawer` 与在线详情页共用视觉件 **`lib/ui/widgets/detail_kit.dart`**，改样式只改这里。
+- **API 契约（实测，别猜）**：
+  - 排序 `order` 走白名单：`create_date` / `release` / `dl_count` / `price` / `rate_average_2dp` /
+    `review_count` / `id` / `rating`；**白名单外一律 400**。`rating` 匿名返回 0 条（要登录）→ 不收。
+  - **`order=id` 对 RJ 作品数值上 = RJ 号**（BJ/VJ 作品在 `1000000xx` 段）。
+  - `create_date` 与 `release` 的 desc 首页完全相同，asc 才分叉。
+  - `/api/search/{kw}` 与 `/api/tags/{id}/works` **都支持全部排序键**（1.92.0 修掉了 tags 写死 `desc` 的 bug）。
+  - **`api.asmr.one/works/{id}` = 404**，网页在 `www.asmr.one` → 走 `onlineWorkPageUrl` 域名映射。
+  - 目录深度 0~3 层且同作品内会混；folder 节点**只有 `type` + `title`**（项目数/时长是前端聚合的）；
+    audio 节点**有 `duration`（浮点秒）**。`pageSize` 支持到 500，全站约 6.2 万件。
+- **状态机**：`OnlineSource{browse,search,tag}` × `OnlineSort`（5 项扁平菜单，方向写进条目名）**正交**；
+  「热门/最新」只是 `OnlineSort` 的两个预设 chip（点了可再改排序，改了就都不高亮）；
+  「只看带字幕」可用性挂**来源**（`canFilterSubtitle`），`applyPreset` 不清它、`search/selectTag` 清它。
+- **详情页目录**：默认**全折叠**（`_expanded` 初始空集），正在播放的曲目自动展开其目录链
+  （`pathToHash` + `_revealedHash` 去重，展开只增不减）并 `Scrollable.ensureVisible(alignment: 0.35)`。
+- **`PopupMenuButton.constraints` 给 `maxHeight` 即自动获得滚动**（菜单体本身是 `SingleChildScrollView`）；
+  菜单宽度由 `IntrinsicWidth(stepWidth)` 决定，条目包 `SizedBox(width: 168)` 才可预期。
+- **widget 测试坑**：`AnimationController` 的 ticker **首帧只打点（elapsed=0）**，
+  `ensureVisible` 后要两次 `pump(duration)` 才看到位移。
 
 ## 既有待裁决（未消除）
 - 1.42.0 深色主题下卡片 tag 颜色写死，对比度可能偏浅。
@@ -75,3 +97,7 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
 - Mimosa 历史 high 12 项（旧 Electron main.js/server.js、Android ImportScanner SHA-1、测试脚本 path-traversal），非本版引入，未裁决。
 - 1.87.0 已知权衡：`・`(U+30FB) 既是多声优分隔符也是外国人名内部字符（`エマ・ワトソン`），
   用户裁决**照拆、接受误伤**。U+00B7（`·`）刻意不在分隔符集合内（既有单测钉死）。
+- 1.91.0 遗留（仍未裁决）：① 在线曲目行点击是否跳全屏播放页（现照搬本地 1.79 行为）；
+  ② 移动端无 hover → 目录行「播放该目录」入口在触屏上不存在；③ 移动端分页条窄屏表现未验证。
+- 1.92.0 遗留：Android 未实机验证 `_SortMenu` 限高（`min(320, 屏高 × 0.45)`）与默认全折叠后的按钮换行；
+  标签筛选下拉、asmr.one 的「顺序」变体本轮明确不做（要加就把方向加回 `OnlineSort` 枚举）。
