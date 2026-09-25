@@ -1647,3 +1647,6 @@ Release：https://github.com/michiru233/hiko/releases/tag/v1.90.0（`hiko-v1.90.
   （移动端没有 hover）需要在模拟器上过一遍。目录行的「hover 浮出播放图标」在触屏上恒定不显示，
   移动端实际只能靠点击折叠三角展开/收起，**播放该目录需要另找入口**（当前移动端无此入口）。**待裁决。**
 
+Release：https://github.com/michiru233/hiko/releases/tag/v1.91.0（`hiko-v1.91.0-macos.zip` 32 MB + `hiko-v1.91.0-android.apk` 64 MB）。
+提交：`9f89239`（feat）。构建坑沿用 1.90.0 的结论（摘代理 + `IDEPackageSupportDisable*Sandbox`），本轮 `flutter build macos` 一次通过。
+
