@@ -7,7 +7,6 @@ import '../../data/library_provider.dart';
 import '../../data/library_reorganizer.dart';
 import '../../lyrics/lyrics_controller.dart';
 import '../../models/album.dart';
-import '../../models/track.dart';
 import '../../playback/playback_controller.dart';
 import '../../utils/rj.dart';
 import '../../utils/person_names.dart';
@@ -17,6 +16,7 @@ import '../lyrics/drawer_lyrics_view.dart';
 import '../transitions/fullscreen_player_route.dart';
 import '../theme.dart';
 import 'category_dialog.dart';
+import 'detail_kit.dart';
 import 'rating_dialog.dart';
 import 'toast.dart';
 
@@ -46,10 +46,8 @@ class DetailDrawer extends ConsumerStatefulWidget {
 class _DetailDrawerState extends ConsumerState<DetailDrawer> {
   int _selectedTabIndex = 0; // 0: 曲目列表, 1: 歌词字幕
 
-  static const _circleColor = Color(0xFFB39DDB); // 社团紫（1.77 同色）
-  static const _voiceColor = Color(0xFF90CAF9); // 声优蓝
-
-  /// 1.81 社团/声优分色胶囊行：点选应用/切换筛选，点已选中胶囊取消（抽屉不关，列表同屏）
+  /// 1.81 社团/声优分色胶囊行：点选应用/切换筛选，点已选中胶囊取消（抽屉不关，列表同屏）。
+  /// 视觉件本体在 detail_kit（与在线详情共用），此处只负责交互。
   Widget _buildPersonPills(Album album, ThemeData theme) {
     final circle = album.albumArtist.trim();
     final voices = splitVoiceNames(album.artist);
@@ -57,28 +55,12 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
     Widget pill(String kind, String name, Color color) {
       final selected =
           widget.personFilterKind == kind && widget.personFilterName == name;
-      return InkWell(
+      return HikoPersonPill(
+        name: name,
+        color: color,
+        selected: selected,
         onTap: () => widget.onPersonFilter
             ?.call(selected ? null : kind, selected ? null : name),
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: selected ? 0.32 : 0.15),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: color.withValues(alpha: selected ? 0.7 : 0.4),
-            ),
-          ),
-          child: Text(
-            name,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              color: color,
-            ),
-          ),
-        ),
       );
     }
 
@@ -88,8 +70,8 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
         spacing: 8,
         runSpacing: 8,
         children: [
-          if (circle.isNotEmpty) pill('circle', circle, _circleColor),
-          for (final name in voices) pill('voice', name, _voiceColor),
+          if (circle.isNotEmpty) pill('circle', circle, hikoCircleColor),
+          for (final name in voices) pill('voice', name, hikoVoiceColor),
         ],
       ),
     );
@@ -197,50 +179,21 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                       ),
                     ),
                     const SizedBox(height: 22),
-                    Row(
-                      children: [
-                        InkWell(
-                          onTap: () async {
-                            final chosen = await showSelectCategoryDialog(
-                              context,
-                              currentGenre: album.genre,
-                              albumCount: 1,
-                            );
-                            if (chosen != null && chosen != album.genre) {
-                              await ref
-                                  .read(libraryProvider.notifier)
-                                  .updateAlbum(album.id, (a) => a.copyWith(genre: chosen));
-                            }
-                          },
-                          borderRadius: BorderRadius.circular(999),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: theme.colorScheme.primary.withValues(alpha: 0.25),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  '${album.genre.toUpperCase()} · ALBUM ${album.id.padLeft(2, '0')}',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    letterSpacing: 1.1,
-                                    fontWeight: FontWeight.w700,
-                                    color: theme.colorScheme.primary,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Icon(Icons.arrow_drop_down, size: 14, color: theme.colorScheme.primary),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+                    HikoEyebrowPill(
+                      label:
+                          '${album.genre.toUpperCase()} · ALBUM ${album.id.padLeft(2, '0')}',
+                      onTap: () async {
+                        final chosen = await showSelectCategoryDialog(
+                          context,
+                          currentGenre: album.genre,
+                          albumCount: 1,
+                        );
+                        if (chosen != null && chosen != album.genre) {
+                          await ref
+                              .read(libraryProvider.notifier)
+                              .updateAlbum(album.id, (a) => a.copyWith(genre: chosen));
+                        }
+                      },
                     ),
                     const SizedBox(height: 10),
                     Text(
@@ -262,26 +215,13 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                       runSpacing: 8,
                       children: [
                         FilledButton.icon(
-                          style: FilledButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-                            elevation: 0,
-                          ),
+                          style: hikoFilledPillStyle(),
                           onPressed: () => ref.read(playbackProvider.notifier).playAlbum(album, index: 0),
                           icon: const Icon(Icons.play_arrow_rounded, size: 18),
                           label: const Text('从头播放', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                         ),
                         OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-                            side: BorderSide(
-                              color: isDark ? HikoColors.darkGlassBorder : HikoColors.lightGlassBorderSubtle,
-                            ),
-                            backgroundColor: isDark
-                                ? Colors.white.withValues(alpha: 0.05)
-                                : Colors.black.withValues(alpha: 0.03),
-                          ),
+                          style: hikoOutlinedPillStyle(isDark: isDark),
                           onPressed: () async {
                             await ref
                                 .read(libraryProvider.notifier)
@@ -290,21 +230,12 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                           icon: Icon(
                             album.favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                             size: 15,
-                            color: album.favorite ? const Color(0xFFD34C44) : null,
+                            color: album.favorite ? hikoFavoriteColor : null,
                           ),
                           label: Text(album.favorite ? '已收藏' : '收藏', style: const TextStyle(fontSize: 11)),
                         ),
                         OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-                            side: BorderSide(
-                              color: isDark ? HikoColors.darkGlassBorder : HikoColors.lightGlassBorderSubtle,
-                            ),
-                            backgroundColor: isDark
-                                ? Colors.white.withValues(alpha: 0.05)
-                                : Colors.black.withValues(alpha: 0.03),
-                          ),
+                          style: hikoOutlinedPillStyle(isDark: isDark),
                           onPressed: () async {
                             final rating = await showRatingDialog(
                               context,
@@ -318,7 +249,7 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                           icon: Icon(
                             album.rating > 0 ? Icons.star_rounded : Icons.star_outline_rounded,
                             size: 15,
-                            color: album.rating > 0 ? const Color(0xFFE8B33C) : null,
+                            color: album.rating > 0 ? hikoRatingColor : null,
                           ),
                           label: Text(
                             album.rating > 0 ? '${album.rating} 星' : '未评分',
@@ -326,16 +257,7 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                           ),
                         ),
                         OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-                            side: BorderSide(
-                              color: isDark ? HikoColors.darkGlassBorder : HikoColors.lightGlassBorderSubtle,
-                            ),
-                            backgroundColor: isDark
-                                ? Colors.white.withValues(alpha: 0.05)
-                                : Colors.black.withValues(alpha: 0.03),
-                          ),
+                          style: hikoOutlinedPillStyle(isDark: isDark),
                           onPressed: () async {
                             try {
                               final result = await ref
@@ -367,8 +289,8 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                     ),
                     const SizedBox(height: 20),
                     // 信息行
-                    _InfoRow(label: '总时长', value: '${album.tracks.length} 首${album.totalDuration > 0 ? ' · ${formatDuration(album.totalDuration)}' : ''}'),
-                    _InfoRow(label: '完成进度', value: '$progress%'),
+                    HikoInfoRow(label: '总时长', value: '${album.tracks.length} 首${album.totalDuration > 0 ? ' · ${formatDuration(album.totalDuration)}' : ''}'),
+                    HikoInfoRow(label: '完成进度', value: '$progress%'),
                     // DLsite 标签
                     if (album.tags.isNotEmpty) ...[
                       const SizedBox(height: 12),
@@ -376,15 +298,7 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                         spacing: 6,
                         runSpacing: 6,
                         children: [
-                          for (final t in album.tags)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE3F4F2).withValues(alpha: isDark ? 0.2 : 0.8),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(t, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w500, color: Color(0xFF2E8A8F))),
-                            ),
+                          for (final t in album.tags) HikoTagChip(tag: t),
                         ],
                       ),
                     ],
@@ -397,45 +311,29 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                     ],
                     const SizedBox(height: 20),
                     // 双 Tab 导航：曲目列表 vs 歌词字幕（胶囊分段开关）
-                    Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isDark ? HikoColors.darkGlassBorderSubtle : HikoColors.lightGlassBorderSubtle,
-                        ),
+                    HikoSegmentedTabs(
+                      left: HikoTabButton(
+                        label: '曲目列表 (${album.tracks.length})',
+                        icon: Icons.format_list_bulleted_rounded,
+                        selected: _selectedTabIndex == 0,
+                        onTap: () => setState(() => _selectedTabIndex = 0),
                       ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: _TabButton(
-                              label: '曲目列表 (${album.tracks.length})',
-                              icon: Icons.format_list_bulleted_rounded,
-                              selected: _selectedTabIndex == 0,
-                              onTap: () => setState(() => _selectedTabIndex = 0),
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: _TabButton(
-                              label: '歌词字幕',
-                              icon: Icons.subtitles_rounded,
-                              hasBadge: isCurrentAlbum && hasLyrics,
-                              selected: _selectedTabIndex == 1,
-                              onTap: () => setState(() => _selectedTabIndex = 1),
-                            ),
-                          ),
-                        ],
+                      right: HikoTabButton(
+                        label: '歌词字幕',
+                        icon: Icons.subtitles_rounded,
+                        hasBadge: isCurrentAlbum && hasLyrics,
+                        selected: _selectedTabIndex == 1,
+                        onTap: () => setState(() => _selectedTabIndex = 1),
                       ),
                     ),
                     const SizedBox(height: 14),
                     // Tab 内容切换
                     if (_selectedTabIndex == 0) ...[
                       for (var i = 0; i < album.tracks.length; i++)
-                        _TrackRow(
-                          track: album.tracks[i],
-                          index: i,
+                        HikoTrackRow(
+                          index: i + 1,
+                          name: album.tracks[i].name,
+                          durationSeconds: album.tracks[i].duration,
                           active: isCurrentAlbum && currentIndex == i,
                           playing: isCurrentAlbum && currentIndex == i && isPlaying,
                           onTap: () {
@@ -482,217 +380,6 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _TabButton extends StatelessWidget {
-  const _TabButton({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-    this.hasBadge = false,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final bool hasBadge;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final primaryColor = theme.colorScheme.primary;
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        decoration: BoxDecoration(
-          color: selected
-              ? (isDark ? Colors.white.withValues(alpha: 0.12) : Colors.white)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 4,
-                    offset: const Offset(0, 1),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 13,
-              color: selected ? primaryColor : (isDark ? Colors.white60 : Colors.black54),
-            ),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected
-                    ? (isDark ? Colors.white : primaryColor)
-                    : (isDark ? Colors.white60 : Colors.black54),
-              ),
-            ),
-            if (hasBadge) ...[
-              const SizedBox(width: 4),
-              Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: primaryColor,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  const _InfoRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: theme.dividerColor)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: TextStyle(fontSize: 11, color: theme.hintColor)),
-          Text(value, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
-}
-
-class _TrackRow extends StatelessWidget {
-  const _TrackRow({
-    required this.track,
-    required this.index,
-    required this.active,
-    required this.playing,
-    required this.onTap,
-  });
-
-  final Track track;
-  final int index;
-  final bool active;
-  final bool playing;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final color = active ? theme.colorScheme.primary : theme.colorScheme.onSurface;
-    return InkWell(
-      onTap: onTap,
-      mouseCursor: SystemMouseCursors.click,
-      borderRadius: BorderRadius.circular(10),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-        margin: const EdgeInsets.symmetric(vertical: 2),
-        decoration: BoxDecoration(
-          color: active
-              ? theme.colorScheme.primary.withValues(alpha: isDark ? 0.16 : 0.08)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-          border: active
-              ? Border.all(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                  width: 1,
-                )
-              : null,
-        ),
-        child: Row(
-          children: [
-            InkWell(
-              onTap: onTap,
-              mouseCursor: SystemMouseCursors.click,
-              borderRadius: BorderRadius.circular(13),
-              child: Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: active
-                      ? theme.colorScheme.primary
-                      : (isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05)),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  // Material 图标：与播放条统一，避免文字符号在 Android 字体渲染异常
-                  child: Icon(
-                    playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                    size: 13,
-                    color: active ? theme.colorScheme.onPrimary : theme.hintColor,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            SizedBox(
-              width: 20,
-              child: Text(
-                (index + 1).toString().padLeft(2, '0'),
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: active ? theme.colorScheme.primary : theme.hintColor,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                track.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: color,
-                  fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-            ),
-            Text(
-              track.duration > 0 ? formatTime(track.duration) : '--:--',
-              style: TextStyle(
-                fontSize: 10,
-                color: active ? theme.colorScheme.primary : theme.hintColor,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

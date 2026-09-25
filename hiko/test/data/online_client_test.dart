@@ -259,6 +259,20 @@ void main() {
       expect(root.relativePath, '');
     });
 
+    test('duration 字段（浮点秒）被解析，缺失/字幕文件为 0', () {
+      // 1.91.0：原先只取了 size，导致在线详情页曲目行没有时长可显示。
+      // 服务端给的是浮点（实测 291.4832），不是整数。
+      final tracks = KikoeruClient.parseTrackTree([
+        {'type': 'audio', 'title': 'a.mp3', 'hash': '1/1', 'duration': 291.4832},
+        {'type': 'audio', 'title': 'b.mp3', 'hash': '1/2'},
+        {'type': 'text', 'title': 'b.lrc', 'hash': '1/3', 'duration': 12},
+      ]);
+
+      expect(tracks.firstWhere((t) => t.hash == '1/1').duration,
+          closeTo(291.4832, 0.0001));
+      expect(tracks.firstWhere((t) => t.hash == '1/2').duration, 0);
+    });
+
     test('同目录同名 .lrc 配对到音轨', () {
       final tracks = KikoeruClient.parseTrackTree([
         {
@@ -337,6 +351,210 @@ void main() {
       expect(formatOnlineDate(null), '');
       expect(formatOnlineDate(DateTime(2026, 6, 27)), '2026-06-27');
       expect(formatOnlineDate(DateTime(2026, 1, 5)), '2026-01-05');
+    });
+
+    test('onlineTrackDisplayName 剥扩展名，但不误伤含点的长标题', () {
+      expect(onlineTrackDisplayName('track01.mp3'), 'track01');
+      expect(onlineTrackDisplayName('track01.wav'), 'track01');
+      expect(onlineTrackDisplayName('  '), '未命名音轨');
+      expect(onlineTrackDisplayName('no-ext'), 'no-ext');
+      // 点后面超过 6 个字符视为标题的一部分，不当扩展名剁掉
+      expect(onlineTrackDisplayName('第1話.ボイスドラマ'),
+          '第1話.ボイスドラマ');
+    });
+
+    test('onlineWorkPageUrl 把 API 域名映射到网页域名', () {
+      // 实测 https://api.asmr.one/works/{id} 返回 404，网页在 www.asmr.one
+      expect(onlineWorkPageUrl('https://api.asmr.one', 1657200),
+          'https://www.asmr.one/works/1657200');
+      expect(onlineWorkPageUrl('https://api.asmr-200.com/', 5),
+          'https://www.asmr.one/works/5');
+      // 自建 Kikoeru 的 API 与网页同 host
+      expect(onlineWorkPageUrl('http://192.168.1.5:8888', 7),
+          'http://192.168.1.5:8888/works/7');
+      expect(onlineWorkPageUrl('', 7), 'https://www.asmr.one/works/7');
+    });
+  });
+
+  group('节点树还原（不限深度 + 目录聚合）', () {
+    List<Map<String, dynamic>> deepNodes() => [
+          {
+            'type': 'audio',
+            'title': 'root.mp3',
+            'hash': '1/1',
+            'duration': 10,
+          },
+          {
+            'type': 'folder',
+            'title': 'L1',
+            'children': [
+              {
+                'type': 'folder',
+                'title': 'L2',
+                'children': [
+                  {
+                    'type': 'folder',
+                    'title': 'L3',
+                    'children': [
+                      {
+                        'type': 'audio',
+                        'title': 'deep.mp3',
+                        'hash': '1/2',
+                        'duration': 291.4832,
+                      },
+                      {'type': 'text', 'title': 'deep.lrc', 'hash': '1/9'},
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            'type': 'folder',
+            'title': '只有字幕',
+            'children': [
+              {'type': 'text', 'title': 'only.lrc', 'hash': '1/10'},
+            ],
+          },
+        ];
+
+    test('还原 3 层以上目录，不限深度', () {
+      final nodes = deepNodes();
+      final flat = KikoeruClient.parseTrackTree(nodes);
+      final tree = KikoeruClient.parseTrackNodes(nodes, flat);
+
+      // 顶层顺序保持服务端顺序：先文件后目录
+      expect(tree.first, isA<OnlineFileNode>());
+
+      final l1 = tree.whereType<OnlineFolderNode>().first;
+      expect(l1.title, 'L1');
+      final l2 = l1.children.whereType<OnlineFolderNode>().first;
+      expect(l2.title, 'L2');
+      final l3 = l2.children.whereType<OnlineFolderNode>().first;
+      expect(l3.title, 'L3');
+
+      final deep = l3.children.whereType<OnlineFileNode>().first.track;
+      expect(deep.hash, '1/2');
+      // 按 hash 取回同一条记录：字幕配对结果不会出现第二份不同步的副本
+      expect(identical(deep, flat.firstWhere((t) => t.hash == '1/2')), isTrue);
+      expect(deep.lyricsHash, '1/9');
+    });
+
+    test('目录递归聚合项目数与总时长，纯字幕目录计 0', () {
+      final nodes = deepNodes();
+      final tree = KikoeruClient.parseTrackNodes(
+          nodes, KikoeruClient.parseTrackTree(nodes));
+      final folders = tree.whereType<OnlineFolderNode>().toList();
+
+      final l1 = folders.firstWhere((f) => f.title == 'L1');
+      expect(l1.audioCount, 1);
+      expect(l1.totalSeconds, closeTo(291.4832, 0.0001));
+
+      final empty = folders.firstWhere((f) => f.title == '只有字幕');
+      expect(empty.audioCount, 0);
+      expect(empty.totalSeconds, 0);
+    });
+
+    test('playableIn 递归收集目录下全部可播放音频', () {
+      final nodes = deepNodes();
+      final tree = KikoeruClient.parseTrackNodes(
+          nodes, KikoeruClient.parseTrackTree(nodes));
+      final l1 = tree.whereType<OnlineFolderNode>().first;
+
+      // L1 里只有 1 条音频（deep.mp3），字幕不进队列
+      expect(playableIn(l1).map((t) => t.hash), ['1/2']);
+    });
+
+    test('folderKeysIn 只收含音频的目录，否则「全部折叠」永远达不到', () {
+      final nodes = deepNodes();
+      final tree = KikoeruClient.parseTrackNodes(
+          nodes, KikoeruClient.parseTrackTree(nodes));
+
+      expect(folderKeysIn(tree), ['L1', 'L1/L2', 'L1/L2/L3']);
+    });
+
+    test('目录无音频时其子目录也不收进折叠键', () {
+      final nodes = [
+        {
+          'type': 'folder',
+          'title': 'A',
+          'children': [
+            {
+              'type': 'folder',
+              'title': 'B',
+              'children': [
+                {'type': 'text', 'title': 'x.lrc', 'hash': '1/1'},
+              ],
+            },
+          ],
+        },
+      ];
+      final tree = KikoeruClient.parseTrackNodes(
+          nodes, KikoeruClient.parseTrackTree(nodes));
+      expect(folderKeysIn(tree), isEmpty);
+    });
+  });
+
+  group('播放 URL 反查 hash', () {
+    test('流播 URL 与缓存文件两种形态都能反解', () {
+      // 流播
+      expect(
+        KikoeruClient.hashFromPlaybackUrl(
+            'https://api.asmr.one/api/media/stream/1657200/1937305'),
+        '1657200/1937305',
+      );
+      // 命中磁盘缓存：hash 里的 / 被 _sanitize 换成 _
+      expect(
+        KikoeruClient.hashFromPlaybackUrl(
+            'file:///Users/x/Library/Caches/hiko/online/1657200_1937305.mp3'),
+        '1657200/1937305',
+      );
+      // 无扩展名的缓存文件同样可解
+      expect(
+        KikoeruClient.hashFromPlaybackUrl('file:///tmp/1657200_1937305'),
+        '1657200/1937305',
+      );
+    });
+
+    test('无法识别的 URL 返回 null', () {
+      expect(KikoeruClient.hashFromPlaybackUrl('file:///tmp/nohash.mp3'), isNull);
+      expect(KikoeruClient.hashFromPlaybackUrl('file:///tmp/_.mp3'), isNull);
+      expect(KikoeruClient.hashFromPlaybackUrl('https://x/other/a'), isNull);
+      expect(
+          KikoeruClient.hashFromPlaybackUrl('https://x/api/media/stream/'),
+          isNull);
+    });
+  });
+
+  group('分页条页码序列（首页/末页 + 当前页 ±2）', () {
+    test('无数据返回空', () {
+      expect(buildPageItems(1, 0), isEmpty);
+    });
+
+    test('只有一页时不放省略号', () {
+      expect(buildPageItems(1, 1), [1]);
+    });
+
+    test('首页附近：末页恒出现，中间补省略号', () {
+      expect(buildPageItems(1, 100), [1, 2, 3, null, 100]);
+    });
+
+    test('中间页：前后各补省略号', () {
+      expect(buildPageItems(50, 100),
+          [1, null, 48, 49, 50, 51, 52, null, 100]);
+    });
+
+    test('末页附近', () {
+      expect(buildPageItems(100, 100), [1, null, 98, 99, 100]);
+    });
+
+    test('与首页/末页相邻时不插入省略号', () {
+      expect(buildPageItems(2, 6), [1, 2, 3, 4, null, 6]);
+      expect(buildPageItems(5, 6), [1, null, 3, 4, 5, 6]);
+    });
+
+    test('半径可调', () {
+      expect(buildPageItems(10, 30, radius: 1), [1, null, 9, 10, 11, null, 30]);
     });
   });
 }

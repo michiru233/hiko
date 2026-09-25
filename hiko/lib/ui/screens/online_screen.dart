@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/online/kikoeru_client.dart';
@@ -15,6 +16,9 @@ import '../widgets/online_detail_panel.dart';
 /// 不进本地库——在线专辑只在播放时构造为内存态 `Album`（见 OnlinePlayback）。
 ///
 /// 桌面端：左侧列表 + 右侧详情面板；移动端：详情走全屏页。
+///
+/// 1.91.0：列表改为**经典分页条**（裁决 Q7=C），替换原先的无限滚动——
+/// 全站 6 万余件，滚动加载既到不了深处也判不清自己在哪一页。
 class OnlineScreen extends ConsumerStatefulWidget {
   const OnlineScreen({super.key, required this.isMobile});
 
@@ -26,21 +30,17 @@ class OnlineScreen extends ConsumerStatefulWidget {
 
 class _OnlineScreenState extends ConsumerState<OnlineScreen> {
   final _searchController = TextEditingController();
-  final _scrollController = ScrollController();
   int? _detailWorkId;
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_maybeLoadMore);
     WidgetsBinding.instance.addPostFrameCallback((_) => _ensureLoaded());
   }
 
   @override
   void dispose() {
-    _scrollController.removeListener(_maybeLoadMore);
     _searchController.dispose();
-    _scrollController.dispose();
     super.dispose();
   }
 
@@ -52,14 +52,6 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
       unawaited(
         ref.read(onlineBrowseProvider.notifier).loadFeed(OnlineFeed.popular),
       );
-    }
-  }
-
-  void _maybeLoadMore() {
-    if (!_scrollController.hasClients) return;
-    final position = _scrollController.position;
-    if (position.pixels >= position.maxScrollExtent - 900) {
-      unawaited(ref.read(onlineBrowseProvider.notifier).loadMore());
     }
   }
 
@@ -138,7 +130,8 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
             color: theme.dividerColor.withValues(alpha: 0.4),
           ),
           SizedBox(
-            width: 400,
+            // 与本地详情抽屉同宽（390），两处详情页观感一致
+            width: 390,
             child: OnlineDetailPanel(
               workId: _detailWorkId!,
               onClose: () => setState(() => _detailWorkId = null),
@@ -319,7 +312,17 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
         ),
       );
     }
-    return _buildGrid(state);
+    return Column(
+      children: [
+        // 翻页请求期间旧页仍在屏上，用一条细进度条说明「正在换页」
+        SizedBox(
+          height: 2,
+          child: state.loading ? const LinearProgressIndicator(minHeight: 2) : null,
+        ),
+        Expanded(child: _buildGrid(state)),
+        _buildPager(state, theme),
+      ],
+    );
   }
 
   Widget _buildGrid(OnlineBrowseState state) {
@@ -333,8 +336,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
             : ((available + spacing) / (200 + spacing)).floor().clamp(3, 8);
         final cardWidth = (available - spacing * (columns - 1)) / columns;
         return GridView.builder(
-          controller: _scrollController,
-          padding: EdgeInsets.fromLTRB(pad, 0, pad, 24),
+          padding: EdgeInsets.fromLTRB(pad, 0, pad, 12),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columns,
             mainAxisSpacing: spacing,
@@ -342,17 +344,8 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
             // 封面正方形 + 两行标题 + 一行副标题，用固定高度避免不同标题把网格撑歪
             mainAxisExtent: cardWidth + 62,
           ),
-          itemCount: state.works.length + (state.loadingMore ? 1 : 0),
+          itemCount: state.works.length,
           itemBuilder: (context, index) {
-            if (index >= state.works.length) {
-              return const Center(
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              );
-            }
             final work = state.works[index];
             return OnlineWorkCard(
               work: work,
@@ -362,6 +355,236 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
           },
         );
       },
+    );
+  }
+
+  // ---------------------------------------------------------------- 分页条
+
+  /// 经典分页条（裁决 Q6=A）：每页条数 + 首页/末页 + 上一页/下一页 +
+  /// 当前页 ±2 的页码 + 跳页输入。
+  Widget _buildPager(OnlineBrowseState state, ThemeData theme) {
+    final total = state.totalPages;
+    final pad = widget.isMobile ? 16.0 : 48.0;
+    final notifier = ref.read(onlineBrowseProvider.notifier);
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(pad, 6, pad, 12),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: theme.dividerColor)),
+      ),
+      child: Row(
+        children: [
+          _PageSizeButton(state: state, onSelected: notifier.setPageSize),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _PagerIcon(
+                    icon: Icons.first_page_rounded,
+                    tooltip: '首页',
+                    onPressed: state.hasPrev ? () => notifier.goToPage(1) : null,
+                  ),
+                  _PagerIcon(
+                    icon: Icons.chevron_left_rounded,
+                    tooltip: '上一页',
+                    onPressed: state.hasPrev
+                        ? () => notifier.goToPage(state.page - 1)
+                        : null,
+                  ),
+                  for (final item in buildPageItems(state.page, total))
+                    if (item == null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Text(
+                          '…',
+                          style: TextStyle(fontSize: 11, color: theme.hintColor),
+                        ),
+                      )
+                    else
+                      _PageNumberButton(
+                        page: item,
+                        current: item == state.page,
+                        onPressed: () => notifier.goToPage(item),
+                      ),
+                  _PagerIcon(
+                    icon: Icons.chevron_right_rounded,
+                    tooltip: '下一页',
+                    onPressed: state.hasNext
+                        ? () => notifier.goToPage(state.page + 1)
+                        : null,
+                  ),
+                  _PagerIcon(
+                    icon: Icons.last_page_rounded,
+                    tooltip: '末页',
+                    onPressed:
+                        state.hasNext ? () => notifier.goToPage(total) : null,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          _PageJumpField(totalPages: total, onSubmit: notifier.goToPage),
+        ],
+      ),
+    );
+  }
+}
+
+/// 每页条数选择（20 / 60 / 100；实测服务端支持到 500）
+class _PageSizeButton extends StatelessWidget {
+  const _PageSizeButton({required this.state, required this.onSelected});
+
+  final OnlineBrowseState state;
+  final Future<void> Function(int size) onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<int>(
+      tooltip: '每页条数',
+      onSelected: (size) => unawaited(onSelected(size)),
+      itemBuilder: (_) => [
+        for (final size in OnlineBrowseNotifier.pageSizeOptions)
+          PopupMenuItem(
+            value: size,
+            child: Text('每页 $size 条', style: const TextStyle(fontSize: 12)),
+          ),
+      ],
+      child: Chip(
+        label: Text('每页 ${state.pageSize} 条', style: const TextStyle(fontSize: 11)),
+        visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+}
+
+class _PagerIcon extends StatelessWidget {
+  const _PagerIcon({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(icon, size: 18),
+      tooltip: tooltip,
+      onPressed: onPressed,
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints(minWidth: 30, minHeight: 28),
+      padding: EdgeInsets.zero,
+    );
+  }
+}
+
+class _PageNumberButton extends StatelessWidget {
+  const _PageNumberButton({
+    required this.page,
+    required this.current,
+    required this.onPressed,
+  });
+
+  final int page;
+  final bool current;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: SizedBox(
+        height: 28,
+        child: TextButton(
+          onPressed: current ? null : onPressed,
+          style: TextButton.styleFrom(
+            minimumSize: const Size(32, 28),
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            backgroundColor: current
+                ? theme.colorScheme.primary.withValues(alpha: 0.14)
+                : null,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          child: Text(
+            '$page',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: current ? FontWeight.w700 : FontWeight.w500,
+              color: current ? theme.colorScheme.primary : null,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 跳页输入：回车生效，越界由控制器夹到有效范围
+class _PageJumpField extends StatefulWidget {
+  const _PageJumpField({required this.totalPages, required this.onSubmit});
+
+  final int totalPages;
+  final Future<void> Function(int page) onSubmit;
+
+  @override
+  State<_PageJumpField> createState() => _PageJumpFieldState();
+}
+
+class _PageJumpFieldState extends State<_PageJumpField> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '共 ${widget.totalPages} 页',
+          style: TextStyle(fontSize: 11, color: theme.hintColor),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 54,
+          height: 28,
+          child: TextField(
+            controller: _controller,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 11),
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: InputDecoration(
+              isDense: true,
+              hintText: '跳页',
+              hintStyle: TextStyle(fontSize: 11, color: theme.hintColor),
+              contentPadding: const EdgeInsets.symmetric(vertical: 4),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onSubmitted: (value) {
+              final page = int.tryParse(value.trim());
+              if (page == null) return;
+              widget.onSubmit(page);
+              _controller.clear();
+            },
+          ),
+        ),
+      ],
     );
   }
 }

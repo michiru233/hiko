@@ -159,11 +159,60 @@ class KikoeruClient {
     return parseTrackTree(raw);
   }
 
+  /// 曲目树：一次请求同时给出拍平列表（喂播放器）与层级节点树（喂详情页渲染）。
+  ///
+  /// 详情页既要按 asmr.one 的目录层级分组展示，又要一份扁平的播放序，
+  /// 所以两个形态在同一个响应上解析，避免重复请求。
+  Future<({List<OnlineTrack> tracks, List<OnlineNode> tree})> fetchTrackTree(
+      int workId) async {
+    final raw = await _getDecoded('/api/tracks/$workId');
+    if (raw is! List) {
+      return (tracks: const <OnlineTrack>[], tree: const <OnlineNode>[]);
+    }
+    final tracks = parseTrackTree(raw);
+    return (tracks: tracks, tree: parseTrackNodes(raw, tracks));
+  }
+
   /// 解析服务端嵌套曲目树：拍平成一维文件列表 + 字幕配对（纯函数，单测覆盖）
   static List<OnlineTrack> parseTrackTree(List nodes) {
     final files = <OnlineTrack>[];
     _flatten(nodes, '', files);
     return _attachLyrics(files);
+  }
+
+  /// 在已拍平（且已配对字幕）的 [flat] 基础上还原层级节点树，**不限深度**。
+  ///
+  /// 不重新构造 [OnlineTrack]，而是按 hash 取回同一条记录 —— 这样节点树里的
+  /// 曲目天然带着字幕配对结果，不会出现两份不同步的副本。
+  static List<OnlineNode> parseTrackNodes(
+      List nodes, List<OnlineTrack> flat) {
+    final byHash = {for (final track in flat) track.hash: track};
+    return _buildNodes(nodes, byHash);
+  }
+
+  static List<OnlineNode> _buildNodes(
+      List nodes, Map<String, OnlineTrack> byHash) {
+    final out = <OnlineNode>[];
+    for (final node in nodes) {
+      if (node is! Map) continue;
+      final map = Map<String, dynamic>.from(node);
+      final type = (map['type'] as String?) ?? '';
+      final title = (map['title'] as String?) ?? '';
+      if (type == 'folder') {
+        final children = map['children'];
+        out.add(OnlineFolderNode(
+          title,
+          children is List ? _buildNodes(children, byHash) : const [],
+        ));
+        continue;
+      }
+      final hash = map['hash'];
+      if (hash is! String || hash.isEmpty) continue;
+      final track = byHash[hash];
+      if (track == null) continue;
+      out.add(OnlineFileNode(track));
+    }
+    return out;
   }
 
   /// 拉取文本文件内容（字幕等），失败返回 null（歌词缺失不应影响播放）
@@ -220,8 +269,27 @@ class KikoeruClient {
     return hash.isEmpty ? null : hash;
   }
 
-  /// 作品页地址（「在浏览器打开」用）
-  String workPageUrl(int workId) => '$baseUrl/works/$workId';
+  /// 从**播放 URL** 反解服务端 hash，两种形态都吃：
+  /// - 走流播时的 `https://…/api/media/stream/1657200/1937305`
+  /// - 命中磁盘缓存时的 `file:///…/1657200_1937305.mp3`（文件名约定见 [OnlineAudioCache]）
+  ///
+  /// 详情页据它判断「当前播放的是不是我这一行」，比按数组下标比对可靠 ——
+  /// 在线有「整部作品 / 单个目录 / 单个叶子目录」三种播放范围，下标互不对齐。
+  static String? hashFromPlaybackUrl(String url) {
+    if (!url.startsWith('file:')) return hashFromStreamUrl(url);
+    final name = Uri.parse(url).pathSegments.last;
+    final stem =
+        name.contains('.') ? name.substring(0, name.lastIndexOf('.')) : name;
+    final sep = stem.indexOf('_');
+    if (sep <= 0) return null;
+    return '${stem.substring(0, sep)}/${stem.substring(sep + 1)}';
+  }
+
+  /// 作品页地址（「在浏览器打开」用）。
+  ///
+  /// 注意官方实例的 API 域名不是网页域名（`https://api.asmr.one/works/{id}` 实测 404），
+  /// 由 [onlineWorkPageUrl] 统一映射到 `www.asmr.one`。
+  String workPageUrl(int workId) => onlineWorkPageUrl(baseUrl, workId);
 
   // -------------------------------------------------------------- 内部
 
@@ -246,6 +314,7 @@ class KikoeruClient {
         title: title,
         type: type,
         size: (map['size'] as num?)?.toInt() ?? 0,
+        duration: (map['duration'] as num?)?.toDouble() ?? 0,
         mediaStreamUrl: map['mediaStreamUrl'] as String?,
         relativePath: parentPath,
       ));

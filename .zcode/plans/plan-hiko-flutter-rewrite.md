@@ -1535,3 +1535,115 @@ Android 端 albumArtist 用于卡片「艺术家 · 专辑艺术家」展示；�
 
 Release：https://github.com/michiru233/hiko/releases/tag/v1.90.0（`hiko-v1.90.0-macos.zip` 32 MB + `hiko-v1.90.0-android.apk` 64 MB）。
 提交：`5e53bba`（feat）+ `4330944`（docs）。
+
+## 1.91.0 在线详情页对齐本地抽屉 + 目录层级还原 + 经典分页（2026-09-25）
+
+**动机**：用户在 macOS 端试用 1.90.0 的在线界面后提出四项不满（Android 端本轮未实机验证）：
+1. 在线专辑详情页与 Hiko 本地播放的专辑详情页**界面不一致**，且缺显眼的播放按钮
+2. 曲目都堆在一起，而 asmr.one 网页是**按文件夹分层**存放的
+3. 列表只能无线滚动，需要**仿 asmr.one 的翻页**以快速跳到深处
+
+**三轮 grilling 裁决**（Q1–Q15，全部落地）：
+| # | 裁决 |
+|---|---|
+| Q1/Q8 | **B** —— 在线详情页的**样式与结构骨架**都对齐本地 `DetailDrawer`（不只是换皮） |
+| Q2 | 曲目行补 **26×26 圆形播放/暂停键**（与本地同一枚） |
+| Q3 | 还原 asmr.one 完整层级，**不限深度**（实测同作品内深度会混，见下） |
+| Q4 | **A** 默认全展开（最保险，忠实呈现服务器内容） |
+| Q5 | **C** 点单曲 = **该曲所在叶子目录内的队列**；「播放全部」= 整部作品 |
+| Q6 | **A** 分页条：首页/末页 + 当前页 ±2 + 上一页/下一页 + 跳页输入 |
+| Q7 | **C** 分页条**替换**无限滚动；每页条数可选 20 / 60 / 100 |
+| Q9 | **A** 眼眉胶囊填「在线 · RJ号」；社团/声优胶囊**纯展示不可点** |
+| Q10 | 按推荐 —— 实心「播放全部」+ 描边「在浏览器打开」「复制 RJ 号」「折叠全部/展开全部」 |
+| Q11 | **B** `HikoInfoRow` 四项：总时长 / 发售日期 / 下载量 / 评分 |
+| Q12 | **A** 双 Tab（曲目列表 / 歌词字幕），Tab2 复用 `DrawerLyricsView` |
+| Q13 | **A** 曲目行右侧显示**时长** |
+| Q14 | **C** 目录行 = 折叠三角 + 文件夹名 + 「N 个项目 · 总时长」+ **hover 浮出播放图标** |
+| Q15 | **A** 目录行显示**递归聚合**的「N 个项目 · 总时长」 |
+
+**Kikoeru API 补测结论（本轮新增，修正 1.90.0 的漏项）**：
+- audio 节点**确实有 `duration`**（浮点秒，如 `291.4832`）。1.90.0 的 `_flatten` 只取了 `size`，漏了它，
+  这是「在线曲目行没有时长」的根因。**教训：别凭部分字段输出下结论，要 dump 完整节点。**
+- **folder 节点只有 `type` + `title`**，没有 duration / count。asmr.one 网页上的「2 项目, 36min」
+  是**前端自行聚合**的，所以 Hiko 也必须自己聚合（→ `OnlineFolderNode.audioCount / totalSeconds`）。
+- 目录深度 0~3 层都有，且**同一作品内深度会混**（如 `[1,2,3]`）；顶层目录几乎总是
+  「同一批内容的不同版本」（格式 / 语言 / 有无效果音）—— 这正是用户看到「重复」的原因。
+- `pageSize` 服务端支持到 **500**；全站 **62453** 件，20 条/页 = 3123 页（深页码可达，page=3124 才是空页）。
+- **`https://api.asmr.one/works/{id}` 返回 404**，作品网页在 `www.asmr.one`。
+
+**新增文件**：
+- `lib/ui/widgets/detail_kit.dart`：本地详情抽屉与在线详情面板的**共用视觉件**。
+  数值全部照搬 1.83–1.90 的 `detail_drawer.dart`，未做任何视觉调整。
+  调色板常量（`hikoCircleColor` / `hikoVoiceColor` / `hikoTagBgColor` / `hikoTagFgColor` /
+  `hikoFavoriteColor` / `hikoRatingColor`）、样式函数（`hikoOutlinedPillStyle` / `hikoFilledPillStyle`）、
+  组件（`HikoEyebrowPill` / `HikoPersonPill` / `HikoTagChip` / `HikoInfoRow` / `HikoTabButton` /
+  `HikoSegmentedTabs` / `HikoTrackRow`）。
+  `HikoTrackRow` 即「圆形播放键 + 两位序号 + 标题 + trailing + 时长」，`indent` 供在线按层级缩进。
+
+**改动文件**：
+- `lib/data/online/online_models.dart`：
+  - `OnlineTrack` 新增 `double duration`（服务端浮点秒；字幕/图片为 0）
+  - 新增 **sealed 节点层级**（Dart 3 exhaustive switch，先在 `/tmp/probe` 最小工程验证过语法）：
+    `sealed class OnlineNode` / `final class OnlineFolderNode`（构造时递归算出 `audioCount` / `totalSeconds`）/
+    `final class OnlineFileNode`
+  - 新增纯函数 `playableIn`（递归收可播放音频）、`folderKeysIn`（递归收目录路径键，
+    **只收 `audioCount > 0` 的目录** —— 否则「全部已折叠」状态永远达不到）、
+    `buildPageItems`（`[1,null,4,5,6,null,3123]` 式页码序列）、`onlineTrackDisplayName`（剥扩展名，
+    点后 >6 字符不剁，避免误伤「第1話.ボイスドラマ」）、`onlineWorkPageUrl`（API 域名 → 网页域名映射）
+- `lib/data/online/kikoeru_client.dart`：
+  - 新增 `fetchTrackTree(workId)` —— **一次请求同时给两种形态**（拍平列表喂播放器 + 节点树喂详情页渲染）
+  - 新增 `parseTrackNodes(nodes, flat)`：**不重新构造 `OnlineTrack`**，而是按 hash 从拍平列表取回同一条记录 ——
+    这样节点树里的曲目天然带着字幕配对结果，不会出现两份不同步的副本
+  - `_flatten` 补 `duration`；新增 `hashFromPlaybackUrl`（流播 URL 与缓存文件 `file://…/1657200_1937305.mp3` 两种形态都吃）；
+    `workPageUrl` 改走 `onlineWorkPageUrl`
+- `lib/data/online/online_provider.dart`：
+  - `OnlineDetail` 新增 `tree` + `groupOf(track)`（同 `relativePath` 的可播放曲目 = Q5=C 的接续范围）
+  - `OnlineBrowseState`：删 `loadingMore` / `hasMore`，改 `page` + `pageSize` + 派生 `totalPages` / `hasPrev` / `hasNext`
+  - `OnlineBrowseNotifier`：`pageSizeOptions = [20, 60, 100]`，删 `loadMore()`，
+    新增 `goToPage`（越界夹到 `1..totalPages`）与 `setPageSize`（回第 1 页）；`_fetch` 改**整页替换**
+- `lib/ui/widgets/detail_drawer.dart`（699 → 386 行）：删除迁出的 `_TabButton` / `_InfoRow` / `_TrackRow`
+  三个私有类，改从 `detail_kit.dart` 取
+- `lib/ui/widgets/online_detail_panel.dart`（重写）：
+  - `OnlineDetailPanel` 转 `ConsumerWidget`，外壳与本地抽屉逐项对齐：实底 + 左边框 + `blurRadius: 40 / offset: (-15,0)` 大投影 +
+    封面虚化氛围背板（`Positioned(-60,-60,320,320)` → `Opacity` → `RepaintBoundary` → `ImageFiltered(σ55)`）+ 右上角悬浮玻璃关闭钮
+  - `OnlineDetailBody` 转 `ConsumerStatefulWidget`，持有 `_tabIndex` / `_collapsed`，
+    `SelectionArea` + `SingleChildScrollView(padding: 28)`，行序照搬本地
+  - `_walkNodes` 递归渲染**不限深度**目录树（序号每层独立计数，`indent: depth * 14`）；
+    `_FolderRow` hover 时把「N 个项目 · 总时长」换成播放图标（`AnimatedRotation` 三角 0.25 圈）
+  - 新增 `_onTrackTap` / `_playFrom` / `_openInBrowser` / `_copyRj` / `_hashOf`
+- `lib/ui/screens/online_screen.dart`：去掉 `_scrollController` / `_maybeLoadMore`，改底部分页条
+  （`_PageSizeButton` + `_PagerIcon` + `_PageNumberButton` + `_PageJumpField`），
+  换页期间旧页留在屏上并压一条 2px `LinearProgressIndicator`；面板宽度 **400 → 390** 对齐本地
+- `pubspec.yaml`：新增 `url_launcher: ^6.3.2`（落地已批准的「在浏览器打开」），版本 `1.90.0+100 → 1.91.0+101`
+
+**关键设计决策**：
+- 抽 `detail_kit.dart` 让两个详情页共用**同一份**视觉实现。两处「要求一致」的界面各自复制一份必然随时间漂移，
+  数值只留一个出处。
+- 「当前播放行」用 **URL 反解 hash** 定位，**不用数组下标** —— 在线有「整部作品 / 单个目录 / 单个叶子目录」
+  三种播放范围，下标互不对齐。
+- 只渲染可播放音频 + 「子树里含音频」的目录；仅存字幕/图片的目录整支隐去
+  （信息由音频行右侧的字幕角标表达，不丢东西）。
+- `OnlineDetailBody` 在 `OnlineDetailPanel` 里的位置固定，`State` 会被跨作品复用，
+  因此两处调用点都挂 `key: ValueKey(workId)` 显式重置 `_tabIndex` / `_collapsed`。
+- **σ55 氛围背板外套 `RepaintBoundary`**（1.88.1 硬约束的延续）：`OnlineCover` 自身还带一层 σ20
+  （隐私模糊默认每次启动开启），不隔离就会在父级每次重绘时把两层高斯都重算一遍。
+
+**测试**：新增 24 条（`test/data/online_client_test.dart` 扩充 + 新增 `test/data/online_detail_test.dart`）。
+覆盖：duration 浮点解析、节点树 4 层还原与 `identical` 断言（证明确实是同一份记录）、目录递归聚合、
+纯字幕目录计 0、`playableIn` / `folderKeysIn`（含「无音频目录不产生折叠键」）、
+`hashFromPlaybackUrl` 两种形态、`onlineWorkPageUrl` 域名映射、`onlineTrackDisplayName` 不误伤含点标题、
+`buildPageItems` 七种边界、`groupOf` 不跨版本目录、`totalPages` 向上取整。
+全量 `flutter test` → **361 passed / 2 skipped**（基线 337/2，净增 24）；`flutter analyze` 39 条既有 lint，新增代码 0 lint。
+
+版本 1.91.0+101。
+
+**本版待裁决**：
+- **在线曲目行点击后是否跳全屏播放页**：本地 `DetailDrawer` 点曲目会 `push(FullscreenPlayerRoute())`（1.79 行为），
+  本版**为保持「两处详情页一致」照搬了这一行为**。但在线场景下「面板不关、连续试听多曲」也是合理诉求，
+  与本地「跳进播放页慢慢听」的用法不完全同构。**待裁决**（若要改，只需去掉 `_playFrom(openPlayer: true)`
+  与 `_onTrackTap` 里的 `_openPlayer()` 两处调用）。
+- 1.90.0 遗留的环境项（`IDEPackageSupportDisable*Sandbox` 三个 user default 保持开启）**仍未裁决**，见上一节。
+- 移动端（Android）本版**未实机验证**：分页条在窄屏下的换行、目录树缩进与 hover 播放图标的替代交互
+  （移动端没有 hover）需要在模拟器上过一遍。目录行的「hover 浮出播放图标」在触屏上恒定不显示，
+  移动端实际只能靠点击折叠三角展开/收起，**播放该目录需要另找入口**（当前移动端无此入口）。**待裁决。**
+

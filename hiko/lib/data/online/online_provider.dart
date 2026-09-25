@@ -54,9 +54,9 @@ class OnlineBrowseState {
     this.subtitleOnly = false,
     this.works = const [],
     this.totalCount = 0,
-    this.page = 0,
+    this.page = 1,
+    this.pageSize = KikoeruClient.defaultPageSize,
     this.loading = false,
-    this.loadingMore = false,
     this.error,
   });
 
@@ -66,14 +66,19 @@ class OnlineBrowseState {
   final OnlineOrder order;
   final bool descending;
   final bool subtitleOnly;
+
+  /// 当前页的作品（1.91.0 起为整页替换，不再跨页累加）
   final List<OnlineWork> works;
   final int totalCount;
   final int page;
+  final int pageSize;
   final bool loading;
-  final bool loadingMore;
   final String? error;
 
-  bool get hasMore => works.length < totalCount;
+  int get totalPages =>
+      pageSize <= 0 ? 0 : (totalCount + pageSize - 1) ~/ pageSize;
+  bool get hasPrev => page > 1;
+  bool get hasNext => page < totalPages;
   bool get isEmpty => !loading && works.isEmpty;
 
   OnlineBrowseState copyWith({
@@ -87,8 +92,8 @@ class OnlineBrowseState {
     List<OnlineWork>? works,
     int? totalCount,
     int? page,
+    int? pageSize,
     bool? loading,
-    bool? loadingMore,
     String? error,
     bool clearError = false,
   }) =>
@@ -102,28 +107,29 @@ class OnlineBrowseState {
         works: works ?? this.works,
         totalCount: totalCount ?? this.totalCount,
         page: page ?? this.page,
+        pageSize: pageSize ?? this.pageSize,
         loading: loading ?? this.loading,
-        loadingMore: loadingMore ?? this.loadingMore,
         error: clearError ? null : (error ?? this.error),
       );
 }
 
-/// 在线浏览控制器：热门 / 最新 / 搜索 / 标签筛选 + 分页加载更多
+/// 在线浏览控制器：热门 / 最新 / 搜索 / 标签筛选 + 翻页
 class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
   OnlineBrowseNotifier(this._ref) : super(const OnlineBrowseState());
 
   final Ref _ref;
 
-  static const _pageSize = KikoeruClient.defaultPageSize;
+  /// 每页条数档位。实测服务端 pageSize 到 500 都能正常返回；
+  /// 全站 6 万余件，20 条/页要翻 3000 多页，所以提供更大档位。
+  static const pageSizeOptions = <int>[20, 60, 100];
 
   Future<void> loadFeed(OnlineFeed feed) async {
     state = state.copyWith(
       feed: feed,
       works: const [],
-      page: 0,
+      page: 1,
       totalCount: 0,
       loading: true,
-      loadingMore: false,
       clearError: true,
       clearTag: feed != OnlineFeed.tag,
       order: switch (feed) {
@@ -143,7 +149,7 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
       feed: OnlineFeed.search,
       keyword: kw,
       works: const [],
-      page: 0,
+      page: 1,
       totalCount: 0,
       loading: true,
       clearError: true,
@@ -156,7 +162,7 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
       feed: OnlineFeed.tag,
       tag: tag,
       works: const [],
-      page: 0,
+      page: 1,
       totalCount: 0,
       loading: true,
       clearError: true,
@@ -174,7 +180,7 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
       order: order,
       descending: same ? !state.descending : true,
       works: const [],
-      page: 0,
+      page: 1,
       loading: true,
     );
     await _fetch(1);
@@ -188,65 +194,80 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
     state = state.copyWith(
       subtitleOnly: !state.subtitleOnly,
       works: const [],
-      page: 0,
+      page: 1,
       loading: true,
     );
     await _fetch(1);
   }
 
-  Future<void> refresh() => _fetch(1);
+  Future<void> refresh() => _fetch(state.page);
 
-  Future<void> loadMore() async {
-    if (state.loading || state.loadingMore || !state.hasMore) return;
-    state = state.copyWith(loadingMore: true);
-    await _fetch(state.page + 1);
+  /// 跳到指定页（越界自动夹到有效范围）
+  Future<void> goToPage(int page) async {
+    if (state.loading || state.totalPages <= 0) return;
+    final target = page.clamp(1, state.totalPages);
+    if (target == state.page && state.works.isNotEmpty) return;
+    state = state.copyWith(loading: true, clearError: true);
+    await _fetch(target);
+  }
+
+  /// 切换每页条数：回到第 1 页（保持行号语义简单，不做页码换算）
+  Future<void> setPageSize(int size) async {
+    if (size == state.pageSize || !pageSizeOptions.contains(size)) return;
+    state = state.copyWith(
+      pageSize: size,
+      works: const [],
+      page: 1,
+      totalCount: 0,
+      loading: true,
+      clearError: true,
+    );
+    await _fetch(1);
   }
 
   Future<void> _fetch(int page) async {
     final client = _ref.read(onlineClientProvider);
-    final append = page > 1;
+    final size = state.pageSize;
     try {
       final result = await switch (state.feed) {
         OnlineFeed.popular => client.fetchWorks(
             page: page,
-            pageSize: _pageSize,
+            pageSize: size,
             order: OnlineOrder.dlCount,
             subtitleOnly: state.subtitleOnly,
           ),
         OnlineFeed.latest => client.fetchWorks(
             page: page,
-            pageSize: _pageSize,
+            pageSize: size,
             order: OnlineOrder.release,
             subtitleOnly: state.subtitleOnly,
           ),
         OnlineFeed.search => client.searchWorks(
             state.keyword,
             page: page,
-            pageSize: _pageSize,
+            pageSize: size,
             order: state.order,
             desc: state.descending,
           ),
         OnlineFeed.tag => client.fetchWorksByTag(
             state.tag?.id ?? 0,
             page: page,
-            pageSize: _pageSize,
+            pageSize: size,
             order: state.order,
           ),
       };
       if (!mounted) return;
       state = state.copyWith(
-        works: append ? [...state.works, ...result.works] : result.works,
+        works: result.works,
         totalCount: result.totalCount,
         page: page,
         loading: false,
-        loadingMore: false,
         clearError: true,
       );
     } catch (e) {
       if (!mounted) return;
       state = state.copyWith(
         loading: false,
-        loadingMore: false,
         error: _describeError(e),
       );
     }
@@ -271,13 +292,30 @@ final onlineTagsProvider = FutureProvider<List<OnlineTag>>((ref) async {
 /// 作品详情：作品元数据 + 曲目树（两个请求并发）
 @immutable
 class OnlineDetail {
-  const OnlineDetail({required this.work, required this.tracks});
+  const OnlineDetail({
+    required this.work,
+    required this.tracks,
+    this.tree = const [],
+  });
 
   final OnlineWork work;
+
+  /// 拍平后的全部文件（含字幕/图片），保持服务端顺序 —— 播放序与字幕配对的依据
   final List<OnlineTrack> tracks;
+
+  /// 还原的目录层级（详情页按 asmr.one 分组展示用），不限深度
+  final List<OnlineNode> tree;
 
   List<OnlineTrack> get audioTracks =>
       tracks.where((t) => t.playable).toList();
+
+  /// 某曲所属的「组」= 同一叶子目录内的可播放曲目。
+  ///
+  /// 这是点单曲时的接续范围（裁决 Q5=C）：同一个 `02：wav` 目录里的下一首，
+  /// 而不是跨到 `01：mp3` 或英语版去。目录路径由 [OnlineTrack.relativePath] 表达，
+  /// 所以不需要遍历节点树。
+  List<OnlineTrack> groupOf(OnlineTrack track) =>
+      audioTracks.where((t) => t.relativePath == track.relativePath).toList();
 
   bool get hasLyrics => tracks.any((t) => t.lyricsHash != null);
   bool get canPlay => tracks.any((t) => t.playable);
@@ -287,10 +325,13 @@ final onlineDetailProvider =
     FutureProvider.family<OnlineDetail, int>((ref, workId) async {
   final client = ref.watch(onlineClientProvider);
   final workFuture = client.fetchWork(workId);
-  final tracksFuture = client.fetchTracks(workId);
+  final bundle = await client.fetchTrackTree(workId);
   final detailWork = await workFuture;
-  final tracks = await tracksFuture;
-  return OnlineDetail(work: detailWork, tracks: tracks);
+  return OnlineDetail(
+    work: detailWork,
+    tracks: bundle.tracks,
+    tree: bundle.tree,
+  );
 });
 
 /// 在线播放协调器：把在线作品变成内存态 Album 交给现有播放器，
@@ -470,29 +511,12 @@ class OnlinePlayback {
     ));
   }
 
-  /// 从媒体流 URL 反解 hash（`.../api/media/stream/1657200/1937305`）
-  String? _hashFromUrl(String url) {
-    if (url.startsWith('file:')) {
-      // 本地缓存文件名形如 `1657200_1937305.mp3`
-      final name = url.split('/').last;
-      final stem = name.contains('.') ? name.substring(0, name.lastIndexOf('.')) : name;
-      final sep = stem.indexOf('_');
-      if (sep <= 0) return null;
-      return '${stem.substring(0, sep)}/${stem.substring(sep + 1)}';
-    }
-    return KikoeruClient.hashFromStreamUrl(url);
-  }
+  /// 从播放 URL 反解 hash（`.../api/media/stream/1657200/1937305`
+  /// 或命中缓存时的 `file://…/1657200_1937305.mp3`）
+  String? _hashFromUrl(String url) => KikoeruClient.hashFromPlaybackUrl(url);
 
-  /// 音轨标题展示：剥掉扩展名，去掉纯数字前缀噪音
-  static String _displayName(String title) {
-    var name = title.trim();
-    if (name.isEmpty) return '未命名音轨';
-    final dot = name.lastIndexOf('.');
-    if (dot > 0 && name.length - dot <= 6) {
-      name = name.substring(0, dot);
-    }
-    return name;
-  }
+  /// 音轨标题展示：剥掉扩展名
+  static String _displayName(String title) => onlineTrackDisplayName(title);
 }
 
 final onlinePlaybackProvider = Provider<OnlinePlayback>(

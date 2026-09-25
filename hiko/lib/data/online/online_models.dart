@@ -70,12 +70,8 @@ class OnlineWork {
         : '$mm:${s.toString().padLeft(2, '0')}';
   }
 
-  /// 作品页地址（展示用，不参与下载）
-  String? shareUrl(String serverBase) {
-    final base = serverBase.trim().replaceAll(RegExp(r'/+$'), '');
-    if (base.isEmpty) return null;
-    return '$base/works/$id';
-  }
+  /// 作品网页地址（展示 / 「在浏览器打开」用，不参与下载）
+  String? shareUrl(String serverBase) => onlineWorkPageUrl(serverBase, id);
 
   factory OnlineWork.fromJson(Map<String, dynamic> json) {
     return OnlineWork(
@@ -220,6 +216,7 @@ class OnlineTrack {
     required this.title,
     required this.type,
     this.size = 0,
+    this.duration = 0,
     this.mediaStreamUrl,
     this.relativePath = '',
     this.lyricsHash,
@@ -233,6 +230,11 @@ class OnlineTrack {
   /// `audio` / `text` / `image` / `video`
   final String type;
   final int size;
+
+  /// 文件时长（秒）。服务端给的是浮点（如 `291.4832`），字幕/图片文件为 0。
+  ///
+  /// 1.91.0 补上：原先只取了 size，导致在线详情页无法像本地那样在曲目行显示时长。
+  final double duration;
 
   /// 服务端给的 CDN 直链（可能为空，需回退到 `/api/media/stream/{hash}`）
   final String? mediaStreamUrl;
@@ -256,11 +258,103 @@ class OnlineTrack {
         title: title,
         type: type,
         size: size,
+        duration: duration,
         mediaStreamUrl: mediaStreamUrl,
         relativePath: relativePath,
         lyricsHash: lyricsHash ?? this.lyricsHash,
         lyricsTitle: lyricsTitle ?? this.lyricsTitle,
       );
+}
+
+/// 曲目树节点：完整还原服务端的目录层级（**不限深度**，实测有 0~3 层）。
+///
+/// 与拍平的 [OnlineTrack] 并存：拍平列表喂播放器（构造内存态 Album），
+/// 节点树只喂详情页渲染（分组、折叠、目录聚合计数）。二者通过 hash 对应。
+sealed class OnlineNode {
+  const OnlineNode();
+}
+
+/// 目录节点。[audioCount] / [totalSeconds] 由子节点递归聚合而来——
+/// 服务端 folder 节点只有 `type` + `title`，这两个数是我们自己算的
+/// （asmr.one 前端也是这么显示的：「2 项目, 36min」）。
+final class OnlineFolderNode extends OnlineNode {
+  OnlineFolderNode(this.title, this.children)
+      : audioCount = children.fold(
+          0,
+          (sum, child) => sum + switch (child) {
+            OnlineFileNode(:final track) => track.playable ? 1 : 0,
+            OnlineFolderNode(:final audioCount) => audioCount,
+          },
+        ),
+        totalSeconds = children.fold(
+          0.0,
+          (sum, child) => sum + switch (child) {
+            OnlineFileNode(:final track) =>
+              track.playable ? track.duration : 0.0,
+            OnlineFolderNode(:final totalSeconds) => totalSeconds,
+          },
+        );
+
+  final String title;
+  final List<OnlineNode> children;
+
+  /// 递归聚合：该目录下（含子目录）可播放音频的条数
+  final int audioCount;
+
+  /// 递归聚合：该目录下（含子目录）可播放音频的时长合计（秒）
+  final double totalSeconds;
+}
+
+/// 文件节点（音频 / 字幕 / 图片 / 视频）
+final class OnlineFileNode extends OnlineNode {
+  const OnlineFileNode(this.track);
+
+  final OnlineTrack track;
+}
+
+/// 递归收集节点树里所有可播放音频（按树内顺序），供「播放该目录」使用
+List<OnlineTrack> playableIn(OnlineNode node) => switch (node) {
+      OnlineFileNode(:final track) => track.playable ? [track] : const [],
+      OnlineFolderNode(:final children) => [
+          for (final child in children) ...playableIn(child),
+        ],
+    };
+
+/// 递归收集节点树里所有目录的路径键（与 [OnlineTrack.relativePath] 同一套拼法），
+/// 供「折叠全部 / 展开全部」用。
+///
+/// 只收**含可播放音频**的目录 —— 详情页只渲染这类目录，把仅存字幕/图片的
+/// 空目录也算进来的话，「全部已折叠」这个状态永远达不到。
+List<String> folderKeysIn(List<OnlineNode> nodes, [String parent = '']) {
+  final out = <String>[];
+  for (final node in nodes) {
+    if (node is! OnlineFolderNode || node.audioCount == 0) continue;
+    final path = parent.isEmpty ? node.title : '$parent/${node.title}';
+    out.add(path);
+    out.addAll(folderKeysIn(node.children, path));
+  }
+  return out;
+}
+
+/// 分页条的页码序列：`[1, null, 4, 5, 6, null, 3123]`。
+///
+/// `null` 表示省略号。首页、末页与当前页 ±[radius] 恒出现；实测全站 62453 件，
+/// 20 条/页 = 3123 页，纯页码条放不下，所以只保留这三段。
+List<int?> buildPageItems(int current, int total, {int radius = 2}) {
+  if (total <= 0) return const [];
+  final wanted = <int>{1, total};
+  for (var page = current - radius; page <= current + radius; page++) {
+    if (page >= 1 && page <= total) wanted.add(page);
+  }
+  final sorted = wanted.toList()..sort();
+  final out = <int?>[];
+  int? prev;
+  for (final page in sorted) {
+    if (prev != null && page - prev > 1) out.add(null);
+    out.add(page);
+    prev = page;
+  }
+  return out;
 }
 
 /// 标签（筛选用，来自 `/api/tags/`）
@@ -302,6 +396,30 @@ enum OnlineOrder {
 
   final String key;
   final String label;
+}
+
+/// 音轨标题展示：剥掉扩展名。在线作品的标题一律带 `.mp3` / `.wav` 这类后缀
+/// （asmr.one 网页也照原样显示），但 Hiko 播放器里的曲目名是不带的，
+/// 详情页跟着播放器走，两处才不会对不上。
+String onlineTrackDisplayName(String title) {
+  final name = title.trim();
+  if (name.isEmpty) return '未命名音轨';
+  final dot = name.lastIndexOf('.');
+  if (dot > 0 && name.length - dot <= 6) return name.substring(0, dot);
+  return name;
+}
+
+/// 作品网页地址。
+///
+/// 官方实例的 API 域名不是网页域名：实测 `https://api.asmr.one/works/{id}`
+/// 返回 **404**，网页在 `www.asmr.one`。四个官方镜像指向同一站，统一映射过去。
+/// 自建 Kikoeru 的 API 与网页同 host，直接拼即可。
+String onlineWorkPageUrl(String serverBase, int workId) {
+  final base = serverBase.trim().replaceAll(RegExp(r'/+$'), '');
+  if (base.isEmpty || base.contains('api.asmr')) {
+    return 'https://www.asmr.one/works/$workId';
+  }
+  return '$base/works/$workId';
 }
 
 /// 下载量等大数字的中文习惯缩写：`307937` → `30.8万`
