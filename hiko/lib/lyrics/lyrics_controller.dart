@@ -139,6 +139,18 @@ class LyricsController extends StateNotifier<LyricsState> {
     return result;
   }
 
+  /// 重新解析当前曲目的歌词。
+  ///
+  /// 在线作品的字幕是异步补拉进 `Track.lyricsText` 的，到达时曲目可能早已
+  /// 开始播放——[LyricsController] 只在「曲目 URL 变化」时解析一次，不会自行
+  /// 重读，因此需要由在线播放协调器显式调用本方法触发二次解析（1.90）。
+  Future<void> reload() async {
+    final playback = _ref.read(playbackProvider);
+    final track = playback.currentTrack;
+    if (track == null) return;
+    await _onTrackChanged(track, playback);
+  }
+
   /// 点击某行歌词跳转播放进度
   void seekToLine(int index) {
     if (index < 0 || index >= state.lines.length) return;

@@ -183,6 +183,13 @@ class PlaybackController extends StateNotifier<PlaybackState> {
 
   AudioPlayer get player => _player;
 
+  /// 在线队列推进回调（1.90）：当前在线作品播到专辑边界（且模式为「专辑循环」）时，
+  /// 由在线层按需解析在线列表里的相邻作品（含曲目树拉取）并返回可播放专辑。
+  ///
+  /// 为 null 表示没有在线上下文——此时在线专辑在边界处不跨作品（队列与本地库隔离），
+  /// 本地专辑则始终走 libraryProvider 的队列规则，不受本字段影响。
+  Future<Album?> Function(int dir)? onlineAdvance;
+
   /// 睡眠定时淡出:剩余时间与淡出系数 → 压低常规音量(不动增益通道)
   void _onSleepTick(Duration remaining, double fadeFactor) {
     state = state.copyWith(
@@ -256,20 +263,23 @@ class PlaybackController extends StateNotifier<PlaybackState> {
       _pendingSeek = startAt;
     }
 
-    // 内存中更新进度与断点，避免切歌时主线程被全量写盘阻塞
-    final played = QueueRules.cumulativePlayed(
-      albums: _ref.read(libraryProvider),
-      album: album,
-      queueIndex: idx,
-      position: startAt,
-    );
-    _ref.read(libraryProvider.notifier).updatePlayedInMemory(
-          album.id,
-          played,
-          resumeTrackIndex: idx,
-          resumePosition: startAt,
-          lastPlayedAt: DateTime.now(),
-        );
+    // 内存中更新进度与断点，避免切歌时主线程被全量写盘阻塞。
+    // 在线专辑不入库（id 为 online-<workId>，不写 library.json），跳过库状态更新。
+    if (!album.isOnline) {
+      final played = QueueRules.cumulativePlayed(
+        albums: _ref.read(libraryProvider),
+        album: album,
+        queueIndex: idx,
+        position: startAt,
+      );
+      _ref.read(libraryProvider.notifier).updatePlayedInMemory(
+            album.id,
+            played,
+            resumeTrackIndex: idx,
+            resumePosition: startAt,
+            lastPlayedAt: DateTime.now(),
+          );
+    }
 
     try {
       if (_playSessionId != currentSession) return;
@@ -433,6 +443,14 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     final s = state;
     final album = s.album;
     if (album == null) return;
+
+    // 在线专辑（1.90）：队列与本地库隔离——专辑内推进复用 QueueRules（传空专辑列表，
+    // shuffle/list 分支不依赖它），仅在「专辑循环」越界时请在线层解析相邻在线作品。
+    if (album.isOnline) {
+      await _stepOnline(album, dir);
+      return;
+    }
+
     final albums = _ref.read(libraryProvider);
     final target = QueueRules.step(
       albums: albums,
@@ -443,6 +461,31 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     );
     if (target == null) return;
     await playAlbum(target.$1, index: target.$2);
+  }
+
+  /// 在线专辑内推进。传空专辑列表给 [QueueRules.step]：
+  /// - shuffle / list 分支只依赖 `current.tracks`，正常返回目标曲目；
+  /// - album 分支越界时 `_nextAlbum` 因列表为空返回 null，此时才由
+  ///   [onlineAdvance] 去在线列表里取相邻作品（按需拉曲目树，不预取整页）。
+  Future<void> _stepOnline(Album album, int dir) async {
+    final s = state;
+    final target = QueueRules.step(
+      albums: const [],
+      current: album,
+      queueIndex: s.queueIndex,
+      mode: s.mode,
+      dir: dir,
+    );
+    if (target != null) {
+      await playAlbum(target.$1, index: target.$2);
+      return;
+    }
+    if (s.mode != PlaybackMode.album) return;
+    final advance = onlineAdvance;
+    if (advance == null) return;
+    final next = await advance(dir);
+    if (next == null || next.tracks.isEmpty) return;
+    await playAlbum(next, index: dir > 0 ? 0 : next.tracks.length - 1);
   }
 
   void _onProcessingStateChanged(ProcessingState ps) {
@@ -482,6 +525,8 @@ class PlaybackController extends StateNotifier<PlaybackState> {
       debugPrint('[Progress] _persistProgress: skipped (no album)');
       return;
     }
+    // 在线作品只活在内存队列里，没有可落盘的库记录（1.90）
+    if (album.isOnline) return;
     final resume = QueueRules.resumePoint(
       tracks: album.tracks,
       queueIndex: s.queueIndex,

@@ -5,7 +5,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter/foundation.dart' show SynchronousFuture;
+import 'package:flutter/foundation.dart' show SynchronousFuture, debugPrint;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -116,6 +116,75 @@ class CoverCache {
       // 落盘失败容忍
     }
     return decoded;
+  }
+
+  /// 在线封面（http/https）：内存 LRU → 磁盘 LRU → 网络下载并落盘（1.90）。
+  ///
+  /// 与 dataURL 路径共用同一套内存/磁盘缓存，只是「解码」这一步换成下载。
+  /// 不加这层的话，在线列表每滚一次都要重新拉几百 KB 的封面图。
+  Future<Uint8List?> loadNetwork(String url) {
+    final cached = _memory.get(url);
+    if (cached != null) return SynchronousFuture(cached);
+    final existing = _inflight[url];
+    if (existing != null) return existing;
+    final task = _loadNetworkSlow(url);
+    task.whenComplete(() => _inflight.remove(url));
+    _inflight[url] = task;
+    return task;
+  }
+
+  /// 网络封面下载时的代理（由 main.dart 注入 settings.scrapeProxy；
+  /// 留空则直连——国内直连官方图床通常没问题，配了代理时自动走代理）
+  static String Function()? proxyResolver;
+
+  Future<Uint8List?> _loadNetworkSlow(String url) async {
+    try {
+      final diskBytes = await _disk?.get(url);
+      if (diskBytes != null && diskBytes.isNotEmpty) {
+        _memory.put(url, diskBytes);
+        return diskBytes;
+      }
+    } catch (_) {
+      // 磁盘读失败降级为网络
+    }
+    final bytes = await _download(url);
+    if (bytes == null || bytes.isEmpty) return null;
+    _memory.put(url, bytes);
+    try {
+      await _disk?.put(url, bytes);
+    } catch (_) {
+      // 落盘失败容忍
+    }
+    return bytes;
+  }
+
+  static Future<Uint8List?> _download(String url) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    final proxy = proxyResolver?.call().trim() ?? '';
+    if (proxy.isNotEmpty) {
+      final uri = Uri.tryParse(proxy.contains('://') ? proxy : 'http://$proxy');
+      if (uri != null && uri.host.isNotEmpty) {
+        client.findProxy = (_) => 'PROXY ${uri.host}:${uri.port}';
+      }
+    }
+    try {
+      final request = await client.getUrl(Uri.parse(url));
+      final response = await request.close();
+      if (response.statusCode >= 400) {
+        await response.drain<void>();
+        return null;
+      }
+      final builder = BytesBuilder(copy: false);
+      await for (final chunk in response) {
+        builder.add(chunk);
+      }
+      return builder.takeBytes();
+    } catch (e) {
+      debugPrint('[cover-cache] 网络封面下载失败 $url: $e');
+      return null;
+    } finally {
+      client.close(force: true);
+    }
   }
 }
 

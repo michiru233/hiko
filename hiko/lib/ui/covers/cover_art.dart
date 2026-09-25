@@ -107,8 +107,18 @@ class AlbumCover extends StatelessWidget {
       );
     }
     if (cover != null && (cover.startsWith('http:') || cover.startsWith('https:'))) {
-      return Image.network(cover,
-          fit: fit, filterQuality: FilterQuality.high, errorBuilder: (_, _, _) => _svg());
+      // 在线封面（1.90）：走与 dataURL 同一套内存/磁盘缓存，避免列表滚动反复下载。
+      // 未命中时先给 SVG 兜底，下载完成再切图，不阻塞滚动。
+      final bytes = CoverCache.instance.peek(cover);
+      if (bytes != null) return _memoryImage(bytes);
+      return FutureBuilder<Uint8List?>(
+        future: CoverCache.instance.loadNetwork(cover),
+        builder: (context, snap) {
+          final b = snap.data;
+          if (b != null) return _memoryImage(b);
+          return _svg();
+        },
+      );
     }
     return _svg();
   }

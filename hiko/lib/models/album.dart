@@ -245,4 +245,10 @@ class Album {
   bool get hasLocalFiles =>
       sourcePath.isNotEmpty ||
       tracks.any((t) => t.url.startsWith('file:') || t.url.startsWith('content:'));
+
+  /// 是否为在线来源专辑（Kikoeru / asmr.one，id 约定 `online-<workId>`）。
+  ///
+  /// 在线专辑只活在内存里：不写入 library.json，播放进度不落盘，
+  /// 「清理失效记录」「删除文件」等本地库操作一律跳过（1.90）。
+  bool get isOnline => id.startsWith('online-');
 }

@@ -6,6 +6,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:universal_platform/universal_platform.dart';
 
 import '../../data/library_provider.dart';
+import '../../data/online/online_provider.dart';
 import '../../data/settings_store.dart';
 import '../../data/update_checker.dart';
 import '../../playback/gain_chain.dart';
@@ -800,7 +801,121 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
             ),
           ),
         ),
+        _SettingRow(
+          label: '在线服务器',
+          trailing: SizedBox(
+            width: 220,
+            child: TextField(
+              controller: TextEditingController(text: settings.onlineServer),
+              onChanged: (v) =>
+                  ref.read(settingsProvider.notifier).setOnlineServer(v),
+              decoration: InputDecoration(
+                hintText: 'api.asmr.one',
+                hintStyle: TextStyle(fontSize: 11, color: theme.hintColor),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(7),
+                  borderSide: BorderSide(color: theme.dividerColor),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(7),
+                  borderSide: BorderSide(color: theme.dividerColor),
+                ),
+              ),
+              style: const TextStyle(fontSize: 11),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            '在线音声服务地址（Kikoeru 兼容协议）。默认 asmr.one 官方实例，也可填写自建服务器地址；'
+            '留空回退默认。在线浏览与播放无需登录，直连不通时请在上面配置代理。',
+            style: TextStyle(
+              fontSize: 10.5,
+              height: 1.5,
+              color: theme.hintColor,
+            ),
+          ),
+        ),
+        _SettingRow(
+          label: '在线缓存上限',
+          trailing: DropdownButton<double>(
+            value: settings.onlineCacheLimitGb,
+            isDense: true,
+            underline: const SizedBox.shrink(),
+            style: const TextStyle(fontSize: 11),
+            items: [
+              for (final gb in SettingsNotifier.onlineCacheLimitOptions)
+                DropdownMenuItem(
+                  value: gb,
+                  child: Text(gb == 0.0 ? '关闭（不缓存）' : _formatGb(gb)),
+                ),
+            ],
+            onChanged: (v) {
+              if (v != null) {
+                ref.read(settingsProvider.notifier).setOnlineCacheLimit(v);
+              }
+            },
+          ),
+        ),
+        _SettingRow(
+          label: '在线缓存占用',
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FutureBuilder<int>(
+                future: ref.read(onlineAudioCacheProvider).totalBytes(),
+                builder: (context, snap) {
+                  final bytes = snap.data;
+                  return Text(
+                    bytes == null ? '统计中…' : _formatBytes(bytes),
+                    style: TextStyle(fontSize: 11, color: theme.hintColor),
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: () async {
+                  await ref.read(onlineAudioCacheProvider).clear();
+                  if (mounted) setState(() {});
+                  _toast('在线缓存已清空');
+                },
+                child: const Text('清理', style: TextStyle(fontSize: 11)),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            '在线播放在超过 20 秒后才开始后台缓存整首音频到本地（避免点开即退白耗流量），'
+            '超出上限时按最久未播放淘汰。缓存独立存放，不写入本地音声库。',
+            style: TextStyle(
+              fontSize: 10.5,
+              height: 1.5,
+              color: theme.hintColor,
+            ),
+          ),
+        ),
       ];
+
+  /// 缓存上限展示：`0.5 GB` / `5 GB`
+  static String _formatGb(double gb) =>
+      gb == gb.roundToDouble() ? '${gb.toInt()} GB' : '$gb GB';
+
+  /// 占用展示：`512 MB` / `1.2 GB`
+  static String _formatBytes(int bytes) {
+    if (bytes <= 0) return '0 MB';
+    const mb = 1024 * 1024;
+    const gb = 1024 * mb;
+    if (bytes >= gb) return '${(bytes / gb).toStringAsFixed(1)} GB';
+    return '${(bytes / mb).toStringAsFixed(0)} MB';
+  }
 
   // ---- 音乐目录 ----
 

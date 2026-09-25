@@ -30,6 +30,9 @@ Future<void> main() async {
   }
   final container = ProviderContainer();
   // 封面磁盘缓存（Application Support/hiko/covers；失败静默降级纯内存，1.48）
+  // 在线封面下载复用刮削代理设置（动态读取，改设置即刻生效，1.90）
+  CoverCache.proxyResolver =
+      () => container.read(settingsProvider).scrapeProxy;
   unawaited(CoverCache.instance.init());
   // 加载设置与音声库与分类
   await container.read(settingsProvider.notifier).load();

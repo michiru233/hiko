@@ -54,6 +54,14 @@
 - 音频同目录下的 LRC / VTT 文件自动加载，在详情抽屉里和标签分 Tab 展示
 - macOS 有系统级置顶的桌面悬浮歌词窗
 
+### 在线（Kikoeru 服务器，1.90）
+
+- 接入 Kikoeru 兼容服务器，默认 asmr.one，地址在设置里可换成自建实例；浏览、搜索、详情、封面、字幕、播放全部无需账号
+- 侧边栏独立「在线」视图，热门 / 最新 / 搜索三个入口，支持按标签翻查与排序、只看带字幕的作品
+- 在线作品自带曲目树与字幕，播放时字幕接入同一套歌词系统（全屏歌词 + macOS 桌面悬浮窗）
+- 边播边缓存：听过 20 秒以上才落盘，缓存上限桌面 5 GB / 移动 2 GB，可在设置里调档并查看/清理占用
+- 在线数据与本地库完全隔离，不写进 `library.json`；在线队列也只在在线列表内接续，不会混进本地播放队列
+
 ### 外观
 
 - 浅色 / 深色主题，6 种强调色
@@ -75,7 +83,7 @@
 
 ## 下载
 
-macOS 与 Android 安装包在 [Releases](https://github.com/michiru233/hiko/releases) 页面，当前现役版本 [v1.89.0](https://github.com/michiru233/hiko/releases/tag/v1.89.0)。
+macOS 与 Android 安装包在 [Releases](https://github.com/michiru233/hiko/releases) 页面，当前现役版本 [v1.90.0](https://github.com/michiru233/hiko/releases/tag/v1.90.0)。
 
 ## 开发
 

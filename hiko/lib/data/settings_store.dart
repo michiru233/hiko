@@ -34,6 +34,8 @@ class AppSettings {
   final String backgroundPath; // 自定义背景图（已复制进应用数据目录的绝对路径，空=未启用，1.84）
   final double backgroundBlur; // 背景图模糊度 0-30px，默认 12
   final double backgroundOpacity; // 背景图不透明度 0-1（叠在主题底色上），默认 0.65
+  final String onlineServer; // 在线服务器地址（Kikoeru 兼容，默认 asmr.one 官方实例，1.90）
+  final double onlineCacheLimitGb; // 在线音频缓存上限（GB，0 = 不缓存，1.90）
 
   const AppSettings({
     this.theme = 'light',
@@ -55,7 +57,17 @@ class AppSettings {
     this.backgroundPath = '',
     this.backgroundBlur = 12,
     this.backgroundOpacity = 0.65,
+    this.onlineServer = defaultOnlineServer,
+    this.onlineCacheLimitGb = 5.0,
   });
+
+  /// 在线服务默认地址（Kikoeru 协议公共实例；可改成任意自建服务器）
+  static const defaultOnlineServer = 'https://api.asmr.one';
+
+  /// 在线缓存默认上限：桌面 5 GB / 移动 2 GB。
+  /// 注意：不能直接用作 const 构造的默认值（getter 不是常量），
+  /// 首次运行时由 [_normalizeOnlineCacheLimit] 在 load 阶段落到平台默认值。
+  static double get defaultOnlineCacheLimitGb => Platform.isAndroid ? 2 : 5;
 
   static const defaultAccent = '#6559d8';
   static const accents = [
@@ -87,6 +99,8 @@ class AppSettings {
     String? backgroundPath,
     double? backgroundBlur,
     double? backgroundOpacity,
+    String? onlineServer,
+    double? onlineCacheLimitGb,
   }) =>
       AppSettings(
         theme: theme ?? this.theme,
@@ -108,6 +122,8 @@ class AppSettings {
         backgroundPath: backgroundPath ?? this.backgroundPath,
         backgroundBlur: backgroundBlur ?? this.backgroundBlur,
         backgroundOpacity: backgroundOpacity ?? this.backgroundOpacity,
+        onlineServer: onlineServer ?? this.onlineServer,
+        onlineCacheLimitGb: onlineCacheLimitGb ?? this.onlineCacheLimitGb,
       );
 }
 
@@ -150,6 +166,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kBackgroundPath = 'hiko-background-path';
   static const _kBackgroundBlur = 'hiko-background-blur';
   static const _kBackgroundOpacity = 'hiko-background-opacity';
+  static const _kOnlineServer = 'hiko-online-server';
+  static const _kOnlineCacheLimit = 'hiko-online-cache-limit';
 
   static const _validSorts = {
     'recent_desc',
@@ -202,6 +220,34 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static double _normalizeLyricsFontScale(double? val) =>
       val != null && _validLyricsFontScales.contains(val) ? val : 1.0;
 
+  /// 在线服务器地址：空值回退 asmr.one 官方实例。
+  /// 不做严格 URL 校验——自建 Kikoeru 的形态多样（内网 IP、端口、子路径），
+  /// 统一交给 KikoeruClient.normalizeBase 在运行时补 scheme 与去尾斜杠。
+  static String _normalizeOnlineServer(String? val) {
+    final trimmed = val?.trim() ?? '';
+    return trimmed.isEmpty ? AppSettings.defaultOnlineServer : trimmed;
+  }
+
+  /// 在线缓存上限档位（GB）：0 = 不缓存；非法值回退平台默认（桌面 5 / 移动 2）
+  static const _validOnlineCacheLimits = [
+    0.0,
+    0.5,
+    1.0,
+    2.0,
+    5.0,
+    10.0,
+    20.0,
+    50.0,
+  ];
+
+  static double _normalizeOnlineCacheLimit(double? val) =>
+      (val != null && _validOnlineCacheLimits.contains(val))
+          ? val
+          : AppSettings.defaultOnlineCacheLimitGb;
+
+  /// 缓存上限可选档位（设置页下拉用；0 = 关闭缓存）
+  static const onlineCacheLimitOptions = _validOnlineCacheLimits;
+
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     state = AppSettings(
@@ -227,6 +273,9 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       backgroundPath: await _existingBackground(prefs.getString(_kBackgroundPath) ?? ''),
       backgroundBlur: (prefs.getDouble(_kBackgroundBlur) ?? 12).clamp(0.0, 30.0),
       backgroundOpacity: (prefs.getDouble(_kBackgroundOpacity) ?? 0.65).clamp(0.0, 1.0),
+      onlineServer: _normalizeOnlineServer(prefs.getString(_kOnlineServer)),
+      onlineCacheLimitGb:
+          _normalizeOnlineCacheLimit(prefs.getDouble(_kOnlineCacheLimit)),
     );
   }
 
@@ -289,6 +338,19 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
 
   Future<void> setScrapeProxy(String proxy) =>
       _save(_kProxy, proxy, state.copyWith(scrapeProxy: proxy));
+
+  /// 在线服务器地址（Kikoeru 兼容，默认 asmr.one，1.90）
+  Future<void> setOnlineServer(String server) {
+    final valid = _normalizeOnlineServer(server);
+    return _save(_kOnlineServer, valid, state.copyWith(onlineServer: valid));
+  }
+
+  /// 在线音频缓存上限（GB，0 = 不缓存，1.90）
+  Future<void> setOnlineCacheLimit(double gb) {
+    final valid = _normalizeOnlineCacheLimit(gb);
+    return _save(
+        _kOnlineCacheLimit, valid, state.copyWith(onlineCacheLimitGb: valid));
+  }
 
   static Future<String> _existingBackground(String path) async {
     if (path.isEmpty) return '';

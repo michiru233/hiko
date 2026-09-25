@@ -41,6 +41,7 @@ import '../widgets/settings_dialog.dart';
 import '../widgets/stats_view.dart';
 import '../widgets/sidebar.dart';
 import 'album_detail_screen.dart';
+import 'online_screen.dart';
 import '../transitions/fullscreen_player_route.dart';
 
 /// 主界面：桌面三栏布局（侧栏 | 网格 | 详情抽屉）+ 底部播放条；
@@ -424,8 +425,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final albums = ref.watch(libraryProvider);
     final currentSort = ref.watch(settingsProvider.select((s) => s.albumSort));
     // 1.48：排序/过滤走 memo——列表实例与参数不变时复用结果，大库重建不再全量重算；
-    // 「统计」视图不走筛选（面板直接聚合全库）
-    final filtered = _view == '统计'
+    // 「统计」视图不走筛选（面板直接聚合全库）；「在线」视图的数据来自远程服务，
+    // 与本地库无关，同样跳过本地筛选（1.90）
+    final filtered = _view == '统计' || _view == '在线'
         ? albums
         : _filterMemo.get(
             albums: albums,
@@ -728,7 +730,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     child: BottomNavigationBar(
                       currentIndex: _navIndex,
                       onTap: (i) {
-                        if (i == 2) {
+                        // 超出 _navViews 的末位固定为「设置」（1.90 起在线视图占第 3 位）
+                        if (i >= _navViews.length) {
                           _openSettings(context);
                           return;
                         }
@@ -749,6 +752,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           label: '收藏',
                         ),
                         BottomNavigationBarItem(
+                          icon: Icon(Icons.cloud_outlined),
+                          label: '在线',
+                        ),
+                        BottomNavigationBarItem(
                           icon: Icon(Icons.settings_outlined),
                           label: '设置',
                         ),
@@ -762,7 +769,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  static const _navViews = ['全部音声', '收藏夹'];
+  /// 移动端底部导航对应的视图（末位之后的固定为「设置」按钮，不在本表内）
+  static const _navViews = ['全部音声', '收藏夹', '在线'];
 
   int get _navIndex {
     final i = _navViews.indexOf(_view);
@@ -791,6 +799,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     bool isMobile,
     String currentSort,
   ) {
+    // 在线视图（1.90）：复用顶栏（面包屑/主题/隐私模糊等），
+    // 中间区域完全交给在线页自己管理（入口切换 + 搜索 + 结果网格）。
+    if (_view == '在线') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildTopbar(theme, isMobile),
+          Expanded(child: OnlineScreen(isMobile: isMobile)),
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
