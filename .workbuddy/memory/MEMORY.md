@@ -3,7 +3,7 @@
 ## 定位
 Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter 重写版，`hiko/` 为唯一主线；
 仓库根目录的 Electron + Capacitor 旧代码仅作参考，不再新增功能。GitHub: https://github.com/michiru233/hiko
-当前版本 1.93.1+104（2026-09-26）。平台：macOS（发布）/ Windows（需 Windows 机构建）/ Android（已恢复开发）。
+当前版本 1.94.0+105（2026-09-26）。平台：macOS（发布）/ Windows（需 Windows 机构建）/ Android（已恢复开发）。
 
 ## 架构速查（hiko/lib）
 - `models/` Album / Track / CategoryItem —— Album 是核心，含 played、resumeTrackIndex/Position、rating、tags、genre、favorite、localCover。
@@ -64,7 +64,7 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
    `for d in com.apple.dt.xcodebuild com.apple.dt.Xcode; do for k in IDEPackageSupportDisableManifestSandbox IDEPackageSupportDisablePluginExecutionSandbox IDEPackageSupportDisablePackageSandbox; do defaults write $d $k -bool YES; done; done`
    已排除无效路径：`XCODE_XCCONFIG_FILE`（键属命令行参数级，非构建设置）、`--config-only`（照样跑迁移）、
    单独手跑 resolve（flutter 会用不同 container 重新解析）。
-9. 验证基线（1.93.1 后）：`flutter test` **432 passed / 2 skipped**；`flutter analyze` **39 条**既有 lint 基线，改动文件应 0 新增 error。
+9. 验证基线（1.94.0 后）：`flutter test` **451 passed / 2 skipped**；`flutter analyze` **39 条**既有 lint 基线，改动文件应 0 新增 error。
 10. 环境：Flutter 3.47.0 / Dart 3.13.0（/opt/homebrew/bin/flutter）；Android 模拟器 AVD 名 `kikoeru_test`；
    SDK `/opt/homebrew/share/android-commandlinetools`，JDK `/opt/homebrew/opt/openjdk@21`。
 
@@ -81,9 +81,33 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
   - 目录深度 0~3 层且同作品内会混；folder 节点**只有 `type` + `title`**（项目数/时长是前端聚合的）；
     audio 节点**有 `duration`（浮点秒）**。`/api/works` 的 `pageSize` 支持到 500，全站约 6.2 万件
     （**注意：只有 `/api/works` 这一系能到 500，playlist 系上限是 100**，见下节）。
+- **⚠️ 列表端点本来就带 `tags` / `vas`（1.94.0 纠正 1.90 的误判）**：
+  `GET /api/works`、`POST /api/search/{kw}`、`GET /api/tags/{id}/works` 的**列表项**都带完整
+  `tags: [{id, name, i18n}]`，且 `name` **本身就是 zh-cn**（不必读 `i18n`）；与详情
+  `/api/work/{id}?v=2` 逐条比对 `id` + `name` **完全一致**。`vas` 也是列表项就带（`{id, name}`）。
+  1.90 因为一句未验证的假设（注释写着「列表不返回 tags/vas」）把 `OnlineWork.tags` 设计成
+  `List<String>`、**丢掉了 `id`**，导致 1.94 必须跨 5 个文件做类型重构。
+  **教训：类型要按「能拿到的最小充分信息」设计，别把未来可能必需的结构丢在解析层。**
+  现已改为 `List<OnlineTag>`；纯字符串形态降级为 `id = 0`（只展示、不可筛）。
+- **标签筛选走结构化端点 `/api/tags/{id}/works`，不是关键词搜索（1.94.0 裁决 Q2=甲）**：
+  两者界面上看不出区别，故 `test/data/online_browse_source_test.dart` 用 `HttpOverrides`
+  记录真实 URI 钉死映射（`browse→/api/works`、`search→/api/search/{kw}`、
+  `tag→/api/tags/{id}/works`，并显式断言**绝不**走 `/api/search`）。
+  **取消标签筛选一律回「最新榜」**（`applyPreset(latestPreset)`，用户推翻了「回热门榜」的推荐）。
+  `onlineTagsProvider`（拉全量 `/api/tags/` 422 个约 72KB）**已删** —— 那是「按名字反查 id」的
+  旧链路所需，现在 id 直接就在手里。`KikoeruClient.fetchTags()` 保留（端点表面完整性）。
+- **在线卡片标签行（1.94.0）**：`OnlineWorkGrid` 的 `mainAxisExtent` 加了公开常量
+  `kOnlineCardTagRow = 24`，且**没有标签的卡片也占位**（否则同屏封面大小不一）。
+  单行截断必须用 `TextPainter` **真量宽度**（标签名 4~10 字符差异极大），
+  量与画必须共用 `HikoTagChip.textStyle` / `.horizontalPadding` 同一份常量。
+  卡面的 `+N` 是「**被藏起来的个数**」（对齐本地 `album_card.dart`），不是总数。
+  开关 `showOnlineTags`（默认 `true`，在设置「在线账号」页）与本地 `showScrapedTags`
+  **刻意分开、默认值相反**（本地刮削标签默认关，在线默认开）。
 - **状态机**：`OnlineSource{browse,search,tag}` × `OnlineSort`（5 项扁平菜单，方向写进条目名）**正交**；
   「热门/最新」只是 `OnlineSort` 的两个预设 chip（点了可再改排序，改了就都不高亮）；
   「只看带字幕」可用性挂**来源**（`canFilterSubtitle`），`applyPreset` 不清它、`search/selectTag` 清它。
+  `selectTag` / `search` 两处都要**同时清搜索框文本**（1.94.0 前只清了 state.keyword，
+  界面上会留下「框里写着旧词、结果其实是标签的」）。
 - **详情页目录**：默认**全折叠**（`_expanded` 初始空集），正在播放的曲目自动展开其目录链
   （`pathToHash` + `_revealedHash` 去重，展开只增不减）并 `Scrollable.ensureVisible(alignment: 0.35)`。
 - **`PopupMenuButton.constraints` 给 `maxHeight` 即自动获得滚动**（菜单体本身是 `SingleChildScrollView`）；
@@ -143,3 +167,5 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
   多选菜单窄屏高度、长按菜单触屏手感）；收藏页 `OnlinePager` 是**本地切片分页**（与浏览页的服务端分页
   是两套），窄屏观感同样未验证。未做（Q6 明确）：review / recommender / vote、本地镜像收藏、注册。
 - 1.93.1 遗留：仍是 **macOS 端实测**，Android 只做构建与静态检查；上面 1.91/1.92/1.93.0 的实机项未变。
+- 1.94.0 遗留：Android 未实机验证卡面标签行的**截断宽度**与**可关闭标记**在窄屏的表现
+  （其余 1.91/1.92/1.93.0 实机项仍未变）。明确不做：标签筛选下拉、asmr.one 的「顺序」排序变体。

@@ -2055,3 +2055,146 @@ Release：https://github.com/michiru233/hiko/releases/tag/v1.93.0
 Release：https://github.com/michiru233/hiko/releases/tag/v1.93.1
 （`hiko-v1.93.1-macos.zip` 32.5 MB + `hiko-v1.93.1-android.apk` 66.5 MB）。
 
+## 1.94.0 在线卡片标签展示 + 结构化标签筛选（2026-09-26）
+
+**动机**：用户要求「参照 asmr.one 实现专辑标签相关功能」—— 卡片上展示标签，
+点任一标签触发按该标签筛选并跳到筛选结果页。用户随附 asmr.one 主界面截图。
+
+**范围**：只做**在线**卡片（裁决 Q1=B）。用户原话：「本地的标签是刮削得来的，且默认关闭。
+在线的则是默认开启（也可以通过设置单独调节）」。
+
+### 用户裁决（两轮 grill-me）
+
+| # | 问题 | 裁决 |
+|---|---|---|
+| Q1 | 本地卡片是否也加标签 | **B**：只做在线，不影响本地 |
+| Q2 | 标签筛选是结构化还是全文搜索 | **甲**：结构化，走 `/api/tags/{id}/works` |
+| Q3 | 多标签是叠加还是互斥 | **A**：单标签互斥；点新标签替换旧的，再点同一个取消 |
+| Q4 | 卡面显示几个标签 | 按推荐：显示 3 个 + `+N`，`+N` 点开详情看全部 |
+| Q5 | 标签放不下怎么办 | **甲**：单行自动截断，能放几个放几个，`+N` 始终存在 |
+| Q6 | 切到标签筛选时搜索框文本怎么处理 | **甲**：一并清空 |
+| Q7 | 是否需要显式「退出标签筛选」入口 | **甲**：加可关闭标记（复用本地 1.77 社团/声优标记形态） |
+| Q8 | 展示开关放哪 | **甲**：设置「在线账号」页 |
+| Q9 | 收藏页卡面标签是否可点 | **甲**：可点 → 应用筛选并切回「在线」页看结果 |
+| 追加 | 取消标签筛选后回哪个榜 | **一律回最新榜**（用户**推翻**了我推荐的「回热门榜」） |
+
+### 本轮新增实测（纠正一处长期误判）
+
+**1.90 接入时写下的注释「列表接口不返回 tags / vas，所以列表态下这两项为空」是错的。**
+
+实测三个列表端点 —— `GET /api/works`、`POST /api/search/{kw}`、`GET /api/tags/{id}/works`
+—— 的列表项**都带完整 `tags`**：
+
+```json
+"tags": [{"id": 222, "name": "幼なじみ",
+          "i18n": {"ja-jp": {"name": "幼なじみ"}, "zh-cn": {"name": "青梅竹马"}}}]
+```
+
+`name` 字段**本身就是 zh-cn**（不需要读 `i18n`）；与详情接口 `/api/work/{id}?v=2`
+逐条比对 **`id` + `name` 完全一致**。`vas` 同样列表项就带（形如 `{id, name}`，
+实测「加藤英美里」）。
+
+**这处误判的代价**：`OnlineWork.tags` 被设计成 `List<String>`，**丢掉了 `id`** ——
+而按标签筛选要的正是 `id`。若沿用旧设计，点标签就必须「拿标签名去 `/api/tags/`
+（422 个、约 72KB）反查 id」，于是有了 `onlineTagsProvider` + `_openTagByName`
+这条链路。本轮把它整条删掉。
+
+代价之外的教训：**类型设计要跟着「能拿到的最小充分信息」走**。1.90 因为一句没验证的
+假设，把 `id` 这个后来变成必需品的信息丢在了解析层，导致 1.94 必须做一次
+跨 5 个文件的类型重构。
+
+### 改动
+
+| 文件 | 改动 |
+|---|---|
+| `data/online/online_models.dart` | `OnlineWork.tags`: `List<String>` → `List<OnlineTag>`；`parseTagNames` / `_tagNameFromMap` → `parseOnlineTags`（按 id 去重；纯字符串形态 `id = 0` 表示「只展示、不可筛」）；类注释重写并附本轮实测证据 |
+| `data/online/online_provider.dart` | 转本地 `Album` 处取 `.name`；**删除 `onlineTagsProvider`**（改留注释说明为什么删：死接线，会被误 watch 白拉 72KB）。`KikoeruClient.fetchTags()` 保留 —— 端点表面的完整性 |
+| `ui/widgets/detail_kit.dart` | `HikoTagChip` 加 `muted` 参数（`+N` 用弱化样式）；抽出**公开常量** `textStyle` / `horizontalPadding` |
+| `ui/widgets/online_work_grid.dart` | 公开 `kOnlineCardTagRow`；`mainAxisExtent` 加标签行高度；`showTags` / `onTagTap` 透传 |
+| `ui/screens/online_screen.dart` | `_openTagByName(String)` → `_applyTag(OnlineTag)`；新增 `_CardTagRow`（单行截断）与 `_TagFilterMarker`（可关闭标记）；`_statusLine` 的 tag 分支不再重复标签名（由标记承担）；删除变死代码的 `_toast` |
+| `ui/widgets/online_detail_panel.dart` | `onSelectTagName(String)` → `onSelectTag(OnlineTag)`；`id <= 0` 只展示不可点 |
+| `data/settings_store.dart` | 新增 `showOnlineTags`（默认 `true`），注释写明与 `showScrapedTags` **刻意分开、默认值相反** |
+| `ui/widgets/settings_dialog.dart` | 「在线账号」页加开关；`_SettingRow` 支持 `subtitle` |
+| `ui/screens/online_favorites_screen.dart` + `home_screen.dart` | 收藏页卡面标签点击 → `selectTag` + 切回在线页 |
+| `pubspec.yaml` | `1.93.1+104` → `1.94.0+105` |
+
+### 关键设计决策
+
+**① 单行截断必须真量宽度。** 标签名长短差异极大（「ASMR」4 字符 vs
+「双声道立体声/人头麦」10 字符），按字数估算必然溢出或浪费。用 `LayoutBuilder` +
+`TextPainter` 逐字测量。**量与画必须共用同一份 `textStyle` / `horizontalPadding`**
+—— 所以把它们提到 `HikoTagChip` 的公开常量上，而不是在两处各写一份。
+
+**② `+N` 的语义对齐本地既有约定。** 本地卡面 `album_card.dart` 用的是
+`'+${album.tags.length - 3}'`（**被藏起来的个数**），不是总数。本轮初版写成总数，
+自查时发现不一致，已改为 `'+${tags.length - visible}'`。
+截断算法按「最大的 `+N` 宽度」预留，保证预留下来的一定够。
+
+**③ `SliverGrid` 的固定高度与封面正方形冲突。** 封面是 `Expanded`，标签行会去抢高度。
+`mainAxisExtent` 必须加上 `kOnlineCardTagRow`，且**没有标签的卡片也要占位** ——
+否则同一屏里「有标签的封面小、没标签的封面大」。
+（本地卡面用 masonry 可变高，可以换行 Wrap，没有这个问题；两端布局机制不同。）
+
+**④ 顺手修掉一处既有不一致。** `selectTag` 早就清了 `state.keyword`，但**没清搜索框文本**
+—— 1.94.0 之前在详情页点标签就会出现「框里写着旧词、结果其实是标签的」。
+本轮按 Q6=甲 一并清掉。
+
+**⑤ 退出标签筛选回「最新榜」而非「热门榜」。** 我在 `_applyTag` 初版里写的是回热门榜
+（与冷启动默认一致），用户明确裁决**一律回最新榜**。已在 `_applyTag` 与
+`_TagFilterMarker.onClear` 两处落地，并写了双重断言（是 `release` **且不是** `dl_count`）
+—— 因为这是用户推翻推荐答案的点，最容易被后人「顺手改回热门」。
+
+### 测试
+
+- `test/data/online_client_test.dart`：3 处断言改取 `.name` 并补 `id` 断言；
+  新增「标签按 id 去重（同名不同 id 视为两个标签）」「列表项自己就带 tags/vas ——
+  1.90 的『列表不返回』是误判」。
+- `test/ui/online_work_card_test.dart`：新增卡面标签行 **7 条** —— 开关关闭不渲染 /
+  全放得下无 `+N` / 截断时 `+N` 是**被藏起来的个数** / 点标签只筛选不连带开详情 /
+  点 `+N` 等于开详情 / `id = 0` 不可筛 / 窄卡片 150px 不溢出。
+  - 踩坑：初版测试用的标签都是短名，200px 卡片**全放得下**，`+N` 根本不出现，
+    于是 `find.textContaining('+')` 报 `no matching widgets`。
+    改用长标签名（`双声道立体声/人头麦` 等）才钉住截断路径。
+- `test/data/online_browse_source_test.dart`（**新增 10 条**）：用 `HttpOverrides`
+  记录**真实发出的 URI**（照抄 `online_playlist_test.dart` 的 `_UrlRecorder` 手法），
+  钉死「来源 → 端点」映射：
+  - `browse → /api/works`
+  - `search → /api/search/{kw}`
+  - `tag → /api/tags/{id}/works`，并**显式断言绝不走 `/api/search`**
+  - 标签按 id 而非名字决定端点（同名不同 id 是实测存在的）
+  - 三个来源都带当前排序键（来源与排序正交）
+  - `selectTag` 清掉 keyword 与 subtitleOnly；标签来源下 `canFilterSubtitle` 为 false
+  - `applyPreset(latestPreset)` 清标签 + 回 `/api/works` + `order = release` 且 `≠ dl_count`
+  - 冷启动默认榜是热门榜（否则「回最新榜」是空操作）
+  - 踩坑：`Uri.path` **保留百分号编码**（`/api/search/%E5%82%AC%E7%9C%A0`），
+    断言人类可读路径必须先 `Uri.decodeComponent`。
+
+**为什么这条回归锁值得写**：Q2=甲 决定的「走结构化端点而非关键词搜索」
+在**界面上完全看不出区别**（两者都能筛出作品），所以没有断言就会在未来被悄悄改回去 ——
+而改回去会丢掉「标签名是全站模糊匹配、而非这个标签本身」这层语义差异。
+同一测试文件放 provider 层（而不是 stub 整个 `OnlineScreen`）的原因：决定走哪个端点的是
+`OnlineBrowseNotifier._fetch`，在这里断言既精确又不需要 stub 它依赖的另外三个 provider。
+
+### 验证
+
+- `flutter test` → **451 passed / 2 skipped**（基线 432/2，**净增 19**）
+- `flutter analyze` → **39 条**（= 基线，0 新增）
+- macOS `build/macos/Build/Products/Release/Hiko.app` → `1.94.0 (105)`，76.4 MB
+- Android `build/app/outputs/flutter-apk/app-release.apk` → 69.8 MB
+- 双端构建一次通过（沿用 1.90.0 起的三条结论：摘代理 + `IDEPackageSupportDisable*Sandbox`
+  + macOS 需沙箱外前台跑）
+
+### 本版待裁决 / 未验证
+
+- 1.91.0 遗留三项（**仍未裁决**）：① 在线曲目行点击是否跳全屏播放页；
+  ② 移动端无 hover → 目录行「播放该目录」在触屏上不存在入口；③ 移动端分页条窄屏表现。
+- 1.92.0 遗留：`_SortMenu` 限高（`min(320, 屏高 × 0.45)`）与「展开全部」按钮窄屏换行。
+- 1.93.0 遗留：Android 整条账号/收藏链路未实机验证；收藏页 `OnlinePager` 是本地切片分页。
+- **本版新增未验证**：卡面标签行的截断宽度与可关闭标记在窄屏（Android）的表现。
+- 明确不做：标签筛选下拉、asmr.one 的「顺序」排序变体（要加就把方向加回 `OnlineSort` 枚举）。
+- 本轮**仍是 macOS 端实测**，Android 只做构建与静态检查。
+
+Release：https://github.com/michiru233/hiko/releases/tag/v1.94.0
+（`hiko-v1.94.0-macos.zip` 32 MB + `hiko-v1.94.0-android.apk` 67 MB）。
+代码提交 `59a14d6`。
+
