@@ -305,89 +305,133 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
   /// 第二行：字幕筛选（仅全站浏览可用）+ 排序下拉 + 状态行。
   ///
   /// 状态行右对齐并留出固定间距 —— 旧版紧贴在左边控件后面，读起来像它的后缀。
+  ///
+  /// **激活的筛选标记（标签 / 声优 / 社团）在移动端独占一行**（1.97.2）：
+  /// 第二行在手机竖屏上只剩一百多像素给尾部，标记塞进去必然截断到看不清
+  /// （1.97.0/1.97.1 两轮实机截图都栽在这里）。挪出来后它有整行可用，
+  /// 长名字也能显示完整；桌面空间充裕，保持内联不动。
   Widget _buildFilterLine(OnlineBrowseState state, ThemeData theme) {
     // 数量从 settings 取，与黑名单管理对话框里列出的条数同源 ——
     // 用 id 集合的 size 会让「id 为 0 的坏数据」在两处显示成不同的数字
     final blockedCount =
         ref.watch(settingsProvider.select((s) => s.blockedTags.length));
-    return Row(
+    final tagActive = state.source == OnlineSource.tag && state.tag != null;
+    final creatorActive = state.creator != null;
+    final inlineMarkers = !widget.isMobile;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (state.canFilterSubtitle) ...[
-          FilterChip(
-            label: const Text('只看带字幕', style: TextStyle(fontSize: 11)),
-            selected: state.subtitleOnly,
-            visualDensity: VisualDensity.compact,
-            onSelected: (_) => unawaited(
-              ref.read(onlineBrowseProvider.notifier).toggleSubtitleOnly(),
+        Row(
+          children: [
+            if (state.canFilterSubtitle) ...[
+              FilterChip(
+                label: const Text('只看带字幕', style: TextStyle(fontSize: 11)),
+                selected: state.subtitleOnly,
+                visualDensity: VisualDensity.compact,
+                onSelected: (_) => unawaited(
+                  ref.read(onlineBrowseProvider.notifier).toggleSubtitleOnly(),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+            _SortMenu(
+              current: state.sort,
+              onSelected: (sort) =>
+                  ref.read(onlineBrowseProvider.notifier).setSort(sort),
             ),
-          ),
-          const SizedBox(width: 8),
-        ],
-        _SortMenu(
-          current: state.sort,
-          onSelected: (sort) =>
-              ref.read(onlineBrowseProvider.notifier).setSort(sort),
+            const SizedBox(width: 8),
+            // 「Aa」：就地调在线外观（1.96.0 裁决 Q5=甲）。放排序 chip 右边是因为
+            // 想改字号多半就发生在「正看着这个列表、觉得字小了」的那一刻 ——
+            // 要绕回设置页翻两层的话，这个念头多半就过去了
+            ActionChip(
+              label: const Text(
+                'Aa',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+              tooltip: '在线外观：字号 · 每行卡片数',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => unawaited(showOnlineAppearanceDialog(context)),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(left: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    // 黑名单的可点标记（1.95.0 裁决 Q1=甲）：黑名单是**看不见的筛选**，
+                    // 不给出口的话用户只会觉得「搜不到东西」，而这是他自己设的
+                    if (blockedCount > 0) ...[
+                      Flexible(
+                        child: OnlineBlockedTagsMarker(
+                          count: blockedCount,
+                          onTap: () =>
+                              unawaited(showOnlineBlacklistDialog(context)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    // 桌面：标记内联在状态行左边（1.94.0 裁决 Q7=甲）。
+                    // 移动端挪到下面独占一行 —— 内联必然截断（见方法头注释）
+                    if (inlineMarkers && tagActive) ...[
+                      Flexible(
+                        child: OnlineTagFilterMarker(
+                          tag: state.tag!.name,
+                          onClear: () => unawaited(_applyTag(state.tag!)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    if (inlineMarkers && creatorActive) ...[
+                      Flexible(
+                        child: OnlineCreatorFilterMarker(
+                          filter: state.creator!,
+                          onClear: () =>
+                              unawaited(_applyCreator(state.creator!)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    Flexible(
+                      child: Text(
+                        _statusLine(state),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.right,
+                        style: TextStyle(fontSize: 11, color: theme.hintColor),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 8),
-        // 「Aa」：就地调在线外观（1.96.0 裁决 Q5=甲）。放排序 chip 右边是因为
-        // 想改字号多半就发生在「正看着这个列表、觉得字小了」的那一刻 ——
-        // 要绕回设置页翻两层的话，这个念头多半就过去了
-        ActionChip(
-          label: const Text(
-            'Aa',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-          ),
-          tooltip: '在线外观：字号 · 每行卡片数',
-          visualDensity: VisualDensity.compact,
-          onPressed: () => unawaited(showOnlineAppearanceDialog(context)),
-        ),
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(left: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                // 黑名单的可点标记（1.95.0 裁决 Q1=甲）：黑名单是**看不见的筛选**，
-                // 不给出口的话用户只会觉得「搜不到东西」，而这是他自己设的
-                if (blockedCount > 0) ...[
-                  OnlineBlockedTagsMarker(
-                    count: blockedCount,
-                    onTap: () => unawaited(showOnlineBlacklistDialog(context)),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                // 标签筛选的可关闭标记（1.94.0 裁决 Q7=甲）。
-                // 卡面标签是散落入口，一屏可能十几个不同标签，点下去之后必须有个
-                // 看得见的出口，否则用户不知道自己被筛在哪、怎么回去。
-                if (state.source == OnlineSource.tag && state.tag != null) ...[
-                  OnlineTagFilterMarker(
+        if (!inlineMarkers && (tagActive || creatorActive)) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              if (tagActive)
+                Flexible(
+                  child: OnlineTagFilterMarker(
                     tag: state.tag!.name,
                     onClear: () => unawaited(_applyTag(state.tag!)),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                // 声优 / 社团筛选的可关闭标记（1.97.0）：同理，散落在详情页
-                // 胶囊上的入口，进来之后必须有看得见、退得出的出口
-                if (state.creator != null) ...[
-                  OnlineCreatorFilterMarker(
-                    filter: state.creator!,
-                    onClear: () => unawaited(_applyCreator(state.creator!)),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                Flexible(
-                  child: Text(
-                    _statusLine(state),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.right,
-                    style: TextStyle(fontSize: 11, color: theme.hintColor),
+                    // 独占一行，长标签名可以显示得更完整
+                    maxTextWidth: 320,
                   ),
                 ),
-              ],
-            ),
+              if (tagActive && creatorActive) const SizedBox(width: 8),
+              if (creatorActive)
+                Flexible(
+                  child: OnlineCreatorFilterMarker(
+                    filter: state.creator!,
+                    onClear: () => unawaited(_applyCreator(state.creator!)),
+                    maxTextWidth: 320,
+                  ),
+                ),
+            ],
           ),
-        ),
+        ],
       ],
     );
   }

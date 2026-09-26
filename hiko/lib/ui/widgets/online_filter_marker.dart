@@ -24,10 +24,19 @@ import 'detail_kit.dart';
 /// 形态照搬本地 1.77 那套「社团 / 声优」标记：淡色胶囊 + 尾巴上的 ✕，
 /// 颜色用标签自己的青色，和卡面标签保持同一套配色。
 class OnlineTagFilterMarker extends StatelessWidget {
-  const OnlineTagFilterMarker({super.key, required this.tag, required this.onClear});
+  const OnlineTagFilterMarker({
+    super.key,
+    required this.tag,
+    required this.onClear,
+    this.maxTextWidth = 140,
+  });
 
   final String tag;
   final VoidCallback onClear;
+
+  /// 文字的宽度上限。内联在第二行时用默认 140（给状态行让位）；
+  /// 移动端独占一行时可传更大值，长名字能显示得更完整。
+  final double maxTextWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -45,9 +54,7 @@ class OnlineTagFilterMarker extends StatelessWidget {
           // 空间不足时牺牲自己的省略号，保住右边的 ✕
           Flexible(
             child: ConstrainedBox(
-              // 桌面上限：标签名可能很长（「双声道立体声/人头麦」），
-              // 不能让它把右边的数量挤没
-              constraints: const BoxConstraints(maxWidth: 140),
+              constraints: BoxConstraints(maxWidth: maxTextWidth),
               child: Text(
                 '标签：$tag',
                 maxLines: 1,
@@ -72,10 +79,14 @@ class OnlineCreatorFilterMarker extends StatelessWidget {
     super.key,
     required this.filter,
     required this.onClear,
+    this.maxTextWidth = 140,
   });
 
   final OnlineCreatorFilter filter;
   final VoidCallback onClear;
+
+  /// 同 [OnlineTagFilterMarker.maxTextWidth]。
+  final double maxTextWidth;
 
   @override
   Widget build(BuildContext context) {
@@ -95,7 +106,7 @@ class OnlineCreatorFilterMarker extends StatelessWidget {
         children: [
           Flexible(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 140),
+              constraints: BoxConstraints(maxWidth: maxTextWidth),
               child: Text(
                 '${filter.label}：${filter.name}',
                 maxLines: 1,
