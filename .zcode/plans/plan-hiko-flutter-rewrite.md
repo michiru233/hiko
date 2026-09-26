@@ -2404,3 +2404,118 @@ Release：https://github.com/michiru233/hiko/releases/tag/v1.95.0
 代码提交 `4a8aad9`。
 
 
+## 1.96.0 在线外观可调：三组缩放 + 网格列数（2026-09-26）
+
+### 起因（用户）
+> 「依旧是 mac 端发现的问题」（承接 1.95.0）
+在线页的字号对一部分用户偏小，而全局「外观 → 字号」一放大就把整个应用都放大了，
+没法只调在线部分。要求给出可调的外观项。
+
+### 裁决（四轮共 12 题，全部按推荐通过）
+
+**第一轮（范围与机制，Q1–Q6）**
+
+| # | 问题 | 裁决 |
+|---|---|---|
+| Q1 | 缩放模型 | **甲**：混合 —— ①标签 = 绝对字号档位；②③ = 相对倍率。最终 = 元素基准字号 × 全局 `fontScale` × 该组倍率 |
+| Q2 | 标签字号作用范围 | **甲**：**全局生效**，本地也一起变（一个组件一套字号）。默认 9 → **11** |
+| Q3 | 三组各覆盖谁 | **甲**：①标签胶囊（在线卡面 + 在线详情 + 黑名单对话框）；②卡片标题 12 / 副标题 11；③详情页整块。**不动**工具栏、卡片角标、歌词视图 |
+| Q4 | 网格列数 | **甲**：在线专属一个下拉（自动/3/4/5/6/7/8，默认自动），**桌面与移动端共用** |
+| Q5 | 入口 | **甲**：新建「在线外观」二级页；`Aa` 按钮放第二行排序 chip 右边，点开 `RadioListTile` 对话框 |
+| Q6 | 档位 | **甲**：标签 `9/10/11/12/14`（默认 11）；两组倍率 `0.85/1.0/1.15/1.30`（默认 1.0） |
+
+**第二轮（实施中追加的两个分叉）**
+
+| # | 问题 | 裁决 |
+|---|---|---|
+| Q7 | 详情倍率用参数还是作用域 | **甲**：作用域 `HikoDetailTextScale`（**只由在线详情面板挂**，本地抽屉不套 → 天然不受影响）。理由：这一组要覆盖面板内全部文字，逐个透传漏一处是静默的 |
+| Q8 | 卡片倍率用参数还是自读 | **甲**：`OnlineWorkGrid` 自己读设置，再把值当参数传给 `OnlineWorkCard`。理由：网格算高度用的是**同一个**值，两处各自去读迟早读到不同帧 |
+
+### 关键实现（五条不变量）
+
+1. **量画同源 ①：卡片高度预算全部参数化**。
+   删掉写死的 `_kOnlineCardTextBlock = 62` 与 `kOnlineCardTagRow = 24`，换成两个纯函数：
+   - `onlineCardTextBlockHeight(scaler, textScale)` = 内边距×2 + 标题↑距 + `scaler.scale(12×textScale)×1.3×2` + 副标题↑距 + `scaler.scale(11×textScale)×1.3`
+   - `onlineCardTagRowHeight(scaler, tagFontSize)` = `HikoTagChip.verticalPadding×2` + `scaler.scale(tagFontSize)×HikoTagChip.lineHeight` + ↑距
+   **默认档位下 `onlineCardTextBlockHeight` = 61.5**，与 1.95.0 那个 62 差 0.5 —— 默认观感不变。
+
+2. **量画同源 ②：行高必须显式写死**。
+   卡面标题/副标题的 `TextStyle` 都加了 `height: kOnlineCardLineHeight (1.3)`，
+   `HikoTagChip.textStyleFor` 加了 `height: 1.2`。不写就由字体 metrics 决定（约 1.15–1.20），
+   而预算只能拿一个系数去乘 —— 两者一错位就是裁掉半行字。
+
+3. **量画同源 ③：标签字号的量宽也带上了**。
+   1.95.0 修的 `_chipWidth` 带上了 `textScaler`，本版又加了第二个参数 `fontSize`
+   （从 `HikoTagFontScope` 取）。现在「量」「画」共用同一个字号 + 同一个 scaler。
+
+4. **标签字号用作用域、详情倍率也用作用域、卡片倍率用参数** —— 看似不统一，判据是**作用范围**：
+   标签字号要全局（挂 `main.dart` 根层），详情倍率要覆盖一整个面板（挂面板边界），
+   卡片倍率只需要两处且都要参与高度预算（显式参数更直白）。
+
+5. **档位定义单一来源**：`online_appearance.dart` 导出三份 `(值, 显示名)` 列表，
+   设置页的下拉与 `Aa` 对话框的单选都从它取；`test/ui/online_appearance_test.dart`
+   逐档断言「写进去读回来原样」，被归一化掉就说明这一档不在设置层白名单里。
+
+### 改动文件
+
+- **新建** `lib/ui/widgets/online_appearance.dart` —— 三份档位常量 + `OnlineAppearanceDialog`
+  （用 `RadioGroup` 而不是已废弃的 `RadioListTile(groupValue:, onChanged:)`，否则 analyze 多两条 lint）
+- `lib/data/settings_store.dart` —— `tagFontSize`（默认 11）/ `onlineCardTextScale` /
+  `onlineDetailTextScale`（默认 1.0）/ `onlineGridColumns`（默认 0=自动）+ 归一化 + 4 个 setter
+- `lib/ui/widgets/detail_kit.dart` —— 新增 `HikoTagFontScope`（默认 11）与
+  `HikoDetailTextScale`（默认 1.0）；`HikoTagChip.textStyle` 常量 → `textStyleFor(fontSize)`
+  并公开 `lineHeight` / `verticalPadding`；五件套（眼眉/社团/信息行/Tab/曲目行）从作用域取倍率
+- `lib/ui/widgets/online_work_grid.dart` —— 尺寸预算改为上面两个纯函数；改 `ConsumerWidget`
+  自己读 `onlineCardTextScale` / `onlineGridColumns`；列数支持固定档位
+- `lib/ui/screens/online_screen.dart` —— 卡片字号与间距改用常量、标签行高度改动态、
+  `_CardTagRow._chipWidth` 加字号参数、第二行加 `Aa` 的 `ActionChip`
+- `lib/ui/widgets/online_detail_panel.dart` —— 包 `HikoDetailTextScale`；标题 22 / 副标题 12 /
+  操作按钮 / 目录行 / 空态 / 错误页 / 收藏按钮全部乘倍率
+- `lib/ui/widgets/settings_dialog.dart` —— 新增「在线外观」一级分类与二级页
+- `lib/main.dart` —— 根层挂 `HikoTagFontScope`
+
+### 测试（+21）
+
+- `test/data/settings_store_test.dart` +3：四字段的默认值 / 档位往返 / 白名单外回退 / 与主界面档位独立
+- `test/ui/online_appearance_test.dart` **新建 11 条**：档位与白名单逐位一致；两条高度预算纯函数断言
+  （含「默认值 ≈ 62」）；标签字号作用域三条（默认 11 / 跟随 / 变化会重建）；`Aa` 对话框五条
+- `test/ui/online_work_card_test.dart` +7：网格级尺寸锁
+- **验证基线**：`flutter test` **505 passed / 2 skipped**；`flutter analyze` **39 条**（= 基线）
+
+### 本轮踩的坑（值得记）
+
+1. **`mainAxisExtent` 里的两个高度函数都是纯函数，但「量画同源」的真正含义是
+   「同一个函数同时被量与画调用」** —— 这条在 `onlineCardTagRowHeight` 上尤其明显：
+   把它的实现改成忽略 `tagFontSize` 时，grid 与 card 会**一起**错、锁反而不会红。
+   所以「标签字号」那条渲染锁真正锁的是**未来有人把它写死回来**（验证时确实如此。
+   见下条）。
+2. **回归锁必须逐个验证会红（1.95.0 的教训，本版又用了一遍）**。三次探针：
+   - 预算忽略 `textScale` → 「只放大在线卡片文字」由 8.0 变 **−5.5**（封面压扁 13.5px）
+   - 预算忽略 `scaler.scale` → 「1.30×1.30」由 8.0 变 **−8.85**
+   - 标签行改回硬编码 24 → 「标签字号 14」由 8.0 变 **+13.3**
+   三条都确认会红后才保留。
+3. **「封面是正方形」这个断言是错的**（我第一版就写错了）。真实几何：
+   `Container(padding: 4, border: 1.2)` 让封面宽 = cell 宽 − 10.4，而文字块预算里那 8px
+   是补偿内边距的余量，于是封面**恒定地比宽度高 8px**——这是 1.95.0 就有的观感，
+   本版只负责让它在字号变化时保持恒定。所以锁改成断言「高度 − 宽度 ≡ `kOnlineCardPadding * 2`」。
+4. **同一个 `testWidgets` 里连续两次 `pumpWidget` 换 `ProviderScope.overrides`**：
+   列数那条一开始这么写，第二次的设置**没有生效**（第 5 张仍落到第 2 行）。
+   拆成两个独立 `testWidgets` 后正常 —— 以后列数类断言一律一次 pump 一个场景。
+5. 标题只有一行时 `Expanded` 会多拿一行高度（既有行为，本版不动），
+   所以尺寸锁必须用**长标题**确保标题真的占两行。
+
+### 本版待裁决 / 未验证
+
+- 1.91/1.92/1.93/1.94/1.95 的遗留项**仍未消除**（详见上一版章节）。
+- **本版新增未验证**：`Aa` 对话框在手机竖屏上的限高（`屏高 × 0.62`）与四组竖排的滚动；
+  在线页第二行在窄屏加入 `Aa` 后「只看带字幕 + 排序 + Aa + 状态行」是否换行；
+  移动端把「每行卡片数」设成 8 列的实际观感（裁决要求两端共用，未夹取）。
+- 明确不做：标签筛选下拉、asmr.one「顺序」变体（同 1.92.0 遗留）。
+- 仍**只做 macOS 实测**，Android 只做构建与静态检查。
+- 记一条**既有观感差异**（非本版引入）：卡片标题一行的作品，其封面会比两行的略高一行
+  （`Expanded` 吸收剩余高度）。要不要把标题块改成固定两行高度是另一件事，未裁决。
+
+Release：https://github.com/michiru233/hiko/releases/tag/v1.96.0
+（`hiko-v1.96.0-macos.zip` + `hiko-v1.96.0-android.apk`）。
+
+

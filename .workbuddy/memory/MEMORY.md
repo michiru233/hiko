@@ -3,7 +3,7 @@
 ## 定位
 Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter 重写版，`hiko/` 为唯一主线；
 仓库根目录的 Electron + Capacitor 旧代码仅作参考，不再新增功能。GitHub: https://github.com/michiru233/hiko
-当前版本 1.95.0+106（2026-09-26）。平台：macOS（发布）/ Windows（需 Windows 机构建）/ Android（已恢复开发）。
+当前版本 1.96.0+107（2026-09-26）。平台：macOS（发布）/ Windows（需 Windows 机构建）/ Android（已恢复开发）。
 
 ## 架构速查（hiko/lib）
 - `models/` Album / Track / CategoryItem —— Album 是核心，含 played、resumeTrackIndex/Position、rating、tags、genre、favorite、localCover。
@@ -64,7 +64,7 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
    `for d in com.apple.dt.xcodebuild com.apple.dt.Xcode; do for k in IDEPackageSupportDisableManifestSandbox IDEPackageSupportDisablePluginExecutionSandbox IDEPackageSupportDisablePackageSandbox; do defaults write $d $k -bool YES; done; done`
    已排除无效路径：`XCODE_XCCONFIG_FILE`（键属命令行参数级，非构建设置）、`--config-only`（照样跑迁移）、
    单独手跑 resolve（flutter 会用不同 container 重新解析）。
-9. 验证基线（1.95.0 后）：`flutter test` **484 passed / 2 skipped**；`flutter analyze` **39 条**既有 lint 基线，改动文件应 0 新增 error。
+9. 验证基线（1.96.0 后）：`flutter test` **505 passed / 2 skipped**；`flutter analyze` **39 条**既有 lint 基线，改动文件应 0 新增 error。
 10. 环境：Flutter 3.47.0 / Dart 3.13.0（/opt/homebrew/bin/flutter）；Android 模拟器 AVD 名 `kikoeru_test`；
    SDK `/opt/homebrew/share/android-commandlinetools`，JDK `/opt/homebrew/opt/openjdk@21`。
 
@@ -176,6 +176,37 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
   凡是用 `TextPainter` 预量尺寸的地方都要传 `textScaler: MediaQuery.textScalerOf(context)`。
   **1.96.0 做可调外观时必须把高度预算也纳入**（`_kOnlineCardTextBlock = 62` / `kOnlineCardTagRow = 24`
   是固定像素），否则调大字号会从「宽度溢出」变成「高度裁切」。
+
+## 在线外观（1.96.0 起）
+
+- **三组缩放 + 一组列数**，档位常量单一来源在 `lib/ui/widgets/online_appearance.dart`：
+  ① `tagFontSize` 绝对档位 `9/10/11/12/14`（默认 **11**，**全局生效**：本地与在线共用一套字号）；
+  ② `onlineCardTextScale`、③ `onlineDetailTextScale` 相对倍率 `0.85/1.0/1.15/1.30`（默认 1.0）；
+  ④ `onlineGridColumns`（0=自动 / 3–8，**桌面与移动端共用一个值**）。
+- **最终字号 = 元素基准 × 该组倍率 × 根层全局 `fontScale`**（`main.dart` 的 `TextScaler`）——
+  三层叠乘，改任何一层都生效。
+- 两个入口共用同一批档位常量：设置 →「在线外观」二级页（行式下拉）；在线页第二行排序 chip
+  右边的 **`Aa`**（`ActionChip` → `RadioListTile` 对话框）。
+- **作用域 vs 参数的判据是「作用范围」**：`HikoTagFontScope`（默认 11）挂 `main.dart` 根层 → 全局；
+  `HikoDetailTextScale`（默认 1.0）挂**在线详情面板边界**（本地抽屉不套，天然不受影响）；
+  卡片倍率走**显式参数**（`OnlineWorkGrid` 自读设置后传给 `OnlineWorkCard` —— 网格算高度用的是同一个值，
+  两处各自去读迟早读到不同帧）。
+- ⚠️ **卡面尺寸「量画同源」**（本版核心不变量）：高度预算全部由
+  `onlineCardTextBlockHeight(scaler, textScale)` 与 `onlineCardTagRowHeight(scaler, tagFontSize)`
+  两个纯函数算（`online_work_grid.dart` 顶部），**grid 与 card 共用**；卡面标题/副标题与
+  `HikoTagChip` 的**行高必须显式写死**（1.3 / 1.2），否则字体 metrics（约 1.15–1.20）与预算系数
+  一错位就裁掉半行字。默认档位下 `onlineCardTextBlockHeight` = 61.5（旧硬编码是 62）。
+  `_CardTagRow._chipWidth` 现在带两样：`MediaQuery.textScaler` **和** `HikoTagFontScope` 的字号。
+- ⚠️ **封面本来就不是正方形**：`Container(padding:4, border:1.2)` 让封面宽 = cell 宽 − 10.4，
+  而文字块预算里那 8px（`kOnlineCardPadding * 2`）是补偿内边距的余量 → 封面**恒定比宽度高 8px**。
+  测试锁断言的就是这个差值恒定（不随任何字号旋钮变），**且必须用长标题**：标题只有一行时
+  `Expanded` 会多拿一行高度，是既有行为（未裁决是否统一成固定两行高）。
+- 回归锁在 `test/ui/online_work_card_test.dart` →「卡片尺寸预算（1.96.0）」组；
+  档位一致性与 `Aa` 对话框在 `test/ui/online_appearance_test.dart`。
+- **测试坑**：同一个 `testWidgets` 里连续两次 `pumpWidget` 换 `ProviderScope.overrides`，
+  第二次**不生效** → 列数类断言一律拆成独立 test，一次 pump 一个场景。
+- 未验证：`Aa` 对话框手机竖屏限高（屏高 × 0.62）与滚动；第二行加 `Aa` 后窄屏换行；
+  移动端设 8 列的实际观感（裁决要求两端共用、不夹取）。
 
 ## 在线账号与歌单收藏（1.93.0 起）
 - **⚠️ pageSize 有「两套校验」，别互相套用（1.93.1 的教训）**：
