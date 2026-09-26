@@ -13,6 +13,7 @@ import '../widgets/online_account_dialogs.dart';
 import '../widgets/online_appearance.dart';
 import '../widgets/online_cover.dart';
 import '../widgets/online_detail_panel.dart';
+import '../widgets/online_filter_marker.dart';
 import '../widgets/online_tag_menu.dart';
 import '../widgets/online_work_grid.dart';
 import '../widgets/toast.dart';
@@ -349,7 +350,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                 // 黑名单的可点标记（1.95.0 裁决 Q1=甲）：黑名单是**看不见的筛选**，
                 // 不给出口的话用户只会觉得「搜不到东西」，而这是他自己设的
                 if (blockedCount > 0) ...[
-                  _BlockedTagsMarker(
+                  OnlineBlockedTagsMarker(
                     count: blockedCount,
                     onTap: () => unawaited(showOnlineBlacklistDialog(context)),
                   ),
@@ -359,7 +360,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                 // 卡面标签是散落入口，一屏可能十几个不同标签，点下去之后必须有个
                 // 看得见的出口，否则用户不知道自己被筛在哪、怎么回去。
                 if (state.source == OnlineSource.tag && state.tag != null) ...[
-                  _TagFilterMarker(
+                  OnlineTagFilterMarker(
                     tag: state.tag!.name,
                     onClear: () => unawaited(_applyTag(state.tag!)),
                   ),
@@ -368,7 +369,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                 // 声优 / 社团筛选的可关闭标记（1.97.0）：同理，散落在详情页
                 // 胶囊上的入口，进来之后必须有看得见、退得出的出口
                 if (state.creator != null) ...[
-                  _CreatorFilterMarker(
+                  OnlineCreatorFilterMarker(
                     filter: state.creator!,
                     onClear: () => unawaited(_applyCreator(state.creator!)),
                   ),
@@ -982,159 +983,9 @@ class _CardTagRow extends StatelessWidget {
   }
 }
 
-/// 标签筛选的可关闭标记（1.94.0 裁决 Q7=甲）。
-///
-/// 形态照搬本地 1.77 那套「社团 / 声优」标记：淡色胶囊 + 尾巴上的 ✕，
-/// 颜色用标签自己的青色，和卡面标签保持同一套配色。
-class _TagFilterMarker extends StatelessWidget {
-  const _TagFilterMarker({required this.tag, required this.onClear});
-
-  final String tag;
-  final VoidCallback onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Flexible(
-      child: Container(
-        padding: const EdgeInsets.only(left: 8, right: 3, top: 3, bottom: 3),
-        decoration: BoxDecoration(
-          color: hikoTagBgColor.withValues(alpha: isDark ? 0.2 : 0.8),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 标签名可能很长（「双声道立体声/人头麦」），限宽让它自己省略，
-            // 不能让它把右边的数量挤没
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 140),
-              child: Text(
-                '标签：$tag',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11, color: hikoTagFgColor),
-              ),
-            ),
-            InkWell(
-              onTap: onClear,
-              borderRadius: BorderRadius.circular(8),
-              child: const Tooltip(
-                message: '退出标签筛选',
-                child: Padding(
-                  padding: EdgeInsets.all(3),
-                  child: Icon(Icons.close, size: 13, color: hikoTagFgColor),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 声优 / 社团筛选的可关闭标记（1.97.0）。
-///
-/// 形态与 [_TagFilterMarker] 同族，但底色用维度自己的胶囊色
-/// （声优蓝 / 社团紫），和详情页的人名胶囊同一套配色 ——
-/// 用户从那颗胶囊点进来，回过头看到同色标记才能对上「我是从哪筛进来的」。
-class _CreatorFilterMarker extends StatelessWidget {
-  const _CreatorFilterMarker({required this.filter, required this.onClear});
-
-  final OnlineCreatorFilter filter;
-  final VoidCallback onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final color = filter.kind == OnlineCreatorKind.va
-        ? hikoVoiceColor
-        : hikoCircleColor;
-    return Flexible(
-      child: Container(
-        padding: const EdgeInsets.only(left: 8, right: 3, top: 3, bottom: 3),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: isDark ? 0.22 : 0.16),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: color.withValues(alpha: 0.4)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 140),
-              child: Text(
-                '${filter.label}：${filter.name}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, color: color),
-              ),
-            ),
-            InkWell(
-              onTap: onClear,
-              borderRadius: BorderRadius.circular(8),
-              child: Tooltip(
-                message: '退出${filter.label}筛选',
-                child: Padding(
-                  padding: const EdgeInsets.all(3),
-                  child: Icon(Icons.close, size: 13, color: color),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 黑名单的可点标记（1.95.0 裁决 Q1=甲）。
-///
-/// 为什么必须有它：黑名单和标签筛选不一样 —— 标签筛选是用户**刚做过**的动作，
-/// 而黑名单是**很久以前**在设置里攒下来的状态。没有可见标记的话，用户看到
-/// 「明明搜得到的东西不见了」时只会以为是服务器的问题，因为屏幕上没有任何线索
-/// 指向「是你自己屏蔽的」。
-///
-/// 形态刻意比 [_TagFilterMarker] 低调（灰系、无彩色），因为它是**背景状态**而
-/// 不是「你正在看什么」。点开进管理页，是唯一的出口。
-class _BlockedTagsMarker extends StatelessWidget {
-  const _BlockedTagsMarker({required this.count, required this.onTap});
-
-  final int count;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final color = theme.hintColor;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Tooltip(
-        message: '管理标签黑名单',
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.block_rounded, size: 12, color: color),
-              const SizedBox(width: 4),
-              Text(
-                '已屏蔽 $count 个标签',
-                style: TextStyle(fontSize: 11, color: color),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+/// 标签筛选的可关闭标记与黑名单标记已抽到 `online_filter_marker.dart`
+/// （1.97.1：抽出的理由是可测 —— 它们住在第二行最挤的角落，
+/// 窄屏溢出问题必须有独立 pump 的回归锁）。
 
 class _SubtitleBadge extends StatelessWidget {
   const _SubtitleBadge();

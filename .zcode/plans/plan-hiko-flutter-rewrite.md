@@ -2601,3 +2601,26 @@ Android 端体验批次（用户 2026-09-26 明确：安卓端需求不涉及 ma
   自适应高度，理论上无裁切）。
 - `$va:` / `$circle:` 正向语法沿黑名单同链路实测过 `$tag:` 等价性，但 va/circle 的
   **服务端结果集**未逐位比对（网页版结果一致性未验证）。
+
+## 1.97.1 修筛选标记窄屏溢出（✕ 被顶出屏幕外）（2026-09-26）
+
+安卓实机截图（1.97.0 用户反馈）：第二行被挤到极限时，标签筛选标记的文字
+**不可收缩** → 标记内部 `Row` 溢出，✕ 关闭钮被顶出屏幕外、状态行被叠盖 ——
+用户得到一个「退不出的筛选」。
+
+- **根因**：标记内部是「`ConstrainedBox(140)` 文字 + ✕」的 min Row；
+  外层 `Flexible` 把分配额压到期望宽以下时，Row 的非 flex 子项不缩，
+  溢出的恰好是右边的 ✕。
+- **修复**：三个标记（标签 / 声优社团 / 黑名单）内部文字一律
+  `Flexible(child: ConstrainedBox(140, Text))` —— 空间不足时文字吃省略号，
+  ✕ 始终可见。布局不变量写进文件头注释。
+- **重构**：三个标记从 `online_screen.dart` 抽到
+  `lib/ui/widgets/online_filter_marker.dart`（`OnlineTagFilterMarker` /
+  `OnlineCreatorFilterMarker` / `OnlineBlockedTagsMarker）—— 抽出的理由是**可测**，
+  回归锁要独立 pump。
+- **回归锁**：`test/ui/online_filter_marker_test.dart` +6 —— 三个标记各在
+  300 / 70（creator 40）/ 40 / 60px 宽下不溢出且 ✕ 可命中
+  （`takeException` 为空 + tooltip 命中）。
+  **红检**：摘掉 `Flexible` 复跑，标签标记两条窄宽用例当场红（overflow），后恢复。
+- **验证基线**：`flutter test` **522 passed / 2 skipped**（517→522）；
+  `flutter analyze` **39 条**（= 基线）。版本 `1.97.1+109`。
