@@ -1986,3 +1986,72 @@ Release：https://github.com/michiru233/hiko/releases/tag/v1.93.0
 构建坑沿用 1.90.0–1.92.0 的结论（摘代理 + `IDEPackageSupportDisable*Sandbox` + 沙箱外前台跑），
 本轮双端一次通过。
 
+## 1.93.1 修「刷新在线收藏」pageSize 越界 + 连带修一处静默失效（2026-09-26）
+
+**现象**（用户实测，登录后点「刷新在线收藏」）：弹窗「刷新失败：pageSize: Invalid value」。
+
+**根因（实测确认）**：**playlist 系三个端点共用同一个参数校验器，`pageSize` 上限 = 100**：
+
+| 端点 | `pageSize=100` | `pageSize=200` | `pageSize=500` |
+|---|---|---|---|
+| `get-playlists` | 200 OK | **400** | **400** |
+| `get-playlist-works` | 200 OK | **400** | **400** |
+| `get-work-exist-status-in-my-playlists` | 200 OK | **400** | **400** |
+| `/api/works`（对照组，**另一套校验**） | 200 OK | 200 OK | 200 OK |
+
+400 体是 `{"errors":[{"value":"500","msg":"Invalid value","param":"pageSize","location":"query"}]}`
+—— 是**整个请求被拒**，不是静默截断。
+
+1.93.0 的错在于把 `/api/works` 那一系的 500 上限**当成了所有端点的上限**：
+`OnlineFavoritesNotifier._fetchAllWorks` 里写死 `const pageSize = 500`，
+`_maxWorkPages` 的注释也是「× 500 条 = 上限一万首」。
+（`_playlistPageSize = 100` 恰好压线合法，所以歌单列表那一跳没炸，
+错误是由 `get-playlist-works` 抛出来的。）
+
+**连带修掉一处「界面上看不出来」的同类 bug**：多选歌单菜单的 `_loadAuthoritative()`
+调 `fetchWorkPlaylistStatus`，该方法的默认 `pageSize = 200` —— **同样 400**，
+但调用方把它整个包在 `try/catch` 里吞掉了。后果是
+**1.93.0 起「打开菜单时用服务端权威值校正勾选」这个功能一直没生效**，且毫无提示
+（用户看到的只是本地索引的预勾选，恰好与权威值一致，所以更不易察觉）。
+
+**改动**：
+- `kikoeru_client.dart`
+  - 新增 `static const playlistMaxPageSize = 100;` —— 单一事实来源，注释里写清
+    「`/api/works` 那一系能吃到 500，是**另一套校验**，`defaultPageSize` 与这个常量别互相套用」
+  - 新增 `static int clampPlaylistPageSize(int value)`：夹到 `[1, 100]`
+  - `fetchPlaylists` / `fetchPlaylistWorks` / `fetchWorkPlaylistStatus` 三个方法
+    **在拼 query 之前统一夹住**。为什么要夹在客户端而不是靠调用方自觉：
+    越界会让**整个请求**被拒，客户端是唯一能保证「发出去的参数一定合法」的收口点。
+  - `fetchWorkPlaylistStatus`：默认值 `200 → playlistMaxPageSize`，并改为
+    **自己翻页到覆盖 `totalCount`**（新增私有 `_maxStatusPages = 20` 防死循环）。
+    原来固定只拉一页（注释里也承认「歌单多于一页时预勾选会漏」），现在补上。
+- `online_favorites.dart`
+  - `_playlistPageSize` / 新增 `_workPageSize` 都改为 `KikoeruClient.playlistMaxPageSize`
+  - `_maxWorkPages`：`20 → 50`（× 100 条 = 5000 首），注释按新口径重写
+  - `_fetchAllWorks` 删掉写死的 `const pageSize = 500`
+
+**测试**：`test/data/online_playlist_test.dart` 新增 4 条回归锁 ——
+① `clampPlaylistPageSize` 边界值（0 / -5 / 1 / 100 / 101 / 200 / 500）；
+② 「两套校验别互相套用」的常量断言（这条是给将来的自己看的）；
+③ **用 `HttpOverrides` 记录真实请求**，断言三个端点**即使调用方传 500 / 999 / 200，
+发出的 URI 上 `pageSize` 也都是 `100`**（GET 会逐个镜像重试，所以断言写成
+「捕获到的每个 URI 都合规」而不是「恰好 3 个请求」）；
+④ 不传 `pageSize` 时默认值同样在上限内。
+全量 `flutter test` → **432 passed / 2 skipped**（基线 428/2，净增 4）；
+`flutter analyze` **39 条**（= 基线，0 error）。
+
+**端到端复核**：用真实账号按修复后的参数跑了一遍完整刷新流程
+（`get-playlists?pageSize=100` → 逐个 `get-playlist-works?pageSize=100`）：
+3 个歌单、作品数 92 / 1 / 0、索引合计 93 条，全部 200，无截断。
+
+版本 1.93.1+104。
+
+**本版待裁决 / 未验证**（未变，仍待实测）：
+- 1.91.0 遗留三项：在线曲目行点击是否跳全屏播放页 / 移动端「播放该目录」无入口 / 分页条窄屏表现。
+- 1.92.0 遗留：`_SortMenu` 限高与「展开全部」按钮窄屏换行。
+- 1.93.0 遗留：Android 整条账号/收藏链路未实机验证；收藏页 `OnlinePager` 是本地切片分页。
+- 本轮**仍是 macOS 端实测**，Android 只做构建与静态检查。
+
+Release：https://github.com/michiru233/hiko/releases/tag/v1.93.1
+（`hiko-v1.93.1-macos.zip` 32.5 MB + `hiko-v1.93.1-android.apk` 66.5 MB）。
+

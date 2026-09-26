@@ -3,7 +3,7 @@
 ## 定位
 Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter 重写版，`hiko/` 为唯一主线；
 仓库根目录的 Electron + Capacitor 旧代码仅作参考，不再新增功能。GitHub: https://github.com/michiru233/hiko
-当前版本 1.93.0+103（2026-09-26）。平台：macOS（发布）/ Windows（需 Windows 机构建）/ Android（已恢复开发）。
+当前版本 1.93.1+104（2026-09-26）。平台：macOS（发布）/ Windows（需 Windows 机构建）/ Android（已恢复开发）。
 
 ## 架构速查（hiko/lib）
 - `models/` Album / Track / CategoryItem —— Album 是核心，含 played、resumeTrackIndex/Position、rating、tags、genre、favorite、localCover。
@@ -64,7 +64,7 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
    `for d in com.apple.dt.xcodebuild com.apple.dt.Xcode; do for k in IDEPackageSupportDisableManifestSandbox IDEPackageSupportDisablePluginExecutionSandbox IDEPackageSupportDisablePackageSandbox; do defaults write $d $k -bool YES; done; done`
    已排除无效路径：`XCODE_XCCONFIG_FILE`（键属命令行参数级，非构建设置）、`--config-only`（照样跑迁移）、
    单独手跑 resolve（flutter 会用不同 container 重新解析）。
-9. 验证基线（1.93.0 后）：`flutter test` **428 passed / 2 skipped**；`flutter analyze` **39 条**既有 lint 基线，改动文件应 0 新增 error。
+9. 验证基线（1.93.1 后）：`flutter test` **432 passed / 2 skipped**；`flutter analyze` **39 条**既有 lint 基线，改动文件应 0 新增 error。
 10. 环境：Flutter 3.47.0 / Dart 3.13.0（/opt/homebrew/bin/flutter）；Android 模拟器 AVD 名 `kikoeru_test`；
    SDK `/opt/homebrew/share/android-commandlinetools`，JDK `/opt/homebrew/opt/openjdk@21`。
 
@@ -79,7 +79,8 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
   - `/api/search/{kw}` 与 `/api/tags/{id}/works` **都支持全部排序键**（1.92.0 修掉了 tags 写死 `desc` 的 bug）。
   - **`api.asmr.one/works/{id}` = 404**，网页在 `www.asmr.one` → 走 `onlineWorkPageUrl` 域名映射。
   - 目录深度 0~3 层且同作品内会混；folder 节点**只有 `type` + `title`**（项目数/时长是前端聚合的）；
-    audio 节点**有 `duration`（浮点秒）**。`pageSize` 支持到 500，全站约 6.2 万件。
+    audio 节点**有 `duration`（浮点秒）**。`/api/works` 的 `pageSize` 支持到 500，全站约 6.2 万件
+    （**注意：只有 `/api/works` 这一系能到 500，playlist 系上限是 100**，见下节）。
 - **状态机**：`OnlineSource{browse,search,tag}` × `OnlineSort`（5 项扁平菜单，方向写进条目名）**正交**；
   「热门/最新」只是 `OnlineSort` 的两个预设 chip（点了可再改排序，改了就都不高亮）；
   「只看带字幕」可用性挂**来源**（`canFilterSubtitle`），`applyPreset` 不清它、`search/selectTag` 清它。
@@ -95,6 +96,13 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
   详情页清晰」就是这个原因。`test/ui/online_work_card_test.dart` 用 `HttpOverrides` 拦请求钉住了 URL。
 
 ## 在线账号与歌单收藏（1.93.0 起）
+- **⚠️ pageSize 有「两套校验」，别互相套用（1.93.1 的教训）**：
+  **playlist 系三个端点**（`get-playlists` / `get-playlist-works` /
+  `get-work-exist-status-in-my-playlists`）**共用同一个校验器，上限 = 100**，传 200/500 会
+  **整个请求 400**（`{"errors":[{"msg":"Invalid value","param":"pageSize"}]}`）；
+  而 `/api/works` 那一系（含 `/api/search`、`/api/tags/*`）**能吃到 500**。
+  客户端已收口：`KikoeruClient.playlistMaxPageSize = 100` + `clampPlaylistPageSize()`，
+  三个端点发请求前统一夹住；新增调用点请引用常量，别写字面量。
 - 代码：`lib/data/online/online_account.dart`（登录态）、`online_favorites.dart`（歌单索引）、
   `lib/ui/screens/online_favorites_screen.dart`、`lib/ui/widgets/online_{work_grid,account_dialogs}.dart`。
 - **账号**：只存 JWT 到 `SharedPreferences` 键 `hiko-online-token`，**刻意不进 `AppSettings`**
@@ -134,3 +142,4 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
 - 1.93.0 遗留：Android 端**整条账号/收藏链路未实机验证**（登录、角标、收藏页 chip 换行、
   多选菜单窄屏高度、长按菜单触屏手感）；收藏页 `OnlinePager` 是**本地切片分页**（与浏览页的服务端分页
   是两套），窄屏观感同样未验证。未做（Q6 明确）：review / recommender / vote、本地镜像收藏、注册。
+- 1.93.1 遗留：仍是 **macOS 端实测**，Android 只做构建与静态检查；上面 1.91/1.92/1.93.0 的实机项未变。
