@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:universal_platform/universal_platform.dart';
 
 import '../../data/library_provider.dart';
+import '../../data/online/online_account.dart';
+import '../../data/online/online_favorites.dart';
 import '../../data/online/online_provider.dart';
 import '../../data/settings_store.dart';
 import '../../data/update_checker.dart';
@@ -13,6 +16,7 @@ import '../../playback/gain_chain.dart';
 import '../../playback/playback_controller.dart';
 import '../../platform/platform_service.dart';
 import '../background.dart';
+import 'online_account_dialogs.dart';
 import 'toast.dart';
 
 /// 设置分类（1.85）：首页分类列表 → 点进二级页；key 对应各 _xxPage 方法
@@ -32,6 +36,9 @@ const _categories = [
       Icons.graphic_eq_rounded),
   _SettingsCategory('home', '主界面', '刮削标签 · 每行专辑数',
       Icons.grid_view_outlined),
+  // 1.93.0：在线相关设置从「数据」页集中到这里
+  _SettingsCategory('online', '在线账号', '登录 asmr.one · 歌单收藏 · 服务器 · 缓存',
+      Icons.person_outline_rounded),
   _SettingsCategory('data', '数据', '导入 · 整理 · 失效清理 · 刮削代理',
       Icons.storage_outlined),
   _SettingsCategory('folders', '音乐目录', '常驻目录 · 自动扫描',
@@ -237,6 +244,8 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
         return _audioPage(theme, settings);
       case 'home':
         return _homePage(theme, settings);
+      case 'online':
+        return _onlineAccountPage(theme, settings);
       case 'data':
         return _dataPage(theme, settings);
       case 'folders':
@@ -683,6 +692,242 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
         ),
       ];
 
+  // ---- 在线账号（1.93.0）----
+
+  /// 在线账号页：登录态 + 歌单同步 + 服务器地址 + 音频缓存。
+  ///
+  /// 服务器与缓存两项是 1.90 加进来的，原先塞在「数据」页 —— 那时还没有在线分类。
+  /// 现在在线的东西都在这一页，分散两处没道理（「数据」页留了一行指引）。
+  List<Widget> _onlineAccountPage(ThemeData theme, AppSettings settings) {
+    final account = ref.watch(onlineAccountProvider);
+    final favorites = ref.watch(onlineFavoritesProvider);
+    final index = favorites.index;
+
+    return [
+      _pageHeader(theme, '在线账号'),
+      _SettingRow(
+        label: '登录状态',
+        trailing: switch (account) {
+          _ when account.restoring =>
+            Text('检查中…', style: TextStyle(fontSize: 11, color: theme.hintColor)),
+          _ when account.loggedIn => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF4CAF50),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  account.displayName,
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          _ => Text(
+              '未登录',
+              style: TextStyle(fontSize: 11, color: theme.hintColor),
+            ),
+        },
+      ),
+      if (account.loggedIn) ...[
+        _SettingRow(
+          label: '我的歌单',
+          trailing: Text(
+            favorites.loading && index.playlists.isEmpty
+                ? '同步中…'
+                : '${index.playlists.length} 个 · ${index.countOf(null)} 个作品',
+            style: const TextStyle(fontSize: 11),
+          ),
+        ),
+        _SettingRow(
+          label: '收藏同步',
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                favorites.error ?? '与网页版共用同一份歌单',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  color: favorites.error == null
+                      ? theme.hintColor
+                      : const Color(0xFFD34C44),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(
+                onPressed: favorites.loading
+                    ? null
+                    : () async {
+                        await ref.read(onlineFavoritesProvider.notifier).refresh();
+                        if (mounted) {
+                          _toast(
+                            ref.read(onlineFavoritesProvider).error == null
+                                ? '收藏已刷新'
+                                : '刷新失败，请检查网络',
+                          );
+                        }
+                      },
+                child: const Text('刷新', style: TextStyle(fontSize: 11)),
+              ),
+            ],
+          ),
+        ),
+        _SettingRow(
+          label: '登录令牌',
+          trailing: OutlinedButton(
+            onPressed: () async {
+              await ref.read(onlineAccountProvider.notifier).logout();
+              if (mounted) _toast('已退出登录');
+            },
+            child: const Text('退出登录', style: TextStyle(fontSize: 11)),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            'Hiko 只保存 asmr.one 的登录令牌（有效期 30 天，服务端没有续期接口，'
+            '过期后重新登录即可），不保存密码，也不会上传任何本地音声库信息。',
+            style: TextStyle(
+              fontSize: 10.5,
+              height: 1.5,
+              color: theme.hintColor,
+            ),
+          ),
+        ),
+      ] else ...[
+        _SettingRow(
+          label: '登录',
+          trailing: FilledButton(
+            onPressed: account.restoring
+                ? null
+                : () => unawaited(showOnlineLoginDialog(context)),
+            child: const Text('登录 asmr.one', style: TextStyle(fontSize: 11)),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            '登录后才能收藏作品、管理歌单。收藏走 asmr.one 的歌单体系，'
+            '所以可以建「未听」「已听」这类歌单来记录收听状态。'
+            '没有账号的话去 www.asmr.one 注册（Hiko 不提供注册）。',
+            style: TextStyle(
+              fontSize: 10.5,
+              height: 1.5,
+              color: theme.hintColor,
+            ),
+          ),
+        ),
+      ],
+      _SettingRow(
+        label: '在线服务器',
+        trailing: SizedBox(
+          width: 220,
+          child: TextField(
+            controller: TextEditingController(text: settings.onlineServer),
+            onChanged: (v) =>
+                ref.read(settingsProvider.notifier).setOnlineServer(v),
+            decoration: InputDecoration(
+              hintText: 'api.asmr.one',
+              hintStyle: TextStyle(fontSize: 11, color: theme.hintColor),
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 8,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(7),
+                borderSide: BorderSide(color: theme.dividerColor),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(7),
+                borderSide: BorderSide(color: theme.dividerColor),
+              ),
+            ),
+            style: const TextStyle(fontSize: 11),
+          ),
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Text(
+          '在线音声服务地址（Kikoeru 兼容协议）。默认 asmr.one 官方实例，也可填写自建服务器地址；'
+          '留空回退默认。在线浏览与播放无需登录；账号与歌单是 asmr.one 的私有能力，'
+          '自建 Kikoeru 服务器上不可用。直连不通时请到「数据」页配置代理。',
+          style: TextStyle(
+            fontSize: 10.5,
+            height: 1.5,
+            color: theme.hintColor,
+          ),
+        ),
+      ),
+      _SettingRow(
+        label: '在线缓存上限',
+        trailing: DropdownButton<double>(
+          value: settings.onlineCacheLimitGb,
+          isDense: true,
+          underline: const SizedBox.shrink(),
+          style: const TextStyle(fontSize: 11),
+          items: [
+            for (final gb in SettingsNotifier.onlineCacheLimitOptions)
+              DropdownMenuItem(
+                value: gb,
+                child: Text(gb == 0.0 ? '关闭（不缓存）' : _formatGb(gb)),
+              ),
+          ],
+          onChanged: (v) {
+            if (v != null) {
+              ref.read(settingsProvider.notifier).setOnlineCacheLimit(v);
+            }
+          },
+        ),
+      ),
+      _SettingRow(
+        label: '在线缓存占用',
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FutureBuilder<int>(
+              future: ref.read(onlineAudioCacheProvider).totalBytes(),
+              builder: (context, snap) {
+                final bytes = snap.data;
+                return Text(
+                  bytes == null ? '统计中…' : _formatBytes(bytes),
+                  style: TextStyle(fontSize: 11, color: theme.hintColor),
+                );
+              },
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              onPressed: () async {
+                await ref.read(onlineAudioCacheProvider).clear();
+                if (mounted) setState(() {});
+                _toast('在线缓存已清空');
+              },
+              child: const Text('清理', style: TextStyle(fontSize: 11)),
+            ),
+          ],
+        ),
+      ),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Text(
+          '在线播放在超过 20 秒后才开始后台缓存整首音频到本地（避免点开即退白耗流量），'
+          '超出上限时按最久未播放淘汰。缓存独立存放，不写入本地音声库。',
+          style: TextStyle(
+            fontSize: 10.5,
+            height: 1.5,
+            color: theme.hintColor,
+          ),
+        ),
+      ),
+    ];
+  }
+
   // ---- 数据 ----
 
   List<Widget> _dataPage(ThemeData theme, AppSettings settings) => [
@@ -801,100 +1046,10 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
             ),
           ),
         ),
-        _SettingRow(
-          label: '在线服务器',
-          trailing: SizedBox(
-            width: 220,
-            child: TextField(
-              controller: TextEditingController(text: settings.onlineServer),
-              onChanged: (v) =>
-                  ref.read(settingsProvider.notifier).setOnlineServer(v),
-              decoration: InputDecoration(
-                hintText: 'api.asmr.one',
-                hintStyle: TextStyle(fontSize: 11, color: theme.hintColor),
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(7),
-                  borderSide: BorderSide(color: theme.dividerColor),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(7),
-                  borderSide: BorderSide(color: theme.dividerColor),
-                ),
-              ),
-              style: const TextStyle(fontSize: 11),
-            ),
-          ),
-        ),
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Text(
-            '在线音声服务地址（Kikoeru 兼容协议）。默认 asmr.one 官方实例，也可填写自建服务器地址；'
-            '留空回退默认。在线浏览与播放无需登录，直连不通时请在上面配置代理。',
-            style: TextStyle(
-              fontSize: 10.5,
-              height: 1.5,
-              color: theme.hintColor,
-            ),
-          ),
-        ),
-        _SettingRow(
-          label: '在线缓存上限',
-          trailing: DropdownButton<double>(
-            value: settings.onlineCacheLimitGb,
-            isDense: true,
-            underline: const SizedBox.shrink(),
-            style: const TextStyle(fontSize: 11),
-            items: [
-              for (final gb in SettingsNotifier.onlineCacheLimitOptions)
-                DropdownMenuItem(
-                  value: gb,
-                  child: Text(gb == 0.0 ? '关闭（不缓存）' : _formatGb(gb)),
-                ),
-            ],
-            onChanged: (v) {
-              if (v != null) {
-                ref.read(settingsProvider.notifier).setOnlineCacheLimit(v);
-              }
-            },
-          ),
-        ),
-        _SettingRow(
-          label: '在线缓存占用',
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              FutureBuilder<int>(
-                future: ref.read(onlineAudioCacheProvider).totalBytes(),
-                builder: (context, snap) {
-                  final bytes = snap.data;
-                  return Text(
-                    bytes == null ? '统计中…' : _formatBytes(bytes),
-                    style: TextStyle(fontSize: 11, color: theme.hintColor),
-                  );
-                },
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton(
-                onPressed: () async {
-                  await ref.read(onlineAudioCacheProvider).clear();
-                  if (mounted) setState(() {});
-                  _toast('在线缓存已清空');
-                },
-                child: const Text('清理', style: TextStyle(fontSize: 11)),
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Text(
-            '在线播放在超过 20 秒后才开始后台缓存整首音频到本地（避免点开即退白耗流量），'
-            '超出上限时按最久未播放淘汰。缓存独立存放，不写入本地音声库。',
+            '在线音声服务地址与缓存设置已移到「在线账号」页（1.93.0 起在线相关设置集中在那里）。',
             style: TextStyle(
               fontSize: 10.5,
               height: 1.5,

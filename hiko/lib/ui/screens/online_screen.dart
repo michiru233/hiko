@@ -1,14 +1,17 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../data/online/kikoeru_client.dart';
+import '../../data/online/online_account.dart';
+import '../../data/online/online_favorites.dart';
 import '../../data/online/online_models.dart';
 import '../../data/online/online_provider.dart';
+import '../widgets/online_account_dialogs.dart';
 import '../widgets/online_cover.dart';
 import '../widgets/online_detail_panel.dart';
+import '../widgets/online_work_grid.dart';
+import '../widgets/toast.dart';
 
 /// 顶部两个预设入口：chip 上的短名 + 它指向的排序项。
 ///
@@ -28,10 +31,20 @@ const List<(OnlineSort, String)> _onlinePresets = [
 /// 1.92.0：筛选条改版（裁决 Q4=A / Q6=① / Q7=A / Q8=A / Q11=A）——
 /// 热门/最新 退化为排序预设，「排序」改成一列扁平下拉（方向写进条目名，对齐
 /// asmr.one），「只看带字幕」独立成 chip 且只对全站浏览可用。
+///
+/// 1.93.0：右上角加账号入口（裁决 Q2=C），列表封面改原图、卡片加收藏角标（Q5=A）。
 class OnlineScreen extends ConsumerStatefulWidget {
-  const OnlineScreen({super.key, required this.isMobile});
+  const OnlineScreen({
+    super.key,
+    required this.isMobile,
+    this.onOpenFavorites,
+  });
 
   final bool isMobile;
+
+  /// 切到「在线收藏」视图。账号菜单里的入口用 —— 视图归属在 home_screen，
+  /// 这里只上报意图
+  final VoidCallback? onOpenFavorites;
 
   @override
   ConsumerState<OnlineScreen> createState() => _OnlineScreenState();
@@ -183,6 +196,12 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                 ),
               const SizedBox(width: 4),
               Expanded(child: _buildSearchField(theme)),
+              const SizedBox(width: 8),
+              // 账号入口（裁决 Q2=C：在线页右上角 + 设置里的二级页）
+              _OnlineAccountEntry(
+                compact: widget.isMobile,
+                onOpenFavorites: widget.onOpenFavorites,
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -332,271 +351,33 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
           child: state.loading ? const LinearProgressIndicator(minHeight: 2) : null,
         ),
         Expanded(child: _buildGrid(state)),
-        _buildPager(state, theme),
+        _buildPager(state),
       ],
     );
   }
 
   Widget _buildGrid(OnlineBrowseState state) {
-    final pad = widget.isMobile ? 16.0 : 48.0;
-    const spacing = 14.0;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final available = constraints.maxWidth - pad * 2;
-        final columns = widget.isMobile
-            ? 2
-            : ((available + spacing) / (200 + spacing)).floor().clamp(3, 8);
-        final cardWidth = (available - spacing * (columns - 1)) / columns;
-        return GridView.builder(
-          padding: EdgeInsets.fromLTRB(pad, 0, pad, 12),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            mainAxisSpacing: spacing,
-            crossAxisSpacing: spacing,
-            // 封面正方形 + 两行标题 + 一行副标题，用固定高度避免不同标题把网格撑歪
-            mainAxisExtent: cardWidth + 62,
-          ),
-          itemCount: state.works.length,
-          itemBuilder: (context, index) {
-            final work = state.works[index];
-            return OnlineWorkCard(
-              work: work,
-              selected: _detailWorkId == work.id,
-              onTap: () => _openDetail(work.id),
-            );
-          },
-        );
-      },
+    return OnlineWorkGrid(
+      works: state.works,
+      isMobile: widget.isMobile,
+      selectedId: _detailWorkId,
+      onTap: (work) => _openDetail(work.id),
     );
   }
 
   // ---------------------------------------------------------------- 分页条
 
   /// 经典分页条（裁决 Q6=A）：每页条数 + 首页/末页 + 上一页/下一页 +
-  /// 当前页 ±2 的页码 + 跳页输入。
-  Widget _buildPager(OnlineBrowseState state, ThemeData theme) {
-    final total = state.totalPages;
-    final pad = widget.isMobile ? 16.0 : 48.0;
+  /// 当前页 ±2 的页码 + 跳页输入。1.93.0 起与在线收藏页共用同一个组件。
+  Widget _buildPager(OnlineBrowseState state) {
     final notifier = ref.read(onlineBrowseProvider.notifier);
-
-    return Container(
-      padding: EdgeInsets.fromLTRB(pad, 6, pad, 12),
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: theme.dividerColor)),
-      ),
-      child: Row(
-        children: [
-          _PageSizeButton(state: state, onSelected: notifier.setPageSize),
-          const SizedBox(width: 10),
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _PagerIcon(
-                    icon: Icons.first_page_rounded,
-                    tooltip: '首页',
-                    onPressed: state.hasPrev ? () => notifier.goToPage(1) : null,
-                  ),
-                  _PagerIcon(
-                    icon: Icons.chevron_left_rounded,
-                    tooltip: '上一页',
-                    onPressed: state.hasPrev
-                        ? () => notifier.goToPage(state.page - 1)
-                        : null,
-                  ),
-                  for (final item in buildPageItems(state.page, total))
-                    if (item == null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        child: Text(
-                          '…',
-                          style: TextStyle(fontSize: 11, color: theme.hintColor),
-                        ),
-                      )
-                    else
-                      _PageNumberButton(
-                        page: item,
-                        current: item == state.page,
-                        onPressed: () => notifier.goToPage(item),
-                      ),
-                  _PagerIcon(
-                    icon: Icons.chevron_right_rounded,
-                    tooltip: '下一页',
-                    onPressed: state.hasNext
-                        ? () => notifier.goToPage(state.page + 1)
-                        : null,
-                  ),
-                  _PagerIcon(
-                    icon: Icons.last_page_rounded,
-                    tooltip: '末页',
-                    onPressed:
-                        state.hasNext ? () => notifier.goToPage(total) : null,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          _PageJumpField(totalPages: total, onSubmit: notifier.goToPage),
-        ],
-      ),
-    );
-  }
-}
-
-/// 每页条数选择（20 / 60 / 100；实测服务端支持到 500）
-class _PageSizeButton extends StatelessWidget {
-  const _PageSizeButton({required this.state, required this.onSelected});
-
-  final OnlineBrowseState state;
-  final Future<void> Function(int size) onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return PopupMenuButton<int>(
-      tooltip: '每页条数',
-      onSelected: (size) => unawaited(onSelected(size)),
-      itemBuilder: (_) => [
-        for (final size in OnlineBrowseNotifier.pageSizeOptions)
-          PopupMenuItem(
-            value: size,
-            child: Text('每页 $size 条', style: const TextStyle(fontSize: 12)),
-          ),
-      ],
-      child: Chip(
-        label: Text('每页 ${state.pageSize} 条', style: const TextStyle(fontSize: 11)),
-        visualDensity: VisualDensity.compact,
-      ),
-    );
-  }
-}
-
-class _PagerIcon extends StatelessWidget {
-  const _PagerIcon({
-    required this.icon,
-    required this.tooltip,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      icon: Icon(icon, size: 18),
-      tooltip: tooltip,
-      onPressed: onPressed,
-      visualDensity: VisualDensity.compact,
-      constraints: const BoxConstraints(minWidth: 30, minHeight: 28),
-      padding: EdgeInsets.zero,
-    );
-  }
-}
-
-class _PageNumberButton extends StatelessWidget {
-  const _PageNumberButton({
-    required this.page,
-    required this.current,
-    required this.onPressed,
-  });
-
-  final int page;
-  final bool current;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: SizedBox(
-        height: 28,
-        child: TextButton(
-          onPressed: current ? null : onPressed,
-          style: TextButton.styleFrom(
-            minimumSize: const Size(32, 28),
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            backgroundColor: current
-                ? theme.colorScheme.primary.withValues(alpha: 0.14)
-                : null,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-          child: Text(
-            '$page',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: current ? FontWeight.w700 : FontWeight.w500,
-              color: current ? theme.colorScheme.primary : null,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 跳页输入：回车生效，越界由控制器夹到有效范围
-class _PageJumpField extends StatefulWidget {
-  const _PageJumpField({required this.totalPages, required this.onSubmit});
-
-  final int totalPages;
-  final Future<void> Function(int page) onSubmit;
-
-  @override
-  State<_PageJumpField> createState() => _PageJumpFieldState();
-}
-
-class _PageJumpFieldState extends State<_PageJumpField> {
-  final _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          '共 ${widget.totalPages} 页',
-          style: TextStyle(fontSize: 11, color: theme.hintColor),
-        ),
-        const SizedBox(width: 8),
-        SizedBox(
-          width: 54,
-          height: 28,
-          child: TextField(
-            controller: _controller,
-            keyboardType: TextInputType.number,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 11),
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: '跳页',
-              hintStyle: TextStyle(fontSize: 11, color: theme.hintColor),
-              contentPadding: const EdgeInsets.symmetric(vertical: 4),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            onSubmitted: (value) {
-              final page = int.tryParse(value.trim());
-              if (page == null) return;
-              widget.onSubmit(page);
-              _controller.clear();
-            },
-          ),
-        ),
-      ],
+    return OnlinePager(
+      page: state.page,
+      pageSize: state.pageSize,
+      totalCount: state.totalCount,
+      isMobile: widget.isMobile,
+      onPage: (page) => unawaited(notifier.goToPage(page)),
+      onPageSize: (size) => unawaited(notifier.setPageSize(size)),
     );
   }
 }
@@ -671,25 +452,165 @@ class _SortMenu extends StatelessWidget {
   }
 }
 
-/// 在线作品卡片：封面（240x240 缩略图）+ 标题 + 社团/下载量
+/// 在线页右上角的账号入口（1.93.0，裁决 Q2=C）。
+///
+/// 三种形态跟着登录态走：**恢复中**显示一个小转圈（不是「登录」——
+/// 冷启动那一下会误报未登录）、**未登录**是一个「登录」按钮、**已登录**是
+/// 一个带名字的胶囊，点开是收藏/刷新/登出。
+///
+/// 移动端退化成纯图标：竖屏一行要同时塞下两个预设 chip、搜索框和这个入口，
+/// 带文字会被挤成省略号。
+class _OnlineAccountEntry extends ConsumerWidget {
+  const _OnlineAccountEntry({required this.compact, this.onOpenFavorites});
+
+  final bool compact;
+  final VoidCallback? onOpenFavorites;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final account = ref.watch(onlineAccountProvider);
+
+    if (account.restoring) {
+      return SizedBox(
+        width: compact ? 34 : 56,
+        height: 32,
+        child: const Center(
+          child: SizedBox(
+            width: 13,
+            height: 13,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+
+    if (!account.loggedIn) {
+      if (compact) {
+        return IconButton(
+          tooltip: '登录 asmr.one',
+          onPressed: () => unawaited(showOnlineLoginDialog(context)),
+          icon: const Icon(Icons.person_outline_rounded, size: 18),
+          visualDensity: VisualDensity.compact,
+          constraints: const BoxConstraints(minWidth: 34, minHeight: 32),
+          padding: EdgeInsets.zero,
+        );
+      }
+      return TextButton.icon(
+        onPressed: () => unawaited(showOnlineLoginDialog(context)),
+        icon: const Icon(Icons.person_outline_rounded, size: 15),
+        label: const Text('登录', style: TextStyle(fontSize: 11)),
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          minimumSize: const Size(0, 32),
+          visualDensity: VisualDensity.compact,
+        ),
+      );
+    }
+
+    return PopupMenuButton<_AccountAction>(
+      tooltip: compact ? account.displayName : '在线账号',
+      onSelected: (action) => unawaited(_handle(ref, context, action)),
+      itemBuilder: (_) => [
+        PopupMenuItem(
+          enabled: false,
+          height: 32,
+          child: Text(
+            '已登录：${account.displayName}',
+            style: TextStyle(fontSize: 11, color: theme.hintColor),
+          ),
+        ),
+        const PopupMenuDivider(height: 1),
+        const PopupMenuItem(
+          value: _AccountAction.favorites,
+          height: 36,
+          child: Text('在线收藏', style: TextStyle(fontSize: 12)),
+        ),
+        const PopupMenuItem(
+          value: _AccountAction.refresh,
+          height: 36,
+          child: Text('刷新收藏', style: TextStyle(fontSize: 12)),
+        ),
+        const PopupMenuItem(
+          value: _AccountAction.logout,
+          height: 36,
+          child: Text('退出登录', style: TextStyle(fontSize: 12)),
+        ),
+      ],
+      child: compact
+          ? const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 6),
+              child: Icon(Icons.account_circle_rounded, size: 22),
+            )
+          : Chip(
+              avatar: const Icon(Icons.account_circle_rounded, size: 14),
+              label: Text(
+                account.displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11),
+              ),
+              visualDensity: VisualDensity.compact,
+            ),
+    );
+  }
+
+  Future<void> _handle(
+    WidgetRef ref,
+    BuildContext context,
+    _AccountAction action,
+  ) async {
+    switch (action) {
+      case _AccountAction.favorites:
+        onOpenFavorites?.call();
+      case _AccountAction.refresh:
+        await ref.read(onlineFavoritesProvider.notifier).refresh();
+        if (!context.mounted) return;
+        final state = ref.read(onlineFavoritesProvider);
+        showHikoToast(
+          context,
+          state.error == null
+              ? '已刷新 ${state.index.playlists.length} 个歌单'
+              : '刷新失败：${state.error}',
+        );
+      case _AccountAction.logout:
+        await ref.read(onlineAccountProvider.notifier).logout();
+        if (context.mounted) showHikoToast(context, '已退出登录');
+    }
+  }
+}
+
+enum _AccountAction { favorites, refresh, logout }
+
+/// 在线作品卡片：封面（原图）+ 标题 + 社团/下载量
+///
+/// 1.92.0 之前列表用 `type=240x240` 缩略图（实测 240×180），卡片在 Retina 上
+/// 需要 400–520 物理像素，`BoxFit.cover` 裁方形后只剩 180×180 → 放大 2.4–2.9 倍，
+/// 于是「主界面封面模糊、详情页正常」。服务端没有中间档，1.93.0 起统一走原图
+/// （裁决 Q4=A：不加清晰度开关）。
 class OnlineWorkCard extends ConsumerWidget {
   const OnlineWorkCard({
     super.key,
     required this.work,
     required this.onTap,
     this.selected = false,
+    this.onContextMenu,
   });
 
   final OnlineWork work;
   final VoidCallback onTap;
   final bool selected;
 
+  /// 右键（桌面）/ 长按（触屏）菜单：在线收藏页用来提供「加入其它歌单 / 移出本歌单」
+  final void Function(Offset globalPosition)? onContextMenu;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
-    final coverUrl = ref
-        .watch(onlineClientProvider)
-        .coverUrl(work.id, size: KikoeruClient.coverThumbSize);
+    final coverUrl = ref.watch(onlineClientProvider).coverMainUrl(work.id);
+    // 收藏角标：作品在任意歌单里就点亮。未登录/索引未就绪时索引为空，自然不亮
+    final favoritePlaylists =
+        ref.watch(onlineFavoritesProvider).index.playlistsOf(work.id);
 
     final subtitle = [
       if (work.circleName.isNotEmpty) work.circleName,
@@ -698,6 +619,19 @@ class OnlineWorkCard extends ConsumerWidget {
 
     return InkWell(
       onTap: onTap,
+      onSecondaryTapDown: onContextMenu == null
+          ? null
+          : (d) => onContextMenu!(d.globalPosition),
+      onLongPress: onContextMenu == null
+          ? null
+          : () {
+              // 触屏没有右键：长按落在卡片中央，菜单跟随该点弹出
+              final box = context.findRenderObject() as RenderBox?;
+              final origin = box == null
+                  ? Offset.zero
+                  : box.localToGlobal(box.size.center(Offset.zero));
+              onContextMenu!(origin);
+            },
       borderRadius: BorderRadius.circular(10),
       child: Container(
         padding: const EdgeInsets.all(4),
@@ -722,6 +656,12 @@ class OnlineWorkCard extends ConsumerWidget {
                     OnlineCover(url: coverUrl),
                     if (work.hasSubtitle)
                       const Positioned(left: 6, bottom: 6, child: _SubtitleBadge()),
+                    if (favoritePlaylists.isNotEmpty)
+                      Positioned(
+                        right: 6,
+                        top: 6,
+                        child: _FavoriteBadge(count: favoritePlaylists.length),
+                      ),
                   ],
                 ),
               ),
@@ -761,6 +701,40 @@ class _SubtitleBadge extends StatelessWidget {
       child: const Text(
         '字幕',
         style: TextStyle(fontSize: 9, color: Colors.white),
+      ),
+    );
+  }
+}
+
+/// 收藏角标（裁决 Q5=A）：作品在任意歌单里就点亮，在多个歌单时带数量。
+///
+/// 用书签而不是心形 —— 歌单里除了「我喜欢的」，还有「听完」「未听」这类
+/// 状态分类，心形会把语义带偏。
+class _FavoriteBadge extends StatelessWidget {
+  const _FavoriteBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.bookmark_rounded, size: 10, color: Colors.white),
+          if (count > 1) ...[
+            const SizedBox(width: 2),
+            Text(
+              '$count',
+              style: const TextStyle(fontSize: 9, color: Colors.white),
+            ),
+          ],
+        ],
       ),
     );
   }

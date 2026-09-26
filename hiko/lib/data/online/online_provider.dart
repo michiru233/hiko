@@ -9,14 +9,20 @@ import '../../models/track.dart';
 import '../../playback/playback_controller.dart';
 import '../settings_store.dart';
 import 'kikoeru_client.dart';
+import 'online_account.dart';
 import 'online_audio_cache.dart';
 import 'online_models.dart';
 
-/// 在线服务客户端（服务器地址或代理变化时重建）
+/// 在线服务客户端（服务器地址、代理或登录令牌变化时重建）
+///
+/// 令牌挂在客户端上而不是每次调用现取：歌单那批端点**必须**带
+/// `Authorization: Bearer`，而 client 是无状态短请求的发起方，
+/// 令牌变化时重建一个即可，不必每个调用点自己拼头。
 final onlineClientProvider = Provider<KikoeruClient>((ref) {
   final server = ref.watch(settingsProvider.select((s) => s.onlineServer));
   final proxy = ref.watch(settingsProvider.select((s) => s.scrapeProxy));
-  return KikoeruClient(baseUrl: server, proxy: proxy);
+  final token = ref.watch(onlineAccountProvider.select((s) => s.token));
+  return KikoeruClient(baseUrl: server, proxy: proxy, token: token);
 });
 
 /// 在线音频磁盘缓存（上限随设置变化重建；0 GB 表示完全关闭缓存）
@@ -437,7 +443,7 @@ class OnlinePlayback {
       duration: tracks.length,
       date: DateTime.now(),
       tracks: tracks,
-      localCover: client.coverUrl(work.id),
+      localCover: client.coverMainUrl(work.id),
     );
   }
 

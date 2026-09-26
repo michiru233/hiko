@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/categories_provider.dart';
 import '../../data/library_provider.dart';
+import '../../data/online/online_account.dart';
+import '../../data/online/online_favorites.dart';
 import '../../models/category.dart';
 import 'category_dialog.dart';
 import 'confirm_dialog.dart';
@@ -28,6 +30,10 @@ class Sidebar extends ConsumerWidget {
     final theme = Theme.of(context);
     final albums = ref.watch(libraryProvider);
     final categories = ref.watch(categoriesProvider);
+    // 在线收藏的计数来自服务端歌单索引；未登录时不给数字（不拿 0 冒充「没有收藏」）
+    final onlineLoggedIn = ref.watch(onlineLoggedInProvider);
+    final onlineFavorites =
+        ref.watch(onlineFavoritesProvider).index.countOf(null);
 
     final count = (String view) => switch (view) {
           '收藏夹' => albums.where((a) => a.favorite).length,
@@ -41,6 +47,9 @@ class Sidebar extends ConsumerWidget {
       ('▶', '正在播放'),
       ('♡', '收藏夹'),
       ('☁', '在线'),
+      // 1.93.0（裁决 Q3=A）：在线收藏独立成一级项。
+      // 用实心心形与本地「收藏夹」的空心区分，但语义不同源，标签写清楚
+      ('♥', '在线收藏'),
       ('∑', '统计'),
     ];
 
@@ -213,7 +222,11 @@ class Sidebar extends ConsumerWidget {
                   item(
                     icon: icon,
                     view: view,
-                    count: view == '全部音声' || view == '收藏夹' ? count(view) : null,
+                    count: switch (view) {
+                      '全部音声' || '收藏夹' => count(view),
+                      '在线收藏' => onlineLoggedIn ? onlineFavorites : null,
+                      _ => null,
+                    },
                   ),
                 if (!collapsed) ...[
                   const SizedBox(height: 10),

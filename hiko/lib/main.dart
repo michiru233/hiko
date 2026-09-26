@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/categories_provider.dart';
 import 'data/library_provider.dart';
+import 'data/online/online_account.dart';
 import 'data/settings_store.dart';
 import 'playback/audio_handler.dart';
 import 'playback/hiko_media_kit_player.dart';
@@ -38,6 +39,9 @@ Future<void> main() async {
   await container.read(settingsProvider.notifier).load();
   await container.read(libraryProvider.notifier).load();
   await container.read(categoriesProvider.notifier).load();
+  // 在线账号：读磁盘令牌并用它问一次服务端。**不 await** ——
+  // 这是网络往返，不该挡住冷启动；UI 侧用 restoring 状态区分「还不知道」与「未登录」。
+  unawaited(container.read(onlineAccountProvider.notifier).restore());
 
   // 音频会话（焦点管理）
   final session = await AudioSession.instance;

@@ -4,6 +4,8 @@
 /// 避免污染本地库去重、清理与统计逻辑（见 data/online/online_provider.dart）。
 library;
 
+import 'package:flutter/foundation.dart' show immutable;
+
 /// 在线作品（`GET /api/works` 列表项 / `GET /api/work/{id}?v=2` 详情）。
 ///
 /// 列表接口不返回 tags / vas（服务端只在详情里给），所以列表态下这两项为空，
@@ -205,6 +207,257 @@ class OnlineWorkPage {
     );
   }
 }
+
+/// 登录用户（`GET /api/auth/me`）。
+///
+/// 未登录时服务端同样返回 200，只是 `user.loggedIn = false` —— 所以「令牌失效」
+/// 要靠这个字段判断，不能只看状态码（1.93.0 实测）。
+class OnlineUser {
+  const OnlineUser({
+    required this.loggedIn,
+    this.name = '',
+    this.group = '',
+    this.email,
+  });
+
+  final bool loggedIn;
+  final String name;
+
+  /// `user` / `admin`
+  final String group;
+  final String? email;
+
+  static const guest = OnlineUser(loggedIn: false);
+
+  /// 吃整个 `/api/auth/me` 响应体（`{"user":{...},"auth":true,"reg":true}`）。
+  /// `user` 段缺失时按未登录处理。
+  factory OnlineUser.fromJson(Map<String, dynamic> json) {
+    final raw = json['user'];
+    if (raw is! Map) return guest;
+    final user = Map<String, dynamic>.from(raw);
+    return OnlineUser(
+      loggedIn: user['loggedIn'] as bool? ?? false,
+      name: (user['name'] as String?)?.trim() ?? '',
+      group: (user['group'] as String?)?.trim() ?? '',
+      email: user['email'] as String?,
+    );
+  }
+}
+
+/// 在线歌单 —— asmr.one 的「收藏」体系（1.93.0 接入）。
+///
+/// 三条实测结论决定了这个类的形状：
+/// ① **`id` 是 UUID 字符串**，不是数字，别当 int 用；
+/// ② **系统保留歌单的名字是原始 key**（`__SYS_PLAYLIST_LIKED` / `__SYS_PLAYLIST_MARKED`），
+///    服务端不做本地化，中文名要 Hiko 自己映射（见 [displayName]）；
+/// ③ 系统保留歌单**不可改名、不可删除**（服务端两道校验都会拒），
+///    所以 UI 要靠 [editable] 把入口收起来。
+class OnlinePlaylist {
+  const OnlinePlaylist({
+    required this.id,
+    required this.name,
+    this.userName = '',
+    this.privacy = 0,
+    this.locale = '',
+    this.worksCount = 0,
+    this.latestWorkId,
+    this.mainCoverUrl = '',
+    this.exist,
+  });
+
+  /// 「我喜欢的」：asmr.one 网页里点爱心收藏的作品落到这里
+  static const sysLiked = '__SYS_PLAYLIST_LIKED';
+
+  /// 「我标记的」：网页版「标记」按钮的目标歌单
+  static const sysMarked = '__SYS_PLAYLIST_MARKED';
+
+  /// privacy 枚举（实测）：0 私享 / 1 不公开 / 2 公开
+  static const privacyOptions = <(int, String)>[
+    (0, '私享'),
+    (1, '不公开'),
+    (2, '公开'),
+  ];
+
+  /// 新建歌单默认私享（裁决 Q12=A，与网页版一致）
+  static const defaultPrivacy = 0;
+
+  final String id;
+  final String name;
+  final String userName;
+  final int privacy;
+  final String locale;
+  final int worksCount;
+  final int? latestWorkId;
+  final String mainCoverUrl;
+
+  /// 该作品是否在这个歌单里。只有
+  /// `get-work-exist-status-in-my-playlists` 的返回带这个字段，其余端点恒为 null。
+  ///
+  /// 三态而非 bool：null = 不知道，false = 明确不在。省略掉这个区别的话，
+  /// 「没查过」会被当成「没收藏」，UI 就会先把勾去掉再跳回来。
+  final bool? exist;
+
+  bool get isLiked => name == sysLiked;
+  bool get isMarked => name == sysMarked;
+  bool get isSystem => isLiked || isMarked;
+
+  /// 能否改名 / 删除。系统保留歌单两端点都会被服务端拒绝，入口直接不显示
+  bool get editable => !isSystem;
+
+  /// 展示名：系统 key 映射成中文，普通歌单用原名
+  String get displayName => switch (name) {
+        sysLiked => '我喜欢的',
+        sysMarked => '我标记的',
+        _ => name.trim().isEmpty ? '未命名歌单' : name,
+      };
+
+  String get privacyLabel => switch (privacy) {
+        1 => '不公开',
+        2 => '公开',
+        _ => '私享',
+      };
+
+  /// 空歌单的封面是服务端占位图（`/statics/no-image.jpg`），不是绝对地址
+  bool get hasCover =>
+      mainCoverUrl.trim().isNotEmpty && !mainCoverUrl.contains('no-image');
+
+  factory OnlinePlaylist.fromJson(Map<String, dynamic> json) {
+    return OnlinePlaylist(
+      id: (json['id'] as String?)?.trim() ?? '',
+      name: (json['name'] as String?) ?? '',
+      userName: (json['user_name'] as String?)?.trim() ?? '',
+      privacy: (json['privacy'] as num?)?.toInt() ?? defaultPrivacy,
+      locale: (json['locale'] as String?) ?? '',
+      worksCount: (json['works_count'] as num?)?.toInt() ?? 0,
+      latestWorkId: (json['latestWorkID'] as num?)?.toInt(),
+      mainCoverUrl: (json['mainCoverUrl'] as String?) ?? '',
+      exist: json['exist'] as bool?,
+    );
+  }
+
+  OnlinePlaylist copyWith({
+    String? name,
+    int? privacy,
+    String? locale,
+    int? worksCount,
+    int? latestWorkId,
+    String? mainCoverUrl,
+    bool? exist,
+    bool clearExist = false,
+  }) =>
+      OnlinePlaylist(
+        id: id,
+        name: name ?? this.name,
+        userName: userName,
+        privacy: privacy ?? this.privacy,
+        locale: locale ?? this.locale,
+        worksCount: worksCount ?? this.worksCount,
+        latestWorkId: latestWorkId ?? this.latestWorkId,
+        mainCoverUrl: mainCoverUrl ?? this.mainCoverUrl,
+        exist: clearExist ? null : (exist ?? this.exist),
+      );
+}
+
+/// 歌单分页结果（`/api/playlist/get-playlists` 与 `get-work-exist-status-in-my-playlists`
+/// 共用同一个响应形状）
+class OnlinePlaylistPage {
+  const OnlinePlaylistPage({
+    required this.playlists,
+    required this.page,
+    required this.pageSize,
+    required this.totalCount,
+  });
+
+  final List<OnlinePlaylist> playlists;
+  final int page;
+  final int pageSize;
+  final int totalCount;
+
+  factory OnlinePlaylistPage.fromJson(Map<String, dynamic> json) {
+    final pagination = json['pagination'];
+    final p = pagination is Map ? Map<String, dynamic>.from(pagination) : const {};
+    return OnlinePlaylistPage(
+      playlists: (json['playlists'] as List?)
+              ?.whereType<Map>()
+              .map((w) => OnlinePlaylist.fromJson(Map<String, dynamic>.from(w)))
+              .toList() ??
+          const [],
+      page: (p['page'] as num?)?.toInt() ?? 1,
+      pageSize: (p['pageSize'] as num?)?.toInt() ?? 0,
+      totalCount: (p['totalCount'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+/// 歌单内作品分页结果（`/api/playlist/get-playlist-works`）。
+/// work 对象与 `/api/works` 同构，所以直接复用 [OnlineWork]。
+class PlaylistWorkPage {
+  const PlaylistWorkPage({
+    required this.works,
+    required this.page,
+    required this.pageSize,
+    required this.totalCount,
+  });
+
+  final List<OnlineWork> works;
+  final int page;
+  final int pageSize;
+  final int totalCount;
+
+  factory PlaylistWorkPage.fromJson(Map<String, dynamic> json) {
+    final pagination = json['pagination'];
+    final p = pagination is Map ? Map<String, dynamic>.from(pagination) : const {};
+    return PlaylistWorkPage(
+      works: (json['works'] as List?)
+              ?.whereType<Map>()
+              .map((w) => OnlineWork.fromJson(Map<String, dynamic>.from(w)))
+              .toList() ??
+          const [],
+      page: (p['page'] as num?)?.toInt() ?? 1,
+      pageSize: (p['pageSize'] as num?)?.toInt() ?? 0,
+      totalCount: (p['totalCount'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+/// 多选歌单菜单确认后要发的**差分**（裁决 Q8=B）。
+///
+/// 刻意不做「全量重写」：服务端只有 add / remove 两个端点，没有 set，
+/// 而且全量重写会把「网页端刚加进别的歌单」这类并发改动抹掉。
+@immutable
+class PlaylistDiff {
+  const PlaylistDiff({required this.addTo, required this.removeFrom});
+
+  /// 需要加入的歌单 id（UUID）
+  final List<String> addTo;
+
+  /// 需要移出的歌单 id（UUID）
+  final List<String> removeFrom;
+
+  static const empty = PlaylistDiff(addTo: [], removeFrom: []);
+
+  bool get isEmpty => addTo.isEmpty && removeFrom.isEmpty;
+  bool get isNotEmpty => !isEmpty;
+
+  /// 需要发出的请求条数（每个歌单一条）
+  int get requestCount => addTo.length + removeFrom.length;
+
+  @override
+  String toString() => 'PlaylistDiff(+${addTo.length}/-${removeFrom.length})';
+}
+
+/// 算出「当前勾选 → 目标勾选」的最小差分。纯函数，单测覆盖。
+///
+/// [current] 是打开菜单时该作品所属的歌单集合，[desired] 是用户点完确认的集合。
+/// 顺序沿用两个集合自己的迭代顺序（即歌单展示顺序），便于测试断言稳定。
+PlaylistDiff planPlaylistDiff({
+  required Set<String> current,
+  required Set<String> desired,
+}) =>
+    PlaylistDiff(
+      addTo: desired.difference(current).toList(),
+      removeFrom: current.difference(desired).toList(),
+    );
 
 /// 曲目树里的单个文件（`GET /api/tracks/{workId}`，已拍平）。
 ///

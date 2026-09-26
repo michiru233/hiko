@@ -205,10 +205,13 @@ void main() {
           KikoeruClient.hashFromStreamUrl('https://x/api/media/stream/'), isNull);
     });
 
-    test('coverUrl 支持缩略图与原图两种形态', () {
+    test('coverUrl 支持原图与缩略图两种形态', () {
       final client = KikoeruClient(baseUrl: 'https://api.asmr.one');
       expect(client.coverUrl(123),
           'https://api.asmr.one/api/cover/123.jpg');
+      // 1.93.0：列表也走原图。显式 type=main 与不带参数是同一张图（实测 md5 相同）
+      expect(client.coverUrl(123, size: KikoeruClient.coverMainSize),
+          'https://api.asmr.one/api/cover/123.jpg?type=main');
       expect(client.coverUrl(123, size: KikoeruClient.coverThumbSize),
           'https://api.asmr.one/api/cover/123.jpg?type=240x240');
     });

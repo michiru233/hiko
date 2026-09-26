@@ -8,10 +8,17 @@ import 'online_models.dart';
 
 /// 在线请求异常（含可展示的中文说明）
 class KikoeruException implements Exception {
-  KikoeruException(this.message, [this.cause]);
+  KikoeruException(this.message, [this.cause, this.statusCode]);
 
   final String message;
   final Object? cause;
+
+  /// HTTP 状态码；网络层失败（连不上、超时）为 null。
+  /// 调用方据它区分「令牌过期（401）」与「网络不通」。
+  final int? statusCode;
+
+  /// 令牌失效：401，或服务端在鉴权端点回 `{"error":"invalid token"}`
+  bool get isUnauthorized => statusCode == 401;
 
   @override
   String toString() => cause == null ? message : '$message（$cause）';
@@ -19,17 +26,22 @@ class KikoeruException implements Exception {
 
 /// Kikoeru 兼容服务器的 HTTP 客户端（asmr.one 即该协议的公共实例）。
 ///
-/// 实测确认的关键点（2026-09-25，见 .workbuddy/memory/2026-09-25.md）：
+/// 实测确认的关键点（2026-09-25/26，见 .workbuddy/memory/2026-09-25.md）：
 /// - **浏览/搜索/详情/曲目树/封面/字幕/音频流全部匿名可用**，无需 token；
-///   需要登录的只有收藏、评分、进度同步等写操作，本客户端不涉及。
+///   需要登录的是账号与歌单（收藏）接口，见本文件「账号 / 歌单」两节。
 /// - 端点是**单数**形式：`/api/work/{id}`、`/api/tracks/{id}`；
 ///   复数形式 `/api/works/{id}` 会返回 401，不要混用。
 /// - 音频流 `/api/media/stream/{hash}` 返回 302 跳转到带时效签名的 CDN 直链，
 ///   播放器跟随重定向即可，支持 Range。
 /// - 官方实例有 4 个镜像域名，任一可用即可；自建服务器不做镜像回退。
 class KikoeruClient {
-  KikoeruClient({required String baseUrl, this.proxy = '', Duration? timeout})
-      : _configuredBase = normalizeBase(baseUrl),
+  KikoeruClient({
+    required String baseUrl,
+    this.proxy = '',
+    String token = '',
+    Duration? timeout,
+  })  : _configuredBase = normalizeBase(baseUrl),
+        token = sanitizeToken(token),
         _timeout = timeout ?? const Duration(seconds: 20);
 
   /// 官网镜像族（仅当地址属于该族时才启用回退，自建服务器绝不跨站重试）
@@ -40,14 +52,32 @@ class KikoeruClient {
     'https://api.asmr-300.com',
   ];
 
-  /// 列表默认取 20 条/页：封面走 240x240 缩略图，滚动时不至于一次拉太多
+  /// 列表默认取 20 条/页
   static const defaultPageSize = 20;
 
-  /// 播放器展示用的封面尺寸
+  /// 封面尺寸白名单（实测：只有这三个值合法，其余一律 400 `{"error":"type: Invalid value"}`）。
+  ///
+  /// **1.93.0 起列表不再用它**：`240x240` 实际返回 240×180，卡片是 200–260 逻辑像素、
+  /// Retina 下要 400–520 物理像素，`BoxFit.cover` 裁成方形后只剩 180×180 可用，
+  /// 等于放大 2.4–2.9 倍 —— 这就是「主界面封面模糊、详情页正常」的全部原因。
+  /// 服务端**没有中间档**（`sam` 更小，只有 100×75），所以列表与详情统一走原图。
+  /// asmr.one 自己的列表用的也是 `type=main`，与这里一致。
   static const coverThumbSize = '240x240';
+
+  /// 原图（560×420）。与不带 `type` 参数完全同一张图（md5 相同），
+  /// 但显式写出参数能让意图可读，也方便将来服务端真加了中间档时替换。
+  static const coverMainSize = 'main';
 
   final String _configuredBase;
   final String proxy;
+
+  /// 登录令牌（**原始 JWT，不含 `Bearer ` 前缀**）。
+  ///
+  /// 实测：请求头是 `Authorization: Bearer <jwt>`，而用户从工具里复制出来的
+  /// 字符串常常带一截 `__q_strn|` 之类的噪声前缀，带上去服务端直接回
+  /// `{"error":"invalid token"}` —— 所以 [sanitizeToken] 会先把它剥掉。
+  final String token;
+
   final Duration _timeout;
 
   /// 会话内记住的可用地址（镜像回退命中后不再每次重试坏地址）
@@ -56,6 +86,34 @@ class KikoeruClient {
   String get baseUrl => _activeBase ?? _configuredBase;
   String get configuredBase => _configuredBase;
   bool get isOfficial => _configuredBase.contains('api.asmr');
+
+  /// 是否带上登录令牌
+  bool get authenticated => token.isNotEmpty;
+
+  /// 同一服务器、**不带令牌**的副本。登录端点用：网页端在那个端点上把
+  /// Authorization 显式置 null，这里保持同样的语义（实测并非硬要求，
+  /// 见 [login] 的注释）。
+  KikoeruClient anonymous() => KikoeruClient(
+        baseUrl: _configuredBase,
+        proxy: proxy,
+        timeout: _timeout,
+      );
+
+  /// 令牌归一：去掉首尾空白与**所有内部空白**（换行、空格 —— JWT 本体不含空白）、
+  /// 剥掉 `Bearer ` 前缀、剥掉 `__q_strn|` 这类噪声前缀。
+  ///
+  /// 只取最后一个 `|` 之后的部分，因为 JWT 本体不含 `|`。
+  static String sanitizeToken(String raw) {
+    var value = raw.replaceAll(RegExp(r'\s'), '');
+    if (value.isEmpty) return '';
+    // 空白已去掉，所以这里只看头 6 个字符，不能匹配 'bearer '
+    if (value.length > 6 && value.substring(0, 6).toLowerCase() == 'bearer') {
+      value = value.substring(6);
+    }
+    final bar = value.lastIndexOf('|');
+    if (bar >= 0) value = value.substring(bar + 1);
+    return value.trim();
+  }
 
   /// 地址归一：补 scheme、去尾斜杠。`api.asmr.one` → `https://api.asmr.one`
   static String normalizeBase(String raw) {
@@ -242,13 +300,196 @@ class KikoeruClient {
     }
   }
 
+  // ---------------------------------------------------------------- 账号
+  //
+  // 1.93.0 接入。asmr.one 的账号体系实测结论（全部真机跑过）：
+  // - 登录 = `POST /api/auth/me {name, password}` → `{token}`；错密码是
+  //   401 `{"error":"用户名或密码错误."}`，中文原文可直接透给用户。
+  // - 无 refresh 端点、**无服务端登出端点**（网页端登出只是清 localStorage），
+  //   令牌有效期 30 天（`expiresIn: 2592000`），过期只能重新登录（裁决 Q7=A）。
+  // - 令牌失效时 `/api/auth/me` 依然返回 **200**，只是 `user.loggedIn = false`，
+  //   所以判断登录态要看字段而不是状态码。
+
+  /// 当前登录态（`GET /api/auth/me`）。未登录也返回 200，故不抛异常
+  Future<OnlineUser> fetchMe() async {
+    final json = await _getObject('/api/auth/me');
+    return OnlineUser.fromJson(json);
+  }
+
+  /// 登录并取回 JWT（`POST /api/auth/me`）。
+  ///
+  /// 用 [anonymous] 副本发请求：asmr.one 网页端在这个端点上显式把 Authorization
+  /// 置 null，这里跟着走。实测带着一个无意义的 Bearer 也能正常走到凭证校验
+  /// （三种 Content-Type 形态都返回同样的 401「用户名或密码错误.」），
+  /// 所以这不是硬要求 —— 只是不给自己制造「旧令牌参与登录」这种可能性。
+  Future<String> login({required String name, required String password}) async {
+    final json = await anonymous()._postJson(
+      '/api/auth/me',
+      {'name': name.trim(), 'password': password},
+    );
+    final raw = json is Map ? json['token'] : null;
+    if (raw is! String || raw.trim().isEmpty) {
+      throw KikoeruException('登录成功但服务器没有返回令牌');
+    }
+    return sanitizeToken(raw);
+  }
+
+  // ---------------------------------------------------------------- 歌单（收藏）
+  //
+  // asmr.one 的「收藏」就是歌单（playlist）体系，没有独立的收藏端点。
+  // 参数形态**两套，别混**（实测）：
+  // - `create-playlist` 的 `works` 吃 **source_id 字符串**（`"RJ01657200"`）
+  // - `add-works-to-playlist` / `remove-works-from-playlist` 吃**数字 work id**
+  //   （传字符串会 400 `Invalid value`）
+
+  /// 我的歌单列表（`GET /api/playlist/get-playlists`）。
+  ///
+  /// `filterBy` 实测 `all`/`owned`/`liked` **都返回全部歌单**（服务端没实现区分），
+  /// 所以固定用 `all`，不要指望它过滤。
+  Future<OnlinePlaylistPage> fetchPlaylists({
+    int page = 1,
+    int pageSize = 100,
+  }) async {
+    final json = await _getObject('/api/playlist/get-playlists', {
+      'page': '$page',
+      'pageSize': '$pageSize',
+      'filterBy': 'all',
+    });
+    return OnlinePlaylistPage.fromJson(json);
+  }
+
+  /// 歌单内的作品（`GET /api/playlist/get-playlist-works`）。
+  /// work 对象与 `/api/works` 同构，多 `playlist_rel_created_at` / `_updated_at`。
+  Future<PlaylistWorkPage> fetchPlaylistWorks(
+    String playlistId, {
+    int page = 1,
+    int pageSize = 100,
+  }) async {
+    final json = await _getObject('/api/playlist/get-playlist-works', {
+      'id': playlistId,
+      'page': '$page',
+      'pageSize': '$pageSize',
+    });
+    return PlaylistWorkPage.fromJson(json);
+  }
+
+  /// 某作品在「我的歌单」中的分布（`GET /api/playlist/get-work-exist-status-in-my-playlists`）。
+  ///
+  /// 返回的每个歌单都带 `exist`（bool），正好喂给多选菜单做预勾选。
+  /// **按页返回**，歌单多于一页时预勾选会漏，所以这里固定拉满一页。
+  Future<List<OnlinePlaylist>> fetchWorkPlaylistStatus(
+    int workId, {
+    int pageSize = 200,
+  }) async {
+    final json = await _getObject(
+      '/api/playlist/get-work-exist-status-in-my-playlists',
+      {
+        'workID': '$workId',
+        'page': '1',
+        'pageSize': '$pageSize',
+        'version': '2',
+      },
+    );
+    return OnlinePlaylistPage.fromJson(json).playlists;
+  }
+
+  /// 新建歌单（`POST /api/playlist/create-playlist`）。
+  /// [works] 传 **source_id 字符串**列表（`RJ01657200`）；不传就是空歌单。
+  Future<OnlinePlaylist> createPlaylist({
+    required String name,
+    int privacy = OnlinePlaylist.defaultPrivacy,
+    List<String> works = const [],
+    String description = '',
+    String locale = 'zh-CN',
+  }) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) throw KikoeruException('歌单名不能为空');
+    final json = await _postJson('/api/playlist/create-playlist', {
+      'name': trimmed,
+      'privacy': privacy,
+      'locale': locale,
+      'description': description,
+      if (works.isNotEmpty) 'works': works,
+    });
+    if (json is! Map) throw KikoeruException('服务器没有返回新建的歌单');
+    return OnlinePlaylist.fromJson(Map<String, dynamic>.from(json));
+  }
+
+  /// 改名 / 改隐私 / 改描述（`POST /api/playlist/edit-playlist-metadata`）。
+  /// 系统保留歌单会被服务端拒绝（Hiko 侧靠 `OnlinePlaylist.editable` 提前收口）。
+  Future<OnlinePlaylist> editPlaylistMetadata(
+    String playlistId, {
+    String? name,
+    int? privacy,
+    String? description,
+  }) async {
+    final trimmed = name?.trim();
+    if (name != null && (trimmed == null || trimmed.isEmpty)) {
+      throw KikoeruException('歌单名不能为空');
+    }
+    // 只发改动过的字段：服务端对缺失字段保持原值
+    final data = <String, Object>{};
+    if (trimmed != null) data['name'] = trimmed;
+    if (privacy != null) data['privacy'] = privacy;
+    if (description != null) data['description'] = description;
+    final json = await _postJson('/api/playlist/edit-playlist-metadata', {
+      'id': playlistId,
+      'data': data,
+    });
+    if (json is! Map) throw KikoeruException('服务器没有返回修改后的歌单');
+    return OnlinePlaylist.fromJson(Map<String, dynamic>.from(json));
+  }
+
+  /// 删除歌单（`POST /api/playlist/delete-playlist`）。**歌单内的作品不受影响**。
+  Future<void> deletePlaylist(String playlistId) async {
+    await _postVoid('/api/playlist/delete-playlist', {'id': playlistId});
+  }
+
+  /// 把作品加进歌单（`POST /api/playlist/add-works-to-playlist`），返回受影响行数。
+  /// [workIds] 必须是**数字 work id**（不是 `RJ…`）。
+  Future<int> addWorksToPlaylist(String playlistId, List<int> workIds) async {
+    if (workIds.isEmpty) return 0;
+    final json = await _postJson('/api/playlist/add-works-to-playlist', {
+      'id': playlistId,
+      'works': workIds,
+    });
+    return json is Map ? (json['rowCount'] as num?)?.toInt() ?? 0 : 0;
+  }
+
+  /// 把作品移出歌单（`POST /api/playlist/remove-works-from-playlist`），返回受影响行数。
+  /// 同样只吃**数字 work id**。
+  Future<int> removeWorksFromPlaylist(
+    String playlistId,
+    List<int> workIds,
+  ) async {
+    if (workIds.isEmpty) return 0;
+    final json = await _postJson('/api/playlist/remove-works-from-playlist', {
+      'id': playlistId,
+      'works': workIds,
+    });
+    return json is Map ? (json['rowCount'] as num?)?.toInt() ?? 0 : 0;
+  }
+
   // ------------------------------------------------------------ URL 构造
 
-  /// 封面地址。[size] 传 [coverThumbSize] 取缩略图（列表用），null 取原图（详情用）
+  /// 封面地址。[size] 传 [coverMainSize] 取原图（列表与详情都用它），
+  /// null 等价于原图；[coverThumbSize] 只在明确需要小图时用（如后台缩略图）。
+  ///
+  /// 原始封面是 560×420（约 58–98 KB）。用 240×180 的缩略图放大到卡片尺寸
+  /// 就是 1.93.0 修掉的那个模糊问题，见 [coverThumbSize] 的注释。
   String coverUrl(int workId, {String? size}) {
     final suffix = size == null ? '' : '?type=$size';
     return '$baseUrl/api/cover/$workId.jpg$suffix';
   }
+
+  /// **应用里展示封面一律走这个**（列表卡片 / 详情大图 / 环境背板 / 正在播放）。
+  ///
+  /// 单独开一个出口的理由有两个：
+  /// ① 1.93.0 修的封面模糊是「某处又悄悄传了缩略图尺寸」这一类错误 ——
+  ///    所有调用点共用一个函数，才有一个地方可以钉回归测试；
+  /// ② 同一个作品在列表和详情里用的是**同一个 URL 字符串**，于是封面磁盘缓存
+  ///    只存一份、详情页能直接命中列表已经下好的图。
+  String coverMainUrl(int workId) => coverUrl(workId, size: coverMainSize);
 
   /// 音频流入口。返回 302 到 CDN 直链，交由播放器跟随重定向。
   ///
@@ -368,11 +609,7 @@ class KikoeruClient {
 
   Future<dynamic> _getDecoded(String path, [Map<String, String>? query]) async {
     final text = await _request(path, query);
-    try {
-      return jsonDecode(text);
-    } catch (e) {
-      throw KikoeruException('服务器返回的内容无法解析', e);
-    }
+    return _decode(text);
   }
 
   Future<Map<String, dynamic>> _getObject(
@@ -382,17 +619,49 @@ class KikoeruClient {
     throw KikoeruException('服务器返回的内容格式异常');
   }
 
-  /// 遍历候选地址请求；网络级失败换下一个镜像，业务级错误（4xx/5xx）直接抛出
-  Future<String> _request(String path, Map<String, String>? query) async {
+  /// POST 一个 JSON 体并解析响应（返回 null 表示响应体为空）
+  Future<dynamic> _postJson(String path, Object body) async {
+    final text = await _request(path, null, method: 'POST', body: body);
+    if (text.trim().isEmpty) return null;
+    return _decode(text);
+  }
+
+  /// POST 一个 JSON 体，只要状态码成功（删除等无返回值的端点）
+  Future<void> _postVoid(String path, Object body) async {
+    await _request(path, null, method: 'POST', body: body);
+  }
+
+  static dynamic _decode(String text) {
+    try {
+      return jsonDecode(text);
+    } catch (e) {
+      throw KikoeruException('服务器返回的内容无法解析', e);
+    }
+  }
+
+  /// 遍历候选地址请求；网络级失败换下一个镜像，业务级错误（4xx/5xx）直接抛出。
+  ///
+  /// **[method] 为 POST 时不做镜像回退**：网络超时意味着「请求可能已经落到服务端
+  /// 但响应没回来」，此时换镜像重发可能造成重复写入（比如建出两个同名歌单）。
+  /// 宁可报错让用户重试 —— 而且在这之前至少有一次 GET 已经解析出可用的
+  /// `_activeBase`，所以打不通的情况本就很罕见。
+  Future<String> _request(
+    String path,
+    Map<String, String>? query, {
+    String method = 'GET',
+    Object? body,
+  }) async {
+    final isMutation = method != 'GET';
+    final candidates = isMutation ? [baseUrl] : _candidates;
     Object? lastError;
-    for (final base in _candidates) {
+    for (final base in candidates) {
       final uri = query == null || query.isEmpty
           ? Uri.parse('$base$path')
           : Uri.parse('$base$path').replace(queryParameters: query);
       try {
-        final body = await _getString(uri);
+        final response = await _send(uri, method: method, body: body);
         _activeBase = base;
-        return body;
+        return response;
       } on KikoeruException {
         rethrow; // HTTP 状态码错误换镜像也没用（同一个服务端逻辑）
       } catch (e) {
@@ -402,10 +671,23 @@ class KikoeruClient {
     throw KikoeruException('无法连接在线服务器，请检查网络或服务器地址', lastError);
   }
 
-  Future<String> _getString(Uri uri) async {
+  Future<String> _getString(Uri uri) => _send(uri, method: 'GET');
+
+  /// 发一个请求。[body] 非空时以 JSON 形式提交。
+  ///
+  /// 错误响应体会被读出来解析成可读文案 —— asmr.one 的错误一律是
+  /// `{"error":"用户名或密码错误."}` 这种中文原句，比「服务器返回 401」有用得多。
+  Future<String> _send(
+    Uri uri, {
+    String method = 'GET',
+    Object? body,
+  }) async {
     final client = _newClient();
     try {
-      final request = await client.getUrl(uri).timeout(_timeout);
+      final request = await (method == 'POST'
+              ? client.postUrl(uri)
+              : client.getUrl(uri))
+          .timeout(_timeout);
       if (isOfficial) {
         // 防御性伪装：官方实例前置 Cloudflare，浏览器 UA/Referer 更稳
         request.headers.set(HttpHeaders.userAgentHeader, _browserUa);
@@ -413,15 +695,74 @@ class KikoeruClient {
       } else {
         request.headers.set(HttpHeaders.userAgentHeader, 'Hiko');
       }
-      final response = await request.close().timeout(_timeout);
-      if (response.statusCode >= 400) {
-        await response.drain<void>();
-        throw KikoeruException('服务器返回 ${response.statusCode}');
+      if (authenticated) {
+        // asmr.one 网页端就是这么发的（interceptors/request.js）：
+        // `Authorization: Bearer ${localStorage['jwt-token']}`
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer $token',
+        );
       }
-      return await response.transform(utf8.decoder).join().timeout(_timeout);
+      if (body != null) {
+        request.headers.contentType = ContentType.json;
+        request.write(jsonEncode(body));
+      }
+      final response = await request.close().timeout(_timeout);
+      final text = await response.transform(utf8.decoder).join().timeout(_timeout);
+      if (response.statusCode >= 400) {
+        throw KikoeruException(
+          _describeHttpError(response.statusCode, text),
+          null,
+          response.statusCode,
+        );
+      }
+      return text;
     } finally {
       client.close(force: true);
     }
+  }
+
+  /// 错误响应文案：优先透出服务端原句，取不到再退回状态码
+  static String _describeHttpError(int status, String body) {
+    final detail = parseServerError(body);
+    if (detail != null) return detail;
+    return switch (status) {
+      401 => '登录已过期，请重新登录',
+      403 => '没有权限执行该操作（服务器返回 403）',
+      404 => '服务器上找不到该资源（404）',
+      _ => '服务器返回 $status',
+    };
+  }
+
+  /// 从服务端错误体里抽出可读文案。三种形态都吃（实测）：
+  /// - `{"error":"用户名或密码错误."}`（鉴权类）
+  /// - `{"errors":[{"value":"RJ01…","msg":"Invalid value",…}]}`（express-validator）
+  /// - `{"message":"…"}`
+  static String? parseServerError(String body) {
+    final trimmed = body.trim();
+    if (trimmed.isEmpty || !trimmed.startsWith('{')) return null;
+    try {
+      final decoded = jsonDecode(trimmed);
+      if (decoded is! Map) return null;
+      final error = decoded['error'];
+      if (error is String && error.trim().isNotEmpty) return error.trim();
+      final errors = decoded['errors'];
+      if (errors is List && errors.isNotEmpty) {
+        final first = errors.first;
+        if (first is Map) {
+          final msg = first['msg'];
+          if (msg is String && msg.trim().isNotEmpty) {
+            final param = first['param'];
+            return param is String && param.isNotEmpty ? '$msg（$param）' : msg;
+          }
+        }
+      }
+      final message = decoded['message'];
+      if (message is String && message.trim().isNotEmpty) return message.trim();
+    } catch (_) {
+      // 非 JSON 错误体（网关的 HTML 错误页等），交给状态码兜底
+    }
+    return null;
   }
 
   static const _browserUa =

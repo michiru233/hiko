@@ -41,6 +41,7 @@ import '../widgets/settings_dialog.dart';
 import '../widgets/stats_view.dart';
 import '../widgets/sidebar.dart';
 import 'album_detail_screen.dart';
+import 'online_favorites_screen.dart';
 import 'online_screen.dart';
 import '../transitions/fullscreen_player_route.dart';
 
@@ -425,9 +426,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final albums = ref.watch(libraryProvider);
     final currentSort = ref.watch(settingsProvider.select((s) => s.albumSort));
     // 1.48：排序/过滤走 memo——列表实例与参数不变时复用结果，大库重建不再全量重算；
-    // 「统计」视图不走筛选（面板直接聚合全库）；「在线」视图的数据来自远程服务，
-    // 与本地库无关，同样跳过本地筛选（1.90）
-    final filtered = _view == '统计' || _view == '在线'
+    // 「统计」视图不走筛选（面板直接聚合全库）；「在线」「在线收藏」的数据来自远程
+    // 服务，与本地库无关，同样跳过本地筛选（1.90 / 1.93）
+    final filtered = _view == '统计' || _isOnlineView
         ? albums
         : _filterMemo.get(
             albums: albums,
@@ -772,10 +773,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// 移动端底部导航对应的视图（末位之后的固定为「设置」按钮，不在本表内）
   static const _navViews = ['全部音声', '收藏夹', '在线'];
 
+  /// 数据全来自远程服务端的视图（不走本地库筛选，也不参与本地网格）
+  bool get _isOnlineView => _view == '在线' || _view == '在线收藏';
+
   int get _navIndex {
     final i = _navViews.indexOf(_view);
+    if (i >= 0) return i;
+    // 「在线收藏」没有独立底栏格：它是在线模块的一部分，归到「在线」这一格，
+    // 免得底栏高亮停在「全部」而内容完全对不上
+    if (_view == '在线收藏') return _navViews.indexOf('在线');
     // 设置项不在 _navViews 中，单独处理
-    return i < 0 ? 0 : i;
+    return 0;
   }
 
   /// 移动端打开全屏详情页；详情页胶囊点选时回传 ('circle'|'voice', 名字) 应用为列表筛选
@@ -806,7 +814,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildTopbar(theme, isMobile),
-          Expanded(child: OnlineScreen(isMobile: isMobile)),
+          Expanded(
+            child: OnlineScreen(
+              isMobile: isMobile,
+              // 账号菜单里的「在线收藏」入口（1.93.0）：视图归属在这个 State，
+              // 在线页只上报意图
+              onOpenFavorites: () => setState(() => _view = '在线收藏'),
+            ),
+          ),
+        ],
+      );
+    }
+    // 在线收藏（1.93.0，裁决 Q3=A）：同样是纯远程数据，只是换了一个数据源 ——
+    // 服务端歌单而不是全站列表
+    if (_view == '在线收藏') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildTopbar(theme, isMobile),
+          Expanded(child: OnlineFavoritesScreen(isMobile: isMobile)),
         ],
       );
     }

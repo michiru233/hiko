@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../data/online/kikoeru_client.dart';
+import '../../data/online/online_account.dart';
+import '../../data/online/online_favorites.dart';
 import '../../data/online/online_models.dart';
 import '../../data/online/online_provider.dart';
 import '../../lyrics/lyrics_controller.dart';
@@ -16,6 +18,7 @@ import '../lyrics/drawer_lyrics_view.dart';
 import '../theme.dart';
 import '../transitions/fullscreen_player_route.dart';
 import 'detail_kit.dart';
+import 'online_account_dialogs.dart';
 import 'online_cover.dart';
 
 /// 桌面端：在线作品详情（从右侧滑出的面板）。
@@ -39,8 +42,9 @@ class OnlineDetailPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    // 氛围背板的底图：整块被 σ55 糊掉，只留色块，不构成隐私风险
-    final coverUrl = ref.watch(onlineClientProvider).coverUrl(workId);
+    // 氛围背板的底图：整块被 σ55 糊掉，只留色块，不构成隐私风险。
+    // 与详情大图共用同一个 URL —— 磁盘缓存只存一份
+    final coverUrl = ref.watch(onlineClientProvider).coverMainUrl(workId);
 
     return Container(
       decoration: BoxDecoration(
@@ -245,7 +249,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
                 borderRadius: BorderRadius.circular(16),
                 child: AspectRatio(
                   aspectRatio: 1,
-                  child: OnlineCover(url: client.coverUrl(work.id)),
+                  child: OnlineCover(url: client.coverMainUrl(work.id)),
                 ),
               ),
             ),
@@ -372,6 +376,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
           ),
         ),
+        OnlineFavoriteButton(work: work),
         OutlinedButton.icon(
           style: hikoOutlinedPillStyle(isDark: isDark),
           onPressed: () => unawaited(_openInBrowser(work)),
@@ -740,6 +745,93 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
   /// 从播放 URL 反解 hash（流播 URL 或缓存文件名两种形态都吃）
   static String? _hashOf(String? url) =>
       url == null ? null : KikoeruClient.hashFromPlaybackUrl(url);
+}
+
+/// 详情页的收藏按钮（裁决 Q5=A）。
+///
+/// 三种形态：
+/// - **未登录**：置灰（恢复流程未结束时更是直接禁用），点了弹登录引导
+/// - **已登录但不在任何歌单里**：普通描边胶囊「收藏」
+/// - **已在歌单里**：红图标 + 红字 + 红色描边与底色，标题里直接写出歌单名 ——
+///   只点亮图标的话，「收藏到哪个歌单了」还得点进去才知道
+///
+/// 点击动作统一是打开多选歌单菜单（裁决 Q8=B），不做「点一下无脑塞进我喜欢的」：
+/// 用户明确要求收藏要能分类（「未听」「已听」），一键默认值反而会污染默认歌单。
+class OnlineFavoriteButton extends ConsumerWidget {
+  const OnlineFavoriteButton({super.key, required this.work});
+
+  final OnlineWork work;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final account = ref.watch(onlineAccountProvider);
+    final index = ref.watch(onlineFavoritesProvider).index;
+
+    if (!account.loggedIn) {
+      return OutlinedButton.icon(
+        style: hikoOutlinedPillStyle(isDark: isDark),
+        // 恢复登录态期间禁用：否则冷启动那一下会闪出「去登录」，
+        // 而用户其实早就登录了
+        onPressed: account.settled
+            ? () => unawaited(
+                  showLoginRequiredDialog(context, action: '收藏作品'),
+                )
+            : null,
+        icon: const Icon(Icons.bookmark_border_rounded, size: 15),
+        label: const Text('收藏', style: TextStyle(fontSize: 11)),
+      );
+    }
+
+    final collected = index.playlistsOf(work.id);
+    final names = [
+      for (final playlist in index.playlists)
+        if (collected.contains(playlist.id)) playlist.displayName,
+    ];
+    final label = switch (names.length) {
+      0 => '收藏',
+      1 => '已收藏 · ${names.first}',
+      _ => '已收藏 · ${names.length} 个歌单',
+    };
+    final highlighted = names.isNotEmpty;
+
+    final button = OutlinedButton.icon(
+      style: highlighted
+          ? OutlinedButton.styleFrom(
+              // 与 hikoOutlinedPillStyle 同一套几何（圆角 / 内边距），只换配色
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
+              side: BorderSide(
+                color: hikoFavoriteColor.withValues(alpha: 0.5),
+              ),
+              backgroundColor: hikoFavoriteColor.withValues(
+                alpha: isDark ? 0.16 : 0.08,
+              ),
+            )
+          : hikoOutlinedPillStyle(isDark: isDark),
+      onPressed: () => unawaited(showPlaylistPicker(context, work: work)),
+      icon: Icon(
+        highlighted
+            ? Icons.bookmark_rounded
+            : Icons.bookmark_border_rounded,
+        size: 15,
+        color: highlighted ? hikoFavoriteColor : null,
+      ),
+      label: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: highlighted ? FontWeight.w600 : null,
+          color: highlighted ? hikoFavoriteColor : null,
+        ),
+      ),
+    );
+    if (names.isEmpty) return button;
+    return Tooltip(message: '已在：${names.join('、')}', child: button);
+  }
 }
 
 /// 目录行（裁决 Q14=C）：折叠三角 + 文件夹名 + 「N 个项目 · 总时长」，
