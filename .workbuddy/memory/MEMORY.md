@@ -46,7 +46,11 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
 4. 验证通过后 git commit + push origin main，并用 `gh release create vX.Y.Z <产物> --title --notes` 发 GitHub Release，交付时附下载链接。
 5. 规划与实施记录追加到 `.zcode/plans/plan-hiko-flutter-rewrite.md`（新章节）；`hiko/PROGRESS.md` 止于 1.78.0 不再更新；
    `hiko/BLOCKED.md` 只记待裁决项（1.79 起各版状态以 plan 文件为准）。
-6. 发版 zip/apk 只入 GitHub Releases，不入 git；`.shots/` 调试截图不入库。
+6. 发版 zip/apk 只入 GitHub Releases，不入 git；**发完即清本地副本**（`hiko/*.zip` / `*.apk` 被
+   `hiko/.gitignore` 忽略，不进 git 也不在 `git status` 里显示 → 会无声囤到 GB 级；
+   2026-09-26 一次性清出 22 个 / 1.0 GB）。删前**必须逐字节比对 Release 资产尺寸**，
+   注意 **v1.88.1 的 Release 是空的**（本地那两个是唯一副本，已按用户确认删除）；
+   删除一律走 `trash`、分批 ≤10 个。`.shots/` 调试截图不入库。
 7. 测试：内容以日文为主，覆盖 UTF-8 与 Shift-JIS 编码标签；实网用例默认跳过、按需启用。
 8. ⚠️ **跑 `flutter test` / `flutter build macos` 必须先摘掉代理**：本会话全局设了
    `HTTP_PROXY/HTTPS_PROXY=http://127.0.0.1:54545`。测试侧 Dart 进程连 flutter_tester 的 WebSocket 被代理吃掉，
