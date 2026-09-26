@@ -21,7 +21,7 @@ flutter test              # 单测（RJ 提取/自然排序/repairText/模型往
 - **播放模式**：列表循环/单曲循环/随机（专辑内避免连播）/专辑循环（跨专辑接续）。
 - **GitHub 自动备份与 Release 发布（强制）**：每次完成代码更新、bug 修复或新功能开发并验证通过后：
   1. 自动执行 git add/commit 并推送至 GitHub（`git push origin main`）。
-  2. 将 Release 封包构建产物（如 macOS `.app` 压缩为 `hiko-vX.Y.Z-macos.zip`）通过 `gh release create vX.Y.Z <zip_path> --title "vX.Y.Z" --notes "<变更说明>"` 自动上传到 GitHub Releases，并在交付时附带 Release 下载链接。
+  2. 将 Release 封包构建产物（macOS `.app` 压缩为 `hiko-vX.Y.Z-macos.zip`、Android 为 `hiko-vX.Y.Z-android.apk`，双端同步封包）通过 `gh release create vX.Y.Z <zip_path> <apk_path> --title "vX.Y.Z" --notes-file -`（notes 走 stdin heredoc；用 `--notes "…"` 走 shell 参数容易被 `·`/`—`/竖线/反引号吃掉）上传到 GitHub Releases，上传后须**核验资产大小**，并在交付时附带 Release 下载链接。
 - **规划与实施记录**：`.zcode/plans/plan-hiko-flutter-rewrite.md`（里程碑与修复记录，新增改动请追加章节）。辅助文件：`hiko/PROGRESS.md` 仅为历史执行者工作日志（止于 1.78.0，勿再更新）；`hiko/BLOCKED.md` 为发版任务待裁决清单（无内容写「无」，1.79 起各版「无新增待裁决」记于 plan 文件对应章节）。发版 zip（`hiko/*.zip`）与 apk 资产入 GitHub Releases，不入 git。会话调试截图（`.shots/`）不入库。
 
 ## 旧版 Electron + Capacitor（参考，不再新增功能）

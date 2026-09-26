@@ -96,10 +96,11 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
   **取消标签筛选一律回「最新榜」**（`applyPreset(latestPreset)`，用户推翻了「回热门榜」的推荐）。
   `onlineTagsProvider`（拉全量 `/api/tags/` 422 个约 72KB）**已删** —— 那是「按名字反查 id」的
   旧链路所需，现在 id 直接就在手里。`KikoeruClient.fetchTags()` 保留（端点表面完整性）。
-- **在线卡片标签行（1.94.0）**：`OnlineWorkGrid` 的 `mainAxisExtent` 加了公开常量
-  `kOnlineCardTagRow = 24`，且**没有标签的卡片也占位**（否则同屏封面大小不一）。
+- **在线卡片标签行（1.94.0；1.96.0 起高度预算改为纯函数）**：`OnlineWorkGrid` 的 `mainAxisExtent`
+  用公开函数 `onlineCardTextBlockHeight(scaler, textScale)` / `onlineCardTagRowHeight(scaler, tagFontSize)`
+  算（默认档位下标签行约 24），且**没有标签的卡片也占位**（否则同屏封面大小不一）。
   单行截断必须用 `TextPainter` **真量宽度**（标签名 4~10 字符差异极大），
-  量与画必须共用 `HikoTagChip.textStyle` / `.horizontalPadding` 同一份常量。
+  量与画必须共用 `HikoTagChip.textStyleFor(fontSize)` / `.horizontalPadding` 同一份常量。
   卡面的 `+N` 是「**被藏起来的个数**」（对齐本地 `album_card.dart`），不是总数。
   开关 `showOnlineTags`（默认 `true`，在设置「在线账号」页）与本地 `showScrapedTags`
   **刻意分开、默认值相反**（本地刮削标签默认关，在线默认开）。
@@ -171,11 +172,12 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
   `hikoPillHoverOutline` **始终返回非空 `BoxDecoration`**（不活跃时透明边）：
   `AnimatedContainer` 只在字段非空时才建 tween，给 `null` 会让「亮起来」没过渡、像闪一下。
 - **⚠️ 量文字的宽度/高度必须带上 `MediaQuery.textScaler`**（1.95.0 修的 bug，1.94.0 引入）：
-  `HikoTagChip` 画出来是 `9pt × scaler`，而 `_CardTagRow._chipWidth` 按 `9pt` 量 →
+  当时 `HikoTagChip` 画出来是 `9pt × scaler`（今为 `tagFontSize`，默认 11），
+  而 `_CardTagRow._chipWidth` 按 `9pt` 量 →
   用户把全局字号调到大/超大（`fontScale` 档位到 1.30）时**标签行当场溢出卡片**。
   凡是用 `TextPainter` 预量尺寸的地方都要传 `textScaler: MediaQuery.textScalerOf(context)`。
-  **1.96.0 做可调外观时必须把高度预算也纳入**（`_kOnlineCardTextBlock = 62` / `kOnlineCardTagRow = 24`
-  是固定像素），否则调大字号会从「宽度溢出」变成「高度裁切」。
+  **1.96.0 已把高度预算一并纳入**（原来写死的 `62` / `24` 两个常量改成两个纯函数，见下节
+  「在线外观（1.96.0 起）」）—— 否则调大字号会从「宽度溢出」变成「高度裁切」。
 
 ## 在线外观（1.96.0 起）
 
@@ -262,8 +264,10 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
   ② 状态行新增「已屏蔽 N 个标签」标记后的**窄屏换行与省略**；
   ③ 黑名单管理对话框（宽 420、限高屏高 46%）在手机竖屏的表现。
   明确不做（已裁决）：「暂时停用黑名单」总开关、黑名单手动输入、按社团/声优屏蔽。
-  **1.96.0 待问**：三组缩放各设哪些档、标签字号档位、`Aa` 按钮摆哪、
-  网格列数下拉（3/4/5/6/7/8，0=自动）的实现位置 —— 均未开问。
+- 1.96.0 遗留：Android 未实机验证 ① `Aa` 对话框在手机竖屏的限高（屏高 × 0.62）与滚动；
+  ② 第二行排序 chip 右边加 `Aa` 之后的窄屏换行；③ 在线页设 8 列的实际观感（裁决为两端共用、不夹取）。
+  未裁决：卡面标题一行的作品封面会比两行的略高一行（`Expanded` 吸收剩余高度），
+  是否把标题块统一成固定两行高 —— 既有观感差异，非本版引入。
 - **测试纪律（1.95.0 新增，务必遵守）**：写「不溢出 / 不回归」这类**回归锁**时，
   **必须真的把修复摘掉验证它会红**。1.95.0 初版那条「字号 1.30 标签行不溢出」，
   在漏掉 `textScaler` 的情况下**照样绿**（那个标签集恰好在 1.30 下被 `+N` 的宽度富余吃掉了溢出），

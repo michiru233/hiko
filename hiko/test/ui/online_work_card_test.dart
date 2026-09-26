@@ -48,8 +48,9 @@ void main() {
         ],
       );
 
-  /// [height] 默认 = 「封面正方形 + 两行标题 + 一行副标题」（200 + 62）。
-  /// 开了标签行要自己加 24（= kOnlineCardTagRow），否则卡片内部会溢出。
+  /// [height] 默认 = 「封面 + 两行标题 + 一行副标题」（200 + `onlineCardTextBlockHeight`，
+  /// 默认档位下 61.5，这里给 62 留 0.5px 余量）。
+  /// 开了标签行要自己加 `onlineCardTagRowHeight`（默认档位下约 24），否则卡片内部会溢出。
   Widget host(Widget child, {double width = 200, double height = 262}) =>
       ProviderScope(
         child: MaterialApp(
@@ -201,7 +202,7 @@ void main() {
     });
   });
   group('卡面标签行（1.94.0）', () {
-    // 200px 宽卡片、开标签行 → 高度要多留 24（与 kOnlineCardTagRow 对齐）
+    // 200px 宽卡片、开标签行 → 高度按 onlineCardTagRowHeight 多留（默认档位下约 24）
     Widget tagHost(
       Widget child, {
       double width = 200,
