@@ -2639,3 +2639,29 @@ Android 端体验批次（用户 2026-09-26 明确：安卓端需求不涉及 ma
 - `online_filter_marker.dart`：两个标记组件加 `maxTextWidth` 参数（默认 140 不变）。
 - **验证基线**：`flutter test` **522 passed / 2 skipped**；`flutter analyze` **39 条**
   （= 基线）。版本 `1.97.2+110`。
+
+## 1.98.0 检查更新 403：网页端点兜底（2026-09-26）
+
+安卓实机反馈「检查更新失败：GitHub API 403」。根因：`api.github.com` 匿名限额是
+**每 IP 每小时 60 次**，手机蜂窝网络出口（CGNAT）是大量用户共享的，经常被整站
+耗光 → 403。与用户自身使用行为无关，纯基础设施问题。
+
+- **方案**：API 非 200 时自动兜底走网页端点
+  `github.com/michiru233/hiko/releases/latest` 的 **302 重定向**（网站端点无此
+  限额）：`followRedirects = false` 读 `location` 头 → 解析 `/releases/tag/<tag>`
+  → 按**发版命名约定**（`hiko-<tag>-android.apk` / `hiko-<tag>-macos.zip`，
+  Windows 与 macOS 共用 zip，与 `pickAsset` 一致）合成直链
+  `releases/download/<tag>/<name>`，后续下载流程完全复用。
+- **代价**：兜底路径拿不到发布说明正文（body 为空），UI 自动隐藏正文区，可接受。
+- `update_checker.dart` 新增：`fetchLatestReleaseViaWeb`（302 兜底，非 3xx /
+  location 不合发版形态都抛可读的 `HttpException`）、`releaseFromRedirect`
+  （吃绝对地址与相对路径，非发版 URL 返 null 不硬猜）、`releaseFromTag`
+  （按命名约定合成 Release，size=0 走响应 `contentLength`）；
+  `fetchLatestRelease` 请求补 `User-Agent` + `Accept` 头（GitHub API 硬性要求）。
+- **测试**：`test/data/update_checker_test.dart` +6 —— 纯函数三组（绝对/相对
+  重定向解析、非发版 URL 返 null、合成资产与 `pickAsset` 约定一致）+ 兜底三组
+  （403→302 成功、网页端点 500 抛异常、location 不合形态抛异常）。
+  坑：兜底合成按 `Platform.operatingSystem` 命名，测试断言必须按宿主平台取
+  `pickAsset`（写死 android 在 macOS 宿主必红）。
+- **验证基线**：`flutter test` **528 passed / 2 skipped**（522→528）；
+  `flutter analyze` **39 条**（= 基线）。版本 `1.98.0+111`。

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hiko/data/update_checker.dart';
@@ -93,6 +94,126 @@ void main() {
       expect(release.tagName, 'v1.38.0');
       expect(release.body, body);
       expect(release.assets.single.name, 'hiko-v1.38.0-macos.zip');
+    });
+  });
+
+  // ------------------------------------------------------------ 1.98.0 网页端点兜底
+  //
+  // api.github.com 匿名限额每 IP 每小时 60 次，手机 CGNAT 出口经常被耗光 → 403
+  // （安卓实机截图踩过）。兜底 = releases/latest 的 302 重定向。
+
+  group('releaseFromRedirect / releaseFromTag（纯函数）', () {
+    test('绝对与相对重定向地址都能解析出版本号', () {
+      final abs = UpdateChecker.releaseFromRedirect(
+        'https://github.com/michiru233/hiko/releases/tag/v1.97.2',
+      );
+      expect(abs!.tagName, 'v1.97.2');
+      expect(abs.body, isEmpty, reason: '兜底路径拿不到发布说明，UI 会自动隐藏');
+
+      final rel = UpdateChecker.releaseFromRedirect(
+        '/michiru233/hiko/releases/tag/v1.98.0',
+      );
+      expect(rel!.tagName, 'v1.98.0');
+    });
+
+    test('不是发版 URL 时返回 null（不硬猜）', () {
+      expect(UpdateChecker.releaseFromRedirect('/michiru233/hiko'), isNull);
+      expect(
+        UpdateChecker.releaseFromRedirect(
+          'https://github.com/michiru233/hiko/releases',
+        ),
+        isNull,
+      );
+    });
+
+    test('按发版命名约定合成资产链接，与 pickAsset 的约定一致', () {
+      final android = UpdateChecker.releaseFromTag(
+        'v1.98.0',
+        platform: 'android',
+      );
+      expect(android.assets.single.name, 'hiko-v1.98.0-android.apk');
+      expect(
+        android.assets.single.url,
+        'https://github.com/michiru233/hiko/releases/download/v1.98.0/hiko-v1.98.0-android.apk',
+      );
+      expect(UpdateChecker.pickAsset(android, 'android')!.name,
+          'hiko-v1.98.0-android.apk');
+
+      // Windows 与 macOS 共用 macos.zip（pickAsset 的既有约定）
+      final macos = UpdateChecker.releaseFromTag(
+        'v1.98.0',
+        platform: 'macos',
+      );
+      expect(macos.assets.single.name, 'hiko-v1.98.0-macos.zip');
+      expect(UpdateChecker.pickAsset(macos, 'windows')!.name,
+          'hiko-v1.98.0-macos.zip');
+    });
+  });
+
+  group('fetchLatestRelease 网页端点兜底（403 场景）', () {
+    test('API 403 时自动改走 releases/latest 的 302 重定向', () async {
+      final client = MockClient((request) async {
+        if (request.url.host == 'api.github.com') {
+          // 匿名限流的典型响应
+          return http.Response('{"message": "API rate limit exceeded"}', 403);
+        }
+        if (request.url.path.endsWith('/releases/latest')) {
+          return http.Response(
+            '',
+            302,
+            headers: {
+              'location': '/michiru233/hiko/releases/tag/v1.98.0',
+            },
+          );
+        }
+        return http.Response('not found', 404);
+      });
+
+      final release = await UpdateChecker.fetchLatestRelease(client: client);
+
+      expect(release.tagName, 'v1.98.0');
+      // 兜底合成按当前平台命名（fetchLatestReleaseViaWeb 不传 platform 时
+      // 用 Platform.operatingSystem），测试在哪个宿主跑就断言哪个平台。
+      final asset = UpdateChecker.pickAsset(release, Platform.operatingSystem);
+      final expected =
+          UpdateChecker.releaseFromTag('v1.98.0').assets.single.url;
+      expect(
+        asset!.url,
+        expected,
+        reason: '兜底合成的链接必须能直接进 downloadAsset',
+      );
+    });
+
+    test('网页端点也没拿到重定向时抛出可读的异常（不再裸报 403）', () async {
+      final client = MockClient((request) async {
+        if (request.url.host == 'api.github.com') {
+          return http.Response('', 403);
+        }
+        return http.Response('', 500);
+      });
+
+      await expectLater(
+        UpdateChecker.fetchLatestRelease(client: client),
+        throwsA(isA<HttpException>()),
+      );
+    });
+
+    test('重定向地址不符合发版形态时抛异常（不硬猜）', () async {
+      final client = MockClient((request) async {
+        if (request.url.host == 'api.github.com') {
+          return http.Response('', 403);
+        }
+        return http.Response(
+          '',
+          302,
+          headers: {'location': '/michiru233/hiko'},
+        );
+      });
+
+      await expectLater(
+        UpdateChecker.fetchLatestRelease(client: client),
+        throwsA(isA<HttpException>()),
+      );
     });
   });
 }

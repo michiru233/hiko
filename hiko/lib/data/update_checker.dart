@@ -34,6 +34,9 @@ class GithubRelease {
 class UpdateChecker {
   static const repoApiBase = 'https://api.github.com/repos/michiru233/hiko';
 
+  /// 网页端点（不走 API 限流）。`releases/latest` 会 302 到 `/releases/tag/<tag>`。
+  static const repoWebBase = 'https://github.com/michiru233/hiko';
+
   /// 解析 releases/latest 的 JSON(纯函数)
   static GithubRelease parseRelease(Map<String, dynamic> json) => GithubRelease(
         tagName: json['tag_name'] as String? ?? '',
@@ -93,6 +96,12 @@ class UpdateChecker {
 
   /// 拉取最新 Release(10 秒超时;失败抛异常由调用方提示)。
   /// [headers] 供测试注入 token 以绕开匿名限流；置 null 走匿名请求（与旧行为一致）。
+  ///
+  /// 1.98.0 起带**网页端点兜底**：`api.github.com` 匿名限额是**每 IP 每小时 60 次**，
+  /// 手机蜂窝网络的出口 IP（CGNAT）是共享的，经常被整站用户耗光 → 403（安卓实机
+  /// 截图踩过）。非 200 时改走 `github.com/.../releases/latest` 的 302 重定向
+  /// （网站端点无此限额），从重定向地址解析版本号、按发版命名约定合成下载链接。
+  /// 代价是兜底路径拿不到发布说明正文（body 为空，UI 自动隐藏），可接受。
   static Future<GithubRelease> fetchLatestRelease({
     http.Client? client,
     Map<String, String>? headers,
@@ -100,17 +109,101 @@ class UpdateChecker {
     final c = client ?? http.Client();
     try {
       final resp = await c
-          .get(Uri.parse('$repoApiBase/releases/latest'), headers: headers)
+          .get(
+            Uri.parse('$repoApiBase/releases/latest'),
+            headers: {
+              // GitHub API 的硬性要求：带 UA 的请求才受理
+              'User-Agent': 'hiko-update-check',
+              'Accept': 'application/vnd.github+json',
+              ...?headers,
+            },
+          )
           .timeout(const Duration(seconds: 10));
-      if (resp.statusCode != 200) {
-        throw HttpException('GitHub API ${resp.statusCode}');
+      if (resp.statusCode == 200) {
+        return parseRelease(
+          await compute(_decodeJson, resp.bodyBytes),
+        );
       }
-      return parseRelease(
-        await compute(_decodeJson, resp.bodyBytes),
-      );
+      return await fetchLatestReleaseViaWeb(client: c, headers: headers);
     } finally {
       if (client == null) c.close();
     }
+  }
+
+  /// 网页端点兜底：`github.com/<repo>/releases/latest` 302 → `.../releases/tag/<tag>`。
+  /// 刻意 `followRedirects = false`：package:http 的 Response 不带最终 URL，
+  /// 只有 Location 头能可靠给出目标版本。
+  static Future<GithubRelease> fetchLatestReleaseViaWeb({
+    http.Client? client,
+    Map<String, String>? headers,
+  }) async {
+    final c = client ?? http.Client();
+    try {
+      final request = http.Request(
+        'GET',
+        Uri.parse('$repoWebBase/releases/latest'),
+      )
+        ..followRedirects = false
+        ..headers['User-Agent'] = 'hiko-update-check';
+      if (headers != null) request.headers.addAll(headers);
+      final resp = await c.send(request).timeout(const Duration(seconds: 10));
+      if (resp.statusCode < 300 || resp.statusCode >= 400) {
+        throw HttpException(
+          'GitHub 网页端点 ${resp.statusCode}（API 403 通常是无鉴权限流：'
+          '每 IP 每小时 60 次，稍后再试）',
+        );
+      }
+      final location = resp.headers['location'];
+      final release = location == null ? null : releaseFromRedirect(location);
+      if (release == null) {
+        throw HttpException('无法从 GitHub 重定向解析版本：$location');
+      }
+      return release;
+    } finally {
+      if (client == null) c.close();
+    }
+  }
+
+  /// 从重定向地址解析版本并合成 Release（纯函数）。
+  ///
+  /// 吃绝对地址（`https://github.com/.../releases/tag/v1.97.2`）与相对路径
+  /// （`/michiru233/hiko/releases/tag/v1.97.2`）两种形态。不是发版 URL 时返回
+  /// null —— 解析失败别硬猜，让上层报错。
+  static GithubRelease? releaseFromRedirect(String location) {
+    final path = Uri.tryParse(location)?.path ?? location;
+    final match =
+        RegExp(r'/releases/tag/(v?\d+\.\d+\.\d+.*)$').firstMatch(path);
+    if (match == null) return null;
+    return releaseFromTag(match.group(1)!);
+  }
+
+  /// 按本仓库的**发版命名约定**从 tag 合成 Release：
+  /// 资产恒为 `hiko-<tag>-android.apk` / `hiko-<tag>-macos.zip`
+  /// （Windows 与 macOS 共用 macos.zip，与 [pickAsset] 的约定一致），
+  /// 直链 `github.com/.../releases/download/<tag>/<name>` 不依赖 API。
+  ///
+  /// [platform] 默认当前平台；size 置 0 —— 下载进度以响应的
+  /// `contentLength` 为准（见 [downloadAsset]）。
+  static GithubRelease releaseFromTag(
+    String tag, {
+    String? platform,
+  }) {
+    final norm = (platform ?? Platform.operatingSystem).toLowerCase();
+    final assetName = norm == 'android'
+        ? 'hiko-$tag-android.apk'
+        : 'hiko-$tag-macos.zip';
+    return GithubRelease(
+      tagName: tag,
+      name: '',
+      body: '',
+      assets: [
+        GithubAsset(
+          name: assetName,
+          url: '$repoWebBase/releases/download/$tag/$assetName',
+          size: 0,
+        ),
+      ],
+    );
   }
 
   static Map<String, dynamic> _decodeJson(List<int> body) =>
