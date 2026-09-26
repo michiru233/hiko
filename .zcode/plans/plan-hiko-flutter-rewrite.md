@@ -1771,3 +1771,218 @@ Release：https://github.com/michiru233/hiko/releases/tag/v1.91.0（`hiko-v1.91.
 Release：https://github.com/michiru233/hiko/releases/tag/v1.92.0（`hiko-v1.92.0-macos.zip` 32 MB + `hiko-v1.92.0-android.apk` 64 MB）。
 构建坑沿用 1.90.0 / 1.91.0 的结论（摘代理 + `IDEPackageSupportDisable*Sandbox` + 沙箱外前台跑），本轮双端一次通过。
 
+## 1.93.0 asmr.one 账号与歌单收藏 + 列表封面改原图（2026-09-26）
+
+**动机**：用户在 Mac 端实测 1.92.0 后提两项需求，Android 仍未实机验证：
+1. **账号与收藏**：asmr.one 有账号系统，应配套收藏功能；详情页点收藏后该专辑应出现在收藏列表，
+   **且支持分类管理（例如「未听」「已听」）**，方便记录收听状态。
+2. **封面模糊**：在线主界面专辑封面**普遍模糊**，进详情页就正常 —— 查因并解决。
+
+**一轮 grilling 裁决（Q1–Q13，全部落地）**：
+
+| # | 裁决 |
+|---|---|
+| Q1 | **A** 真接入 asmr.one 账号，收藏写进用户自己的 playlist（不另起本地收藏库） |
+| Q2 | **C** 双入口：在线页右上角登录/状态胶囊 + 设置里「在线账号」二级页 |
+| Q3 | **A** 侧边栏加一级项「在线收藏」 |
+| Q4 | **A** 列表直接用原图，不加清晰度开关 |
+| Q5 | **A** 详情页按钮高亮 + 列表卡片角标；未登录置灰并引导登录 |
+| Q6 | 确认砍掉 review / recommender / vote；不动本地库封面；**分类 = playlist** |
+| Q7 | **A** 只存 JWT，失效则重登，不静默重试 |
+| Q8 | **B** 单击按钮弹菜单多选歌单，确认后写入（**发差分**，不是全量覆盖） |
+| Q9 | **A**（后被 Q13 重开） |
+| Q10 | **B** 优先走服务端（不做本地镜像收藏） |
+| Q11 | **A** 不做注册，引导去网页 |
+| Q12 | **A** 新建歌单默认私有（`privacy=0`），只填名字 |
+| Q13 | **改判 A** 歌单**改名与删除也做**，系统保留歌单除外 |
+| 追加 | 用户明确：「用我真实账号就可以，**记得测试歌单要删除**」；删除入口 = 歌单管理里的垃圾桶图标 |
+
+**asmr.one API 契约（本轮实测复核，别猜）**：
+
+- **账号**
+  - `GET /api/auth/me` 无 token → `{"user":{"loggedIn":false},"auth":true,"reg":true}`；
+    带 token → `{"user":{"loggedIn":true,"name":"...","group":"user","email":null,"recommenderUuid":"…"}}`
+  - **令牌失效仍返回 200**，只是 `user.loggedIn=false` → **判登录态必须看字段而非状态码**
+  - `POST /api/auth/me {name,password}` → `{token}`；错密码 401 `{"error":"用户名或密码错误."}`
+  - 认证头是 **`Authorization: Bearer <原始 JWT>`**。用户复制来的 `__q_strn|` 前缀是**复制噪声**，
+    带上会 `{"error":"invalid token"}` → 必须有 `sanitizeToken`
+  - **本轮 curl 复核的一处自我纠错**：`POST /api/auth/me` 带 `Authorization: Bearer bogus`、不带、
+    以及 JSON / form-encoded 四种形态**都返回同样的 401 凭据错误** → 原先注释里
+    「带旧令牌登录会被拒」是**未验证的推断**，已改注释；`login()` 仍不带 Authorization，
+    但理由是「跟随网页端语义、不给自己制造旧令牌参与登录的可能性」，不是「服务端硬要求」
+  - JWT 有效期 30 天，**无 refresh 端点**、**无服务端登出端点**（网页登出 = `localStorage.remove("jwt-token")`）
+  - `/api/config` 实测 `Cannot GET /api/config`（不存在）
+
+- **收藏 = playlist**
+  | 端点 | 形态 |
+  |---|---|
+  | `GET /api/playlist/get-playlists?page=&pageSize=&filterBy=` | `{playlists:[…], pagination:{page,pageSize,totalCount}}`；**`all`/`owned`/`liked` 都返回全部**（`filterBy` 形同虚设） |
+  | `GET /api/playlist/get-playlist-works?id=&page=&pageSize=` | `{works:[完整 work 对象], pagination}` |
+  | `GET /api/playlist/get-work-exist-status-in-my-playlists?workID=&page=&pageSize=&version=2` | 每条 playlist 带 **`exist`(bool)** |
+  | `POST /api/playlist/create-playlist {name,privacy,locale,description,works}` | works 吃 **source_id 字符串** |
+  | `POST /api/playlist/edit-playlist-metadata {id, data:{name,privacy,description}}` | 改名/改可见性 |
+  | `POST /api/playlist/delete-playlist {id}` | 删除 |
+  | `POST /api/playlist/add-works-to-playlist {id, works}` / `remove-works-from-playlist` | **只吃数字 id**；传字符串 → 400 `Invalid value`（`param: works[0]`） |
+
+  - playlist `id` 是 **UUID 字符串**；`privacy` = 0 私享 / 1 不公开 / 2 公开
+  - **系统保留歌单返回原始 key**（`__SYS_PLAYLIST_LIKED` / `__SYS_PLAYLIST_MARKED`），
+    Hiko 需自行映射为「我喜欢的」/「我标记的」；系统歌单 **不可改名/删除**
+  - 空歌单 `mainCoverUrl` 是 `/statics/no-image.jpg`
+
+- **`GET /api/works` 的列表形态**
+  - **只返回前 20 条**：`pagination.totalCount = 62453`，请求的 `pageSize=50` **被忽略**
+  - **`playlistStatus` 是 page 级而非 work 级**
+  - 搜索/标签端点改为 POST 后**丢失 `pageSize` 与 `pagination`**
+  → 三条合起来判了 `withPlaylistStatus` 方案的死刑（见下「关键设计决策」）
+
+- **封面档位**
+  - `/api/cover/{id}.jpg?type=` 白名单**只有 `240x240` / `main` / `sam`**，其余一律 400
+  - **`type=main` ≡ 不带参数 = 560×420**（两者 md5 相同）；`type=sam` = 100×75
+  - 服务端**没有中间档**（asmr.one 自家列表也用 `type=main`）
+
+**封面模糊根因（唯一因，本轮确证）**：列表用 `240x240` 缩略图（实际 240×180），
+卡片宽 200–260 逻辑像素、Retina 需 400–520 物理像素，`BoxFit.cover` 裁成方图后只剩 180×180
+→ 放大 **2.4–2.9 倍**。详情页封面本来就走原图，所以只有列表糊。
+修法是**新增单一出口 `coverMainUrl(workId)`**（`?type=main`），列表 / 详情 / 背板 / 播放器全走它。
+
+**改动文件**：
+
+- **新增 `lib/data/online/online_account.dart`**
+  - token 存 `SharedPreferences`（键 `hiko-online-token`），**刻意不进 `AppSettings`** ——
+    令牌是凭证，不该出现在所有 `watch(settings)` 的构建路径上
+  - `OnlineAccountState{restoring, token, user, busy, error}` + `displayName` / `settled` / `loggedIn`
+  - `restore()`：读盘令牌 → `fetchMe()`；`loggedIn=false` → 清令牌；**网络不通 → 保留令牌**
+    （断网 ≠ 令牌失效）；正常 → 已登录
+  - `login({name,password})` 返回**可展示的中文错误文案**；成功后追加一次 `fetchMe()` 确认身份
+    （失败退回用输入的名字，不阻塞登录成功）
+  - `logout()` 只清本地（无服务端端点）；`handleUnauthorized()` 清令牌 + 记「登录已过期，请重新登录」
+  - 导出 `onlineAccountProvider` / `onlineLoggedInProvider`
+- **新增 `lib/data/online/online_favorites.dart`**
+  - `OnlineFavorites{playlists, worksById, truncated}` + 私有 `_playlistIdsByWork` 反向索引
+  - 查询：`allWorkIds` / `playlistsOf(id)` / `contains(id)` / `worksOf(null | playlistId)` /
+    `countOf(null | playlistId)`
+  - `appliedLocally({work, diff})`：就地改结构，**空差分时 `identical` 原样返回**（省一次重建）；
+    加入时插到最前（对齐服务端「最近加入在前」的顺序）
+  - `OnlineFavoritesNotifier`：`_ref.listen(onlineLoggedInProvider)`（登录→refresh、登出→清空）+
+    `scheduleMicrotask` 首次装载；`refresh()` 并发 4 拉歌单、每歌单最多 20 页 × 500 条
+    （超了标 `truncated`）；401 → `handleUnauthorized()`
+  - `applyLocal` / `addPlaylist` / `renamePlaylist` / `removePlaylist`：**先改本地**（界面即时响应）
+    再 `refresh(showLoading: false)` 后台校准
+- **新增 `lib/ui/widgets/online_work_grid.dart`**
+  - `OnlineWorkGrid{works, isMobile, onTap, selectedId, onContextMenu}` —— 抽出列宽公式与卡片尺寸，
+    浏览页与收藏页共用；`OnlinePager{page, pageSize, totalCount, isMobile, onPage, onPageSize}`
+    与 1.92.0 浏览页分页条同形，越界由调用方夹；`_PageSizeButton` / `_PagerIcon` /
+    `_PageNumberButton` / `_PageJumpField` 从 `online_screen.dart` 搬来
+- **新增 `lib/ui/widgets/online_account_dialogs.dart`**
+  - `showOnlineLoginDialog` / `_LoginDialog`：用户名 + 密码 + 错误红字 + 「去官网注册 →」（`www.asmr.one`）
+  - `showLoginRequiredDialog(context, action:)` → 引导后**直接弹登录**（不把人丢在提示框里）
+  - `showPlaylistPicker` / `_PlaylistPickerDialog`：**打开先用本地索引出画面**（不等网络），
+    同时 `fetchWorkPlaylistStatus` 补权威勾选；`_touched` 标志防止异步快照盖掉用户已改的勾选；
+    `_createPlaylist` 建**空歌单**（勾选交给确认统一处理）；`_confirm` 按 `planPlaylistDiff` 发差分 → `applyLocal`
+  - `showPlaylistNameDialog`（新建/改名共用，默认「私享」提示）、`renamePlaylistFlow` / `deletePlaylistFlow`（二次确认）
+- **新增 `lib/ui/screens/online_favorites_screen.dart`**
+  - 未登录 → `_LoginGuide`（**不隐藏视图**）；恢复中 → 转圈
+  - chip 行：「全部 N」+ 各歌单「名字 N」（系统歌单带图标）；右侧「管理歌单」（仅 `editable` 时）/ 新建 / 刷新
+  - `OnlineWorkGrid` + `OnlinePager`（**本地切片分页**，默认 60/页）+ 桌面端右侧 `OnlineDetailPanel`
+  - 卡片右键/长按菜单：「加入其它歌单…」+（当前选中具体歌单时）「移出本歌单」；**刻意不做「移动」**
+    （移动 = 移除 + 加入两条请求，失败会半途而废）
+- `lib/data/online/kikoeru_client.dart`：`KikoeruException(message, [cause, statusCode])` + `isUnauthorized`；
+  构造函数接 `token` 并 `sanitizeToken`；`authenticated` / `anonymous()` / `coverMainSize` / `coverMainUrl`；
+  新增 `fetchMe` / `login` / `fetchPlaylists` / `fetchPlaylistWorks` / `fetchWorkPlaylistStatus` /
+  `createPlaylist` / `editPlaylistMetadata` / `deletePlaylist` / `addWorksToPlaylist` / `removeWorksFromPlaylist`；
+  `_request(path, query, {method, body})` —— **POST 不做镜像回退**（避免重复写入），`_send` 统一 GET/POST
+  并带 `Authorization: Bearer $token`；`_describeHttpError` / `parseServerError` 吃
+  `{error}` / `{errors:[{msg,param}]}` / `{message}` 三种错体
+- `lib/data/online/online_models.dart`：新增 `OnlineUser` / `OnlinePlaylist` / `OnlinePlaylistPage` /
+  `PlaylistWorkPage` / `PlaylistDiff` / `planPlaylistDiff({current, desired})`
+- `lib/data/online/online_provider.dart`：`onlineClientProvider` 改为 watch
+  `onlineAccountProvider.select((s) => s.token)` 并把 token 传给 client；`localCover` 改用 `coverMainUrl`
+- `lib/main.dart`：`unawaited(container.read(onlineAccountProvider.notifier).restore())`（不 await，不挡冷启动）
+- `lib/ui/screens/online_screen.dart`：`OnlineScreen` 加 `onOpenFavorites`；`_buildHeader` 右侧加
+  `_OnlineAccountEntry`（恢复中转圈 / 未登录「登录」/ 已登录胶囊含收藏·刷新·登出）；
+  `OnlineWorkCard` 封面改 `coverMainUrl`、加 `onContextMenu`（右键 + 长按取卡片中心）、
+  加 `_FavoriteBadge`；`_buildGrid` / `_buildPager` 退化为 `OnlineWorkGrid` / `OnlinePager` 的薄包装
+- `lib/ui/widgets/online_detail_panel.dart`：`_buildActions` 插入 `OnlineFavoriteButton`；背板与详情大图改
+  `coverMainUrl`；新增 `OnlineFavoriteButton`（未登录置灰 + 引导登录 / 已收藏红色高亮 + 歌单名 + Tooltip）
+- `lib/ui/widgets/settings_dialog.dart`：`_categories` 加 `_SettingsCategory('online', '在线账号', …)`；
+  `_categoryPage` 加 `case 'online'`；新增 `_onlineAccountPage`（登录状态 / 我的歌单 / 收藏同步 /
+  退出登录 / 在线服务器 / 在线缓存上限 / 在线缓存占用）；数据页里这三项**搬走**，留一行指引
+- `lib/ui/widgets/sidebar.dart`：`navItems` 插入 `('♥', '在线收藏')`（「统计」之前）；
+  计数 `'在线收藏' => onlineLoggedIn ? onlineFavorites : null`
+- `lib/ui/screens/home_screen.dart`：`filtered` 判据改 `_isOnlineView`（新增
+  `bool get _isOnlineView => _view == '在线' || _view == '在线收藏';`）；`_navIndex` 把「在线收藏」
+  映射到「在线」那一格；`_buildMain` 加分支；`OnlineScreen` 传 `onOpenFavorites`
+- `pubspec.yaml`：`1.92.0+102 → 1.93.0+103`
+
+**关键设计决策**：
+
+- **角标方案推翻重做（实测驱动）**：原计划用 `GET /api/works?withPlaylistStatus=1`，
+  实测发现该字段是 **page 级**（整个列表共用一份状态，不是每件作品各自的），
+  且搜索/标签端点 POST 化后**连 `pageSize` 与 `pagination` 都丢了**。
+  改为 `OnlineFavorites` 索引：**按歌单拉全量作品**建一份内存索引，一份数据同时喂
+  ① 卡片角标 ② 收藏页 ③ 菜单预勾选；菜单打开时再用 `get-work-exist-status-in-my-playlists`
+  补一次**权威值**（异步回来时用 `_touched` 守卫，不盖用户已改的勾选）。
+- **收藏发差分而非全量**：`planPlaylistDiff` 算出「该加」和「该删」两组，
+  只对变化的歌单发请求 —— 全量覆盖会把用户在别处（网页端 / 手机）的改动抹掉。
+- **先改本地再后台校准**：所有写操作（加入 / 改名 / 删除 / 建歌单）都是
+  「立刻改内存结构 → 界面即时响应 → 后台 `refresh(showLoading: false)` 校准」。
+  纯等服务端会让每次点勾都卡一拍。
+- **`appliedLocally` 空差分返 `identical`**：菜单打开→直接确认（没改任何勾）是高频操作，
+  空差分时返回原对象让 Riverpod 跳过重建。
+- **令牌不进 `AppSettings`**：`AppSettings` 被大量 `watch`，凭证放进去会出现在所有
+  依赖 settings 的重建路径上，也会更容易被日志/导出带出去。
+- **未登录不清空「在线收藏」入口**：侧边栏那一项照常显示，进去给登录引导 ——
+  藏起来会让人以为没这功能。
+- **不做「移动到其它歌单」**：移动要发「移除 + 加入」两条请求，第二条失败就变成「从原歌单消失且没进新歌单」。
+
+**测试**：新增 49 条 ——
+- `test/data/online_playlist_test.dart`（315 行）：playlist 解析 / 系统歌单映射与 `editable` /
+  privacy 三档 / 分页包装 / `exist` 三态 / `OnlineUser` / `planPlaylistDiff` 五种情形 /
+  `sanitizeToken` / `parseServerError` / `KikoeruException.isUnauthorized`
+- `test/data/online_favorites_test.dart`（158 行）：四个查询 / `appliedLocally` 七种情形
+  （含空差分 `identical`）/ `OnlineFavoritesState`
+- `test/ui/online_work_card_test.dart`（217 行）：用 `HttpOverrides` 记录真实请求，
+  **钉住封面必须是 `?type=main` 且同一作品只有一个地址**；收藏角标三态（无 / 1 个 / 多个带数量）
+  + 与字幕角标并存
+- `test/data/online_client_test.dart`：补 `coverMainSize` 断言
+
+全量 `flutter test` → **428 passed / 2 skipped**（基线 379/2，净增 49，0 回归）；
+`flutter analyze` **39 条**（= 基线，0 error）。
+
+**踩坑记录**：
+- `Future<HttpClientRequest>` 上直接读 `headers` 报 `undefined_getter`（7 条 error）：
+  `(cond ? postUrl : getUrl)(uri).timeout(...)` **少了 `await`**，必须先 `await` 再读。
+- `sanitizeToken('  bearer jwt\n')` 首版返回空：先 `trim()` 得到 `bearer jwt`，
+  再 `replaceAll(\s)` 得到 `bearerjwt`，然后按带空格的 `'bearer '` 匹配不到 →
+  已改成**先去全部空白，再看头 6 字符是否为 `bearer`**。
+- `OnlineFavoritesNotifier` 构造函数里用 `fireImmediately: true` 的 `ref.listen` 撞
+  「provider 初始化期间改 state 被禁止」→ 改普通 `listen` + `scheduleMicrotask` 首次装载。
+- **主动修掉一个隐患**：`_loadAuthoritative` 回来时无条件 `_selected = {..._origin}`，
+  用户等待期间取消的勾会被盖回去，确认时算出**空差分**（「点了确定什么都没发生」）→ 加 `_touched` 守卫。
+- widget 测试报 `A Timer is still pending`：`CoverCache._download` 会真的建 `HttpClient` 连网 →
+  在 `setUp` 里统一装 `HttpOverrides.global`（`getUrl` 直接 `throw SocketException`）。
+- `flutter analyze` 一度冲到 40/51 条，逐条清掉自己引入的（`use_null_aware_elements` ×3 用可变 `data` map
+  替代 collection-if、`unnecessary_null_comparison`、`unused_import`、`unused_local_variable isDark`、
+  漏 `import 'dart:async'` 的 `unawaited`、`_StubFavorites(Ref ref, …) : super(ref)` → `(super.ref, …)`）。
+- **自测期间误删用户真实账号数据（已恢复并已报告）**：拿真实「我喜欢的」歌单（UUID `338ab0b8-…`）
+  做 `remove-works-from-playlist` 验证，92 → 91 条。随即用 `add-works-to-playlist` 加回，
+  核对 `works_count = 92` 与 `latestWorkID = 1626202` 均与删前一致。
+  **教训：写入类验证一律在新建的临时歌单里做、用完即删**，本轮探测歌单已全部删除。
+  最终账号状态：只剩原有 3 个歌单（LIKED 92 / 听完 1 / MARKED 0）。
+
+版本 1.93.0+103。
+
+**本版待裁决 / 未验证**：
+- 1.91.0 遗留的三项**仍未裁决**：① 在线曲目行点击是否跳全屏播放页；② 移动端无 hover →
+  目录行「播放该目录」在触屏上没有入口；③ 移动端分页条窄屏表现未验证。
+- 1.92.0 遗留：`_SortMenu` 限高与「展开全部」按钮窄屏换行，Android 未实机验证。
+- 本版新增：**Android 端整条账号/收藏链路未实机验证**（登录、角标、收藏页 chip 换行、
+  多选菜单在窄屏的高度、长按菜单在触屏的手感）。`OnlinePager` 在收藏页是**本地切片分页**，
+  与浏览页的服务端分页是两套，窄屏观感同样未验证。
+- 未做（Q6 明确）：review / recommender / vote；不做本地镜像收藏；不做注册。
+
+Release：https://github.com/michiru233/hiko/releases/tag/v1.93.0
+（`hiko-v1.93.0-macos.zip` 32.5 MB + `hiko-v1.93.0-android.apk` 66.5 MB）。
+构建坑沿用 1.90.0–1.92.0 的结论（摘代理 + `IDEPackageSupportDisable*Sandbox` + 沙箱外前台跑），
+本轮双端一次通过。
+

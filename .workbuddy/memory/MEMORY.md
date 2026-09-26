@@ -3,7 +3,7 @@
 ## 定位
 Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter 重写版，`hiko/` 为唯一主线；
 仓库根目录的 Electron + Capacitor 旧代码仅作参考，不再新增功能。GitHub: https://github.com/michiru233/hiko
-当前版本 1.92.0+102（2026-09-25）。平台：macOS（发布）/ Windows（需 Windows 机构建）/ Android（已恢复开发）。
+当前版本 1.93.0+103（2026-09-26）。平台：macOS（发布）/ Windows（需 Windows 机构建）/ Android（已恢复开发）。
 
 ## 架构速查（hiko/lib）
 - `models/` Album / Track / CategoryItem —— Album 是核心，含 played、resumeTrackIndex/Position、rating、tags、genre、favorite、localCover。
@@ -64,7 +64,7 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
    `for d in com.apple.dt.xcodebuild com.apple.dt.Xcode; do for k in IDEPackageSupportDisableManifestSandbox IDEPackageSupportDisablePluginExecutionSandbox IDEPackageSupportDisablePackageSandbox; do defaults write $d $k -bool YES; done; done`
    已排除无效路径：`XCODE_XCCONFIG_FILE`（键属命令行参数级，非构建设置）、`--config-only`（照样跑迁移）、
    单独手跑 resolve（flutter 会用不同 container 重新解析）。
-9. 验证基线（1.92.0 后）：`flutter test` **379 passed / 2 skipped**；`flutter analyze` **39 条**既有 lint 基线，改动文件应 0 新增 error。
+9. 验证基线（1.93.0 后）：`flutter test` **428 passed / 2 skipped**；`flutter analyze` **39 条**既有 lint 基线，改动文件应 0 新增 error。
 10. 环境：Flutter 3.47.0 / Dart 3.13.0（/opt/homebrew/bin/flutter）；Android 模拟器 AVD 名 `kikoeru_test`；
    SDK `/opt/homebrew/share/android-commandlinetools`，JDK `/opt/homebrew/opt/openjdk@21`。
 
@@ -89,6 +89,36 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
   菜单宽度由 `IntrinsicWidth(stepWidth)` 决定，条目包 `SizedBox(width: 168)` 才可预期。
 - **widget 测试坑**：`AnimationController` 的 ticker **首帧只打点（elapsed=0）**，
   `ensureVisible` 后要两次 `pump(duration)` 才看到位移。
+- **封面必须走 `coverMainUrl(workId)`（1.93.0 起唯一出口）**：`?type=` 白名单只有 `240x240`/`main`/`sam`，
+  其余 400；`type=main ≡ 不带参数 = 560×420`（md5 相同），`sam` = 100×75，**服务端无中间档**。
+  列表以后用缩略图会被放大 2.4~2.9 倍（Retina 卡片需 400~520 物理像素）→ 1.93.0 前的「主界面糊、
+  详情页清晰」就是这个原因。`test/ui/online_work_card_test.dart` 用 `HttpOverrides` 拦请求钉住了 URL。
+
+## 在线账号与歌单收藏（1.93.0 起）
+- 代码：`lib/data/online/online_account.dart`（登录态）、`online_favorites.dart`（歌单索引）、
+  `lib/ui/screens/online_favorites_screen.dart`、`lib/ui/widgets/online_{work_grid,account_dialogs}.dart`。
+- **账号**：只存 JWT 到 `SharedPreferences` 键 `hiko-online-token`，**刻意不进 `AppSettings`**
+  （凭证不该出现在所有 `watch(settings)` 的重建路径上）。**令牌失效仍返回 200**，只是 `user.loggedIn=false`
+  → 判登录态只看字段不看状态码。无 refresh、无服务端登出端点（网页登出 = 删 localStorage）。
+  401 → 清令牌 + 提示重登，**不静默重试**；`restore()` 时网络不通**保留**令牌（断网 ≠ 令牌失效）。
+  `KikoeruClient.sanitizeToken` 剥掉 `Bearer` / `__q_strn|` / 全部空白；认证头 = `Authorization: Bearer <JWT>`。
+- **收藏 = asmr.one playlist**。端点：`get-playlists`（`filterBy` 形同虚设，all/owned/liked 都返全部）、
+  `get-playlist-works`、`get-work-exist-status-in-my-playlists`（每条带 `exist`）、
+  `create-playlist`（works 吃 **source_id 字符串**）/ `edit-playlist-metadata` / `delete-playlist` /
+  `add-works-to-playlist` / `remove-works-from-playlist`（这两个 **只吃数字 id**，传字符串 400）。
+  playlist `id` 是 **UUID 字符串**；`privacy` 0 私享/1 不公开/2 公开；**系统保留歌单返回原始 key**
+  （`__SYS_PLAYLIST_LIKED` / `MARKED`）→ Hiko 本地映射为「我喜欢的」/「我标记的」且禁止改名/删除。
+- **角标为什么不走 `withPlaylistStatus`**：该字段是 **page 级**（整页共用一份），且搜索/标签端点 POST 化后
+  **连 `pageSize` 与 `pagination` 都丢了**；另外 `GET /api/works` **只返回前 20 条**（`pageSize=50` 被忽略）。
+  → 改用 `OnlineFavorites` 索引（按歌单拉全量作品）喂角标/收藏页/菜单预勾选，
+  菜单打开时再用 `get-work-exist-status-in-my-playlists` 补一次权威值。
+- **写操作模式**：先改本地内存（界面即时）→ 后台 `refresh(showLoading: false)` 校准；
+  收藏发**差分**（`planPlaylistDiff`）不是全量覆盖。`appliedLocally` 空差分时返回 `identical`。
+- **UI**：侧边栏一级项「在线收藏」；未登录进收藏页给登录引导（**不隐藏入口**）；
+  详情页 `OnlineFavoriteButton` 未登录置灰、已收藏红色高亮 + 歌单名 Tooltip；单击弹多选菜单；
+  卡片角标 `_FavoriteBadge`；未做「移动到其它歌单」（两条请求，第二条失败会丢件）。
+- **⚠️ 自测纪律**：写入类验证**一律在新建的临时歌单里做、用完即删**，绝不动真实歌单
+  （1.93.0 自测时误删过用户真实「我喜欢的」1 条，已加回并核对 `works_count`/`latestWorkID`）。
 
 ## 既有待裁决（未消除）
 - 1.42.0 深色主题下卡片 tag 颜色写死，对比度可能偏浅。
@@ -101,3 +131,6 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
   ② 移动端无 hover → 目录行「播放该目录」入口在触屏上不存在；③ 移动端分页条窄屏表现未验证。
 - 1.92.0 遗留：Android 未实机验证 `_SortMenu` 限高（`min(320, 屏高 × 0.45)`）与默认全折叠后的按钮换行；
   标签筛选下拉、asmr.one 的「顺序」变体本轮明确不做（要加就把方向加回 `OnlineSort` 枚举）。
+- 1.93.0 遗留：Android 端**整条账号/收藏链路未实机验证**（登录、角标、收藏页 chip 换行、
+  多选菜单窄屏高度、长按菜单触屏手感）；收藏页 `OnlinePager` 是**本地切片分页**（与浏览页的服务端分页
+  是两套），窄屏观感同样未验证。未做（Q6 明确）：review / recommender / vote、本地镜像收藏、注册。
