@@ -10,6 +10,7 @@ import '../../data/online/online_provider.dart';
 import '../../data/settings_store.dart';
 import '../widgets/detail_kit.dart';
 import '../widgets/online_account_dialogs.dart';
+import '../widgets/online_appearance.dart';
 import '../widgets/online_cover.dart';
 import '../widgets/online_detail_panel.dart';
 import '../widgets/online_tag_menu.dart';
@@ -296,6 +297,19 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
           current: state.sort,
           onSelected: (sort) =>
               ref.read(onlineBrowseProvider.notifier).setSort(sort),
+        ),
+        const SizedBox(width: 8),
+        // 「Aa」：就地调在线外观（1.96.0 裁决 Q5=甲）。放排序 chip 右边是因为
+        // 想改字号多半就发生在「正看着这个列表、觉得字小了」的那一刻 ——
+        // 要绕回设置页翻两层的话，这个念头多半就过去了
+        ActionChip(
+          label: const Text(
+            'Aa',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+          tooltip: '在线外观：字号 · 每行卡片数',
+          visualDensity: VisualDensity.compact,
+          onPressed: () => unawaited(showOnlineAppearanceDialog(context)),
         ),
         Expanded(
           child: Padding(
@@ -659,6 +673,7 @@ class OnlineWorkCard extends ConsumerWidget {
     this.selected = false,
     this.onContextMenu,
     this.showTags = false,
+    this.textScale = 1.0,
     this.onTagTap,
   });
 
@@ -671,6 +686,12 @@ class OnlineWorkCard extends ConsumerWidget {
 
   /// 是否显示卡面标签行（1.94.0）
   final bool showTags;
+
+  /// 卡面文字的相对倍率（1.96.0，来自设置 `onlineCardTextScale`）。
+  ///
+  /// 由 [OnlineWorkGrid] 传入而不是这里自己读 —— 网格算卡片高度用的是**同一个**
+  /// 值（`onlineCardTextBlockHeight`），两处各自去读设置迟早会读到不同的一帧。
+  final double textScale;
 
   /// 点标签 → 按该标签筛选；为 null 时标签只展示
   final ValueChanged<OnlineTag>? onTagTap;
@@ -686,6 +707,9 @@ class OnlineWorkCard extends ConsumerWidget {
     // 作品本身还在结果里（服务端已经滤掉该标签的作品了，能出现在这儿说明它
     // 是靠别的标签命中的），所以只把「这一个标签」标出来，不是把卡片灰掉。
     final blockedTagIds = ref.watch(blockedTagIdsProvider);
+    // 高度预算与字号作用域（1.96.0）—— 与 `OnlineWorkGrid` 用同一套函数/来源
+    final scaler = MediaQuery.textScalerOf(context);
+    final tagFontSize = HikoTagFontScope.of(context);
 
     final subtitle = [
       if (work.circleName.isNotEmpty) work.circleName,
@@ -709,7 +733,7 @@ class OnlineWorkCard extends ConsumerWidget {
             },
       borderRadius: BorderRadius.circular(10),
       child: Container(
-        padding: const EdgeInsets.all(4),
+        padding: const EdgeInsets.all(kOnlineCardPadding),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
@@ -741,26 +765,35 @@ class OnlineWorkCard extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: kOnlineCardTitleGap),
             Text(
               work.title,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, height: 1.3),
+              // 行高与字号都从尺寸预算那批常量取 —— 网格按它们算卡片高度，
+              // 这里换一种写法就会「算的」和「画的」脱节
+              style: TextStyle(
+                fontSize: kOnlineCardTitleFontSize * textScale,
+                height: kOnlineCardLineHeight,
+              ),
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: kOnlineCardSubtitleGap),
             Text(
               subtitle,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 11, color: theme.hintColor),
+              style: TextStyle(
+                fontSize: kOnlineCardSubtitleFontSize * textScale,
+                height: kOnlineCardLineHeight,
+                color: theme.hintColor,
+              ),
             ),
             // 标签行：固定高度（网格靠它算卡高），所以即使没有标签也要占位，
             // 否则同一屏里没标签的卡片会把空高还给封面、显得比别的大。
             // 用 bottomLeft 对齐，把省下的高度全留在与副标题之间当间距。
             if (showTags)
               SizedBox(
-                height: kOnlineCardTagRow,
+                height: onlineCardTagRowHeight(scaler, tagFontSize),
                 child: work.tags.isEmpty
                     ? null
                     : Align(
@@ -800,7 +833,7 @@ class OnlineWorkCard extends ConsumerWidget {
 ///
 /// 宽度是用 [TextPainter] 真量出来的，不是按字数估：标签名长短差异极大
 /// （「ASMR」4 个字符 vs「双声道立体声/人头麦」10 个字符），估算必然翻车。
-/// 量与画都从 [HikoTagChip.textStyle] / [HikoTagChip.horizontalPadding] 取，保证一致。
+/// 量与画都从 [HikoTagChip.textStyleFor] / [HikoTagChip.horizontalPadding] 取，保证一致。
 class _CardTagRow extends StatelessWidget {
   const _CardTagRow({
     required this.tags,
@@ -824,15 +857,20 @@ class _CardTagRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 文字缩放必须带进宽度预算（1.95.0 修）：
-    // 全局 `fontScale` 是挂在根层的 `TextScaler`，`HikoTagChip` 画出来的是
-    // 9pt × scaler，而这里若按 9pt 量宽度，用户把字号调到大/超大时就是
-    // 「量少画宽」—— 标签行当场溢出卡片。量与画必须用同一个 scaler。
+    // 宽度预算要带两样东西（1.95.0 起又加了第二样，1.96.0）：
+    //   ① 全局 `fontScale`：它是挂在根层的 `TextScaler`，`HikoTagChip` 画出来的是
+    //      「字号 × scaler」，这里若按不缩放的数值量宽度就是「量少画宽」——
+    //      用户把字号调到大/超大时标签行当场溢出卡片。
+    //   ② 标签自己的字号：1.96.0 起由 `HikoTagFontScope` 提供（默认 11）。
+    // 量与画必须用同一个字号 + 同一个 scaler，少一个都会当场脱节。
     final scaler = MediaQuery.textScalerOf(context);
+    final fontSize = HikoTagFontScope.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxWidth = constraints.maxWidth;
-        final widths = [for (final t in tags) _chipWidth(t.name, scaler)];
+        final widths = [
+          for (final t in tags) _chipWidth(t.name, scaler, fontSize),
+        ];
         double rowWidth(int count) {
           if (count <= 0) return 0;
           var w = 0.0;
@@ -844,7 +882,7 @@ class _CardTagRow extends StatelessWidget {
 
         // 先按**最长可能**的 `+N` 宽度预留（总标签数）。实际渲染时用的是
         // 「被藏起来的个数」，位数只会更少，所以预留下来的宽度一定够。
-        final moreWidth = _chipWidth('+${tags.length}', scaler);
+        final moreWidth = _chipWidth('+${tags.length}', scaler, fontSize);
 
         var visible = tags.length;
         var showMore = false;
@@ -891,9 +929,9 @@ class _CardTagRow extends StatelessWidget {
   }
 
   /// 胶囊宽度 = 文字宽 + 左右内边距 + 1px 余量（四舍五入误差不该让它挤掉下一枚）
-  static double _chipWidth(String text, TextScaler scaler) {
+  static double _chipWidth(String text, TextScaler scaler, double fontSize) {
     final painter = TextPainter(
-      text: TextSpan(text: text, style: HikoTagChip.textStyle),
+      text: TextSpan(text: text, style: HikoTagChip.textStyleFor(fontSize)),
       textDirection: TextDirection.ltr,
       textScaler: scaler,
       maxLines: 1,

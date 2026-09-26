@@ -250,4 +250,96 @@ void main() {
     await missing.load();
     expect(missing.state.backgroundPath, '');
   });
+
+  // ------------------------------------------------------------ 1.96.0 在线外观
+
+  test('1.96.0 标签字号：默认 11 + 档位往返 + 白名单外回退 11', () async {
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.tagFontSize, 11,
+        reason: '默认 11（1.94.0 之前是硬编码的 9）');
+
+    for (final size in SettingsNotifier.validTagFontSizes) {
+      await notifier.setTagFontSize(size);
+      expect(notifier.state.tagFontSize, size);
+    }
+
+    final reloaded = SettingsNotifier();
+    await reloaded.load();
+    expect(reloaded.state.tagFontSize,
+        SettingsNotifier.validTagFontSizes.last,
+        reason: '最后一次设的是档位里最大的那个');
+
+    // 白名单外（11.5 / 0 / 99）回退 11
+    for (final bad in [11.5, 0.0, 99.0]) {
+      await notifier.setTagFontSize(bad);
+      expect(notifier.state.tagFontSize, 11, reason: '$bad 不在档位里');
+    }
+
+    SharedPreferences.setMockInitialValues({
+      'hiko-online-tag-font-size': 99.0,
+    });
+    final badPrefs = SettingsNotifier();
+    await badPrefs.load();
+    expect(badPrefs.state.tagFontSize, 11, reason: 'load 也要归一化');
+  });
+
+  test('1.96.0 卡片与详情文字倍率：默认 1.0 + 两组互不影响 + 白名单外回退', () async {
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.onlineCardTextScale, 1.0);
+    expect(notifier.state.onlineDetailTextScale, 1.0);
+
+    await notifier.setOnlineCardTextScale(1.3);
+    expect(notifier.state.onlineCardTextScale, 1.3);
+    expect(notifier.state.onlineDetailTextScale, 1.0, reason: '两组各自独立');
+
+    await notifier.setOnlineDetailTextScale(0.85);
+    expect(notifier.state.onlineDetailTextScale, 0.85);
+    expect(notifier.state.onlineCardTextScale, 1.3, reason: '改详情不该动卡片');
+
+    final reloaded = SettingsNotifier();
+    await reloaded.load();
+    expect(reloaded.state.onlineCardTextScale, 1.3);
+    expect(reloaded.state.onlineDetailTextScale, 0.85);
+
+    // 白名单外（1.05 / 2.0）回退 1.0
+    await notifier.setOnlineCardTextScale(1.05);
+    expect(notifier.state.onlineCardTextScale, 1.0);
+    await notifier.setOnlineDetailTextScale(2.0);
+    expect(notifier.state.onlineDetailTextScale, 1.0);
+
+    SharedPreferences.setMockInitialValues({
+      'hiko-online-card-text-scale': 3.0,
+    });
+    final badPrefs = SettingsNotifier();
+    await badPrefs.load();
+    expect(badPrefs.state.onlineCardTextScale, 1.0);
+  });
+
+  test('1.96.0 在线每行卡片数：默认 0=自动 + 档位往返 + 白名单外回退，与主界面档位独立', () async {
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.onlineGridColumns, 0, reason: '默认自动');
+    expect(notifier.state.gridColumns, 0);
+
+    await notifier.setOnlineGridColumns(6);
+    expect(notifier.state.onlineGridColumns, 6);
+    expect(notifier.state.gridColumns, 0, reason: '主界面档位不该被连带改动');
+
+    await notifier.setGridColumns(5);
+    expect(notifier.state.gridColumns, 5);
+    expect(notifier.state.onlineGridColumns, 6, reason: '反向也不该联动');
+
+    final reloaded = SettingsNotifier();
+    await reloaded.load();
+    expect(reloaded.state.onlineGridColumns, 6);
+
+    // 白名单外回退自动。注意 **2 也是白名单外** —— 移动端「2 列」是「自动」的
+    // 既定行为，不是一个可选项（1.96.0 裁决 Q4：只给 3–8 六档 + 自动）
+    for (final bad in [1.0, 2.0, 9.0, 99.0]) {
+      await notifier.setOnlineGridColumns(bad);
+      expect(notifier.state.onlineGridColumns, 0, reason: '$bad 不在档位里');
+    }
+  });
 }

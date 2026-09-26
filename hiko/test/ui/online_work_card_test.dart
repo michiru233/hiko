@@ -10,6 +10,9 @@ import 'package:hiko/data/online/online_models.dart';
 import 'package:hiko/data/settings_store.dart';
 import 'package:hiko/ui/screens/online_screen.dart';
 import 'package:hiko/ui/theme.dart';
+import 'package:hiko/ui/widgets/detail_kit.dart';
+import 'package:hiko/ui/widgets/online_cover.dart';
+import 'package:hiko/ui/widgets/online_work_grid.dart';
 
 /// 1.93.0：在线列表卡片的两件事 ——
 /// ① 封面必须取**原图**（主界面封面模糊的全部原因就是这里拿了 240×180 缩略图，
@@ -30,8 +33,8 @@ void main() {
 
   tearDown(() => HttpOverrides.global = null);
 
-  OnlineWork work({int id = 1657200}) =>
-      OnlineWork(id: id, title: '测试作品', circleName: 'サークル');
+  OnlineWork work({int id = 1657200, String title = '测试作品'}) =>
+      OnlineWork(id: id, title: title, circleName: 'サークル');
 
   /// 造一个带标签的作品。`withId: false` 用来模拟服务端只给名字的异常形态
   OnlineWork tagged(List<String> names, {bool withId = true, int id = 1657200}) =>
@@ -518,12 +521,169 @@ void main() {
       expect(find.text('按此标签筛选'), findsNothing);
     });
   });
+
+  group('卡片尺寸预算（1.96.0）', () {
+    /// 高度预算算对没有，看的是**封面高度与宽度之差**。
+    ///
+    /// 为什么不直接断言「封面是正方形」：**它本来就不是**。卡片 `Container` 的
+    /// 4px 内边距在文字块预算里被当成余量补掉了（1.95.0 的硬编码 62 就是这么来的），
+    /// 所以封面的高度恒定地比宽度多 `kOnlineCardPadding * 2` —— 这是既有观感，
+    /// 1.96.0 不打算顺手改掉它。
+    ///
+    /// 这个差值**与所有字号旋钮无关**，所以它可以当锁：只要高度预算漏算了任何一项
+    /// （在线卡片倍率 / 全局字号 / 标签字号），差值就会变 —— 差值变小 = 封面被压扁。
+    ///
+    /// 为什么不用「有没有 RenderFlex 溢出」当锁：封面外面那层 `Expanded` 会一直
+    /// 吞到 0 高度，它永远不会溢出、永远不报错。
+    ///
+    /// 标题必须**长到占满两行**：一行标题会让 `Expanded` 多拿一行高度，
+    /// 差值随之变大（这是既有的、与字号无关的行为）。
+    const longTitle = '这是一个足够长的在线作品标题，用来确保它在卡片里确实占据两行高度';
+    const overshoot = kOnlineCardPadding * 2;
+
+    Widget gridHost({
+      required double cardScale,
+      required double globalScale,
+      double tagFontSize = 11,
+      double gridColumns = 0,
+      bool showTags = true,
+      int count = 3,
+      double width = 900,
+      double height = 700,
+    }) =>
+        ProviderScope(
+          overrides: [
+            settingsProvider.overrideWith(
+              (ref) => _StubSettings(
+                const [],
+                cardScale: cardScale,
+                gridColumns: gridColumns,
+              ),
+            ),
+          ],
+          child: MaterialApp(
+            theme: buildHikoTheme(const AppSettings()),
+            builder: (context, inner) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(globalScale),
+              ),
+              child: HikoTagFontScope(fontSize: tagFontSize, child: inner!),
+            ),
+            home: Scaffold(
+              body: SizedBox(
+                width: width,
+                height: height,
+                child: OnlineWorkGrid(
+                  works: [
+                    for (var i = 0; i < count; i++)
+                      work(id: 1657200 + i, title: longTitle),
+                  ],
+                  isMobile: false,
+                  showTags: showTags,
+                  onTap: (_) {},
+                ),
+              ),
+            ),
+          ),
+        );
+
+    double coverOvershoot(WidgetTester tester) {
+      final cover = tester.getSize(find.byType(OnlineCover).first);
+      return cover.height - cover.width;
+    }
+
+    testWidgets('默认档位：封面高度与宽度之差就是那 8px 余量', (tester) async {
+      await tester.pumpWidget(gridHost(cardScale: 1.0, globalScale: 1.0));
+      await tester.pump();
+
+      expect(coverOvershoot(tester), closeTo(overshoot, 1.0),
+          reason: '与 1.95.0 的默认观感保持一致：封面比宽度高 8px');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('卡片文字 1.30× + 全局字号 1.30：差值不变（高度预算必须联动）',
+        (tester) async {
+      await tester.pumpWidget(gridHost(cardScale: 1.3, globalScale: 1.3));
+      await tester.pump();
+
+      expect(coverOvershoot(tester), closeTo(overshoot, 1.0),
+          reason: '两个缩放旋钮都必须进高度预算，只算一个封面就会被压扁');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('只放大在线卡片文字（全局字号不变）时差值也不变', (tester) async {
+      await tester.pumpWidget(gridHost(cardScale: 1.3, globalScale: 1.0));
+      await tester.pump();
+      expect(coverOvershoot(tester), closeTo(overshoot, 1.0));
+    });
+
+    testWidgets('标签字号 14：标签行高度跟着涨，差值仍不变', (tester) async {
+      await tester.pumpWidget(
+        gridHost(cardScale: 1.0, globalScale: 1.0, tagFontSize: 14),
+      );
+      await tester.pump();
+
+      expect(coverOvershoot(tester), closeTo(overshoot, 1.0),
+          reason: '标签胶囊走的是绝对字号，它变高时标签行预算必须一起变');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('关掉标签行时不留那块空高', (tester) async {
+      await tester.pumpWidget(
+        gridHost(cardScale: 1.0, globalScale: 1.0, showTags: false),
+      );
+      await tester.pump();
+
+      expect(coverOvershoot(tester), closeTo(overshoot, 1.0));
+    });
+
+    testWidgets('自动档在 900 宽下是 3 列：第 4 张换行', (tester) async {
+      await tester.pumpWidget(
+        gridHost(cardScale: 1.0, globalScale: 1.0, count: 6),
+      );
+      await tester.pump();
+
+      final positions = [
+        for (var i = 0; i < 6; i++)
+          tester.getTopLeft(find.byType(OnlineWorkCard).at(i)),
+      ];
+      expect(positions[2].dy, positions[0].dy);
+      expect(positions[3].dy, greaterThan(positions[0].dy), reason: '自动档不是 5 列');
+    });
+
+    testWidgets('每行卡片数固定 5 列时前 5 张同排', (tester) async {
+      await tester.pumpWidget(
+        gridHost(
+          cardScale: 1.0,
+          globalScale: 1.0,
+          gridColumns: 5,
+          count: 6,
+        ),
+      );
+      await tester.pump();
+
+      final positions = [
+        for (var i = 0; i < 6; i++)
+          tester.getTopLeft(find.byType(OnlineWorkCard).at(i)),
+      ];
+      expect(positions[4].dy, positions[0].dy, reason: '固定 5 列时前 5 张在同一排');
+      expect(positions[5].dy, greaterThan(positions[0].dy), reason: '第 6 张才换行');
+    });
+  });
 }
 
-/// 固定黑名单的 settings notifier：不读也不写 SharedPreferences
+/// 固定黑名单 / 在线外观的 settings notifier：不读也不写 SharedPreferences
 class _StubSettings extends SettingsNotifier {
-  _StubSettings(List<OnlineTag> blocked) {
-    state = state.copyWith(blockedTags: blocked);
+  _StubSettings(
+    List<OnlineTag> blocked, {
+    double cardScale = 1.0,
+    double gridColumns = 0,
+  }) {
+    state = state.copyWith(
+      blockedTags: blocked,
+      onlineCardTextScale: cardScale,
+      onlineGridColumns: gridColumns,
+    );
   }
 }
 

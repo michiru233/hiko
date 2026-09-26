@@ -154,6 +154,46 @@ BoxDecoration hikoPillHoverOutline({
       ),
     );
 
+// --------------------------------------------------------- 文字缩放（1.96.0）
+//
+// 三组可调外观：标签胶囊的**绝对字号**（走 [HikoTagFontScope]，全局生效），
+// 在线卡片文字与在线详情面板文字两组**相对倍率**（前者走 `textScale` 参数、
+// 后者走 [HikoDetailTextScale] 作用域）。三者都叠在根层
+// `MediaQuery.textScaler`（全局 `fontScale`）之上 ——
+// 最终字号 = 元素基准字号 × 该组倍率 × 全局 fontScale。
+
+/// 详情页文字的相对倍率作用域（1.96.0 裁决 Q3=甲）。
+///
+/// **只由在线详情面板挂**（`online_detail_panel.dart` 的 `OnlineDetailBody`）——
+/// 本地详情抽屉不套它，于是本地界面完全不受「在线外观」影响。作用域挂在面板边界上，
+/// 覆盖范围恰好等于「这个面板里的每一个后代」，不多不少。
+///
+/// 为什么这一组用作用域、而卡片那一组用参数：这一组要覆盖面板内的**全部**文字
+/// （眼眉 / 标题 / 副标题 / 声优社团 / 信息行 / 标签 / 双 Tab / 曲目行 / 目录行 /
+/// 空态 / 错误页 / 操作按钮），逐个透传意味着每加一处文字都要记得传一次 ——
+/// 漏传是**静默**的，只会表现为「这块字没跟着变大」，极难在走查里发现。
+/// 卡片那边只有标题与副标题两处、且都要参与高度预算，参数反而更直白。
+class HikoDetailTextScale extends InheritedWidget {
+  const HikoDetailTextScale({
+    super.key,
+    required this.scale,
+    required super.child,
+  });
+
+  /// 未套作用域（本地详情抽屉）时的倍率
+  static const double defaultScale = 1.0;
+
+  final double scale;
+
+  static double of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<HikoDetailTextScale>()?.scale ??
+      defaultScale;
+
+  @override
+  bool updateShouldNotify(HikoDetailTextScale oldWidget) =>
+      scale != oldWidget.scale;
+}
+
 /// 详情页顶部「眼眉」胶囊（本地：分类 · ALBUM 01；在线：来源 · RJ 号）。
 /// [onTap] 为空时去掉下拉箭头，表示纯标识不可交互。
 class HikoEyebrowPill extends StatelessWidget {
@@ -167,6 +207,7 @@ class HikoEyebrowPill extends StatelessWidget {
     final theme = Theme.of(context);
     final primary = theme.colorScheme.primary;
     final radius = BorderRadius.circular(999);
+    final textScale = HikoDetailTextScale.of(context);
     return HikoPillInteraction(
       onTap: onTap,
       borderRadius: radius,
@@ -186,7 +227,7 @@ class HikoEyebrowPill extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontSize: 10,
+                fontSize: 10 * textScale,
                 letterSpacing: 1.1,
                 fontWeight: FontWeight.w700,
                 color: primary,
@@ -221,6 +262,7 @@ class HikoPersonPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(16);
+    final textScale = HikoDetailTextScale.of(context);
     return HikoPillInteraction(
       onTap: onTap,
       borderRadius: radius,
@@ -245,7 +287,7 @@ class HikoPersonPill extends StatelessWidget {
         child: Text(
           name,
           style: TextStyle(
-            fontSize: 12,
+            fontSize: 12 * textScale,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             color: color,
           ),
@@ -255,12 +297,47 @@ class HikoPersonPill extends StatelessWidget {
   }
 }
 
+/// 标签胶囊的字号作用域（1.96.0 裁决 Q1=甲、Q2=甲）。
+///
+/// **为什么用 InheritedWidget 而不是给每个 `HikoTagChip` 加参数**：
+/// 标签胶囊在五个地方出现（本地卡面、本地详情抽屉、在线卡面、在线详情面板、
+/// 黑名单管理对话框），而裁决是「一个组件一套字号、全局生效」——
+/// 逐个透传意味着每个调用点都要记得传，漏一处就是「这一处的标签还是 9 号」，
+/// 而这种漏法在视觉上极难被发现。挂在根层一次性生效才是这个语义的正确表达。
+///
+/// 值由 `main.dart` 从 `settings.tagFontSize` 取（默认 11）。
+class HikoTagFontScope extends InheritedWidget {
+  const HikoTagFontScope({
+    super.key,
+    required this.fontSize,
+    required super.child,
+  });
+
+  /// 未套作用域时的兜底字号 —— 与设置默认值一致（1.94.0 之前的硬编码是 9，
+  /// 1.96.0 裁决 Q2 起提到 11）
+  static const double defaultFontSize = 11;
+
+  final double fontSize;
+
+  static double of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<HikoTagFontScope>()?.fontSize ??
+      defaultFontSize;
+
+  @override
+  bool updateShouldNotify(HikoTagFontScope oldWidget) =>
+      fontSize != oldWidget.fontSize;
+}
+
 /// DLsite 标签胶囊（青色小方角）
 ///
 /// 1.94.0 起也用在**在线卡片的标签行**上（裁决 Q4=按推荐：与本地卡面视觉一致）。
-/// 那一处必须做「单行 + 按像素宽度挑前缀 + `+N`」，所以把 [textStyle] 与
+/// 那一处必须做「单行 + 按像素宽度挑前缀 + `+N`」，所以把 [textStyleFor] 与
 /// [horizontalPadding] 提出来当公开常量 —— 量宽度和画出来必须用同一个样式，
 /// 两边各写一份字号/内边距是必然会漂移的那种做法。
+///
+/// 1.96.0：字号改由 [HikoTagFontScope] 提供（默认 11），`textStyle` 常量随之变成
+/// [textStyleFor] 函数 —— **量宽的一方必须从同一个作用域取字号**，
+/// 否则「量」与「画」又会脱节（这正是 1.95.0 `_chipWidth` 漏 `textScaler` 的翻版）。
 class HikoTagChip extends StatelessWidget {
   const HikoTagChip({
     super.key,
@@ -271,9 +348,20 @@ class HikoTagChip extends StatelessWidget {
     this.onContextMenu,
   });
 
-  /// 标签文字样式。卡面标签行做宽度预估时用的就是它
-  static const TextStyle textStyle =
-      TextStyle(fontSize: 9, fontWeight: FontWeight.w500);
+  /// 标签文字样式（给定字号）。卡面标签行做宽度预估时用的就是它
+  static TextStyle textStyleFor(double fontSize) => TextStyle(
+        fontSize: fontSize,
+        fontWeight: FontWeight.w500,
+        height: lineHeight,
+      );
+
+  /// 行高。**必须显式写死** —— 不写就由字体 metrics 决定（约 1.15–1.20），
+  /// 而卡面标签行的高度预算是拿一个系数算的（`onlineCardTagRowHeight`），
+  /// 两者一错位，调大字号时胶囊就会被 `SizedBox` 裁掉半行。
+  static const double lineHeight = 1.2;
+
+  /// 纵向内边距（单侧）。卡面高度预算同样要算上
+  static const double verticalPadding = 4;
 
   /// 左右内边距（单侧）
   static const double horizontalPadding = 8;
@@ -297,6 +385,7 @@ class HikoTagChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fontSize = HikoTagFontScope.of(context);
     final dim = muted || blocked;
     final fg = dim
         ? (isDark ? HikoColors.darkMuted : HikoColors.lightMuted)
@@ -312,7 +401,7 @@ class HikoTagChip extends StatelessWidget {
         duration: kPillHoverDuration,
         padding: const EdgeInsets.symmetric(
           horizontal: horizontalPadding,
-          vertical: 4,
+          vertical: verticalPadding,
         ),
         decoration: BoxDecoration(
           // 悬停/按下时「底色加深」：同一支底色抬高 alpha，不换色相，
@@ -335,7 +424,7 @@ class HikoTagChip extends StatelessWidget {
         ),
         child: Text(
           tag,
-          style: textStyle.copyWith(
+          style: textStyleFor(fontSize).copyWith(
             color: fg,
             decoration: blocked ? TextDecoration.lineThrough : null,
           ),
@@ -355,17 +444,28 @@ class HikoInfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final style =
+        TextStyle(fontSize: 11 * HikoDetailTextScale.of(context));
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 12),
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: theme.dividerColor)),
       ),
+      // 两端对齐但**两侧都留出收缩余地**：字号可调之后，长值 + 长标签
+      // 在窄面板里会先挤爆 Row 而不是换行，`Flexible` 把它变回「换行」
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(fontSize: 11, color: theme.hintColor)),
-          Text(value,
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
+          Flexible(
+            child: Text(label, style: style.copyWith(color: theme.hintColor)),
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: style.copyWith(fontWeight: FontWeight.w500),
+            ),
+          ),
         ],
       ),
     );
@@ -394,6 +494,7 @@ class HikoTabButton extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final primaryColor = theme.colorScheme.primary;
+    final textScale = HikoDetailTextScale.of(context);
 
     return InkWell(
       onTap: onTap,
@@ -425,16 +526,18 @@ class HikoTabButton extends StatelessWidget {
               color: selected ? primaryColor : (isDark ? Colors.white60 : Colors.black54),
             ),
             const SizedBox(width: 5),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected
-                    ? (isDark ? Colors.white : primaryColor)
-                    : (isDark ? Colors.white60 : Colors.black54),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 11 * textScale,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected
+                      ? (isDark ? Colors.white : primaryColor)
+                      : (isDark ? Colors.white60 : Colors.black54),
+                ),
               ),
             ),
             if (hasBadge) ...[
@@ -524,6 +627,7 @@ class HikoTrackRow extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final color = active ? theme.colorScheme.primary : theme.colorScheme.onSurface;
+    final textScale = HikoDetailTextScale.of(context);
     return Padding(
       padding: EdgeInsets.only(left: indent),
       child: InkWell(
@@ -574,12 +678,14 @@ class HikoTrackRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              SizedBox(
-                width: 20,
+              // 最小 20 而非固定 20：序号恒为两位、宽度天然一致，固定宽度会在
+              // 「详情倍率 1.30 × 全局字号 1.30」这种叠加场景下把两位数字挤成两行
+              ConstrainedBox(
+                constraints: const BoxConstraints(minWidth: 20),
                 child: Text(
                   index.toString().padLeft(2, '0'),
                   style: TextStyle(
-                    fontSize: 10,
+                    fontSize: 10 * textScale,
                     fontWeight: FontWeight.w600,
                     color: active ? theme.colorScheme.primary : theme.hintColor,
                   ),
@@ -592,7 +698,7 @@ class HikoTrackRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 12 * textScale,
                     color: color,
                     fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                   ),
@@ -602,7 +708,7 @@ class HikoTrackRow extends StatelessWidget {
               Text(
                 durationSeconds > 0 ? formatTime(durationSeconds) : '--:--',
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 10 * textScale,
                   color: active ? theme.colorScheme.primary : theme.hintColor,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),

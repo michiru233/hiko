@@ -20,6 +20,7 @@ import 'ui/global_shortcuts.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/theme.dart';
 import 'ui/widgets/activity_overlay.dart';
+import 'ui/widgets/detail_kit.dart';
 
 final GlobalKey<NavigatorState> hikoNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -123,11 +124,16 @@ class _HikoAppState extends ConsumerState<HikoApp> {
         }
         return MediaQuery(
           data: scaledMediaQuery,
-          child: HikoGlobalShortcuts(
-            navigatorKey: hikoNavigatorKey,
-            child: ActivityOverlayHost(
-              controller: activityOverlayController,
-              child: content,
+          // 标签胶囊字号（1.96.0）：挂在根层，本地与在线一次生效 ——
+          // `HikoTagChip` 共用一份实现，字号也必须只有一份（裁决 Q2=甲）
+          child: HikoTagFontScope(
+            fontSize: settings.tagFontSize,
+            child: HikoGlobalShortcuts(
+              navigatorKey: hikoNavigatorKey,
+              child: ActivityOverlayHost(
+                controller: activityOverlayController,
+                child: content,
+              ),
             ),
           ),
         );

@@ -11,6 +11,7 @@ import '../../data/online/online_account.dart';
 import '../../data/online/online_favorites.dart';
 import '../../data/online/online_models.dart';
 import '../../data/online/online_provider.dart';
+import '../../data/settings_store.dart';
 import '../../lyrics/lyrics_controller.dart';
 import '../../playback/playback_controller.dart';
 import '../../utils/time.dart';
@@ -183,21 +184,34 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
 
   @override
   Widget build(BuildContext context) {
-    return ref.watch(onlineDetailProvider(widget.workId)).when(
-          loading: () => const Center(
-            child: SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(strokeWidth: 2),
+    // 详情页文字倍率（1.96.0）作用域：包住整个面板（含 loading / error），
+    // `detail_kit` 里的共用件从它取值 —— 本地详情抽屉不套这层，于是不受影响。
+    // 注意作用域只有**后代**读得到：本 State 自己的 `context` 在它之上，
+    // 所以面板自有的文字走下面的 `_textScale` getter。
+    return HikoDetailTextScale(
+      scale: _textScale,
+      child: ref.watch(onlineDetailProvider(widget.workId)).when(
+            loading: () => const Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
             ),
+            error: (error, _) => _ErrorView(
+              message: '$error',
+              onRetry: () =>
+                  ref.invalidate(onlineDetailProvider(widget.workId)),
+            ),
+            data: (detail) => _buildContent(context, detail),
           ),
-          error: (error, _) => _ErrorView(
-            message: '$error',
-            onRetry: () => ref.invalidate(onlineDetailProvider(widget.workId)),
-          ),
-          data: (detail) => _buildContent(context, detail),
-        );
+    );
   }
+
+  /// 面板文字倍率（1.96.0）。多处要用 —— `ref.watch` 同一 provider 会被
+  /// Riverpod 合并成一次订阅，不必再缓存成字段。
+  double get _textScale =>
+      ref.watch(settingsProvider.select((s) => s.onlineDetailTextScale));
 
   // ---------------------------------------------------------------- 主体
 
@@ -209,6 +223,8 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     final client = ref.watch(onlineClientProvider);
     // 被屏蔽的标签在这里只弱化、不隐藏（1.95.0 裁决 Q4=乙 / Q5=甲）
     final blockedIds = ref.watch(blockedTagIdsProvider);
+    // 面板自有文字的缩放（1.96.0）—— 共用件自己从作用域取，这里取给标题/副标题用
+    final textScale = _textScale;
 
     // 精确监听，避免 positionStream 高频更新导致整树重建（同本地抽屉）
     final albumId = ref.watch(playbackProvider.select((p) => p.album?.id));
@@ -268,8 +284,8 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
             const SizedBox(height: 10),
             Text(
               work.title,
-              style: const TextStyle(
-                fontSize: 22,
+              style: TextStyle(
+                fontSize: 22 * textScale,
                 fontWeight: FontWeight.w700,
                 letterSpacing: -0.5,
                 height: 1.25,
@@ -278,7 +294,10 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
             const SizedBox(height: 6),
             Text(
               _subtitle(work),
-              style: TextStyle(fontSize: 12, color: theme.hintColor),
+              style: TextStyle(
+                fontSize: 12 * textScale,
+                color: theme.hintColor,
+              ),
             ),
             // 社团（紫）/ 声优（蓝）胶囊：在线数据是只读的，纯展示不可点（裁决 Q9=A）
             if (work.circleName.isNotEmpty || work.vas.isNotEmpty) ...[
@@ -384,6 +403,10 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final work = detail.work;
     final audio = detail.audioTracks;
+    final textScale = _textScale;
+    // 按钮文字跟着详情倍率走 —— 但按钮的内边距不跟着变：
+    // 它们是固定几何（`hikoOutlinedPillStyle`），跟着变会让胶囊高矮不一
+    final actionStyle = TextStyle(fontSize: 11 * textScale);
 
     return Wrap(
       spacing: 8,
@@ -397,7 +420,10 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
           icon: const Icon(Icons.play_arrow_rounded, size: 18),
           label: Text(
             audio.isEmpty ? '无可播放音轨' : '播放全部',
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontSize: 12 * textScale,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
         OnlineFavoriteButton(work: work),
@@ -405,7 +431,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
           style: hikoOutlinedPillStyle(isDark: isDark),
           onPressed: () => unawaited(_openInBrowser(work)),
           icon: const Icon(Icons.open_in_new_rounded, size: 15),
-          label: const Text('在浏览器打开', style: TextStyle(fontSize: 11)),
+          label: Text('在浏览器打开', style: actionStyle),
         ),
         OutlinedButton.icon(
           style: hikoOutlinedPillStyle(isDark: isDark),
@@ -413,7 +439,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
               ? null
               : () => unawaited(_copyRj(work.rjCode!)),
           icon: const Icon(Icons.content_copy_rounded, size: 15),
-          label: const Text('复制 RJ 号', style: TextStyle(fontSize: 11)),
+          label: Text('复制 RJ 号', style: actionStyle),
         ),
         if (folderKeys.isNotEmpty)
           OutlinedButton.icon(
@@ -435,7 +461,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
             ),
             label: Text(
               allExpanded ? '折叠全部' : '展开全部',
-              style: const TextStyle(fontSize: 11),
+              style: actionStyle,
             ),
           ),
       ],
@@ -456,7 +482,10 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Text(
             '服务器未返回可播放的音轨',
-            style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor),
+            style: TextStyle(
+              fontSize: 12 * _textScale,
+              color: Theme.of(context).hintColor,
+            ),
           ),
         ),
       ];
@@ -792,6 +821,8 @@ class OnlineFavoriteButton extends ConsumerWidget {
     final isDark = theme.brightness == Brightness.dark;
     final account = ref.watch(onlineAccountProvider);
     final index = ref.watch(onlineFavoritesProvider).index;
+    // 收藏按钮在详情面板里，跟着详情倍率走（不在面板里时作用域缺省为 1.0）
+    final textScale = HikoDetailTextScale.of(context);
 
     if (!account.loggedIn) {
       return OutlinedButton.icon(
@@ -804,7 +835,7 @@ class OnlineFavoriteButton extends ConsumerWidget {
                 )
             : null,
         icon: const Icon(Icons.bookmark_border_rounded, size: 15),
-        label: const Text('收藏', style: TextStyle(fontSize: 11)),
+        label: Text('收藏', style: TextStyle(fontSize: 11 * textScale)),
       );
     }
 
@@ -847,7 +878,7 @@ class OnlineFavoriteButton extends ConsumerWidget {
       label: Text(
         label,
         style: TextStyle(
-          fontSize: 11,
+          fontSize: 11 * textScale,
           fontWeight: highlighted ? FontWeight.w600 : null,
           color: highlighted ? hikoFavoriteColor : null,
         ),
@@ -890,6 +921,7 @@ class _FolderRowState extends State<_FolderRow> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final textScale = HikoDetailTextScale.of(context);
 
     return Padding(
       padding: EdgeInsets.only(left: widget.depth * 14.0),
@@ -931,8 +963,8 @@ class _FolderRowState extends State<_FolderRow> {
                     widget.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
+                    style: TextStyle(
+                      fontSize: 12 * textScale,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -960,7 +992,7 @@ class _FolderRowState extends State<_FolderRow> {
                     '${widget.audioCount} 个项目 · '
                     '${formatDuration(widget.totalSeconds)}',
                     style: TextStyle(
-                      fontSize: 10,
+                      fontSize: 10 * textScale,
                       color: theme.hintColor,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
@@ -994,7 +1026,10 @@ class _ErrorView extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: theme.hintColor),
+              style: TextStyle(
+                fontSize: 12 * HikoDetailTextScale.of(context),
+                color: theme.hintColor,
+              ),
             ),
             const SizedBox(height: 14),
             OutlinedButton(onPressed: onRetry, child: const Text('重试')),

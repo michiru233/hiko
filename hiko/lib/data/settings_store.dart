@@ -45,6 +45,21 @@ class AppSettings {
   final String onlineServer; // 在线服务器地址（Kikoeru 兼容，默认 asmr.one 官方实例，1.90）
   final double onlineCacheLimitGb; // 在线音频缓存上限（GB，0 = 不缓存，1.90）
 
+  /// 标签胶囊字号（1.96.0 裁决 Q1=甲、Q2=甲、Q6=甲）。
+  ///
+  /// 这是**绝对字号**而不是倍率 —— 因为它是「三组缩放」里唯一的例外：
+  /// 标签胶囊在视觉上是一块整体（本地卡面 / 本地详情 / 在线卡面 / 在线详情 /
+  /// 黑名单管理对话框共用一个 `HikoTagChip`），给一处调等于给全部调，
+  /// 所以用户要的是「把这块字变大」这个**绝对**结果，而不是「相对现在的我放大一点」。
+  ///
+  /// **全局生效、本地也一起变**（Q2=甲）：同一个组件一套字号，
+  /// 否则本地与在线的标签会一边 9 一边 11，同屏对比时像两个应用。
+  /// 最终渲染 = 本值 × 全局 `fontScale`（`main.dart` 根层 `TextScaler`）。
+  final double tagFontSize;
+  final double onlineCardTextScale; // 在线卡片标题/副标题的**相对**倍率（1.96.0）
+  final double onlineDetailTextScale; // 在线详情面板文字的**相对**倍率（1.96.0）
+  final double onlineGridColumns; // 在线网格每行列数；0=自动（按宽度），档位 3–8（1.96.0）
+
   /// 在线标签**黑名单**（1.95.0）。命中的标签会从在线浏览 / 搜索 / 标签筛选结果里排除。
   ///
   /// 只在线生效 —— 本地刮削库不受影响（沿用 1.94.0 裁决 Q1=B）。
@@ -76,6 +91,10 @@ class AppSettings {
     this.backgroundOpacity = 0.65,
     this.onlineServer = defaultOnlineServer,
     this.onlineCacheLimitGb = 5.0,
+    this.tagFontSize = 11,
+    this.onlineCardTextScale = 1.0,
+    this.onlineDetailTextScale = 1.0,
+    this.onlineGridColumns = 0,
     this.blockedTags = const [],
   });
 
@@ -120,6 +139,10 @@ class AppSettings {
     double? backgroundOpacity,
     String? onlineServer,
     double? onlineCacheLimitGb,
+    double? tagFontSize,
+    double? onlineCardTextScale,
+    double? onlineDetailTextScale,
+    double? onlineGridColumns,
     List<OnlineTag>? blockedTags,
   }) =>
       AppSettings(
@@ -145,6 +168,11 @@ class AppSettings {
         backgroundOpacity: backgroundOpacity ?? this.backgroundOpacity,
         onlineServer: onlineServer ?? this.onlineServer,
         onlineCacheLimitGb: onlineCacheLimitGb ?? this.onlineCacheLimitGb,
+        tagFontSize: tagFontSize ?? this.tagFontSize,
+        onlineCardTextScale: onlineCardTextScale ?? this.onlineCardTextScale,
+        onlineDetailTextScale:
+            onlineDetailTextScale ?? this.onlineDetailTextScale,
+        onlineGridColumns: onlineGridColumns ?? this.onlineGridColumns,
         blockedTags: blockedTags ?? this.blockedTags,
       );
 }
@@ -191,6 +219,10 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kBackgroundOpacity = 'hiko-background-opacity';
   static const _kOnlineServer = 'hiko-online-server';
   static const _kOnlineCacheLimit = 'hiko-online-cache-limit';
+  static const _kTagFontSize = 'hiko-online-tag-font-size';
+  static const _kOnlineCardTextScale = 'hiko-online-card-text-scale';
+  static const _kOnlineDetailTextScale = 'hiko-online-detail-text-scale';
+  static const _kOnlineGridColumns = 'hiko-online-grid-columns';
   static const _kBlockedTags = 'hiko-online-blocked-tags';
 
   static const _validSorts = {
@@ -272,6 +304,31 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   /// 缓存上限可选档位（设置页下拉用；0 = 关闭缓存）
   static const onlineCacheLimitOptions = _validOnlineCacheLimits;
 
+  // ------------------------------------------------------------ 在线外观（1.96.0）
+
+  /// 标签胶囊字号档位。默认 11（裁决 Q2=甲、Q6=甲：从 1.94.0 的硬编码 9 提到 11）。
+  static const validTagFontSizes = [9.0, 10.0, 11.0, 12.0, 14.0];
+
+  static double _normalizeTagFontSize(double? val) =>
+      val != null && validTagFontSizes.contains(val) ? val : 11;
+
+  /// 两组文字缩放档位。**值与全局 `fontScale` 相同，但刻意各自独立定义** ——
+  /// 裁决要求「三组缩放互相独立」，共用一份常量会让将来单独调某一组时牵动另两组。
+  static const _validOnlineTextScales = [0.85, 1.0, 1.15, 1.30];
+
+  static double _normalizeOnlineTextScale(double? val) =>
+      val != null && _validOnlineTextScales.contains(val) ? val : 1.0;
+
+  /// 在线网格列数档位：0 = 自动（按可用宽度算），3–8 = 固定列数。
+  ///
+  /// **在线专属，桌面与移动端共用这一个值**（裁决 Q4=甲）——
+  /// 主界面的 `gridColumns` / `mobileGridColumns` 是两端分开的，但在线页
+  /// 移动端原本写死 2 列且用户从未抱怨过列数，再拆一份双端设置只是多一个旋钮。
+  static const validOnlineGridColumns = [0.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+
+  static double _normalizeOnlineGridColumns(double? val) =>
+      val != null && validOnlineGridColumns.contains(val) ? val : 0;
+
   /// 黑名单的持久化形态：一个 JSON 数组字符串（`[{"id":1,"name":"…"}]`），
   /// 而不是 `List<String>` 多键 —— 单键写入天然原子，不会出现「写了一半」的中间态。
   ///
@@ -345,6 +402,13 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       onlineServer: _normalizeOnlineServer(prefs.getString(_kOnlineServer)),
       onlineCacheLimitGb:
           _normalizeOnlineCacheLimit(prefs.getDouble(_kOnlineCacheLimit)),
+      tagFontSize: _normalizeTagFontSize(prefs.getDouble(_kTagFontSize)),
+      onlineCardTextScale:
+          _normalizeOnlineTextScale(prefs.getDouble(_kOnlineCardTextScale)),
+      onlineDetailTextScale:
+          _normalizeOnlineTextScale(prefs.getDouble(_kOnlineDetailTextScale)),
+      onlineGridColumns:
+          _normalizeOnlineGridColumns(prefs.getDouble(_kOnlineGridColumns)),
       blockedTags: _decodeBlockedTags(prefs.getString(_kBlockedTags)),
     );
   }
@@ -424,6 +488,33 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     final valid = _normalizeOnlineCacheLimit(gb);
     return _save(
         _kOnlineCacheLimit, valid, state.copyWith(onlineCacheLimitGb: valid));
+  }
+
+  /// 标签胶囊字号（全局生效，本地与在线一起变，1.96.0）
+  Future<void> setTagFontSize(double size) {
+    final valid = _normalizeTagFontSize(size);
+    return _save(_kTagFontSize, valid, state.copyWith(tagFontSize: valid));
+  }
+
+  /// 在线卡片文字缩放倍率（1.96.0）
+  Future<void> setOnlineCardTextScale(double scale) {
+    final valid = _normalizeOnlineTextScale(scale);
+    return _save(
+        _kOnlineCardTextScale, valid, state.copyWith(onlineCardTextScale: valid));
+  }
+
+  /// 在线详情面板文字缩放倍率（1.96.0）
+  Future<void> setOnlineDetailTextScale(double scale) {
+    final valid = _normalizeOnlineTextScale(scale);
+    return _save(_kOnlineDetailTextScale, valid,
+        state.copyWith(onlineDetailTextScale: valid));
+  }
+
+  /// 在线网格每行列数：0=自动，档位 3–8，非法值回退自动（1.96.0）
+  Future<void> setOnlineGridColumns(double columns) {
+    final valid = _normalizeOnlineGridColumns(columns);
+    return _save(
+        _kOnlineGridColumns, valid, state.copyWith(onlineGridColumns: valid));
   }
 
   /// 整份替换标签黑名单（1.95.0）
