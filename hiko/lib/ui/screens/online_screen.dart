@@ -7,6 +7,8 @@ import '../../data/online/online_account.dart';
 import '../../data/online/online_favorites.dart';
 import '../../data/online/online_models.dart';
 import '../../data/online/online_provider.dart';
+import '../../data/settings_store.dart';
+import '../widgets/detail_kit.dart';
 import '../widgets/online_account_dialogs.dart';
 import '../widgets/online_cover.dart';
 import '../widgets/online_detail_panel.dart';
@@ -90,26 +92,37 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     await ref.read(onlineBrowseProvider.notifier).search(keyword);
   }
 
-  /// 详情页点标签 → 按标签继续浏览。
-  /// 详情接口只给标签名，需要拿标签表反查 id。
-  Future<void> _openTagByName(String name) async {
-    try {
-      final tags = await ref.read(onlineTagsProvider.future);
-      final match = tags.where((t) => t.name == name);
-      if (match.isEmpty) {
-        _toast('没找到「$name」对应的筛选标签');
-        return;
-      }
-      await ref.read(onlineBrowseProvider.notifier).selectTag(match.first);
-      if (!mounted) return;
-      if (widget.isMobile) {
-        Navigator.of(context).maybePop(); // 返回列表看筛选结果
-      } else {
-        setState(() => _detailWorkId = null);
-      }
-    } catch (e) {
-      _toast('标签加载失败：$e');
+  /// 点标签 → 按该标签筛选（1.94.0，裁决 Q2=甲：走结构化标签端点）。
+  ///
+  /// 再点**同一个**标签 = 取消（裁决 Q3=A），按用户裁决一律回**最新榜**。
+  ///
+  /// 顺带把两处「另一件事的残留」清掉：
+  /// - **搜索框文本**：状态里的 `keyword` 早就被 `selectTag` 清空了，输入框却还留着
+  ///   上次输入的词，会出现「框里写着 abc、结果其实是标签的」这种自相矛盾。
+  ///   这条不只是为新功能 —— 1.94.0 之前在详情页点标签就有这个毛病。
+  /// - **右侧详情面板**：面板上那个作品多半已经不在新结果里了，留着等于指鹿为马。
+  ///
+  /// 不需要额外把列表滚回顶部：`selectTag` / `applyPreset` 都会清空 `works`，
+  /// 网格那一帧就被 loading 占位换掉了，`GridView` 重建后天然从头开始。
+  Future<void> _applyTag(OnlineTag tag) async {
+    final browse = ref.read(onlineBrowseProvider);
+    final cancelling =
+        browse.source == OnlineSource.tag && browse.tag?.id == tag.id;
+
+    if (_searchController.text.isNotEmpty) {
+      _searchController.clear();
+      if (mounted) setState(() {});
     }
+    if (_detailWorkId != null && mounted) {
+      setState(() => _detailWorkId = null);
+    }
+
+    final notifier = ref.read(onlineBrowseProvider.notifier);
+    if (cancelling) {
+      await notifier.applyPreset(OnlineSort.latestPreset);
+      return;
+    }
+    await notifier.selectTag(tag);
   }
 
   void _openDetail(int workId) {
@@ -118,19 +131,17 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
         MaterialPageRoute<void>(
           builder: (_) => OnlineDetailScreen(
             workId: workId,
-            onSelectTagName: _openTagByName,
+            // 移动端的详情是整页盖在列表上，点完标签要把这页收起来才看得到结果
+            onSelectTag: (tag) {
+              unawaited(_applyTag(tag));
+              Navigator.of(context).maybePop();
+            },
           ),
         ),
       );
       return;
     }
     setState(() => _detailWorkId = workId);
-  }
-
-  void _toast(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.maybeOf(context)
-        ?.showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -161,7 +172,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
             child: OnlineDetailPanel(
               workId: _detailWorkId!,
               onClose: () => setState(() => _detailWorkId = null),
-              onSelectTagName: _openTagByName,
+              onSelectTag: _applyTag,
             ),
           ),
         ],
@@ -274,12 +285,29 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
         Expanded(
           child: Padding(
             padding: const EdgeInsets.only(left: 16),
-            child: Text(
-              _statusLine(state),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.right,
-              style: TextStyle(fontSize: 11, color: theme.hintColor),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                // 标签筛选的可关闭标记（1.94.0 裁决 Q7=甲）。
+                // 卡面标签是散落入口，一屏可能十几个不同标签，点下去之后必须有个
+                // 看得见的出口，否则用户不知道自己被筛在哪、怎么回去。
+                if (state.source == OnlineSource.tag && state.tag != null) ...[
+                  _TagFilterMarker(
+                    tag: state.tag!.name,
+                    onClear: () => unawaited(_applyTag(state.tag!)),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                Flexible(
+                  child: Text(
+                    _statusLine(state),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: TextStyle(fontSize: 11, color: theme.hintColor),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -289,6 +317,8 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
 
   /// 状态行文案 = 数据来源 + 当前排序（裁决 Q11=A）。
   /// 命中预设时用榜单名（热门榜 / 最新上架），否则老实说出「全部作品 · 评价倒序」。
+  ///
+  /// 标签筛选下**不再重复标签名** —— 名字由旁边那个可关闭标记承担，这里只报数量。
   String _statusLine(OnlineBrowseState state) {
     // 换页期间旧结果还留在屏上（顶上压着进度条），不算「正在连接」
     if (state.loading && state.works.isEmpty) return '正在连接在线服务器…';
@@ -300,11 +330,12 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
           final other => '全部作品 · ${other.label}',
         },
       OnlineSource.search => '搜索「${state.keyword}」',
-      OnlineSource.tag => '标签「${state.tag?.name ?? ''}」',
+      OnlineSource.tag => '',
     };
     final total = state.totalCount > 0
         ? '共 ${formatOnlineCount(state.totalCount)} 件'
         : '';
+    if (head.isEmpty) return total;
     return total.isEmpty ? head : '$head · $total';
   }
 
@@ -357,11 +388,14 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
   }
 
   Widget _buildGrid(OnlineBrowseState state) {
+    final showTags = ref.watch(settingsProvider).showOnlineTags;
     return OnlineWorkGrid(
       works: state.works,
       isMobile: widget.isMobile,
       selectedId: _detailWorkId,
       onTap: (work) => _openDetail(work.id),
+      showTags: showTags,
+      onTagTap: (tag) => unawaited(_applyTag(tag)),
     );
   }
 
@@ -595,6 +629,8 @@ class OnlineWorkCard extends ConsumerWidget {
     required this.onTap,
     this.selected = false,
     this.onContextMenu,
+    this.showTags = false,
+    this.onTagTap,
   });
 
   final OnlineWork work;
@@ -603,6 +639,12 @@ class OnlineWorkCard extends ConsumerWidget {
 
   /// 右键（桌面）/ 长按（触屏）菜单：在线收藏页用来提供「加入其它歌单 / 移出本歌单」
   final void Function(Offset globalPosition)? onContextMenu;
+
+  /// 是否显示卡面标签行（1.94.0）
+  final bool showTags;
+
+  /// 点标签 → 按该标签筛选；为 null 时标签只展示
+  final ValueChanged<OnlineTag>? onTagTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -679,6 +721,168 @@ class OnlineWorkCard extends ConsumerWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: 11, color: theme.hintColor),
+            ),
+            // 标签行：固定高度（网格靠它算卡高），所以即使没有标签也要占位，
+            // 否则同一屏里没标签的卡片会把空高还给封面、显得比别的大。
+            // 用 bottomLeft 对齐，把省下的高度全留在与副标题之间当间距。
+            if (showTags)
+              SizedBox(
+                height: kOnlineCardTagRow,
+                child: work.tags.isEmpty
+                    ? null
+                    : Align(
+                        alignment: Alignment.bottomLeft,
+                        child: _CardTagRow(
+                          tags: work.tags,
+                          onTagTap: onTagTap,
+                          // `+N` 与卡片同义：打开详情看全部标签
+                          onMoreTap: onTap,
+                        ),
+                      ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 卡面标签行：**单行**，能放几个放几个，放不下的收进 `+N`。
+///
+/// 为什么不做换行：在线用的是 `SliverGrid`（固定高度），多行会让同一屏的卡片
+/// 互相打架；本地卡面能换行是因为本地是 masonry 可变高布局。所以这里的策略是
+/// 「按像素实测宽度挑选前缀 + `+N` 永远保留一个位置」。
+///
+/// 宽度是用 [TextPainter] 真量出来的，不是按字数估：标签名长短差异极大
+/// （「ASMR」4 个字符 vs「双声道立体声/人头麦」10 个字符），估算必然翻车。
+/// 量与画都从 [HikoTagChip.textStyle] / [HikoTagChip.horizontalPadding] 取，保证一致。
+class _CardTagRow extends StatelessWidget {
+  const _CardTagRow({
+    required this.tags,
+    required this.onMoreTap,
+    this.onTagTap,
+  });
+
+  final List<OnlineTag> tags;
+  final VoidCallback onMoreTap;
+  final ValueChanged<OnlineTag>? onTagTap;
+
+  static const _gap = 5.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        final widths = [for (final t in tags) _chipWidth(t.name)];
+        double rowWidth(int count) {
+          if (count <= 0) return 0;
+          var w = 0.0;
+          for (var i = 0; i < count; i++) {
+            w += widths[i];
+          }
+          return w + _gap * (count - 1);
+        }
+
+        // 先按**最长可能**的 `+N` 宽度预留（总标签数）。实际渲染时用的是
+        // 「被藏起来的个数」，位数只会更少，所以预留下来的宽度一定够。
+        final moreWidth = _chipWidth('+${tags.length}');
+
+        var visible = tags.length;
+        var showMore = false;
+        if (rowWidth(tags.length) > maxWidth) {
+          // 放不下全部：从「尽量多」往下退，退到「能塞下 k 个 + +N」为止
+          showMore = true;
+          visible = 0;
+          for (var k = tags.length - 1; k >= 1; k--) {
+            if (rowWidth(k) + _gap + moreWidth <= maxWidth) {
+              visible = k;
+              break;
+            }
+          }
+        }
+
+        return Row(
+          children: [
+            for (final tag in tags.take(visible))
+              Padding(
+                padding: const EdgeInsets.only(right: _gap),
+                child: HikoTagChip(
+                  tag: tag.name,
+                  // id <= 0 表示服务端只给了名字，筛不了，只能看
+                  onTap: onTagTap == null || tag.id <= 0
+                      ? null
+                      : () => onTagTap!(tag),
+                ),
+              ),
+            if (showMore)
+              HikoTagChip(
+                // 与本地卡面同一套约定：`+N` 是**被藏起来的**个数，不是总数
+                tag: '+${tags.length - visible}',
+                onTap: onMoreTap,
+                muted: true,
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// 胶囊宽度 = 文字宽 + 左右内边距 + 1px 余量（四舍五入误差不该让它挤掉下一枚）
+  static double _chipWidth(String text) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: HikoTagChip.textStyle),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    return painter.width + HikoTagChip.horizontalPadding * 2 + 1;
+  }
+}
+
+/// 标签筛选的可关闭标记（1.94.0 裁决 Q7=甲）。
+///
+/// 形态照搬本地 1.77 那套「社团 / 声优」标记：淡色胶囊 + 尾巴上的 ✕，
+/// 颜色用标签自己的青色，和卡面标签保持同一套配色。
+class _TagFilterMarker extends StatelessWidget {
+  const _TagFilterMarker({required this.tag, required this.onClear});
+
+  final String tag;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Flexible(
+      child: Container(
+        padding: const EdgeInsets.only(left: 8, right: 3, top: 3, bottom: 3),
+        decoration: BoxDecoration(
+          color: hikoTagBgColor.withValues(alpha: isDark ? 0.2 : 0.8),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 标签名可能很长（「双声道立体声/人头麦」），限宽让它自己省略，
+            // 不能让它把右边的数量挤没
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 140),
+              child: Text(
+                '标签：$tag',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, color: hikoTagFgColor),
+              ),
+            ),
+            InkWell(
+              onTap: onClear,
+              borderRadius: BorderRadius.circular(8),
+              child: const Tooltip(
+                message: '退出标签筛选',
+                child: Padding(
+                  padding: EdgeInsets.all(3),
+                  child: Icon(Icons.close, size: 13, color: hikoTagFgColor),
+                ),
+              ),
             ),
           ],
         ),

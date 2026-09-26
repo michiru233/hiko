@@ -144,28 +144,56 @@ class HikoPersonPill extends StatelessWidget {
 }
 
 /// DLsite 标签胶囊（青色小方角）
+///
+/// 1.94.0 起也用在**在线卡片的标签行**上（裁决 Q4=按推荐：与本地卡面视觉一致）。
+/// 那一处必须做「单行 + 按像素宽度挑前缀 + `+N`」，所以把 [textStyle] 与
+/// [horizontalPadding] 提出来当公开常量 —— 量宽度和画出来必须用同一个样式，
+/// 两边各写一份字号/内边距是必然会漂移的那种做法。
 class HikoTagChip extends StatelessWidget {
-  const HikoTagChip({super.key, required this.tag, this.onTap});
+  const HikoTagChip({
+    super.key,
+    required this.tag,
+    this.onTap,
+    this.muted = false,
+  });
+
+  /// 标签文字样式。卡面标签行做宽度预估时用的就是它
+  static const TextStyle textStyle =
+      TextStyle(fontSize: 9, fontWeight: FontWeight.w500);
+
+  /// 左右内边距（单侧）
+  static const double horizontalPadding = 8;
 
   final String tag;
   final VoidCallback? onTap;
 
+  /// 弱化样式：用于 `+N` 这种「不是标签、但占同一个位置」的胶囊
+  final bool muted;
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fg = muted && isDark
+        ? HikoColors.darkMuted
+        : muted
+            ? HikoColors.lightMuted
+            : hikoTagFgColor;
     final chip = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: 4,
+      ),
       decoration: BoxDecoration(
-        color: hikoTagBgColor.withValues(alpha: isDark ? 0.2 : 0.8),
+        color: muted
+            ? (isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : Colors.black.withValues(alpha: 0.04))
+            : hikoTagBgColor.withValues(alpha: isDark ? 0.2 : 0.8),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         tag,
-        style: const TextStyle(
-          fontSize: 9,
-          fontWeight: FontWeight.w500,
-          color: hikoTagFgColor,
-        ),
+        style: textStyle.copyWith(color: fg),
       ),
     );
     if (onTap == null) return chip;

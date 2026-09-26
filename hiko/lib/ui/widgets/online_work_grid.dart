@@ -5,6 +5,20 @@ import '../../data/online/online_models.dart';
 import '../../data/online/online_provider.dart';
 import '../screens/online_screen.dart';
 
+/// 卡面文字区高度（封面正方形之外的固定开销）：两行标题 + 一行副标题。
+const double _kOnlineCardTextBlock = 62;
+
+/// 卡面标签行的整块高度（标签胶囊 ~19 + 与副标题的间距 ~5）。
+///
+/// **必须显式预留**：封面是 `Expanded`，标签行会去抢封面的高度 ——
+/// 如果 `mainAxisExtent` 不加这一块，正方形封面就被压扁（1.94.0 前的
+/// `+62` 是按「没有标签行」算的）。
+///
+/// 另外**作品没有标签时也要留出这块空高**：`SliverGrid` 的高度是整屏统一的，
+/// 让没标签的卡片把空高还给封面，会导致同一屏里「有标签的封面小、没标签的封面大」
+/// —— 那比多一行留白难看得多。卡片那边用 `SizedBox(height: kOnlineCardTagRow)` 占位。
+const double kOnlineCardTagRow = 24;
+
 /// 在线作品网格（在线浏览页与在线收藏页共用，1.93.0 抽出）。
 ///
 /// 抽出来的理由和 `detail_kit.dart` 一样：两处用同一套列宽公式与卡片尺寸，
@@ -17,6 +31,8 @@ class OnlineWorkGrid extends StatelessWidget {
     required this.onTap,
     this.selectedId,
     this.onContextMenu,
+    this.showTags = false,
+    this.onTagTap,
   });
 
   final List<OnlineWork> works;
@@ -28,6 +44,12 @@ class OnlineWorkGrid extends StatelessWidget {
 
   /// 右键 / 长按菜单（在线收藏页用来提供「移出本歌单 / 加入其它歌单」）
   final void Function(OnlineWork work, Offset globalPosition)? onContextMenu;
+
+  /// 卡面是否显示标签行（1.94.0；设置项 `showOnlineTags` 控制，默认开）
+  final bool showTags;
+
+  /// 点卡面标签 → 按该标签筛选。为 null 时标签只展示不可点
+  final ValueChanged<OnlineTag>? onTagTap;
 
   @override
   Widget build(BuildContext context) {
@@ -46,8 +68,10 @@ class OnlineWorkGrid extends StatelessWidget {
             crossAxisCount: columns,
             mainAxisSpacing: spacing,
             crossAxisSpacing: spacing,
-            // 封面正方形 + 两行标题 + 一行副标题，用固定高度避免不同标题把网格撑歪
-            mainAxisExtent: cardWidth + 62,
+            // 封面正方形 + 两行标题 + 一行副标题（+ 标签行），用固定高度避免不同标题把网格撑歪
+            mainAxisExtent: cardWidth +
+                _kOnlineCardTextBlock +
+                (showTags ? kOnlineCardTagRow : 0),
           ),
           itemCount: works.length,
           itemBuilder: (context, index) {
@@ -55,6 +79,8 @@ class OnlineWorkGrid extends StatelessWidget {
             return OnlineWorkCard(
               work: work,
               selected: selectedId == work.id,
+              showTags: showTags,
+              onTagTap: onTagTap,
               onTap: () => onTap(work),
               onContextMenu: onContextMenu == null
                   ? null

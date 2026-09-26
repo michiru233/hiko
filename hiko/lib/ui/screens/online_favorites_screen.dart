@@ -7,6 +7,7 @@ import '../../data/online/online_account.dart';
 import '../../data/online/online_favorites.dart';
 import '../../data/online/online_models.dart';
 import '../../data/online/online_provider.dart';
+import '../../data/settings_store.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/context_menu.dart';
 import '../widgets/online_account_dialogs.dart';
@@ -24,9 +25,16 @@ import '../widgets/toast.dart';
 /// 未登录时不隐藏这个视图（裁决里定的）：藏起来的话用户根本不知道有收藏这回事，
 /// 进来看到登录引导反而更清楚。
 class OnlineFavoritesScreen extends ConsumerStatefulWidget {
-  const OnlineFavoritesScreen({super.key, required this.isMobile});
+  const OnlineFavoritesScreen({
+    super.key,
+    required this.isMobile,
+    this.onOpenBrowse,
+  });
 
   final bool isMobile;
+
+  /// 卡面标签被点击时切回「在线」浏览视图（筛选结果在那一页，见 [_filterByTag]）
+  final VoidCallback? onOpenBrowse;
 
   @override
   ConsumerState<OnlineFavoritesScreen> createState() =>
@@ -349,10 +357,21 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
             selectedId: _detailWorkId,
             onTap: _openDetail,
             onContextMenu: _showWorkMenu,
+            showTags: ref.watch(settingsProvider).showOnlineTags,
+            onTagTap: _filterByTag,
           ),
         ),
       ],
     );
+  }
+
+  /// 收藏页的卡面标签点击（1.94.0 裁决 Q9=甲）。
+  ///
+  /// 结果列表在「在线」那一页，所以这里是「先应用筛选、再切视图」——
+  /// 与浏览页同一套卡片、同一个标签，在一处能点另一处不能点会让人以为坏了。
+  void _filterByTag(OnlineTag tag) {
+    unawaited(ref.read(onlineBrowseProvider.notifier).selectTag(tag));
+    widget.onOpenBrowse?.call();
   }
 
   // ---------------------------------------------------------------- 交互

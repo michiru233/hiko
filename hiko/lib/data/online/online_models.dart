@@ -8,8 +8,14 @@ import 'package:flutter/foundation.dart' show immutable;
 
 /// 在线作品（`GET /api/works` 列表项 / `GET /api/work/{id}?v=2` 详情）。
 ///
-/// 列表接口不返回 tags / vas（服务端只在详情里给），所以列表态下这两项为空，
-/// 进入详情页后由 [KikoeruClient.fetchWork] 补齐。
+/// **1.94.0 纠正一处误判**：1.90 起这里写着「列表接口不返回 tags / vas，
+/// 所以列表态下这两项为空」—— 实测是错的。`/api/works`、`POST /api/search/{kw}`、
+/// `/api/tags/{id}/works` 的列表项**都带完整的 `tags` / `vas`**
+/// （`vas` 实测形如 `{id, name}`，`tags` 形如 `{id, name, i18n}`），
+/// 且与详情接口逐条比对 `id` + `name` **完全一致**。
+///
+/// 这个误判的代价是 [tags] 一度只留名字、丢掉 `id` —— 而按标签筛选要的正是 `id`。
+/// 现在 [tags] 保留完整对象，卡片上点标签可以直接发请求，不需要反查标签表。
 class OnlineWork {
   const OnlineWork({
     required this.id,
@@ -42,7 +48,10 @@ class OnlineWork {
 
   /// 作品总时长（秒），服务端字段 `duration`
   final int durationSeconds;
-  final List<String> tags;
+
+  /// 标签（带 `id`，可直接用于 `/api/tags/{id}/works`）。
+  /// `id <= 0` 表示服务端只给了名字（异常形态），此时标签只展示、不可点。
+  final List<OnlineTag> tags;
   final List<String> vas;
 
   /// DLsite 作品号，服务端字段 `source_id`（如 `RJ01657200`）
@@ -90,14 +99,15 @@ class OnlineWork {
       rateAverage: (json['rate_average_2dp'] as num?)?.toDouble() ?? 0,
       hasSubtitle: json['has_subtitle'] as bool? ?? false,
       durationSeconds: (json['duration'] as num?)?.toInt() ?? 0,
-      tags: parseTagNames(json['tags']),
+      tags: parseOnlineTags(json['tags']),
       vas: parseVoiceActorNames(json['vas']),
       rjCode: _normalizeRj(json['source_id']),
       nsfw: json['nsfw'] as bool? ?? false,
     );
   }
 
-  /// 浅拷贝用于详情补齐（列表态 → 带 tags/vas 的详情态）
+  /// 浅拷贝用于详情补齐（详情接口返回的字段更全：tags/vas/封面等）。
+  /// 列表态其实也带 tags/vas（见类注释），这里仍以详情为准做兜底合并。
   OnlineWork merged(OnlineWork detail) => OnlineWork(
         id: id,
         title: detail.title.isNotEmpty ? detail.title : title,
@@ -130,34 +140,32 @@ class OnlineWork {
     return RegExp(r'^RJ\d+$').hasMatch(upper) ? upper : null;
   }
 
-  /// 标签名归一：优先中文（i18n.zh-cn），回退服务端默认 name / 纯字符串。
+  /// 标签解析：`[{id, name, i18n}]` 或纯字符串数组。
   ///
-  /// asmr.one 的标签体系自带多语言，中文用户直接看中文标签比日文原文友好。
-  static List<String> parseTagNames(Object? raw) {
+  /// 名字优先中文（`i18n.zh-cn`），回退服务端默认 `name` —— asmr.one 的标签体系自带
+  /// 多语言，中文用户直接看中文比日文原文友好（实测服务端 `name` 本身也已是 zh-cn）。
+  ///
+  /// **保留 `id`**：按标签筛选走 `/api/tags/{id}/works`，名字在服务端不唯一、也不能当 key。
+  /// 纯字符串形态（异常/测试用）给 `id = 0`，调用方据此把它当只读标签。
+  static List<OnlineTag> parseOnlineTags(Object? raw) {
     if (raw is! List) return const [];
-    final out = <String>[];
+    final out = <OnlineTag>[];
+    final seenIds = <int>{};
+    final seenNames = <String>{};
     for (final item in raw) {
-      final name = switch (item) {
-        String s => s.trim(),
-        Map m => _tagNameFromMap(Map<String, dynamic>.from(m)),
-        _ => '',
+      final tag = switch (item) {
+        String s => OnlineTag(id: 0, name: s.trim()),
+        Map m => OnlineTag.fromJson(Map<String, dynamic>.from(m)),
+        _ => null,
       };
-      if (name.isNotEmpty && !out.contains(name)) out.add(name);
+      if (tag == null || tag.name.isEmpty) continue;
+      // 有 id 按 id 去重（同一个标签可能重复出现）；没 id 只能按名字
+      final dup = tag.id > 0 ? !seenIds.add(tag.id) : !seenNames.add(tag.name);
+      if (dup) continue;
+      seenNames.add(tag.name);
+      out.add(tag);
     }
     return out;
-  }
-
-  static String _tagNameFromMap(Map<String, dynamic> tag) {
-    final i18n = tag['i18n'];
-    if (i18n is Map) {
-      final zh = i18n['zh-cn'];
-      if (zh is Map) {
-        final name = zh['name'];
-        if (name is String && name.trim().isNotEmpty) return name.trim();
-      }
-    }
-    final fallback = tag['name'];
-    return fallback is String ? fallback.trim() : '';
   }
 
   /// 声优名归一：`[{id, name}]` 或纯字符串数组

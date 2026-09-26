@@ -31,12 +31,14 @@ class OnlineDetailPanel extends ConsumerWidget {
     super.key,
     required this.workId,
     required this.onClose,
-    this.onSelectTagName,
+    this.onSelectTag,
   });
 
   final int workId;
   final VoidCallback onClose;
-  final void Function(String tagName)? onSelectTagName;
+  /// 点详情页的标签 → 按该标签筛选。
+  /// 1.94.0 起直接传 [OnlineTag]（响应里本来就带 `id`），不再需要标签表反查
+  final ValueChanged<OnlineTag>? onSelectTag;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -91,7 +93,7 @@ class OnlineDetailPanel extends ConsumerWidget {
               // 换作品时重置 Tab 与折叠态（State 会随位置被复用）
               key: ValueKey<int>(workId),
               workId: workId,
-              onSelectTagName: onSelectTagName,
+              onSelectTag: onSelectTag,
             ),
           ),
           // 关闭按钮（玻璃悬浮微圆角）
@@ -122,10 +124,12 @@ class OnlineDetailPanel extends ConsumerWidget {
 
 /// 移动端：在线作品详情全屏页
 class OnlineDetailScreen extends StatelessWidget {
-  const OnlineDetailScreen({super.key, required this.workId, this.onSelectTagName});
+  const OnlineDetailScreen({super.key, required this.workId, this.onSelectTag});
 
   final int workId;
-  final void Function(String tagName)? onSelectTagName;
+  /// 点详情页的标签 → 按该标签筛选。
+  /// 1.94.0 起直接传 [OnlineTag]（响应里本来就带 `id`），不再需要标签表反查
+  final ValueChanged<OnlineTag>? onSelectTag;
 
   @override
   Widget build(BuildContext context) {
@@ -136,7 +140,7 @@ class OnlineDetailScreen extends StatelessWidget {
       body: OnlineDetailBody(
         key: ValueKey<int>(workId),
         workId: workId,
-        onSelectTagName: onSelectTagName,
+        onSelectTag: onSelectTag,
       ),
     );
   }
@@ -147,10 +151,12 @@ class OnlineDetailScreen extends StatelessWidget {
 /// 结构骨架对齐本地 `DetailDrawer`（裁决 Q8=B）：封面 → 眼眉胶囊 → 标题 →
 /// 声优/社团行 → 胶囊 → 操作行 → 信息行 → 标签 → 双 Tab → 曲目树/歌词。
 class OnlineDetailBody extends ConsumerStatefulWidget {
-  const OnlineDetailBody({super.key, required this.workId, this.onSelectTagName});
+  const OnlineDetailBody({super.key, required this.workId, this.onSelectTag});
 
   final int workId;
-  final void Function(String tagName)? onSelectTagName;
+  /// 点详情页的标签 → 按该标签筛选。
+  /// 1.94.0 起直接传 [OnlineTag]（响应里本来就带 `id`），不再需要标签表反查
+  final ValueChanged<OnlineTag>? onSelectTag;
 
   @override
   ConsumerState<OnlineDetailBody> createState() => _OnlineDetailBodyState();
@@ -308,11 +314,11 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
                 children: [
                   for (final t in work.tags)
                     HikoTagChip(
-                      tag: t,
-                      // 详情接口只给标签名不给 id，点选后由外层在标签表里反查 id
-                      onTap: widget.onSelectTagName == null
+                      tag: t.name,
+                      // 响应里带 id，直接拿去筛选（1.94.0 前要拿名字去标签表反查）
+                      onTap: widget.onSelectTag == null || t.id <= 0
                           ? null
-                          : () => widget.onSelectTagName!(t),
+                          : () => widget.onSelectTag!(t),
                     ),
                 ],
               ),

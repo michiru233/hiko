@@ -37,7 +37,7 @@ const _categories = [
   _SettingsCategory('home', '主界面', '刮削标签 · 每行专辑数',
       Icons.grid_view_outlined),
   // 1.93.0：在线相关设置从「数据」页集中到这里
-  _SettingsCategory('online', '在线账号', '登录 asmr.one · 歌单收藏 · 服务器 · 缓存',
+  _SettingsCategory('online', '在线账号', '登录 asmr.one · 歌单收藏 · 卡片标签 · 服务器 · 缓存',
       Icons.person_outline_rounded),
   _SettingsCategory('data', '数据', '导入 · 整理 · 失效清理 · 刮削代理',
       Icons.storage_outlined),
@@ -823,6 +823,16 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
           ),
         ),
       ],
+      // 1.94.0：纯显示项，与登录无关，所以放在账号区之后、服务器/缓存之前
+      _SettingRow(
+        label: '卡片显示标签',
+        subtitle: '在作品卡片上直接显示标签，点击可按该标签筛选',
+        trailing: Switch(
+          value: settings.showOnlineTags,
+          onChanged: (v) =>
+              ref.read(settingsProvider.notifier).setShowOnlineTags(v),
+        ),
+      ),
       _SettingRow(
         label: '在线服务器',
         trailing: SizedBox(
@@ -1328,19 +1338,42 @@ class _SettingDropdown<T> extends StatelessWidget {
 }
 
 class _SettingRow extends StatelessWidget {
-  const _SettingRow({required this.label, required this.trailing});
+  const _SettingRow({
+    required this.label,
+    required this.trailing,
+    this.subtitle,
+  });
 
   final String label;
   final Widget trailing;
 
+  /// 可选的一行小字说明（1.94.0 起用）。放在标签下方，字号比标签小一档
+  final String? subtitle;
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: const TextStyle(fontSize: 12)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(fontSize: 12)),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle!,
+                    style: TextStyle(fontSize: 10.5, color: theme.hintColor),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
           trailing,
         ],
       ),

@@ -61,7 +61,9 @@ void main() {
           },
         ],
       });
-      expect(work.tags, ['青梅竹马', 'バイノーラル']);
+      // 1.94.0 起标签保留完整对象（带 id）—— 按标签筛选要的正是 id
+      expect(work.tags.map((t) => t.name), ['青梅竹马', 'バイノーラル']);
+      expect(work.tags.map((t) => t.id), [222, 496]);
     });
 
     test('标签兼容纯字符串数组且去重', () {
@@ -69,7 +71,22 @@ void main() {
         'id': 1,
         'tags': ['ASMR', 'ASMR', '  ', '治愈'],
       });
-      expect(work.tags, ['ASMR', '治愈']);
+      expect(work.tags.map((t) => t.name), ['ASMR', '治愈']);
+      // 纯字符串形态拿不到 id，用 0 表示「只展示、不可筛」
+      expect(work.tags.every((t) => t.id == 0), isTrue);
+    });
+
+    test('标签按 id 去重（同名不同 id 视为两个标签）', () {
+      final work = OnlineWork.fromJson({
+        'id': 1,
+        'tags': [
+          {'id': 4, 'name': '亲热/甜蜜'},
+          {'id': 4, 'name': '亲热/甜蜜'},
+          {'id': 97, 'name': '亲热/甜蜜'},
+        ],
+      });
+      expect(work.tags.length, 2);
+      expect(work.tags.map((t) => t.id), [4, 97]);
     });
 
     test('声优解析兼容对象数组与字符串数组', () {
@@ -128,9 +145,34 @@ void main() {
         'dl_count': 42,
       });
       final merged = listItem.merged(detail);
-      expect(merged.tags, ['治愈']);
+      expect(merged.tags.map((t) => t.name), ['治愈']);
       expect(merged.vas, ['春花らん']);
       expect(merged.dlCount, 42);
+    });
+
+    test('列表项自己就带 tags/vas —— 1.90 的「列表不返回」是误判', () {
+      // 这条用一个「列表形态」的响应（带 tags/vas、无 progress）验证：
+      // 1.94.0 之前 OnlineWork.tags 只留名字，就是基于那个误判做的设计
+      final work = OnlineWork.fromJson({
+        'id': 243448,
+        'title': '列表标题',
+        'tags': [
+          {
+            'id': 222,
+            'name': '青梅竹马',
+            'i18n': {
+              'ja-jp': {'name': '幼なじみ'},
+              'zh-cn': {'name': '青梅竹马'},
+            },
+          },
+        ],
+        'vas': [
+          {'id': 'uuid', 'name': '加藤英美里'},
+        ],
+      });
+      expect(work.tags.single.id, 222);
+      expect(work.tags.single.name, '青梅竹马');
+      expect(work.vas, ['加藤英美里']);
     });
   });
 

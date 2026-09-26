@@ -832,7 +832,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildTopbar(theme, isMobile),
-          Expanded(child: OnlineFavoritesScreen(isMobile: isMobile)),
+          Expanded(
+            child: OnlineFavoritesScreen(
+              isMobile: isMobile,
+              // 收藏页点卡面标签 → 筛选结果在「在线」那一页，所以先切视图
+              // （筛选本身由收藏页自己发起，这里只管视图归属，1.94.0 裁决 Q9=甲）
+              onOpenBrowse: () => setState(() => _view = '在线'),
+            ),
+          ),
         ],
       );
     }

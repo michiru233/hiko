@@ -25,6 +25,12 @@ class AppSettings {
   final double seekStepSeconds; // 快进/快退步长（秒），白名单 3/5/10/30，默认 3
   final bool sidebarShown;
   final bool showScrapedTags; // 主界面卡片显示 DLsite 刮削标签，默认关闭（1.43）
+  /// 在线卡片显示标签行，默认开启（1.94.0）。
+  ///
+  /// 与 [showScrapedTags] **刻意分开、默认值相反**：本地标签是刮削来的、偏噪声，
+  /// 所以默认关；在线标签是 asmr.one 的正式元数据、而且是按标签筛选的入口，
+  /// 所以默认开（用户裁决：在线的默认开启，也可以单独调节）。
+  final bool showOnlineTags;
   final double gridColumns; // 主界面每行专辑数；0=自动（按宽度），档位 4/5/6/7/8/10/12（1.43）
   final double mobileGridColumns; // 移动端每行专辑数，档位 2/3/4，默认 2（1.54，与桌面独立）
   final double fontScale; // 字号缩放比例，档位 0.85/1.0/1.15/1.30，默认 1.0（1.56）
@@ -48,6 +54,7 @@ class AppSettings {
     this.seekStepSeconds = 3,
     this.sidebarShown = true,
     this.showScrapedTags = false,
+    this.showOnlineTags = true,
     this.gridColumns = 0,
     this.mobileGridColumns = 2,
     this.fontScale = 1.0,
@@ -90,6 +97,7 @@ class AppSettings {
     double? seekStepSeconds,
     bool? sidebarShown,
     bool? showScrapedTags,
+    bool? showOnlineTags,
     double? gridColumns,
     double? mobileGridColumns,
     double? fontScale,
@@ -113,6 +121,7 @@ class AppSettings {
         seekStepSeconds: seekStepSeconds ?? this.seekStepSeconds,
         sidebarShown: sidebarShown ?? this.sidebarShown,
         showScrapedTags: showScrapedTags ?? this.showScrapedTags,
+        showOnlineTags: showOnlineTags ?? this.showOnlineTags,
         gridColumns: gridColumns ?? this.gridColumns,
         mobileGridColumns: mobileGridColumns ?? this.mobileGridColumns,
         fontScale: fontScale ?? this.fontScale,
@@ -157,6 +166,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kSeekStep = 'hiko-seek-step';
   static const _kSidebar = 'hiko-sidebar';
   static const _kShowScrapedTags = 'hiko-show-scraped-tags';
+  static const _kShowOnlineTags = 'hiko-online-show-tags';
   static const _kGridColumns = 'hiko-grid-columns';
   static const _kMobileGridColumns = 'hiko-mobile-grid-columns';
   static const _kFontScale = 'hiko-font-scale';
@@ -262,6 +272,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       seekStepSeconds: _normalizeSeekStep(prefs.getDouble(_kSeekStep)),
       sidebarShown: prefs.getBool(_kSidebar) ?? true,
       showScrapedTags: prefs.getBool(_kShowScrapedTags) ?? false,
+      showOnlineTags: prefs.getBool(_kShowOnlineTags) ?? true,
       gridColumns: _normalizeGridColumns(prefs.getDouble(_kGridColumns)),
       mobileGridColumns:
           _normalizeMobileGridColumns(prefs.getDouble(_kMobileGridColumns)),
@@ -311,6 +322,10 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   /// 主界面卡片是否显示刮削标签（1.43）
   Future<void> setShowScrapedTags(bool show) =>
       _save(_kShowScrapedTags, show, state.copyWith(showScrapedTags: show));
+
+  /// 在线卡片是否显示标签行（1.94.0）
+  Future<void> setShowOnlineTags(bool show) =>
+      _save(_kShowOnlineTags, show, state.copyWith(showOnlineTags: show));
 
   /// 每行专辑数：0=自动，档位白名单 4/5/6/7/8/10/12，非法值回退自动（1.43）
   Future<void> setGridColumns(double columns) {

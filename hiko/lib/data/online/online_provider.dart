@@ -299,10 +299,13 @@ final onlineBrowseProvider =
   (ref) => OnlineBrowseNotifier(ref),
 );
 
-/// 标签表（懒加载 + 会话内缓存，422 个约 72KB）
-final onlineTagsProvider = FutureProvider<List<OnlineTag>>((ref) async {
-  return ref.watch(onlineClientProvider).fetchTags();
-});
+// 标签表（`/api/tags/`，422 个约 72KB）**1.94.0 起不再需要**。
+//
+// 1.93 及以前是在详情页点标签后、拿标签名来这里反查 id（`_openTagByName`）。
+// 1.94.0 发现列表/详情响应的 `tags` 本来就带 `id`，于是整条反查链路连同这个
+// provider 一起删掉 —— 留着它会是一份随时可能被误 watch（白拉 72KB）的死接线。
+// `KikoeruClient.fetchTags()` 保留：那是「一个服务端端点一个方法」的 API 表面，
+// 将来若做标签选择器还会用到。
 
 /// 作品详情：作品元数据 + 曲目树（两个请求并发）
 @immutable
@@ -437,7 +440,8 @@ class OnlinePlayback {
       artist: work.vas.isNotEmpty ? work.vas.join('・') : '在线作品',
       albumArtist: work.circleName,
       rjCode: work.rjCode,
-      tags: work.tags,
+      // 这是「在线作品 → 本地播放用 Album」的投影，只取标签名（Album.tags 是字符串表）
+      tags: work.tags.map((t) => t.name).toList(),
       group: '在线',
       genre: '在线',
       duration: tracks.length,
