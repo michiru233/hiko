@@ -45,7 +45,8 @@ const _categories = [
   // 1.96.0：外观类设置单开一页 —— 它只影响在线界面，塞进「外观」页
   // （那里管的是全局主题/字号/背景）会让「改这里到底影响谁」变得含糊
   _SettingsCategory('onlineAppearance', '在线外观',
-      '标签字号 · 卡片与详情文字 · 每行卡片数', Icons.text_fields_rounded),
+      '标签字号 · 卡片与详情文字 · 曲目标题 · 列数 · 每页条数',
+      Icons.text_fields_rounded),
   _SettingsCategory('data', '数据', '导入 · 整理 · 失效清理 · 刮削代理',
       Icons.storage_outlined),
   _SettingsCategory('folders', '音乐目录', '常驻目录 · 自动扫描',
@@ -701,42 +702,57 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
         ),
       ];
 
-  // ---- 在线外观（1.96.0）----
+  // ---- 在线外观（1.96.0；1.97.0 起字号改滑杆）----
 
-  /// 在线外观页：三组缩放 + 网格列数。
+  /// 在线外观页：四组字号滑杆 + 网格列数 + 每页条数。
   ///
-  /// 与在线页工具栏的「Aa」对话框共用同一批档位定义（`online_appearance.dart`），
-  /// 只是这里用设置页惯用的行式下拉。两条路径写的是同一份设置，不存在同步问题。
+  /// 与在线页工具栏的「Aa」对话框共用同一批范围常量与滑杆组件
+  /// （`online_appearance.dart` 的 `OnlineFontSliderRow`），两条路径写的是
+  /// 同一份设置，不存在同步问题。1.97.0 裁决 Q2：字号从档位下拉改无极滑杆；
+  /// 列数与每页条数保持下拉（都是离散档位）。
   List<Widget> _onlineAppearancePage(ThemeData theme, AppSettings settings) {
     final notifier = ref.read(settingsProvider.notifier);
     return [
       _pageHeader(theme, '在线外观'),
-      _SettingRow(
-        label: '标签胶囊字号',
-        subtitle: '全局生效：本地卡面、本地详情、在线卡面与详情一起变',
-        trailing: _SettingDropdown<double>(
-          value: settings.tagFontSize,
-          items: tagFontSizeChoices,
-          onChanged: notifier.setTagFontSize,
-        ),
+      OnlineFontSliderRow(
+        title: '标签胶囊字号',
+        hint: '全局生效：本地卡面、本地详情、在线卡面与详情一起变',
+        value: settings.tagFontSize,
+        min: SettingsNotifier.tagFontSizeMin,
+        max: SettingsNotifier.tagFontSizeMax,
+        defaultValue: SettingsNotifier.tagFontSizeDefault,
+        format: (v) => '${v.toStringAsFixed(1)} pt',
+        onChanged: notifier.setTagFontSize,
       ),
-      _SettingRow(
-        label: '在线卡片文字',
-        subtitle: '列表里卡片的标题与副标题；卡片高度会跟着变',
-        trailing: _SettingDropdown<double>(
-          value: settings.onlineCardTextScale,
-          items: onlineTextScaleChoices,
-          onChanged: notifier.setOnlineCardTextScale,
-        ),
+      OnlineFontSliderRow(
+        title: '在线卡片文字',
+        hint: '列表里卡片的标题与副标题；卡片高度会跟着变',
+        value: settings.onlineCardTextScale,
+        min: SettingsNotifier.onlineTextScaleMin,
+        max: SettingsNotifier.onlineTextScaleMax,
+        defaultValue: SettingsNotifier.onlineTextScaleDefault,
+        format: (v) => '${v.toStringAsFixed(2)}×',
+        onChanged: notifier.setOnlineCardTextScale,
       ),
-      _SettingRow(
-        label: '在线详情文字',
-        subtitle: '详情面板内的全部文字（标题 · 信息行 · 目录 · 曲目）',
-        trailing: _SettingDropdown<double>(
-          value: settings.onlineDetailTextScale,
-          items: onlineTextScaleChoices,
-          onChanged: notifier.setOnlineDetailTextScale,
-        ),
+      OnlineFontSliderRow(
+        title: '在线详情文字',
+        hint: '详情面板内的全部文字（标题 · 信息行 · 目录 · 曲目）',
+        value: settings.onlineDetailTextScale,
+        min: SettingsNotifier.onlineTextScaleMin,
+        max: SettingsNotifier.onlineTextScaleMax,
+        defaultValue: SettingsNotifier.onlineTextScaleDefault,
+        format: (v) => '${v.toStringAsFixed(2)}×',
+        onChanged: notifier.setOnlineDetailTextScale,
+      ),
+      OnlineFontSliderRow(
+        title: '曲目标题字号',
+        hint: '在线详情页里每首音频的标题；不受「详情文字」倍率影响',
+        value: settings.onlineTrackTitleFontSize,
+        min: SettingsNotifier.trackTitleFontSizeMin,
+        max: SettingsNotifier.trackTitleFontSizeMax,
+        defaultValue: SettingsNotifier.trackTitleFontSizeDefault,
+        format: (v) => '${v.toStringAsFixed(1)} pt',
+        onChanged: notifier.setOnlineTrackTitleFontSize,
       ),
       _SettingRow(
         label: '每行卡片数',
@@ -745,6 +761,18 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
           value: settings.onlineGridColumns,
           items: onlineGridColumnsChoices,
           onChanged: notifier.setOnlineGridColumns,
+        ),
+      ),
+      _SettingRow(
+        label: '每页条数',
+        subtitle: '在线列表一次加载的作品数；选择会记住，重启后仍生效',
+        trailing: _SettingDropdown<double>(
+          value: settings.onlinePageSize,
+          items: [
+            for (final size in OnlineBrowseNotifier.pageSizeOptions)
+              (size.toDouble(), '每页 $size 条'),
+          ],
+          onChanged: notifier.setOnlinePageSize,
         ),
       ),
       Padding(

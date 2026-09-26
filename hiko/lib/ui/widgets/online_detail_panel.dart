@@ -34,6 +34,7 @@ class OnlineDetailPanel extends ConsumerWidget {
     required this.workId,
     required this.onClose,
     this.onSelectTag,
+    this.onSelectCreator,
   });
 
   final int workId;
@@ -41,6 +42,9 @@ class OnlineDetailPanel extends ConsumerWidget {
   /// 点详情页的标签 → 按该标签筛选。
   /// 1.94.0 起直接传 [OnlineTag]（响应里本来就带 `id`），不再需要标签表反查
   final ValueChanged<OnlineTag>? onSelectTag;
+
+  /// 点详情页的声优 / 社团胶囊 → 按其筛选（1.97.0）
+  final ValueChanged<OnlineCreatorFilter>? onSelectCreator;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -96,6 +100,7 @@ class OnlineDetailPanel extends ConsumerWidget {
               key: ValueKey<int>(workId),
               workId: workId,
               onSelectTag: onSelectTag,
+              onSelectCreator: onSelectCreator,
             ),
           ),
           // 关闭按钮（玻璃悬浮微圆角）
@@ -126,12 +131,20 @@ class OnlineDetailPanel extends ConsumerWidget {
 
 /// 移动端：在线作品详情全屏页
 class OnlineDetailScreen extends StatelessWidget {
-  const OnlineDetailScreen({super.key, required this.workId, this.onSelectTag});
+  const OnlineDetailScreen({
+    super.key,
+    required this.workId,
+    this.onSelectTag,
+    this.onSelectCreator,
+  });
 
   final int workId;
   /// 点详情页的标签 → 按该标签筛选。
   /// 1.94.0 起直接传 [OnlineTag]（响应里本来就带 `id`），不再需要标签表反查
   final ValueChanged<OnlineTag>? onSelectTag;
+
+  /// 点详情页的声优 / 社团胶囊 → 按其筛选（1.97.0）
+  final ValueChanged<OnlineCreatorFilter>? onSelectCreator;
 
   @override
   Widget build(BuildContext context) {
@@ -143,6 +156,7 @@ class OnlineDetailScreen extends StatelessWidget {
         key: ValueKey<int>(workId),
         workId: workId,
         onSelectTag: onSelectTag,
+        onSelectCreator: onSelectCreator,
       ),
     );
   }
@@ -153,12 +167,20 @@ class OnlineDetailScreen extends StatelessWidget {
 /// 结构骨架对齐本地 `DetailDrawer`（裁决 Q8=B）：封面 → 眼眉胶囊 → 标题 →
 /// 声优/社团行 → 胶囊 → 操作行 → 信息行 → 标签 → 双 Tab → 曲目树/歌词。
 class OnlineDetailBody extends ConsumerStatefulWidget {
-  const OnlineDetailBody({super.key, required this.workId, this.onSelectTag});
+  const OnlineDetailBody({
+    super.key,
+    required this.workId,
+    this.onSelectTag,
+    this.onSelectCreator,
+  });
 
   final int workId;
   /// 点详情页的标签 → 按该标签筛选。
   /// 1.94.0 起直接传 [OnlineTag]（响应里本来就带 `id`），不再需要标签表反查
   final ValueChanged<OnlineTag>? onSelectTag;
+
+  /// 点详情页的声优 / 社团胶囊 → 按其筛选（1.97.0）
+  final ValueChanged<OnlineCreatorFilter>? onSelectCreator;
 
   @override
   ConsumerState<OnlineDetailBody> createState() => _OnlineDetailBodyState();
@@ -212,6 +234,11 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
   /// Riverpod 合并成一次订阅，不必再缓存成字段。
   double get _textScale =>
       ref.watch(settingsProvider.select((s) => s.onlineDetailTextScale));
+
+  /// 曲目标题独立字号（1.97.0）。`_trackRow` 在 build 途中调用，
+  /// watch 的订阅时机没问题。
+  double get _trackTitleFontSize => ref.watch(
+      settingsProvider.select((s) => s.onlineTrackTitleFontSize));
 
   // ---------------------------------------------------------------- 主体
 
@@ -299,7 +326,8 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
                 color: theme.hintColor,
               ),
             ),
-            // 社团（紫）/ 声优（蓝）胶囊：在线数据是只读的，纯展示不可点（裁决 Q9=A）
+            // 社团（紫）/ 声优（蓝）胶囊：1.97.0 起可点 → 弹「按此筛选 / 复制名字」
+            // （1.91 的裁决 Q9=A「纯展示不可点」被 1.97 的筛选需求推翻）
             if (work.circleName.isNotEmpty || work.vas.isNotEmpty) ...[
               const SizedBox(height: 10),
               Wrap(
@@ -307,9 +335,33 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
                 runSpacing: 8,
                 children: [
                   if (work.circleName.isNotEmpty)
-                    HikoPersonPill(name: work.circleName, color: hikoCircleColor),
+                    Builder(
+                      builder: (pillContext) => HikoPersonPill(
+                        name: work.circleName,
+                        color: hikoCircleColor,
+                        onTap: widget.onSelectCreator == null
+                            ? null
+                            : () => unawaited(_showCreatorMenu(
+                                  pillContext,
+                                  name: work.circleName,
+                                  kind: OnlineCreatorKind.circle,
+                                )),
+                      ),
+                    ),
                   for (final name in work.vas)
-                    HikoPersonPill(name: name, color: hikoVoiceColor),
+                    Builder(
+                      builder: (pillContext) => HikoPersonPill(
+                        name: name,
+                        color: hikoVoiceColor,
+                        onTap: widget.onSelectCreator == null
+                            ? null
+                            : () => unawaited(_showCreatorMenu(
+                                  pillContext,
+                                  name: name,
+                                  kind: OnlineCreatorKind.va,
+                                )),
+                      ),
+                    ),
                 ],
               ),
             ],
@@ -623,6 +675,8 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
       active: active,
       playing: active && isPlaying,
       indent: depth * 14.0,
+      // 曲目标题独立字号（1.97.0）：绝对值，不乘详情倍率 —— 见 HikoTrackRow 注释
+      titleFontSize: _trackTitleFontSize,
       trailing: track.lyricsHash == null
           ? null
           : Padding(
@@ -699,6 +753,64 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
   }
 
   // ---------------------------------------------------------------- 交互
+
+  /// 声优 / 社团胶囊的点击菜单（1.97.0）：按此筛选 / 复制名字。
+  ///
+  /// 菜单锚在胶囊自己的位置 —— `pillContext` 由外层 [Builder] 提供，
+  /// 用本 State 的 context 会把菜单钉到整个面板左上角去。
+  Future<void> _showCreatorMenu(
+    BuildContext pillContext, {
+    required String name,
+    required OnlineCreatorKind kind,
+  }) async {
+    final box = pillContext.findRenderObject() as RenderBox?;
+    final overlay =
+        Overlay.of(pillContext).context.findRenderObject() as RenderBox?;
+    if (box == null || overlay == null || !pillContext.mounted) return;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        box.localToGlobal(Offset.zero, ancestor: overlay),
+        box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+    final isVa = kind == OnlineCreatorKind.va;
+    final action = await showMenu<String>(
+      context: pillContext,
+      position: position,
+      constraints: const BoxConstraints(minWidth: 140),
+      items: [
+        PopupMenuItem(
+          value: 'filter',
+          height: 36,
+          child: Text(
+            isVa ? '按此声优筛选' : '按此社团筛选',
+            style: const TextStyle(fontSize: 12),
+          ),
+        ),
+        PopupMenuItem(
+          value: 'copy',
+          height: 36,
+          child: const Text('复制名字', style: TextStyle(fontSize: 12)),
+        ),
+      ],
+    );
+    if (!mounted) return;
+    switch (action) {
+      case 'filter':
+        widget.onSelectCreator!(
+          OnlineCreatorFilter(kind: kind, name: name),
+        );
+      case 'copy':
+        await Clipboard.setData(ClipboardData(text: name));
+        if (mounted) {
+          ScaffoldMessenger.maybeOf(context)
+              ?.showSnackBar(SnackBar(content: Text('已复制 $name')));
+        }
+      default:
+        break;
+    }
+  }
 
   void _onTrackTap(
     OnlineDetail detail,

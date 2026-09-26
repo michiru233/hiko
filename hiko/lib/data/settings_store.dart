@@ -60,6 +60,21 @@ class AppSettings {
   final double onlineDetailTextScale; // 在线详情面板文字的**相对**倍率（1.96.0）
   final double onlineGridColumns; // 在线网格每行列数；0=自动（按宽度），档位 3–8（1.96.0）
 
+  /// 在线详情页**曲目标题**的绝对字号（1.97.0）。
+  ///
+  /// 为什么单独一把旋钮：用户点名要调的是「详情页里每首音频的标题」（曲目行密、
+  /// 是扫读的主对象），而「在线详情文字」倍率一动整面板都跟着动 —— 那是另一件事。
+  /// **绝对值、不乘详情倍率**（否则详情滑杆一动它就跟着动，独立没有意义）；
+  /// 仍随全局 `fontScale` 缩放（那是系统级可访问性，不该被这里绕开）。
+  final double onlineTrackTitleFontSize;
+
+  /// 在线列表**每页条数**（1.97.0 起持久化）。
+  ///
+  /// 1.96 及以前只是 `OnlineBrowseState` 的内存字段，冷启动回 20；1.97.0 起入口
+  /// 挪进设置（移动端分页条太挤）并落盘。档位白名单 [20, 60, 100]（服务端实测
+  /// `/api/works` 系支持到 500，但默认不开放更大的档位）。
+  final double onlinePageSize;
+
   /// 在线标签**黑名单**（1.95.0）。命中的标签会从在线浏览 / 搜索 / 标签筛选结果里排除。
   ///
   /// 只在线生效 —— 本地刮削库不受影响（沿用 1.94.0 裁决 Q1=B）。
@@ -95,6 +110,8 @@ class AppSettings {
     this.onlineCardTextScale = 1.0,
     this.onlineDetailTextScale = 1.0,
     this.onlineGridColumns = 0,
+    this.onlineTrackTitleFontSize = 12,
+    this.onlinePageSize = 20,
     this.blockedTags = const [],
   });
 
@@ -143,6 +160,8 @@ class AppSettings {
     double? onlineCardTextScale,
     double? onlineDetailTextScale,
     double? onlineGridColumns,
+    double? onlineTrackTitleFontSize,
+    double? onlinePageSize,
     List<OnlineTag>? blockedTags,
   }) =>
       AppSettings(
@@ -173,6 +192,9 @@ class AppSettings {
         onlineDetailTextScale:
             onlineDetailTextScale ?? this.onlineDetailTextScale,
         onlineGridColumns: onlineGridColumns ?? this.onlineGridColumns,
+        onlineTrackTitleFontSize:
+            onlineTrackTitleFontSize ?? this.onlineTrackTitleFontSize,
+        onlinePageSize: onlinePageSize ?? this.onlinePageSize,
         blockedTags: blockedTags ?? this.blockedTags,
       );
 }
@@ -223,6 +245,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kOnlineCardTextScale = 'hiko-online-card-text-scale';
   static const _kOnlineDetailTextScale = 'hiko-online-detail-text-scale';
   static const _kOnlineGridColumns = 'hiko-online-grid-columns';
+  static const _kOnlineTrackTitleFontSize = 'hiko-online-track-title-font-size';
+  static const _kOnlinePageSize = 'hiko-online-page-size';
   static const _kBlockedTags = 'hiko-online-blocked-tags';
 
   static const _validSorts = {
@@ -304,20 +328,45 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   /// 缓存上限可选档位（设置页下拉用；0 = 关闭缓存）
   static const onlineCacheLimitOptions = _validOnlineCacheLimits;
 
-  // ------------------------------------------------------------ 在线外观（1.96.0）
+  // ------------------------------------------------------------ 在线外观（1.96.0；1.97.0 起字号改无极滑杆）
 
-  /// 标签胶囊字号档位。默认 11（裁决 Q2=甲、Q6=甲：从 1.94.0 的硬编码 9 提到 11）。
-  static const validTagFontSizes = [9.0, 10.0, 11.0, 12.0, 14.0];
+  // 1.97.0 裁决 Q2：三组字号从离散档位改成**连续滑杆**，白名单归一化随之改成
+  // 范围 clamp。旧档位（9/10/11/12/14、0.85/1.0/1.15/1.30）全部落在范围内，
+  // 老用户的存量值升级后原样保留。
 
-  static double _normalizeTagFontSize(double? val) =>
-      val != null && validTagFontSizes.contains(val) ? val : 11;
+  /// 标签胶囊字号范围：8–18，默认 11。
+  static const tagFontSizeMin = 8.0;
+  static const tagFontSizeMax = 18.0;
+  static const tagFontSizeDefault = 11.0;
 
-  /// 两组文字缩放档位。**值与全局 `fontScale` 相同，但刻意各自独立定义** ——
+  static double _normalizeTagFontSize(double? val) => val == null
+      ? tagFontSizeDefault
+      : val.clamp(tagFontSizeMin, tagFontSizeMax);
+
+  /// 两组文字缩放范围：0.75–1.60，默认 1.0。**两组共用一个范围但值各自独立** ——
   /// 裁决要求「三组缩放互相独立」，共用一份常量会让将来单独调某一组时牵动另两组。
-  static const _validOnlineTextScales = [0.85, 1.0, 1.15, 1.30];
+  static const onlineTextScaleMin = 0.75;
+  static const onlineTextScaleMax = 1.60;
+  static const onlineTextScaleDefault = 1.0;
 
-  static double _normalizeOnlineTextScale(double? val) =>
-      val != null && _validOnlineTextScales.contains(val) ? val : 1.0;
+  static double _normalizeOnlineTextScale(double? val) => val == null
+      ? onlineTextScaleDefault
+      : val.clamp(onlineTextScaleMin, onlineTextScaleMax);
+
+  /// 曲目标题字号范围：10–20，默认 12（1.97.0）。
+  static const trackTitleFontSizeMin = 10.0;
+  static const trackTitleFontSizeMax = 20.0;
+  static const trackTitleFontSizeDefault = 12.0;
+
+  static double _normalizeTrackTitleFontSize(double? val) => val == null
+      ? trackTitleFontSizeDefault
+      : val.clamp(trackTitleFontSizeMin, trackTitleFontSizeMax);
+
+  /// 每页条数档位（1.97.0 起落盘，设置页下拉）。白名单外的值回退 20。
+  static const validOnlinePageSizes = [20.0, 60.0, 100.0];
+
+  static double _normalizeOnlinePageSize(double? val) =>
+      val != null && validOnlinePageSizes.contains(val) ? val : 20;
 
   /// 在线网格列数档位：0 = 自动（按可用宽度算），3–8 = 固定列数。
   ///
@@ -409,6 +458,10 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
           _normalizeOnlineTextScale(prefs.getDouble(_kOnlineDetailTextScale)),
       onlineGridColumns:
           _normalizeOnlineGridColumns(prefs.getDouble(_kOnlineGridColumns)),
+      onlineTrackTitleFontSize: _normalizeTrackTitleFontSize(
+          prefs.getDouble(_kOnlineTrackTitleFontSize)),
+      onlinePageSize:
+          _normalizeOnlinePageSize(prefs.getDouble(_kOnlinePageSize)),
       blockedTags: _decodeBlockedTags(prefs.getString(_kBlockedTags)),
     );
   }
@@ -515,6 +568,20 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     final valid = _normalizeOnlineGridColumns(columns);
     return _save(
         _kOnlineGridColumns, valid, state.copyWith(onlineGridColumns: valid));
+  }
+
+  /// 在线详情页曲目标题字号（绝对值，1.97.0）
+  Future<void> setOnlineTrackTitleFontSize(double size) {
+    final valid = _normalizeTrackTitleFontSize(size);
+    return _save(_kOnlineTrackTitleFontSize, valid,
+        state.copyWith(onlineTrackTitleFontSize: valid));
+  }
+
+  /// 在线每页条数（1.97.0 起落盘）
+  Future<void> setOnlinePageSize(double size) {
+    final valid = _normalizeOnlinePageSize(size);
+    return _save(
+        _kOnlinePageSize, valid, state.copyWith(onlinePageSize: valid));
   }
 
   /// 整份替换标签黑名单（1.95.0）

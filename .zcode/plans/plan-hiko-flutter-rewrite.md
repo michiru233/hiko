@@ -2521,3 +2521,83 @@ Release：https://github.com/michiru233/hiko/releases/tag/v1.96.0
 双端构建一次通过。代码提交 `e11b393`、文档提交 `96566fb`。
 
 
+
+## 1.97.0 在线外观无极滑杆 + 曲目标题字号 + 每页条数入设置 + 声优/社团筛选（2026-09-26）
+
+Android 端体验批次（用户 2026-09-26 明确：安卓端需求不涉及 mac 就不动 mac 端 —— 本版
+共用入口的改动（Aa 对话框 / 设置页）两端同步受益，纯移动端改动只作用于 `isMobile` 分支）。
+四项需求一次 grill 定案（5 问全按推荐 + Q4 语义映射裁决：艺术家=声优、专辑艺术家=社团）。
+
+### 需求与裁决
+
+1. **每页条数移入设置**（Q1=推荐）：移动端分页条隐藏「每页 N 条」chip（桌面保留）；
+   选择值**落盘**（1.96 及以前只是内存态，重启回 20）；移动端页码半径 ±2 → ±1。
+2. **字号无极调**（Q2=推荐）：三组字号从离散档位改**连续滑杆**——标签胶囊 8–18（默认 11）、
+   卡片倍率 / 详情倍率 0.75–1.60（默认 1.0）；两端同一入口同一滑杆（`OnlineFontSliderRow`
+   共用组件），settings 白名单归一化 → 范围 clamp；每组滑杆带「重置为默认」。
+   列数保持单选（整数无极没有意义）。
+3. **曲目标题独立字号**（Q3=推荐）：新增 `onlineTrackTitleFontSize` 10–20（默认 12），
+   **绝对值、不乘详情倍率**（否则详情滑杆一动它跟着动）；仍随全局 fontScale 缩放；
+   只作用于在线详情页 —— `HikoTrackRow` 加可空 `titleFontSize`，本地传 null 保持
+   `12 × textScale` 零变化。
+4. **声优 / 社团筛选**（Q4/Q5=推荐）：新增 `OnlineCreatorFilter{va|circle, name}`，
+   机制 = 服务端关键词 `$va:名$` / `$circle:名$`（与黑名单同一条实测语法链路）。
+   入口 = 详情页声优/社团胶囊（1.91「纯展示不可点」被推翻）→ 弹菜单「按此筛选 / 复制名字」；
+   浏览页与收藏页两处详情都接上。生效后第二行出现可关闭标记（声优蓝 / 社团紫）。
+   搜索框手敲 `$va:…$` / `$circle:…$` 同样有效（同一语法，用户问过、确认可用）。
+
+### 状态机语义（关键约定）
+
+- creator 是**正交维度**：翻页 / 改排序 / 刷新保留；`selectCreator` 保留来源与搜索词
+  （搜索结果里点声优 = 关键词 ∩ 声优），清 subtitleOnly。
+- 换来源的动作清掉它：`applyPreset` / `search` / `selectTag` 都 `clearCreator`
+  （对齐 1.94「看不见的筛选比没有筛选更糟」）。**取消（再点同一个 / ✕）一律回最新榜**。
+- `canFilterSubtitle` 与 `isPresetActive` 都要求 `creator == null`：
+  creator 激活时请求已改走搜索接口，字幕参数到不了服务端，「热门榜」字样也是说谎。
+- 端点映射（`_fetch` 三路）：browse+creator → `/api/search/{$va:…$}`；search+creator →
+  拼接「$va:…$ + 关键词」；tag+creator → 换实测等价的「$tag:…$ $circle:…$」搜索。
+  黑名单（excludeKeyword）可叠加，两者各占关键词一段。
+
+### 文件清单
+
+- `lib/data/settings_store.dart` —— `validTagFontSizes` / `_validOnlineTextScales` 删除，
+  改 `tagFontSize{Min,Max,Default}` / `onlineTextScale{…}` / `trackTitleFontSize{…}` 范围常量
+  + clamp 归一化；新增 `onlineTrackTitleFontSize`、`onlinePageSize`（白名单 20/60/100）两字段
+  两 setter，key `hiko-online-track-title-font-size` / `hiko-online-page-size`
+- `lib/data/online/online_blacklist.dart` —— 新增 `vaIncludeTerm` / `circleIncludeTerm`
+- `lib/data/online/online_provider.dart` —— `OnlineCreatorKind` + `OnlineCreatorFilter`
+  （== 按 kind+name）；state 加 `creator` + `clearCreator`；`selectCreator`；`_fetch` 三路
+  合成；构造器从设置恢复 pageSize；`setPageSize` 落盘
+- `lib/ui/widgets/online_appearance.dart` —— 重写：三组字号滑杆 + 曲目标题滑杆 +
+  列数单选；公开 `OnlineFontSliderRow`（标题+当前值+重置+说明+Slider）供设置页复用；
+  删除 `tagFontSizeChoices` / `onlineTextScaleChoices`
+- `lib/ui/widgets/detail_kit.dart` —— `HikoTrackRow.titleFontSize`（可空，给了就不乘倍率）
+- `lib/ui/widgets/online_detail_panel.dart` —— `_trackRow` 传曲目标题字号；胶囊可点 →
+  `_showCreatorMenu`（Builder 提供胶囊级 context 定位菜单）；面板/全屏页透传 `onSelectCreator`
+- `lib/ui/widgets/online_work_grid.dart` —— `OnlinePager`：`!isMobile` 才画每页 chip；
+  `buildPageItems(radius: isMobile ? 1 : 2)`
+- `lib/ui/widgets/settings_dialog.dart` —— 在线外观页改四组滑杆 + 「每页条数」下拉；
+  分类副标题更新
+- `lib/ui/screens/online_screen.dart` —— `_applyCreator`（清搜索框 / 收面板 / 取消回最新榜）；
+  `_CreatorFilterMarker`；`_statusLine` creator 激活时不报榜单名
+- `lib/ui/screens/online_favorites_screen.dart` —— `_filterByCreator`（筛选后切回在线页）
+
+### 测试（+12）
+
+- `test/data/settings_store_test.dart`：标签字号 / 倍率两组改 clamp 语义（旧档位兼容断言保留）
+  + 曲目标题字号 + 每页条数两条新测试
+- `test/ui/online_appearance_test.dart`：重写为滑杆版 —— 值域一致性、连续值往返、
+  五组入口、拖滑杆写设置、两组独立性、重置按钮、曲目标题独立
+- `test/data/online_browse_source_test.dart` +8：creator 端点映射（browse/search/tag 三路
+  拼接逐字节断言）、幂等、三类来源变更清 creator、chip 高亮熄灭、term 语法钉死
+- **验证基线**：`flutter test` **517 passed / 2 skipped**（505→517）；`flutter analyze`
+  **39 条**（= 基线，0 新增）
+
+### 本版待裁决 / 未验证
+
+- 全部 Android 实机项仍未验证（1.91–1.96 遗留 + 本版：滑杆手感、creator 菜单触屏、
+  分页条精简后窄屏观感）。
+- 曲目标题字号 20 上限时曲目行会不会与序号/时长挤压 —— 未实测（行高随字号长，行是
+  自适应高度，理论上无裁切）。
+- `$va:` / `$circle:` 正向语法沿黑名单同链路实测过 `$tag:` 等价性，但 va/circle 的
+  **服务端结果集**未逐位比对（网页版结果一致性未验证）。

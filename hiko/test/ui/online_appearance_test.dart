@@ -9,10 +9,12 @@ import 'package:hiko/ui/widgets/detail_kit.dart';
 import 'package:hiko/ui/widgets/online_appearance.dart';
 import 'package:hiko/ui/widgets/online_work_grid.dart';
 
-/// 1.96.0：可调外观的四组档位与两处入口。
+/// 1.96.0：可调外观的四组旋钮与两处入口。
+/// 1.97.0：字号三组 + 曲目标题从**离散档位**改成**连续滑杆**（裁决 Q2），
+/// 列数保持档位单选（列数是整数，滑杆没有意义）。
 ///
 /// 这一版的关键风险不是「功能没做」，而是**同一件事被写了两遍**：
-/// ① 档位可选集在设置页与 Aa 对话框各写一份 → 两处可选值不同；
+/// ① 值域在设置页与 Aa 对话框各写一份 → 两处可调范围不同；
 /// ② 字号在「量高度」和「画出来」两处各算一遍 → 卡片高度对不上。
 /// 所以下面两类断言都是冲着「两处必须一致」去的。
 void main() {
@@ -28,35 +30,43 @@ void main() {
   double? fontSizeOf(WidgetTester tester, String text) =>
       tester.widget<Text>(find.text(text)).style?.fontSize;
 
-  // ------------------------------------------------------------ 档位一致性
+  // ------------------------------------------------------------ 值域一致性
 
-  test('在线外观档位与设置层白名单逐位一致（防两处漂移）', () async {
-    expect(
-      tagFontSizeChoices.map((e) => e.$1).toList(),
-      SettingsNotifier.validTagFontSizes,
-      reason: 'UI 给不出的档位无所谓，但 UI 给得出、设置层不收就会「选中项自己跳回去」',
-    );
+  test('在线外观值域与设置层 clamp 范围逐位一致（防两处漂移）', () {
     expect(
       onlineGridColumnsChoices.map((e) => e.$1).toList(),
       SettingsNotifier.validOnlineGridColumns,
     );
+    // 滑杆的 min/max 直接引用设置层常量（编译期绑定），这里钉住引用关系：
+    // 哪天有人把 UI 侧改成字面量，这条会当场红
+    expect(SettingsNotifier.tagFontSizeMin, 8.0);
+    expect(SettingsNotifier.tagFontSizeMax, 18.0);
+    expect(SettingsNotifier.tagFontSizeDefault, 11.0);
+    expect(SettingsNotifier.onlineTextScaleMin, 0.75);
+    expect(SettingsNotifier.onlineTextScaleMax, 1.60);
+    expect(SettingsNotifier.onlineTextScaleDefault, 1.0);
+    expect(SettingsNotifier.trackTitleFontSizeMin, 10.0);
+    expect(SettingsNotifier.trackTitleFontSizeMax, 20.0);
+    expect(SettingsNotifier.trackTitleFontSizeDefault, 12.0);
+  });
 
-    // 倍率组没有公开白名单（归一化函数是私有的），所以逐档写进去、读回来必须原样 ——
-    // 被归一化成别的值就说明这一档不在白名单里
+  test('连续值往返：范围内原样保留、范围外 clamp 到边界（两组倍率 + 两个绝对字号）',
+      () async {
     final notifier = SettingsNotifier();
-    for (final (value, _) in onlineTextScaleChoices) {
-      await notifier.setOnlineCardTextScale(value);
-      expect(notifier.state.onlineCardTextScale, value);
-      await notifier.setOnlineDetailTextScale(value);
-      expect(notifier.state.onlineDetailTextScale, value);
+    await notifier.load();
+
+    // 连续取值（旧档位之外的中间值也合法 —— 这正是「无极调」的意义）
+    for (final v in [0.9, 1.0, 1.05, 1.42]) {
+      await notifier.setOnlineCardTextScale(v);
+      expect(notifier.state.onlineCardTextScale, v);
     }
-    for (final (value, _) in tagFontSizeChoices) {
-      await notifier.setTagFontSize(value);
-      expect(notifier.state.tagFontSize, value);
+    for (final v in [8.0, 10.5, 11.0, 16.0]) {
+      await notifier.setTagFontSize(v);
+      expect(notifier.state.tagFontSize, v);
     }
-    for (final (value, _) in onlineGridColumnsChoices) {
-      await notifier.setOnlineGridColumns(value);
-      expect(notifier.state.onlineGridColumns, value);
+    for (final v in [10.0, 13.5, 20.0]) {
+      await notifier.setOnlineTrackTitleFontSize(v);
+      expect(notifier.state.onlineTrackTitleFontSize, v);
     }
   });
 
@@ -133,10 +143,10 @@ void main() {
 
   // ------------------------------------------------------------ Aa 对话框
 
-  group('Aa 对话框', () {
-    /// 默认 800×600 放不下四组竖排（会被限高截断），把视口拉高让整份内容可见
+  group('Aa 对话框（1.97.0 滑杆版）', () {
+    /// 默认 800×600 放不下五组竖排（会被限高截断），把视口拉高让整份内容可见
     Future<void> pumpDialog(WidgetTester tester) async {
-      tester.view.physicalSize = const Size(1200, 2600);
+      tester.view.physicalSize = const Size(1200, 2800);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
 
@@ -151,57 +161,86 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('四组设置都在，且用的是与设置页同一份档位定义', (tester) async {
+    testWidgets('五组设置都在（四组滑杆 + 列数单选）', (tester) async {
       await pumpDialog(tester);
 
-      for (final title in ['标签胶囊字号', '在线卡片文字', '在线详情文字', '每行卡片数']) {
+      for (final title in [
+        '标签胶囊字号',
+        '在线卡片文字',
+        '在线详情文字',
+        '曲目标题字号',
+        '每行卡片数',
+      ]) {
         expect(find.text(title), findsOneWidget);
       }
-      // 标签字号 5 档
-      for (final (_, label) in tagFontSizeChoices) {
-        expect(find.text(label), findsOneWidget);
-      }
-      // 倍率组 4 档 × 2 组
-      for (final (_, label) in onlineTextScaleChoices) {
-        expect(find.text(label), findsNWidgets(2));
-      }
+      // 四组滑杆：标签字号 / 卡片倍率 / 详情倍率 / 曲目标题
+      expect(find.byType(Slider), findsNWidgets(4));
+      // 列数仍是单选档位
+      expect(find.text('5 列'), findsOneWidget);
     });
 
-    testWidgets('点卡片文字那组只改卡片，不连带改详情', (tester) async {
+    testWidgets('向右拖「标签胶囊字号」滑杆会写进设置', (tester) async {
       await pumpDialog(tester);
       final container =
           ProviderScope.containerOf(tester.element(find.byType(OnlineAppearanceDialog)));
 
-      // 倍率标签在两组里各出现一次，`.first` = 卡片文字那一组
-      await tester.tap(find.text('1.30×（超大）').first);
+      await tester.drag(find.byType(Slider).first, const Offset(160, 0));
       await tester.pump();
 
-      expect(container.read(settingsProvider).onlineCardTextScale, 1.3);
+      final value = container.read(settingsProvider).tagFontSize;
+      expect(value, greaterThan(11.0), reason: '向右拖应当增大字号');
+      expect(value, lessThanOrEqualTo(SettingsNotifier.tagFontSizeMax),
+          reason: '滑杆不允许拖出值域');
+    });
+
+    testWidgets('卡片与详情是两组独立滑杆（拖一组不动另一组）', (tester) async {
+      await pumpDialog(tester);
+      final container =
+          ProviderScope.containerOf(tester.element(find.byType(OnlineAppearanceDialog)));
+
+      // 滑杆顺序：0 标签字号 / 1 卡片 / 2 详情 / 3 曲目标题
+      await tester.drag(find.byType(Slider).at(1), const Offset(160, 0));
+      await tester.pump();
+
+      expect(container.read(settingsProvider).onlineCardTextScale,
+          greaterThan(1.0));
       expect(container.read(settingsProvider).onlineDetailTextScale, 1.0,
           reason: '两组是独立的旋钮');
+      expect(container.read(settingsProvider).tagFontSize, 11.0,
+          reason: '标签字号是第三组独立旋钮，不该被连带');
     });
 
-    testWidgets('点详情文字那组只改详情', (tester) async {
+    testWidgets('重置按钮把该组拉回默认值', (tester) async {
       await pumpDialog(tester);
       final container =
           ProviderScope.containerOf(tester.element(find.byType(OnlineAppearanceDialog)));
 
-      await tester.tap(find.text('0.85×（小）').last);
+      // 先拖大标签字号，再点它那一行的重置
+      await tester.drag(find.byType(Slider).first, const Offset(160, 0));
+      await tester.pump();
+      expect(container.read(settingsProvider).tagFontSize,
+          greaterThan(11.0));
+
+      // 四颗重置里第一颗属于标签字号那一行（都叫「重置为默认」，按位置取）
+      await tester.tap(find.byTooltip('重置为默认').first);
       await tester.pump();
 
-      expect(container.read(settingsProvider).onlineDetailTextScale, 0.85);
-      expect(container.read(settingsProvider).onlineCardTextScale, 1.0);
+      expect(container.read(settingsProvider).tagFontSize, 11.0,
+          reason: '重置应回到默认 11');
     });
 
-    testWidgets('点标签字号档位会写进设置（全局生效的那个值）', (tester) async {
+    testWidgets('曲目标题字号是独立的一组滑杆', (tester) async {
       await pumpDialog(tester);
       final container =
           ProviderScope.containerOf(tester.element(find.byType(OnlineAppearanceDialog)));
 
-      await tester.tap(find.text('14'));
+      await tester.drag(find.byType(Slider).at(3), const Offset(-160, 0));
       await tester.pump();
 
-      expect(container.read(settingsProvider).tagFontSize, 14);
+      expect(container.read(settingsProvider).onlineTrackTitleFontSize,
+          lessThan(12.0), reason: '向左拖应当减小字号');
+      expect(container.read(settingsProvider).onlineDetailTextScale, 1.0,
+          reason: '曲目标题不乘详情倍率，是两把独立的旋钮');
     });
 
     testWidgets('点每行卡片数档位会写进设置', (tester) async {

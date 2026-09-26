@@ -136,6 +136,9 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
               // 1.95.0 补：与卡面标签同一套动作（筛不了标签的详情页等于少一个入口）。
               // 1.94.0 漏了这一处 —— 卡面能点、详情里点了没反应
               onSelectTag: (tag) => unawaited(_filterByTag(tag)),
+              // 1.97.0：声优 / 社团胶囊同理（结果在「在线」浏览页）
+              onSelectCreator: (filter) =>
+                  unawaited(_filterByCreator(filter)),
             ),
           ),
         ],
@@ -385,6 +388,13 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
     if (mounted) widget.onOpenBrowse?.call();
   }
 
+  /// 详情页声优 / 社团胶囊的点击（1.97.0）：应用筛选后切回「在线」浏览页，
+  /// 与 [_filterByTag] 同一套「先筛选、再切视图」。
+  Future<void> _filterByCreator(OnlineCreatorFilter filter) async {
+    await ref.read(onlineBrowseProvider.notifier).selectCreator(filter);
+    if (mounted) widget.onOpenBrowse?.call();
+  }
+
   // ---------------------------------------------------------------- 交互
 
   void _openDetail(OnlineWork work) {
@@ -393,11 +403,15 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
         MaterialPageRoute<void>(
           builder: (_) => OnlineDetailScreen(
             workId: work.id,
-            // 移动端的详情是整页盖在列表上，点完标签要把这页收起来才看得到结果
+            // 移动端的详情是整页盖在列表上，点完筛选要把这页收起来才看得到结果
             // （与浏览页 `_openDetail` 同一套做法）
             onSelectTag: (tag) {
               Navigator.of(context).maybePop();
               unawaited(_filterByTag(tag));
+            },
+            onSelectCreator: (filter) {
+              Navigator.of(context).maybePop();
+              unawaited(_filterByCreator(filter));
             },
           ),
         ),

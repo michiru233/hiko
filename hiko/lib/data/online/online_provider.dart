@@ -50,6 +50,44 @@ enum OnlineSource {
   tag,
 }
 
+/// 声优 / 社团筛选的维度（1.97.0）。
+enum OnlineCreatorKind { va, circle }
+
+/// 按声优 / 社团**正向筛选**（1.97.0）。
+///
+/// 在线作品没有本地播放器那种 artist / albumArtist 标签体系，可筛的 creator
+/// 维度只有两个：声优（`vas[].name`）与社团（`circleName`）—— 用户裁决
+/// 「艺术家=声优、专辑艺术家=社团，就做这两个」。
+///
+/// 机制与黑名单同一套：编进搜索关键词（`$va:名$` / `$circle:名$`），
+/// 过滤发生在服务端，`totalCount` 与分页天然正确。
+/// 只存名字不存 id：语法实测只认名字，与标签同一条纪律。
+@immutable
+class OnlineCreatorFilter {
+  const OnlineCreatorFilter({required this.kind, required this.name});
+
+  final OnlineCreatorKind kind;
+  final String name;
+
+  /// 编进关键词的搜索项（`$va:名$` / `$circle:名$`）
+  String get term => switch (kind) {
+        OnlineCreatorKind.va => vaIncludeTerm(name),
+        OnlineCreatorKind.circle => circleIncludeTerm(name),
+      };
+
+  /// 标记上的维度名（「声优：某某」/「社团：某某」）
+  String get label => kind == OnlineCreatorKind.va ? '声优' : '社团';
+
+  @override
+  bool operator ==(Object other) =>
+      other is OnlineCreatorFilter &&
+      other.kind == kind &&
+      other.name == name;
+
+  @override
+  int get hashCode => Object.hash(kind, name);
+}
+
 @immutable
 class OnlineBrowseState {
   const OnlineBrowseState({
@@ -58,6 +96,7 @@ class OnlineBrowseState {
     this.sort = OnlineSort.popularPreset,
     this.keyword = '',
     this.tag,
+    this.creator,
     this.subtitleOnly = false,
     this.bypassBlocklist = false,
     this.works = const [],
@@ -75,6 +114,13 @@ class OnlineBrowseState {
   final OnlineSort sort;
   final String keyword;
   final OnlineTag? tag;
+
+  /// 当前生效的声优 / 社团筛选（1.97.0），null = 未启用。
+  ///
+  /// 与标签筛选同族的正交维度：**翻页、改排序、刷新都保留它**；
+  /// 换来源的动作（`applyPreset` / `search` / `selectTag`）清掉它 ——
+  /// 对齐 1.94 标签的裁决「看不见的筛选比没有筛选更糟」。
+  final OnlineCreatorFilter? creator;
   final bool subtitleOnly;
 
   /// 这一次标签筛选**放行被屏蔽的标签自己**（1.95.0 裁决 Q5）。
@@ -106,12 +152,16 @@ class OnlineBrowseState {
 
   /// 「只看带字幕」只对全站浏览有意义：它是 `/api/works` 这类列表端点的参数，
   /// 搜索与标签端点没有这个筛选。所以可用性挂**数据来源**，不挂榜单（裁决 Q8=A）。
-  bool get canFilterSubtitle => source == OnlineSource.browse;
+  /// 声优/社团筛选激活时请求改走搜索接口（`/api/works` 会静默丢弃关键词），
+  /// 字幕参数也到不了服务端，所以同样视为不可用。
+  bool get canFilterSubtitle =>
+      source == OnlineSource.browse && creator == null;
 
   /// 预设 chip 的高亮判定：**只有当前正好停在该预设上**才亮。
   /// 改了排序就不再属于任何榜单 —— 否则会出现「热门亮着、实际按评价排」的错位。
+  /// 声优/社团筛选激活时同理：那已经是「筛选下的排序」，不是榜单本身。
   bool isPresetActive(OnlineSort preset) =>
-      source == OnlineSource.browse && sort == preset;
+      source == OnlineSource.browse && creator == null && sort == preset;
 
   bool get isPopularPreset => isPresetActive(OnlineSort.popularPreset);
   bool get isLatestPreset => isPresetActive(OnlineSort.latestPreset);
@@ -122,6 +172,8 @@ class OnlineBrowseState {
     String? keyword,
     OnlineTag? tag,
     bool clearTag = false,
+    OnlineCreatorFilter? creator,
+    bool clearCreator = false,
     bool? subtitleOnly,
     bool? bypassBlocklist,
     List<OnlineWork>? works,
@@ -137,6 +189,7 @@ class OnlineBrowseState {
         sort: sort ?? this.sort,
         keyword: keyword ?? this.keyword,
         tag: clearTag ? null : (tag ?? this.tag),
+        creator: clearCreator ? null : (creator ?? this.creator),
         subtitleOnly: subtitleOnly ?? this.subtitleOnly,
         bypassBlocklist: bypassBlocklist ?? this.bypassBlocklist,
         works: works ?? this.works,
@@ -150,12 +203,20 @@ class OnlineBrowseState {
 
 /// 在线浏览控制器：来源（全站浏览 / 搜索 / 标签）× 排序（5 项扁平菜单）× 翻页
 class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
-  OnlineBrowseNotifier(this._ref) : super(const OnlineBrowseState());
+  OnlineBrowseNotifier(this._ref) : super(const OnlineBrowseState()) {
+    // 每页条数从设置恢复（1.97.0 起落盘）：设置在应用启动时 load，
+    // notifier 首次被 watch 只会晚于那一步。
+    final saved = _ref.read(settingsProvider).onlinePageSize.round();
+    if (saved != state.pageSize) {
+      state = state.copyWith(pageSize: saved);
+    }
+  }
 
   final Ref _ref;
 
   /// 每页条数档位。实测服务端 pageSize 到 500 都能正常返回；
   /// 全站 6 万余件，20 条/页要翻 3000 多页，所以提供更大档位。
+  /// 1.97.0 起入口在 设置→在线外观，选择值落盘（`hiko-online-page-size`）。
   static const pageSizeOptions = <int>[20, 60, 100];
 
   /// 预设入口：热门 / 最新。只切排序，不换数据来源（裁决 Q4=A）。
@@ -170,6 +231,7 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
       sort: preset,
       keyword: '',
       clearTag: true,
+      clearCreator: true,
       bypassBlocklist: false,
       works: const [],
       page: 1,
@@ -191,6 +253,9 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
       // 留着会让「看不见的筛选」在切回浏览时突然生效
       subtitleOnly: false,
       clearTag: true,
+      // 声优/社团筛选同理：新一轮搜索的语义由搜索框决定，
+      // 把上一轮的 creator 悄悄叠上去 = 看不见的筛选
+      clearCreator: true,
       bypassBlocklist: false,
       works: const [],
       page: 1,
@@ -209,7 +274,29 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
       tag: tag,
       subtitleOnly: false,
       keyword: '',
+      clearCreator: true,
       bypassBlocklist: bypassBlocklist,
+      works: const [],
+      page: 1,
+      totalCount: 0,
+      loading: true,
+      clearError: true,
+    );
+    await _fetch(1);
+  }
+
+  /// 按声优 / 社团筛选（1.97.0）。
+  ///
+  /// 与标签筛选同语义的「覆盖式进入」：清字幕筛选、回第 1 页；**保留**当前的
+  /// 来源与搜索词 —— 从搜索结果里点开详情再点声优，得到的是「这批关键词 ∩
+  /// 这个声优」，而不是突然把用户扔回全站。取消（再点同一个 / 关闭标记）
+  /// 由 UI 层走 `applyPreset(latestPreset)`，对齐标签的「取消回最新榜」。
+  /// 翻页、改排序、刷新都保留本筛选。
+  Future<void> selectCreator(OnlineCreatorFilter filter) async {
+    if (state.creator == filter) return;
+    state = state.copyWith(
+      creator: filter,
+      subtitleOnly: false,
       works: const [],
       page: 1,
       totalCount: 0,
@@ -305,7 +392,8 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
     await _fetch(target);
   }
 
-  /// 切换每页条数：回到第 1 页（保持行号语义简单，不做页码换算）
+  /// 切换每页条数：回到第 1 页（保持行号语义简单，不做页码换算）。
+  /// 1.97.0 起同步落盘，冷启动由构造器恢复。
   Future<void> setPageSize(int size) async {
     if (size == state.pageSize || !pageSizeOptions.contains(size)) return;
     state = state.copyWith(
@@ -315,6 +403,9 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
       totalCount: 0,
       loading: true,
       clearError: true,
+    );
+    unawaited(
+      _ref.read(settingsProvider.notifier).setOnlinePageSize(size.toDouble()),
     );
     await _fetch(1);
   }
@@ -351,29 +442,53 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
           : blocked,
     );
 
+    // 声优 / 社团筛选（1.97.0）：`/api/works` 会静默丢弃关键词（黑名单 1.95.0
+    // 同款坑），所以 creator 激活时一律改走搜索接口 —— 与「黑名单激活」的
+    // 端点映射完全同构，两者可以叠加（关键词里各占一段）。
+    final creatorTerm = state.creator?.term ?? '';
+
     try {
       final result = await switch (state.source) {
-        OnlineSource.browse => client.fetchWorks(
-            page: page,
-            pageSize: size,
-            sort: sort,
-            subtitleOnly: state.subtitleOnly,
-            excludeKeyword: exclude,
-          ),
+        OnlineSource.browse => creatorTerm.isEmpty
+            ? client.fetchWorks(
+                page: page,
+                pageSize: size,
+                sort: sort,
+                subtitleOnly: state.subtitleOnly,
+                excludeKeyword: exclude,
+              )
+            : client.searchWorks(
+                creatorTerm,
+                page: page,
+                pageSize: size,
+                sort: sort,
+                excludeKeyword: exclude,
+              ),
         OnlineSource.search => client.searchWorks(
-            state.keyword,
+            creatorTerm.isEmpty
+                ? state.keyword
+                : '$creatorTerm ${state.keyword}',
             page: page,
             pageSize: size,
             sort: sort,
             excludeKeyword: exclude,
           ),
-        OnlineSource.tag => client.fetchWorksByTag(
-            tag!,
-            page: page,
-            pageSize: size,
-            sort: sort,
-            excludeKeyword: exclude,
-          ),
+        OnlineSource.tag => creatorTerm.isEmpty
+            ? client.fetchWorksByTag(
+                tag!,
+                page: page,
+                pageSize: size,
+                sort: sort,
+                excludeKeyword: exclude,
+              )
+            // 结构化标签端点同样吃不下 creator，换成实测等价的 `$tag:` 关键词
+            : client.searchWorks(
+                '${tagIncludeTerm(tag!.name.trim())} $creatorTerm',
+                page: page,
+                pageSize: size,
+                sort: sort,
+                excludeKeyword: exclude,
+              ),
       };
       if (!mounted) return;
       state = state.copyWith(

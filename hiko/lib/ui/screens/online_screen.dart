@@ -137,15 +137,42 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     await notifier.selectTag(tag, bypassBlocklist: bypass);
   }
 
+  /// 点声优 / 社团胶囊 → 按其筛选（1.97.0）。
+  ///
+  /// 与 [_applyTag] 同一套收尾：清搜索框文本、收起详情面板；**再点同一个**
+  /// （或点标记上的 ✕）= 取消，回最新榜。不涉及黑名单确认 —— 黑名单只管标签。
+  Future<void> _applyCreator(OnlineCreatorFilter filter) async {
+    final cancelling = ref.read(onlineBrowseProvider).creator == filter;
+
+    if (_searchController.text.isNotEmpty) {
+      _searchController.clear();
+      if (mounted) setState(() {});
+    }
+    if (_detailWorkId != null && mounted) {
+      setState(() => _detailWorkId = null);
+    }
+
+    final notifier = ref.read(onlineBrowseProvider.notifier);
+    if (cancelling) {
+      await notifier.applyPreset(OnlineSort.latestPreset);
+      return;
+    }
+    await notifier.selectCreator(filter);
+  }
+
   void _openDetail(int workId) {
     if (widget.isMobile) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => OnlineDetailScreen(
             workId: workId,
-            // 移动端的详情是整页盖在列表上，点完标签要把这页收起来才看得到结果
+            // 移动端的详情是整页盖在列表上，点完筛选要把这页收起来才看得到结果
             onSelectTag: (tag) {
               unawaited(_applyTag(tag));
+              Navigator.of(context).maybePop();
+            },
+            onSelectCreator: (filter) {
+              unawaited(_applyCreator(filter));
               Navigator.of(context).maybePop();
             },
           ),
@@ -185,6 +212,8 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
               workId: _detailWorkId!,
               onClose: () => setState(() => _detailWorkId = null),
               onSelectTag: _applyTag,
+              onSelectCreator: (filter) =>
+                  unawaited(_applyCreator(filter)),
             ),
           ),
         ],
@@ -336,6 +365,15 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                   ),
                   const SizedBox(width: 8),
                 ],
+                // 声优 / 社团筛选的可关闭标记（1.97.0）：同理，散落在详情页
+                // 胶囊上的入口，进来之后必须有看得见、退得出的出口
+                if (state.creator != null) ...[
+                  _CreatorFilterMarker(
+                    filter: state.creator!,
+                    onClear: () => unawaited(_applyCreator(state.creator!)),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 Flexible(
                   child: Text(
                     _statusLine(state),
@@ -357,19 +395,23 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
   /// 命中预设时用榜单名（热门榜 / 最新上架），否则老实说出「全部作品 · 评价倒序」。
   ///
   /// 标签筛选下**不再重复标签名** —— 名字由旁边那个可关闭标记承担，这里只报数量。
+  /// 声优/社团筛选同理（1.97.0），而且它激活时请求已改走搜索接口，
+  /// 保留「热门榜」字样反而是说谎。
   String _statusLine(OnlineBrowseState state) {
     // 换页期间旧结果还留在屏上（顶上压着进度条），不算「正在连接」
     if (state.loading && state.works.isEmpty) return '正在连接在线服务器…';
     if (state.error != null && state.works.isEmpty) return '';
-    final head = switch (state.source) {
-      OnlineSource.browse => switch (state.sort) {
-          OnlineSort.dlCountDesc => '热门榜',
-          OnlineSort.releaseDesc => '最新上架',
-          final other => '全部作品 · ${other.label}',
-        },
-      OnlineSource.search => '搜索「${state.keyword}」',
-      OnlineSource.tag => '',
-    };
+    final head = state.creator != null
+        ? ''
+        : switch (state.source) {
+            OnlineSource.browse => switch (state.sort) {
+                OnlineSort.dlCountDesc => '热门榜',
+                OnlineSort.releaseDesc => '最新上架',
+                final other => '全部作品 · ${other.label}',
+              },
+            OnlineSource.search => '搜索「${state.keyword}」',
+            OnlineSource.tag => '',
+          };
     final total = state.totalCount > 0
         ? '共 ${formatOnlineCount(state.totalCount)} 件'
         : '';
@@ -982,6 +1024,61 @@ class _TagFilterMarker extends StatelessWidget {
                 child: Padding(
                   padding: EdgeInsets.all(3),
                   child: Icon(Icons.close, size: 13, color: hikoTagFgColor),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 声优 / 社团筛选的可关闭标记（1.97.0）。
+///
+/// 形态与 [_TagFilterMarker] 同族，但底色用维度自己的胶囊色
+/// （声优蓝 / 社团紫），和详情页的人名胶囊同一套配色 ——
+/// 用户从那颗胶囊点进来，回过头看到同色标记才能对上「我是从哪筛进来的」。
+class _CreatorFilterMarker extends StatelessWidget {
+  const _CreatorFilterMarker({required this.filter, required this.onClear});
+
+  final OnlineCreatorFilter filter;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = filter.kind == OnlineCreatorKind.va
+        ? hikoVoiceColor
+        : hikoCircleColor;
+    return Flexible(
+      child: Container(
+        padding: const EdgeInsets.only(left: 8, right: 3, top: 3, bottom: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: isDark ? 0.22 : 0.16),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 140),
+              child: Text(
+                '${filter.label}：${filter.name}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11, color: color),
+              ),
+            ),
+            InkWell(
+              onTap: onClear,
+              borderRadius: BorderRadius.circular(8),
+              child: Tooltip(
+                message: '退出${filter.label}筛选',
+                child: Padding(
+                  padding: const EdgeInsets.all(3),
+                  child: Icon(Icons.close, size: 13, color: color),
                 ),
               ),
             ),

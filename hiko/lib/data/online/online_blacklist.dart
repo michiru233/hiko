@@ -45,6 +45,16 @@ String tagExclusionTerm(String name) => '\$-tag:$name\$';
 /// 搜索接口不支持「结构化标签 + 关键词」的组合，只能这样叠。
 String tagIncludeTerm(String name) => '\$tag:$name\$';
 
+/// 按声优（VA）**正向筛选**的搜索项（1.97.0）。
+///
+/// 命名空间 `va`（别名 `v`）来自 asmr.one 前端的 `SearchKeywordService`，
+/// 与 `$tag:` 同一套语法，只认名字不认 id —— 与黑名单同一条实测纪律。
+/// 名字来自详情/列表响应的 `vas[].name`，照原样拼入即可（空格与 `/` 安全）。
+String vaIncludeTerm(String name) => '\$va:$name\$';
+
+/// 按社团（Circle）**正向筛选**的搜索项（1.97.0）。
+String circleIncludeTerm(String name) => '\$circle:$name\$';
+
 /// 把黑名单编成一段排除关键字。
 ///
 /// 返回**空串**表示「没有排除项」，这是本版最重要的一条约定：

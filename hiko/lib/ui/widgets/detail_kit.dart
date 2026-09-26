@@ -608,6 +608,7 @@ class HikoTrackRow extends StatelessWidget {
     required this.onTap,
     this.indent = 0.0,
     this.trailing,
+    this.titleFontSize,
   });
 
   /// 展示用序号（1 起）。在线按「所在目录内」编号，本地按专辑内编号
@@ -621,6 +622,14 @@ class HikoTrackRow extends StatelessWidget {
 
   /// 右侧时长左边额外的角标（在线用来放字幕图标）
   final Widget? trailing;
+
+  /// 曲目标题的**绝对**字号（1.97.0，在线详情页专用旋钮）。
+  ///
+  /// 给了就用它本身（**不再乘 `HikoDetailTextScale`** —— 否则详情倍率一动
+  /// 这行就跟着动，「独立旋钮」名存实亡）；不传（本地详情抽屉）保持
+  /// 既有行为 `12 × textScale`，本地观感零变化。
+  /// 序号/时长等辅助文字不受影响，仍乘详情倍率。
+  final double? titleFontSize;
 
   @override
   Widget build(BuildContext context) {
@@ -698,7 +707,7 @@ class HikoTrackRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: 12 * textScale,
+                    fontSize: titleFontSize ?? 12 * textScale,
                     color: color,
                     fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                   ),

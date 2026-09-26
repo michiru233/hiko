@@ -1,12 +1,13 @@
-/// 在线外观设置（1.96.0）。
+/// 在线外观设置（1.96.0；1.97.0 起字号改无极滑杆）。
 ///
-/// 两处入口共用同一份档位定义：
-/// - 设置 → **在线外观**（二级页，行式下拉，与设置页其它项同一种形态）
-/// - 在线页工具栏第二行的 **Aa** 按钮（对话框，`RadioListTile` 竖排）
+/// 两处入口共用同一份范围定义与同一个滑杆行组件：
+/// - 设置 → **在线外观**（二级页）
+/// - 在线页工具栏第二行的 **Aa** 按钮（对话框）
 ///
-/// 形态不同是刻意的 —— 行式贴合设置页，弹窗则是「就地改完接着看」。
-/// 但**档位值只有一份**：两处各写一份的话，用户在两个地方会看到不同的可选集，
-/// 而更糟的是「这边能选、那边选不到」这种差异极难被当成 bug 报上来。
+/// 1.96.0 是离散档位（RadioListTile）；1.97.0 裁决 Q2 改成**连续滑杆**：
+/// 「各元素字号无极调，而不是选项」。值域常量只有一份（与
+/// `SettingsNotifier` 的 clamp 归一化对齐），两处各写一份的话
+/// 「这边拖得到、那边存不住」这种差异极难被当成 bug 报上来。
 library;
 
 import 'package:flutter/material.dart';
@@ -14,27 +15,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/settings_store.dart';
 
-/// 标签胶囊字号档位。**值必须与 `SettingsNotifier.validTagFontSizes` 逐位一致** ——
-/// 归一化在那边做，这里只提供可选集。不一致的后果是「选了某档，存下去被归一化成
-/// 别的值」，界面上表现为「选中项自己跳回去」，看起来像点了没反应。
-/// `test/ui/online_appearance_test.dart` 用断言钉住了这一致性。
-const tagFontSizeChoices = <(double, String)>[
-  (9.0, '9'),
-  (10.0, '10'),
-  (11.0, '11（默认）'),
-  (12.0, '12'),
-  (14.0, '14'),
-];
-
-/// 卡片文字与详情文字共用的倍率档位（两组各自独立设置，值域相同）
-const onlineTextScaleChoices = <(double, String)>[
-  (0.85, '0.85×（小）'),
-  (1.0, '1.0×（默认）'),
-  (1.15, '1.15×（大）'),
-  (1.30, '1.30×（超大）'),
-];
-
 /// 在线网格每行卡片数。0 = 自动（按窗口宽度算），桌面与移动端共用这一个值。
+/// 列数保持离散档位（列数天然是整数，滑杆没有意义）。
 const onlineGridColumnsChoices = <(double, String)>[
   (0.0, '自动（按窗口宽度）'),
   (3.0, '3 列'),
@@ -54,8 +36,84 @@ Future<void> showOnlineAppearanceDialog(BuildContext context) => showDialog<void
       builder: (_) => const OnlineAppearanceDialog(),
     );
 
-/// 与设置页共用同一批 [tagFontSizeChoices] / [onlineTextScaleChoices] /
-/// [onlineGridColumnsChoices]，所以两边永远给出同一个可选集。
+/// 与设置页共用的滑杆行：标题 + 当前值 + 重置 + 说明 + 滑杆本体。
+///
+/// 「重置」是滑杆化之后的必需品：档位时代「回到默认」是点默认那一项，
+/// 连续值没有那个锚点，不给出手动的回去路径，用户拖远了就只能凭记忆找。
+class OnlineFontSliderRow extends StatelessWidget {
+  const OnlineFontSliderRow({
+    super.key,
+    required this.title,
+    required this.hint,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.defaultValue,
+    required this.format,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String hint;
+  final double value;
+  final double min;
+  final double max;
+  final double defaultValue;
+  final String Function(double value) format;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 8, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                      fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+              ),
+              Text(
+                format(value),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: theme.colorScheme.primary,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+              IconButton(
+                tooltip: '重置为默认',
+                visualDensity: VisualDensity.compact,
+                onPressed: value == defaultValue ? null : () => onChanged(defaultValue),
+                icon: const Icon(Icons.restart_alt_rounded, size: 15),
+              ),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          child: Text(hint, style: TextStyle(fontSize: 10.5, color: theme.hintColor)),
+        ),
+        Slider(
+          value: value.clamp(min, max),
+          min: min,
+          max: max,
+          // 无极调（裁决 Q2）：不给 divisions，连续取值
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+}
+
+/// 与设置页共用同一批范围常量与 [onlineGridColumnsChoices]，
+/// 所以两边永远给出同一个可选集。
 class OnlineAppearanceDialog extends ConsumerWidget {
   const OnlineAppearanceDialog({super.key});
 
@@ -81,7 +139,7 @@ class OnlineAppearanceDialog extends ConsumerWidget {
       content: SizedBox(
         width: 360,
         child: ConstrainedBox(
-          // 四组竖排会很高，矮屏要能滚 —— 与黑名单对话框同一套做法
+          // 五组竖排会很高，矮屏要能滚 —— 与黑名单对话框同一套做法
           constraints: BoxConstraints(
             maxHeight: MediaQuery.sizeOf(context).height * 0.62,
           ),
@@ -90,29 +148,45 @@ class OnlineAppearanceDialog extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _choiceGroup<double>(
-                  context: context,
+                OnlineFontSliderRow(
                   title: '标签胶囊字号',
                   hint: '全局生效：本地卡面、本地详情、在线卡面与详情一起变',
-                  choices: tagFontSizeChoices,
                   value: settings.tagFontSize,
+                  min: SettingsNotifier.tagFontSizeMin,
+                  max: SettingsNotifier.tagFontSizeMax,
+                  defaultValue: SettingsNotifier.tagFontSizeDefault,
+                  format: (v) => '${v.toStringAsFixed(1)} pt',
                   onChanged: notifier.setTagFontSize,
                 ),
-                _choiceGroup<double>(
-                  context: context,
+                OnlineFontSliderRow(
                   title: '在线卡片文字',
                   hint: '列表里卡片的标题与副标题；卡片高度会跟着变',
-                  choices: onlineTextScaleChoices,
                   value: settings.onlineCardTextScale,
+                  min: SettingsNotifier.onlineTextScaleMin,
+                  max: SettingsNotifier.onlineTextScaleMax,
+                  defaultValue: SettingsNotifier.onlineTextScaleDefault,
+                  format: (v) => '${v.toStringAsFixed(2)}×',
                   onChanged: notifier.setOnlineCardTextScale,
                 ),
-                _choiceGroup<double>(
-                  context: context,
+                OnlineFontSliderRow(
                   title: '在线详情文字',
                   hint: '详情面板内的全部文字（标题 · 信息行 · 目录 · 曲目）',
-                  choices: onlineTextScaleChoices,
                   value: settings.onlineDetailTextScale,
+                  min: SettingsNotifier.onlineTextScaleMin,
+                  max: SettingsNotifier.onlineTextScaleMax,
+                  defaultValue: SettingsNotifier.onlineTextScaleDefault,
+                  format: (v) => '${v.toStringAsFixed(2)}×',
                   onChanged: notifier.setOnlineDetailTextScale,
+                ),
+                OnlineFontSliderRow(
+                  title: '曲目标题字号',
+                  hint: '在线详情页里每首音频的标题；不受「详情文字」倍率影响',
+                  value: settings.onlineTrackTitleFontSize,
+                  min: SettingsNotifier.trackTitleFontSizeMin,
+                  max: SettingsNotifier.trackTitleFontSizeMax,
+                  defaultValue: SettingsNotifier.trackTitleFontSizeDefault,
+                  format: (v) => '${v.toStringAsFixed(1)} pt',
+                  onChanged: notifier.setOnlineTrackTitleFontSize,
                 ),
                 _choiceGroup<double>(
                   context: context,
@@ -138,7 +212,7 @@ class OnlineAppearanceDialog extends ConsumerWidget {
   }
 }
 
-/// 一组档位：标题 + 说明 + 竖排单选。
+/// 一组档位：标题 + 说明 + 竖排单选（列数专用 —— 列数是整数，滑杆没有意义）。
 ///
 /// 用 `RadioGroup` 而不是老的 `RadioListTile(groupValue:, onChanged:)` ——
 /// 后者在 3.32 之后已废弃，继续用会给 `flutter analyze` 添两条 lint。

@@ -202,8 +202,13 @@ class OnlinePager extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _PageSizeButton(pageSize: pageSize, onSelected: onPageSize),
-          const SizedBox(width: 10),
+          // 每页条数入口挪进 设置→在线外观（1.97.0 裁决 Q1）：
+          // 移动端分页条一行要塞下页码与跳页，这颗 chip 是最先挤爆的那个；
+          // 桌面保持原样（用户裁决：不涉及 mac 就不动 mac 端）。
+          if (!isMobile) ...[
+            _PageSizeButton(pageSize: pageSize, onSelected: onPageSize),
+            const SizedBox(width: 10),
+          ],
           Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -220,7 +225,10 @@ class OnlinePager extends StatelessWidget {
                     tooltip: '上一页',
                     onPressed: hasPrev ? () => onPage(page - 1) : null,
                   ),
-                  for (final item in buildPageItems(page, total))
+                  // 移动端页码半径缩到 1（当前 ±1）：窄屏上 ±2 的序列
+                  // 会把「共 N 页」和跳页挤到滚动区外面去
+                  for (final item in buildPageItems(page, total,
+                      radius: isMobile ? 1 : 2))
                     if (item == null)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 6),

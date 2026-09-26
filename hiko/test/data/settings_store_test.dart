@@ -251,40 +251,45 @@ void main() {
     expect(missing.state.backgroundPath, '');
   });
 
-  // ------------------------------------------------------------ 1.96.0 在线外观
+  // ------------------------------------------------------------ 1.96.0 在线外观（1.97.0 起改无极滑杆）
 
-  test('1.96.0 标签字号：默认 11 + 档位往返 + 白名单外回退 11', () async {
+  test('1.97.0 标签字号：默认 11 + 范围 clamp 8–18（旧档位全兼容）', () async {
     final notifier = SettingsNotifier();
     await notifier.load();
     expect(notifier.state.tagFontSize, 11,
         reason: '默认 11（1.94.0 之前是硬编码的 9）');
 
-    for (final size in SettingsNotifier.validTagFontSizes) {
+    // 1.97.0 起是连续值：范围内任意值原样往返
+    for (final size in [8.0, 9.5, 11.0, 13.2, 18.0]) {
       await notifier.setTagFontSize(size);
-      expect(notifier.state.tagFontSize, size);
+      expect(notifier.state.tagFontSize, size, reason: '$size 在范围内应原样保留');
+    }
+
+    // 1.96.0 的旧档位必须原样保留 —— 老用户升级后观感不变
+    for (final legacy in [9.0, 10.0, 12.0, 14.0]) {
+      await notifier.setTagFontSize(legacy);
+      expect(notifier.state.tagFontSize, legacy, reason: '旧档位 $legacy 应兼容');
     }
 
     final reloaded = SettingsNotifier();
     await reloaded.load();
-    expect(reloaded.state.tagFontSize,
-        SettingsNotifier.validTagFontSizes.last,
-        reason: '最后一次设的是档位里最大的那个');
+    expect(reloaded.state.tagFontSize, 14, reason: '最后一次设的是 14');
 
-    // 白名单外（11.5 / 0 / 99）回退 11
-    for (final bad in [11.5, 0.0, 99.0]) {
-      await notifier.setTagFontSize(bad);
-      expect(notifier.state.tagFontSize, 11, reason: '$bad 不在档位里');
-    }
+    // 范围外 clamp 到边界（不再是「回退默认」：滑杆的语义是连续范围）
+    await notifier.setTagFontSize(0.0);
+    expect(notifier.state.tagFontSize, 8, reason: '低于下限夹到 8');
+    await notifier.setTagFontSize(99.0);
+    expect(notifier.state.tagFontSize, 18, reason: '高于上限夹到 18');
 
     SharedPreferences.setMockInitialValues({
       'hiko-online-tag-font-size': 99.0,
     });
     final badPrefs = SettingsNotifier();
     await badPrefs.load();
-    expect(badPrefs.state.tagFontSize, 11, reason: 'load 也要归一化');
+    expect(badPrefs.state.tagFontSize, 18, reason: 'load 也要 clamp');
   });
 
-  test('1.96.0 卡片与详情文字倍率：默认 1.0 + 两组互不影响 + 白名单外回退', () async {
+  test('1.97.0 卡片与详情文字倍率：默认 1.0 + 两组互不影响 + 范围 clamp 0.75–1.60', () async {
     final notifier = SettingsNotifier();
     await notifier.load();
     expect(notifier.state.onlineCardTextScale, 1.0);
@@ -298,23 +303,79 @@ void main() {
     expect(notifier.state.onlineDetailTextScale, 0.85);
     expect(notifier.state.onlineCardTextScale, 1.3, reason: '改详情不该动卡片');
 
+    // 1.97.0 起连续值：范围内任意值往返（含旧档位之外的 1.05 ——
+    // 它在 1.96 是白名单外会被回退，1.97 起是合法的连续值）
+    await notifier.setOnlineCardTextScale(1.05);
+    expect(notifier.state.onlineCardTextScale, 1.05, reason: '连续值原样保留');
+    await notifier.setOnlineDetailTextScale(1.42);
+    expect(notifier.state.onlineDetailTextScale, 1.42);
+
     final reloaded = SettingsNotifier();
     await reloaded.load();
-    expect(reloaded.state.onlineCardTextScale, 1.3);
-    expect(reloaded.state.onlineDetailTextScale, 0.85);
+    expect(reloaded.state.onlineCardTextScale, 1.05);
+    expect(reloaded.state.onlineDetailTextScale, 1.42);
 
-    // 白名单外（1.05 / 2.0）回退 1.0
-    await notifier.setOnlineCardTextScale(1.05);
-    expect(notifier.state.onlineCardTextScale, 1.0);
+    // 范围外 clamp 到边界
+    await notifier.setOnlineCardTextScale(0.5);
+    expect(notifier.state.onlineCardTextScale, 0.75, reason: '低于下限夹到 0.75');
     await notifier.setOnlineDetailTextScale(2.0);
-    expect(notifier.state.onlineDetailTextScale, 1.0);
+    expect(notifier.state.onlineDetailTextScale, 1.60, reason: '高于上限夹到 1.60');
 
     SharedPreferences.setMockInitialValues({
       'hiko-online-card-text-scale': 3.0,
     });
     final badPrefs = SettingsNotifier();
     await badPrefs.load();
-    expect(badPrefs.state.onlineCardTextScale, 1.0);
+    expect(badPrefs.state.onlineCardTextScale, 1.60, reason: 'load 也要 clamp');
+  });
+
+  test('1.97.0 曲目标题字号：默认 12 + 范围 clamp 10–20 + 与详情倍率独立存储', () async {
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.onlineTrackTitleFontSize, 12, reason: '默认与旧基准一致');
+
+    await notifier.setOnlineTrackTitleFontSize(15.5);
+    expect(notifier.state.onlineTrackTitleFontSize, 15.5);
+    await notifier.setOnlineDetailTextScale(1.3);
+    expect(notifier.state.onlineTrackTitleFontSize, 15.5,
+        reason: '改详情倍率不该连带标题字号');
+
+    final reloaded = SettingsNotifier();
+    await reloaded.load();
+    expect(reloaded.state.onlineTrackTitleFontSize, 15.5);
+
+    await notifier.setOnlineTrackTitleFontSize(5.0);
+    expect(notifier.state.onlineTrackTitleFontSize, 10, reason: '低于下限夹到 10');
+    await notifier.setOnlineTrackTitleFontSize(30.0);
+    expect(notifier.state.onlineTrackTitleFontSize, 20, reason: '高于上限夹到 20');
+  });
+
+  test('1.97.0 在线每页条数：默认 20 + 档位白名单 20/60/100 + 落盘', () async {
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.onlinePageSize, 20);
+
+    for (final size in SettingsNotifier.validOnlinePageSizes) {
+      await notifier.setOnlinePageSize(size);
+      expect(notifier.state.onlinePageSize, size);
+    }
+
+    final reloaded = SettingsNotifier();
+    await reloaded.load();
+    expect(reloaded.state.onlinePageSize, 100,
+        reason: '最后一次设的是 100 —— 选择要能重启恢复');
+
+    for (final bad in [0.0, 40.0, 500.0]) {
+      await notifier.setOnlinePageSize(bad);
+      expect(notifier.state.onlinePageSize, 20, reason: '$bad 不在档位里，回退默认 20');
+    }
+
+    SharedPreferences.setMockInitialValues({
+      'hiko-online-page-size': 60.0,
+    });
+    final saved = SettingsNotifier();
+    await saved.load();
+    expect(saved.state.onlinePageSize, 60, reason: 'load 读回持久化值');
   });
 
   test('1.96.0 在线每行卡片数：默认 0=自动 + 档位往返 + 白名单外回退，与主界面档位独立', () async {
