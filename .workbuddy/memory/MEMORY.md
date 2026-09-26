@@ -2,7 +2,7 @@
 
 ## 定位
 Hiko = 本地优先 DLsite 音声管理器，Flutter 主线在 `hiko/`（根目录 Electron+Capacitor 仅参考）。
-GitHub: github.com/michiru233/hiko。当前 1.97.1+109（2026-09-26）。macOS 发布 / Windows 需 Win 机构建 / Android 已恢复。
+GitHub: github.com/michiru233/hiko。当前 1.97.2+110（2026-09-26）。macOS 发布 / Windows 需 Win 机构建 / Android 已恢复。
 架构速查：models(Album核心) / data(library_store 原子写、settings_store 白名单归一、online/) / playback(just_audio+media_kit 增益) / platform(android MethodChannel) / lyrics / ui(screens+widgets+theme, covers 三级缓存) / utils(rj、natural_compare、repair_text)。
 
 ## 默认规则（必须遵守）
@@ -32,7 +32,7 @@ GitHub: github.com/michiru233/hiko。当前 1.97.1+109（2026-09-26）。macOS �
 - api.asmr.one/works/{id}=404，网页在 www.asmr.one。
 - 黑名单：存 `AppSettings.blockedTags`（单键 JSON，按 id 判定）；长按菜单在标签胶囊上；屏蔽后立即重拉+回第 1 页（`reloadAfterBlock`）；自筛自屏要退出筛选。可点胶囊 hover 用 `HikoPillInteraction`（InkWell 墨迹被不透明底盖住）。
 - TextPainter 预量必须传 `MediaQuery.textScalerOf(context)`。
-- **胶囊标记布局不变量（1.97.1）**：筛选标记（标签/creator/黑名单，`online_filter_marker.dart`）内部「文字 + ✕」的 Row，**文字必须 Flexible**——外层被 flex 挤压时非 flex 文字会让 ✕ 溢出屏幕（安卓实机踩过）。回归锁 `test/ui/online_filter_marker_test.dart`（窄宽 takeException + tooltip 命中）。
+- **胶囊标记布局不变量（1.97.1/1.97.2）**：筛选标记（标签/creator/黑名单，`online_filter_marker.dart`）内部「文字 + ✕」的 Row，**文字必须 Flexible**——外层被 flex 挤压时非 flex 文字会让 ✕ 溢出屏幕（安卓实机踩过）；**外层使用处也必须再包 Flexible**（1.97.1 重构丢过一次）。**移动端激活的筛选标记独占一行**（第二行下方，maxTextWidth 320），第二行在手机上只有一百多像素、塞什么都截断（1.97.0/1.97.1 两轮实机截图栽 here）；桌面保持内联。回归锁 `test/ui/online_filter_marker_test.dart`。
 - 账号：JWT 存 `hiko-online-token`，不进 AppSettings；令牌失效仍 200 只看字段；写操作先本地后校准；收藏差分 `planPlaylistDiff`；自测只在临时歌单。
 - 在线外观（1.97.0 起滑杆）：常量单一来源 `settings_store` 范围常量（tagFontSize 8–18 默认 11 全局、card/detail 倍率 0.75–1.60、trackTitleFontSize 10–20 默认 12 绝对值不乘详情倍率）+ 列数 0/3–8 档位；设置页「在线外观」与在线页 Aa chip 两入口共用 `OnlineFontSliderRow`（带重置）；**白名单归一化已改 clamp**（旧档位值兼容）。卡面高度预算 = `onlineCardTextBlockHeight`/`onlineCardTagRowHeight` 纯函数（grid 与 card 共用），行高写死 1.3/1.2。详情面板 `HikoDetailTextScale`（专辑标题 22、副标题 12）；曲目标题走独立旋钮（`HikoTrackRow.titleFontSize` 可空，本地传 null 保持 12×scale）。每页条数落盘 `hiko-online-page-size`（20/60/100），移动端分页条隐藏该 chip、页码半径 ±1。
 - 声优/社团筛选（1.97.0）：`OnlineCreatorFilter{va|circle,name}`，机制 = `$va:名$`/`$circle:名$` 关键词（`online_blacklist.dart` 的 `vaIncludeTerm`/`circleIncludeTerm`）；入口 = 详情页胶囊菜单（浏览页+收藏页）；creator 正交保留于翻页/排序/刷新，applyPreset/search/selectTag 清除，取消回最新榜；激活时三来源全改走 search 端点（tag 换 `$tag:` 拼接），字幕 chip 与预设高亮熄灭。
