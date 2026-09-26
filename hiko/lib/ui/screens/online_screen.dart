@@ -12,6 +12,7 @@ import '../widgets/detail_kit.dart';
 import '../widgets/online_account_dialogs.dart';
 import '../widgets/online_cover.dart';
 import '../widgets/online_detail_panel.dart';
+import '../widgets/online_tag_menu.dart';
 import '../widgets/online_work_grid.dart';
 import '../widgets/toast.dart';
 
@@ -104,10 +105,20 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
   ///
   /// 不需要额外把列表滚回顶部：`selectTag` / `applyPreset` 都会清空 `works`，
   /// 网格那一帧就被 loading 占位换掉了，`GridView` 重建后天然从头开始。
+  ///
+  /// 1.95.0：标签已在黑名单里时要**先确认**（裁决 Q5）。确认这一步放在函数最前面 ——
+  /// 用户若取消，搜索框与详情面板都不该已经被动过。
   Future<void> _applyTag(OnlineTag tag) async {
     final browse = ref.read(onlineBrowseProvider);
     final cancelling =
         browse.source == OnlineSource.tag && browse.tag?.id == tag.id;
+
+    var bypass = false;
+    if (!cancelling) {
+      final decision = await resolveBlockedTagFilter(context, ref, tag);
+      if (decision == null || !mounted) return;
+      bypass = decision;
+    }
 
     if (_searchController.text.isNotEmpty) {
       _searchController.clear();
@@ -122,7 +133,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
       await notifier.applyPreset(OnlineSort.latestPreset);
       return;
     }
-    await notifier.selectTag(tag);
+    await notifier.selectTag(tag, bypassBlocklist: bypass);
   }
 
   void _openDetail(int workId) {
@@ -264,6 +275,10 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
   ///
   /// 状态行右对齐并留出固定间距 —— 旧版紧贴在左边控件后面，读起来像它的后缀。
   Widget _buildFilterLine(OnlineBrowseState state, ThemeData theme) {
+    // 数量从 settings 取，与黑名单管理对话框里列出的条数同源 ——
+    // 用 id 集合的 size 会让「id 为 0 的坏数据」在两处显示成不同的数字
+    final blockedCount =
+        ref.watch(settingsProvider.select((s) => s.blockedTags.length));
     return Row(
       children: [
         if (state.canFilterSubtitle) ...[
@@ -288,6 +303,15 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
+                // 黑名单的可点标记（1.95.0 裁决 Q1=甲）：黑名单是**看不见的筛选**，
+                // 不给出口的话用户只会觉得「搜不到东西」，而这是他自己设的
+                if (blockedCount > 0) ...[
+                  _BlockedTagsMarker(
+                    count: blockedCount,
+                    onTap: () => unawaited(showOnlineBlacklistDialog(context)),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 // 标签筛选的可关闭标记（1.94.0 裁决 Q7=甲）。
                 // 卡面标签是散落入口，一屏可能十几个不同标签，点下去之后必须有个
                 // 看得见的出口，否则用户不知道自己被筛在哪、怎么回去。
@@ -335,8 +359,13 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     final total = state.totalCount > 0
         ? '共 ${formatOnlineCount(state.totalCount)} 件'
         : '';
-    if (head.isEmpty) return total;
-    return total.isEmpty ? head : '$head · $total';
+    // 「仍要查看」是一次性例外，明写出来 —— 否则用户看不出这一页为什么
+    // 还会冒出被屏蔽标签的作品
+    return [
+      if (head.isNotEmpty) head,
+      if (total.isNotEmpty) total,
+      if (state.bypassBlocklist) '未套黑名单',
+    ].join(' · ');
   }
 
   // ---------------------------------------------------------------- 结果
@@ -653,6 +682,10 @@ class OnlineWorkCard extends ConsumerWidget {
     // 收藏角标：作品在任意歌单里就点亮。未登录/索引未就绪时索引为空，自然不亮
     final favoritePlaylists =
         ref.watch(onlineFavoritesProvider).index.playlistsOf(work.id);
+    // 被屏蔽的标签在卡面上弱化显示（1.95.0 裁决 Q4=乙、Q5 不隐藏）：
+    // 作品本身还在结果里（服务端已经滤掉该标签的作品了，能出现在这儿说明它
+    // 是靠别的标签命中的），所以只把「这一个标签」标出来，不是把卡片灰掉。
+    final blockedTagIds = ref.watch(blockedTagIdsProvider);
 
     final subtitle = [
       if (work.circleName.isNotEmpty) work.circleName,
@@ -734,7 +767,19 @@ class OnlineWorkCard extends ConsumerWidget {
                         alignment: Alignment.bottomLeft,
                         child: _CardTagRow(
                           tags: work.tags,
+                          blockedIds: blockedTagIds,
                           onTagTap: onTagTap,
+                          onTagMenu: (tag, position) => unawaited(
+                            showOnlineTagMenu(
+                              context: context,
+                              ref: ref,
+                              tag: tag,
+                              position: position,
+                              onFilter: onTagTap == null
+                                  ? null
+                                  : () => onTagTap!(tag),
+                            ),
+                          ),
                           // `+N` 与卡片同义：打开详情看全部标签
                           onMoreTap: onTap,
                         ),
@@ -760,21 +805,34 @@ class _CardTagRow extends StatelessWidget {
   const _CardTagRow({
     required this.tags,
     required this.onMoreTap,
+    this.blockedIds = const {},
     this.onTagTap,
+    this.onTagMenu,
   });
 
   final List<OnlineTag> tags;
   final VoidCallback onMoreTap;
   final ValueChanged<OnlineTag>? onTagTap;
 
+  /// 已被加入黑名单的标签 id（1.95.0）。命中的胶囊灰掉 + 删除线
+  final Set<int> blockedIds;
+
+  /// 右键（桌面）/ 长按（触屏）标签 → 弹出标签菜单。回调里给的是**全局**坐标
+  final void Function(OnlineTag tag, Offset globalPosition)? onTagMenu;
+
   static const _gap = 5.0;
 
   @override
   Widget build(BuildContext context) {
+    // 文字缩放必须带进宽度预算（1.95.0 修）：
+    // 全局 `fontScale` 是挂在根层的 `TextScaler`，`HikoTagChip` 画出来的是
+    // 9pt × scaler，而这里若按 9pt 量宽度，用户把字号调到大/超大时就是
+    // 「量少画宽」—— 标签行当场溢出卡片。量与画必须用同一个 scaler。
+    final scaler = MediaQuery.textScalerOf(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxWidth = constraints.maxWidth;
-        final widths = [for (final t in tags) _chipWidth(t.name)];
+        final widths = [for (final t in tags) _chipWidth(t.name, scaler)];
         double rowWidth(int count) {
           if (count <= 0) return 0;
           var w = 0.0;
@@ -786,7 +844,7 @@ class _CardTagRow extends StatelessWidget {
 
         // 先按**最长可能**的 `+N` 宽度预留（总标签数）。实际渲染时用的是
         // 「被藏起来的个数」，位数只会更少，所以预留下来的宽度一定够。
-        final moreWidth = _chipWidth('+${tags.length}');
+        final moreWidth = _chipWidth('+${tags.length}', scaler);
 
         var visible = tags.length;
         var showMore = false;
@@ -809,10 +867,14 @@ class _CardTagRow extends StatelessWidget {
                 padding: const EdgeInsets.only(right: _gap),
                 child: HikoTagChip(
                   tag: tag.name,
-                  // id <= 0 表示服务端只给了名字，筛不了，只能看
+                  blocked: blockedIds.contains(tag.id),
+                  // id <= 0 表示服务端只给了名字，筛不了也屏蔽不了，只能看
                   onTap: onTagTap == null || tag.id <= 0
                       ? null
                       : () => onTagTap!(tag),
+                  onContextMenu: onTagMenu == null
+                      ? null
+                      : (position) => onTagMenu!(tag, position),
                 ),
               ),
             if (showMore)
@@ -829,10 +891,11 @@ class _CardTagRow extends StatelessWidget {
   }
 
   /// 胶囊宽度 = 文字宽 + 左右内边距 + 1px 余量（四舍五入误差不该让它挤掉下一枚）
-  static double _chipWidth(String text) {
+  static double _chipWidth(String text, TextScaler scaler) {
     final painter = TextPainter(
       text: TextSpan(text: text, style: HikoTagChip.textStyle),
       textDirection: TextDirection.ltr,
+      textScaler: scaler,
       maxLines: 1,
     )..layout();
     return painter.width + HikoTagChip.horizontalPadding * 2 + 1;
@@ -885,6 +948,53 @@ class _TagFilterMarker extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 黑名单的可点标记（1.95.0 裁决 Q1=甲）。
+///
+/// 为什么必须有它：黑名单和标签筛选不一样 —— 标签筛选是用户**刚做过**的动作，
+/// 而黑名单是**很久以前**在设置里攒下来的状态。没有可见标记的话，用户看到
+/// 「明明搜得到的东西不见了」时只会以为是服务器的问题，因为屏幕上没有任何线索
+/// 指向「是你自己屏蔽的」。
+///
+/// 形态刻意比 [_TagFilterMarker] 低调（灰系、无彩色），因为它是**背景状态**而
+/// 不是「你正在看什么」。点开进管理页，是唯一的出口。
+class _BlockedTagsMarker extends StatelessWidget {
+  const _BlockedTagsMarker({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = theme.hintColor;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Tooltip(
+        message: '管理标签黑名单',
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.block_rounded, size: 12, color: color),
+              const SizedBox(width: 4),
+              Text(
+                '已屏蔽 $count 个标签',
+                style: TextStyle(fontSize: 11, color: color),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -12,6 +12,7 @@ import '../widgets/confirm_dialog.dart';
 import '../widgets/context_menu.dart';
 import '../widgets/online_account_dialogs.dart';
 import '../widgets/online_detail_panel.dart';
+import '../widgets/online_tag_menu.dart';
 import '../widgets/online_work_grid.dart';
 import '../widgets/toast.dart';
 
@@ -132,6 +133,9 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
             child: OnlineDetailPanel(
               workId: _detailWorkId!,
               onClose: () => setState(() => _detailWorkId = null),
+              // 1.95.0 补：与卡面标签同一套动作（筛不了标签的详情页等于少一个入口）。
+              // 1.94.0 漏了这一处 —— 卡面能点、详情里点了没反应
+              onSelectTag: (tag) => unawaited(_filterByTag(tag)),
             ),
           ),
         ],
@@ -369,9 +373,16 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
   ///
   /// 结果列表在「在线」那一页，所以这里是「先应用筛选、再切视图」——
   /// 与浏览页同一套卡片、同一个标签，在一处能点另一处不能点会让人以为坏了。
-  void _filterByTag(OnlineTag tag) {
-    unawaited(ref.read(onlineBrowseProvider.notifier).selectTag(tag));
-    widget.onOpenBrowse?.call();
+  ///
+  /// 1.95.0：标签已在黑名单里时要先确认，**取消了就不切视图** ——
+  /// 否则用户会莫名其妙被带到「在线」页，却什么都没筛。
+  Future<void> _filterByTag(OnlineTag tag) async {
+    final decision = await resolveBlockedTagFilter(context, ref, tag);
+    if (decision == null || !mounted) return;
+    await ref
+        .read(onlineBrowseProvider.notifier)
+        .selectTag(tag, bypassBlocklist: decision);
+    if (mounted) widget.onOpenBrowse?.call();
   }
 
   // ---------------------------------------------------------------- 交互
@@ -380,7 +391,15 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
     if (widget.isMobile) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => OnlineDetailScreen(workId: work.id),
+          builder: (_) => OnlineDetailScreen(
+            workId: work.id,
+            // 移动端的详情是整页盖在列表上，点完标签要把这页收起来才看得到结果
+            // （与浏览页 `_openDetail` 同一套做法）
+            onSelectTag: (tag) {
+              Navigator.of(context).maybePop();
+              unawaited(_filterByTag(tag));
+            },
+          ),
         ),
       );
       return;

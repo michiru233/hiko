@@ -11,6 +11,7 @@ import '../settings_store.dart';
 import 'kikoeru_client.dart';
 import 'online_account.dart';
 import 'online_audio_cache.dart';
+import 'online_blacklist.dart';
 import 'online_models.dart';
 
 /// 在线服务客户端（服务器地址、代理或登录令牌变化时重建）
@@ -58,6 +59,7 @@ class OnlineBrowseState {
     this.keyword = '',
     this.tag,
     this.subtitleOnly = false,
+    this.bypassBlocklist = false,
     this.works = const [],
     this.totalCount = 0,
     this.page = 1,
@@ -74,6 +76,19 @@ class OnlineBrowseState {
   final String keyword;
   final OnlineTag? tag;
   final bool subtitleOnly;
+
+  /// 这一次标签筛选**放行被屏蔽的标签自己**（1.95.0 裁决 Q5）。
+  ///
+  /// 只有一条路径会把它置真：用户点了一个已被屏蔽的标签，确认弹窗里选了
+  /// 「仍要查看」—— 那是一次明确的、就事论事的例外。所以它**只影响标签来源**，
+  /// 且刻意做成「换个来源就自己归零」而不是一个全局开关（Q2 已裁决不做总开关）。
+  ///
+  /// **只放行当前筛选的那一个标签，不是整份黑名单**：用户说的是「我就要看这一个」，
+  /// 把别的屏蔽项一起放出来是替他做了另一个决定。实现见 [_fetch]。
+  ///
+  /// 翻页 / 改排序**不清它**：清掉会让第 2 页突然少一批作品，用户看到的是
+  /// 「同一份筛选、前后页不是一回事」。
+  final bool bypassBlocklist;
 
   /// 当前页的作品（1.91.0 起为整页替换，不再跨页累加）
   final List<OnlineWork> works;
@@ -108,6 +123,7 @@ class OnlineBrowseState {
     OnlineTag? tag,
     bool clearTag = false,
     bool? subtitleOnly,
+    bool? bypassBlocklist,
     List<OnlineWork>? works,
     int? totalCount,
     int? page,
@@ -122,6 +138,7 @@ class OnlineBrowseState {
         keyword: keyword ?? this.keyword,
         tag: clearTag ? null : (tag ?? this.tag),
         subtitleOnly: subtitleOnly ?? this.subtitleOnly,
+        bypassBlocklist: bypassBlocklist ?? this.bypassBlocklist,
         works: works ?? this.works,
         totalCount: totalCount ?? this.totalCount,
         page: page ?? this.page,
@@ -153,6 +170,7 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
       sort: preset,
       keyword: '',
       clearTag: true,
+      bypassBlocklist: false,
       works: const [],
       page: 1,
       totalCount: 0,
@@ -173,6 +191,7 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
       // 留着会让「看不见的筛选」在切回浏览时突然生效
       subtitleOnly: false,
       clearTag: true,
+      bypassBlocklist: false,
       works: const [],
       page: 1,
       totalCount: 0,
@@ -182,12 +201,15 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
     await _fetch(1);
   }
 
-  Future<void> selectTag(OnlineTag tag) async {
+  /// 按标签筛选。[bypassBlocklist] 只在「点已屏蔽标签 + 用户确认仍要查看」时为真
+  /// （1.95.0 裁决 Q5）—— 它让**这一条**筛选临时不叠加黑名单。
+  Future<void> selectTag(OnlineTag tag, {bool bypassBlocklist = false}) async {
     state = state.copyWith(
       source: OnlineSource.tag,
       tag: tag,
       subtitleOnly: false,
       keyword: '',
+      bypassBlocklist: bypassBlocklist,
       works: const [],
       page: 1,
       totalCount: 0,
@@ -223,6 +245,57 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
 
   Future<void> refresh() => _fetch(state.page);
 
+  /// 把某个标签加入黑名单之后的收尾（1.95.0，裁决 Q1=甲：屏蔽要当场可见）。
+  ///
+  /// 为什么必须重拉：黑名单只是本地状态，服务端的过滤只在**下一次请求**生效。
+  /// 只记状态不重拉的话，用户右击「幼なじみ」→ 加入黑名单之后，屏幕上那批作品
+  /// 一件都不会消失，直到翻页或换排序才突然变少 —— 看起来像功能没生效。
+  ///
+  /// [tagId] 正好是**当前筛选的那个标签**时改走「退出筛选、回最新榜」：
+  /// 那种请求会变成 `$tag:X$ $-tag:X$`，实测必然是 0 条，留着筛选标记而结果空白
+  /// 是自相矛盾的。退出筛选这一点沿用 1.94.0 已定的「取消标签筛选一律回最新榜」。
+  Future<void> reloadAfterBlock({required int tagId}) async {
+    if (state.source == OnlineSource.tag && state.tag?.id == tagId) {
+      await applyPreset(OnlineSort.latestPreset);
+      return;
+    }
+    await _reloadFromFirstPage();
+  }
+
+  /// 把某个标签移出黑名单之后的收尾。
+  ///
+  /// 与 [reloadAfterBlock] 的区别有两处：移出**不会**让标签筛选失效（结果只会变多），
+  /// 所以不退出筛选；但要顺手消掉一种残留 —— 之前若正靠「仍要查看」在绕过黑名单看
+  /// 这个标签，现在它不再被屏蔽，绕过就没有意义了，重选一次把标记清干净
+  /// （结果集完全一样，只是把那一位状态归零）。
+  ///
+  /// [tagId] 传空表示「整份名单都变了」（清空），不需要做那项残留清理。
+  Future<void> reloadAfterUnblock({int? tagId}) async {
+    final tag = state.tag;
+    if (tagId != null &&
+        state.bypassBlocklist &&
+        state.source == OnlineSource.tag &&
+        tag != null &&
+        tag.id == tagId) {
+      await selectTag(tag);
+      return;
+    }
+    await _reloadFromFirstPage();
+  }
+
+  /// 回到第 1 页重拉。**刻意不留在原页**：结果集变小之后原页可能已经没有内容
+  /// （`totalPages` 一起变小），停在原页会得到「共 2 页」而列表空白的自相矛盾状态。
+  Future<void> _reloadFromFirstPage() async {
+    state = state.copyWith(
+      works: const [],
+      page: 1,
+      totalCount: 0,
+      loading: true,
+      clearError: true,
+    );
+    await _fetch(1);
+  }
+
   /// 跳到指定页（越界自动夹到有效范围）
   Future<void> goToPage(int page) async {
     if (state.loading || state.totalPages <= 0) return;
@@ -247,9 +320,37 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
   }
 
   Future<void> _fetch(int page) async {
+    final tag = state.tag;
+    if (state.source == OnlineSource.tag && tag == null) {
+      // 「按标签筛选」而没有标签（正常流程到不了，但状态是可构造的）。
+      // 早退而不是往下走：`fetchWorksByTag` 需要 label 名，而打到
+      // `/api/tags/0/works` 会拿回一个语义不明的 400/空页。
+      state = state.copyWith(
+        works: const [],
+        totalCount: 0,
+        page: 1,
+        loading: false,
+        clearError: true,
+      );
+      return;
+    }
+
     final client = _ref.read(onlineClientProvider);
     final size = state.pageSize;
     final sort = state.sort;
+
+    // 黑名单（1.95.0）在**每次请求前**现取：用户刚在设置里加了标签，
+    // 回来点一下刷新就该生效，不该等重建 notifier。
+    //
+    // `bypassBlocklist` 只把那一个标签从排除项里摘出来，其余照旧
+    // （见 `OnlineBrowseState.bypassBlocklist` 的注释）。
+    final blocked = _ref.read(settingsProvider).blockedTags;
+    final exclude = exclusionKeyword(
+      state.bypassBlocklist && tag != null
+          ? blocked.where((t) => t.id != tag.id)
+          : blocked,
+    );
+
     try {
       final result = await switch (state.source) {
         OnlineSource.browse => client.fetchWorks(
@@ -257,18 +358,21 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
             pageSize: size,
             sort: sort,
             subtitleOnly: state.subtitleOnly,
+            excludeKeyword: exclude,
           ),
         OnlineSource.search => client.searchWorks(
             state.keyword,
             page: page,
             pageSize: size,
             sort: sort,
+            excludeKeyword: exclude,
           ),
         OnlineSource.tag => client.fetchWorksByTag(
-            state.tag?.id ?? 0,
+            tag!,
             page: page,
             pageSize: size,
             sort: sort,
+            excludeKeyword: exclude,
           ),
       };
       if (!mounted) return;
@@ -297,6 +401,19 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
 final onlineBrowseProvider =
     StateNotifierProvider<OnlineBrowseNotifier, OnlineBrowseState>(
   (ref) => OnlineBrowseNotifier(ref),
+);
+
+/// 当前黑名单的**标签 id 集合**。
+///
+/// 卡片 / 详情页里每个标签胶囊都要问一句「我被屏蔽了吗」，而 `isTagBlocked`
+/// 需要的是集合而不是列表 —— 在 provider 这一层算一次，界面侧就不必各自
+/// 现建 Set（一页 20 张卡片、每张十几个标签，那是几百次建集合）。
+///
+/// 用 `select` 而不是整份 settings：改主题、改音量都不该让整页标签重绘。
+final blockedTagIdsProvider = Provider<Set<int>>(
+  (ref) => blockedIdSet(
+    ref.watch(settingsProvider.select((s) => s.blockedTags)),
+  ),
 );
 
 // 标签表（`/api/tags/`，422 个约 72KB）**1.94.0 起不再需要**。

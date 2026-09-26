@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'online_blacklist.dart';
 import 'online_models.dart';
 
 /// 在线请求异常（含可展示的中文说明）
@@ -170,36 +171,59 @@ class KikoeruClient {
 
   // ---------------------------------------------------------------- 端点
 
-  /// 作品列表（`GET /api/works`）
+  /// 作品列表（`GET /api/works`）。
+  ///
+  /// [excludeKeyword] 非空时**改走搜索接口** `/api/search/{excludeKeyword}` ——
+  /// 因为 `/api/works` 会**静默忽略**一切排除类参数（1.95.0 实测：带 `keyword`、
+  /// `excludeTags` 都照样返回全站量），这是把黑名单做在服务端的唯一路径。
+  ///
+  /// 实测「空关键词的搜索」与 `/api/works` 在 5 个排序键下**逐位完全相同**，
+  /// 所以换端点本身不改变结果集与顺序 —— 只是把被屏蔽的作品滤掉了。
+  /// 唯一的差异是：排序键相等的**并列项 tie-break 会变**（抓到了一例）。
   Future<OnlineWorkPage> fetchWorks({
     int page = 1,
     int pageSize = defaultPageSize,
     OnlineSort sort = OnlineSort.createDate,
     bool subtitleOnly = false,
+    String excludeKeyword = '',
   }) async {
-    final json = await _getObject('/api/works', {
+    final query = {
       'page': '$page',
       'pageSize': '$pageSize',
       'order': sort.key,
       'sort': OnlineSort.sortParam,
       if (subtitleOnly) 'subtitle': '1',
-    });
+    };
+    final exclude = excludeKeyword.trim();
+    final json = exclude.isEmpty
+        ? await _getObject('/api/works', query)
+        : await _getObject(
+            '/api/search/${Uri.encodeComponent(exclude)}',
+            query,
+          );
     return OnlineWorkPage.fromJson(json);
   }
 
   /// 关键词搜索（`GET /api/search/{keyword}`，支持与列表相同的分页/排序参数）
+  ///
+  /// [excludeKeyword] 会拼在关键词**前面**（与 asmr.one 的 `globalFilter` 同一做法）。
+  /// 注意「两边都空才早退」：只有排除项、没有关键词也是一次合法请求
+  /// （实测 `$-tag:X$` 单独就能筛出「全站去掉 X」）。
   Future<OnlineWorkPage> searchWorks(
     String keyword, {
     int page = 1,
     int pageSize = defaultPageSize,
     OnlineSort sort = OnlineSort.createDate,
+    String excludeKeyword = '',
   }) async {
     final kw = keyword.trim();
-    if (kw.isEmpty) {
+    final exclude = excludeKeyword.trim();
+    if (kw.isEmpty && exclude.isEmpty) {
       return const OnlineWorkPage(
           works: [], currentPage: 1, pageSize: 0, totalCount: 0);
     }
-    final json = await _getObject('/api/search/${Uri.encodeComponent(kw)}', {
+    final merged = [exclude, kw].where((s) => s.isNotEmpty).join(' ');
+    final json = await _getObject('/api/search/${Uri.encodeComponent(merged)}', {
       'page': '$page',
       'pageSize': '$pageSize',
       'order': sort.key,
@@ -208,19 +232,32 @@ class KikoeruClient {
     return OnlineWorkPage.fromJson(json);
   }
 
-  /// 按标签筛选（`GET /api/tags/{tagId}/works`）
+  /// 按标签筛选。
+  ///
+  /// 无黑名单时走结构化端点 `GET /api/tags/{tagId}/works`（1.94.0 裁决 Q2=甲）。
+  /// [excludeKeyword] 非空时**必须**并进搜索 —— 搜索接口不支持「结构化标签 + 排除项」
+  /// 的组合，而结构化标签端点又会忽略排除参数，所以改用**实测等价**的
+  /// `$tag:<名>$`：三个标签逐一比对过 totalCount 与逐位顺序，完全相同。
   Future<OnlineWorkPage> fetchWorksByTag(
-    int tagId, {
+    OnlineTag tag, {
     int page = 1,
     int pageSize = defaultPageSize,
     OnlineSort sort = OnlineSort.dlCountDesc,
+    String excludeKeyword = '',
   }) async {
-    final json = await _getObject('/api/tags/$tagId/works', {
+    final exclude = excludeKeyword.trim();
+    final query = {
       'page': '$page',
       'pageSize': '$pageSize',
       'order': sort.key,
       'sort': OnlineSort.sortParam,
-    });
+    };
+    // 名字为空（坏数据）时只能退回结构化端点：那样黑名单这一条就不生效，
+    // 但「按标签筛对了、只是没滤黑名单」比「给出了没筛的结果」好。
+    final path = (exclude.isEmpty || tag.name.trim().isEmpty)
+        ? '/api/tags/${tag.id}/works'
+        : '/api/search/${Uri.encodeComponent('${tagIncludeTerm(tag.name.trim())} $exclude')}';
+    final json = await _getObject(path, query);
     return OnlineWorkPage.fromJson(json);
   }
 

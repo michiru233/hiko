@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -359,6 +360,171 @@ void main() {
       expect(tester.takeException(), isNull, reason: '窄卡片不能溢出');
     });
   });
+
+  group('卡面标签：黑名单与菜单（1.95.0）', () {
+    Widget hostWith(
+      Widget card, {
+      List<OnlineTag> blocked = const [],
+      double scale = 1.0,
+      double width = 200,
+      double height = 286,
+    }) =>
+        ProviderScope(
+          overrides: [
+            settingsProvider.overrideWith((ref) => _StubSettings(blocked)),
+          ],
+          child: MaterialApp(
+            theme: buildHikoTheme(const AppSettings()),
+            builder: (context, inner) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: TextScaler.linear(scale)),
+              child: inner!,
+            ),
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(width: width, height: height, child: card),
+              ),
+            ),
+          ),
+        );
+
+    testWidgets('全局字号放大到 1.30 时标签行仍不溢出（1.95.0 修的量宽漏 textScaler）',
+        (tester) async {
+      await tester.pumpWidget(
+        hostWith(
+          OnlineWorkCard(
+            // 第二个标签刻意取**窄**的：「第一个放得下、第二个放不下」这种
+            // 临界排布下，量宽的富余最小，漏 scaler 的后果才会真的溢出屏幕
+            // （实测漏掉时溢出 36px；换成更宽的第二个标签就碰巧被富余吃掉）
+            work: tagged([
+              '双声道立体声/人头麦',
+              '学生',
+              '青梅竹马',
+              'ASMR',
+              '环绕音',
+            ]),
+            onTap: () {},
+            showTags: true,
+            onTagTap: (_) {},
+          ),
+          scale: 1.3,
+        ),
+      );
+      await tester.pump();
+
+      // 量宽度时若漏掉 `MediaQuery.textScaler`，就是「量 9pt、画 11.7pt」——
+      // 标签行当场溢出卡片。这条锁在 1.95.0 之前是红的（RenderFlex overflowed）。
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: '字号放大后标签行不该溢出：量的和画的必须是同一个 scaler',
+      );
+    });
+
+    testWidgets('被屏蔽的标签弱化显示：删除线，普通标签没有', (tester) async {
+      await tester.pumpWidget(
+        hostWith(
+          OnlineWorkCard(
+            work: tagged(['ASMR', '治愈']),
+            onTap: () {},
+            showTags: true,
+            onTagTap: (_) {},
+          ),
+          blocked: const [OnlineTag(id: 100, name: 'ASMR')],
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        tester.widget<Text>(find.text('ASMR')).style?.decoration,
+        TextDecoration.lineThrough,
+      );
+      expect(
+        tester.widget<Text>(find.text('治愈')).style?.decoration,
+        isNot(TextDecoration.lineThrough),
+      );
+    });
+
+    testWidgets('右键标签弹出三个动作：筛选 / 加入黑名单 / 复制标签名', (tester) async {
+      await tester.pumpWidget(
+        hostWith(
+          OnlineWorkCard(
+            work: tagged(['ASMR']),
+            onTap: () {},
+            showTags: true,
+            onTagTap: (_) {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tapAt(
+        tester.getCenter(find.text('ASMR')),
+        buttons: kSecondaryButton,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('按此标签筛选'), findsOneWidget);
+      expect(find.text('加入黑名单'), findsOneWidget);
+      expect(find.text('复制标签名'), findsOneWidget);
+    });
+
+    testWidgets('已在黑名单里的标签，菜单第二项变成「移出黑名单」', (tester) async {
+      await tester.pumpWidget(
+        hostWith(
+          OnlineWorkCard(
+            work: tagged(['ASMR']),
+            onTap: () {},
+            showTags: true,
+            onTagTap: (_) {},
+          ),
+          blocked: const [OnlineTag(id: 100, name: 'ASMR')],
+        ),
+      );
+      await tester.pump();
+
+      await tester.tapAt(
+        tester.getCenter(find.text('ASMR')),
+        buttons: kSecondaryButton,
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('移出黑名单'), findsOneWidget);
+      expect(find.text('加入黑名单'), findsNothing);
+    });
+
+    testWidgets('服务端只给名字（id=0）的标签连菜单都不给', (tester) async {
+      await tester.pumpWidget(
+        hostWith(
+          OnlineWorkCard(
+            work: tagged(['ASMR'], withId: false),
+            onTap: () {},
+            showTags: true,
+            onTagTap: (_) {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tapAt(
+        tester.getCenter(find.text('ASMR')),
+        buttons: kSecondaryButton,
+      );
+      await tester.pumpAndSettle();
+
+      // 既筛不了也屏蔽不了，给菜单等于给一个死操作
+      expect(find.text('加入黑名单'), findsNothing);
+      expect(find.text('按此标签筛选'), findsNothing);
+    });
+  });
+}
+
+/// 固定黑名单的 settings notifier：不读也不写 SharedPreferences
+class _StubSettings extends SettingsNotifier {
+  _StubSettings(List<OnlineTag> blocked) {
+    state = state.copyWith(blockedTags: blocked);
+  }
 }
 
 /// 固定索引的收藏 notifier：不发起任何请求

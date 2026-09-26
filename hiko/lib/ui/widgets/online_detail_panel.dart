@@ -20,6 +20,7 @@ import '../transitions/fullscreen_player_route.dart';
 import 'detail_kit.dart';
 import 'online_account_dialogs.dart';
 import 'online_cover.dart';
+import 'online_tag_menu.dart';
 
 /// 桌面端：在线作品详情（从右侧滑出的面板）。
 ///
@@ -206,6 +207,8 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     final work = detail.work;
     final audio = detail.audioTracks;
     final client = ref.watch(onlineClientProvider);
+    // 被屏蔽的标签在这里只弱化、不隐藏（1.95.0 裁决 Q4=乙 / Q5=甲）
+    final blockedIds = ref.watch(blockedTagIdsProvider);
 
     // 精确监听，避免 positionStream 高频更新导致整树重建（同本地抽屉）
     final albumId = ref.watch(playbackProvider.select((p) => p.album?.id));
@@ -315,10 +318,25 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
                   for (final t in work.tags)
                     HikoTagChip(
                       tag: t.name,
+                      // 被屏蔽的标签照常显示、只弱化（1.95.0 裁决 Q5=甲 + Q4=乙）：
+                      // 详情页是「我明确点进来看的这一个作品」，把它的标签藏掉
+                      // 会让用户以为数据缺了
+                      blocked: blockedIds.contains(t.id),
                       // 响应里带 id，直接拿去筛选（1.94.0 前要拿名字去标签表反查）
                       onTap: widget.onSelectTag == null || t.id <= 0
                           ? null
                           : () => widget.onSelectTag!(t),
+                      onContextMenu: (position) => unawaited(
+                        showOnlineTagMenu(
+                          context: context,
+                          ref: ref,
+                          tag: t,
+                          position: position,
+                          onFilter: widget.onSelectTag == null
+                              ? null
+                              : () => widget.onSelectTag!(t),
+                        ),
+                      ),
                     ),
                 ],
               ),

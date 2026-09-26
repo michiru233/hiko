@@ -17,6 +17,7 @@ import '../../playback/playback_controller.dart';
 import '../../platform/platform_service.dart';
 import '../background.dart';
 import 'online_account_dialogs.dart';
+import 'online_tag_menu.dart';
 import 'toast.dart';
 
 /// 设置分类（1.85）：首页分类列表 → 点进二级页；key 对应各 _xxPage 方法
@@ -37,7 +38,8 @@ const _categories = [
   _SettingsCategory('home', '主界面', '刮削标签 · 每行专辑数',
       Icons.grid_view_outlined),
   // 1.93.0：在线相关设置从「数据」页集中到这里
-  _SettingsCategory('online', '在线账号', '登录 asmr.one · 歌单收藏 · 卡片标签 · 服务器 · 缓存',
+  _SettingsCategory('online', '在线账号',
+      '登录 asmr.one · 歌单收藏 · 卡片标签 · 黑名单 · 服务器 · 缓存',
       Icons.person_outline_rounded),
   _SettingsCategory('data', '数据', '导入 · 整理 · 失效清理 · 刮削代理',
       Icons.storage_outlined),
@@ -831,6 +833,23 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
           value: settings.showOnlineTags,
           onChanged: (v) =>
               ref.read(settingsProvider.notifier).setShowOnlineTags(v),
+        ),
+      ),
+      // 1.95.0：黑名单的第二个入口（第一个是在线页状态行上那个可点标记）。
+      // 添加入口**只在标签胶囊的菜单里** —— 黑名单按 id 判定，手工敲名字只会
+      // 存进一条 id=0 的记录，变成「能过滤但胶囊不变灰」，所以这里只做管理。
+      _SettingRow(
+        label: '标签黑名单',
+        subtitle: '被屏蔽的标签不会出现在在线浏览、搜索与标签筛选结果里；'
+            '只作用于在线内容，本地音声库不受影响',
+        trailing: OutlinedButton(
+          onPressed: () => unawaited(showOnlineBlacklistDialog(context)),
+          child: Text(
+            settings.blockedTags.isEmpty
+                ? '管理'
+                : '管理（${settings.blockedTags.length}）',
+            style: const TextStyle(fontSize: 11),
+          ),
         ),
       ),
       _SettingRow(

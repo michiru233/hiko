@@ -642,6 +642,12 @@ class OnlineTag {
       count: (json['count'] as num?)?.toInt() ?? 0,
     );
   }
+
+  /// 持久化形态（1.95.0 的标签黑名单用它写进 SharedPreferences）。
+  ///
+  /// **只写 `id` + `name`**：`count` 是服务端的聚合值、会变，写进去只会让
+  /// 「同一份名单序列化出不同字符串」。
+  Map<String, dynamic> toJson() => {'id': id, 'name': name};
 }
 
 /// 在线列表排序项（1.92.0 起对齐 asmr.one 的「排序」菜单形态）。

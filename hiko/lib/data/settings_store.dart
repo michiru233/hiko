@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../playback/gain_chain.dart';
+import 'online/online_models.dart';
 
 /// 防社死隐私模糊全局开关（1.52）：内存态，每次启动默认开启、不持久化（防忘即安全）。
 /// 覆盖面：AlbumCover 全部调用点（卡片/详情抽屉/播放条/统计/继续收听）、
@@ -43,6 +45,14 @@ class AppSettings {
   final String onlineServer; // 在线服务器地址（Kikoeru 兼容，默认 asmr.one 官方实例，1.90）
   final double onlineCacheLimitGb; // 在线音频缓存上限（GB，0 = 不缓存，1.90）
 
+  /// 在线标签**黑名单**（1.95.0）。命中的标签会从在线浏览 / 搜索 / 标签筛选结果里排除。
+  ///
+  /// 只在线生效 —— 本地刮削库不受影响（沿用 1.94.0 裁决 Q1=B）。
+  /// 为什么存**名字**而不是只用 id：实测服务端的标签筛选语法只认名字
+  /// （`$tag:222$` 返回 0 条，`$tag:幼なじみ$` 才是 1322 条）。
+  /// [OnlineTag.id] 仍然存下来，用于去重、管理页展示，以及卡片上判断「这个标签被屏蔽了」。
+  final List<OnlineTag> blockedTags;
+
   const AppSettings({
     this.theme = 'light',
     this.accent = defaultAccent,
@@ -66,6 +76,7 @@ class AppSettings {
     this.backgroundOpacity = 0.65,
     this.onlineServer = defaultOnlineServer,
     this.onlineCacheLimitGb = 5.0,
+    this.blockedTags = const [],
   });
 
   /// 在线服务默认地址（Kikoeru 协议公共实例；可改成任意自建服务器）
@@ -109,6 +120,7 @@ class AppSettings {
     double? backgroundOpacity,
     String? onlineServer,
     double? onlineCacheLimitGb,
+    List<OnlineTag>? blockedTags,
   }) =>
       AppSettings(
         theme: theme ?? this.theme,
@@ -133,6 +145,7 @@ class AppSettings {
         backgroundOpacity: backgroundOpacity ?? this.backgroundOpacity,
         onlineServer: onlineServer ?? this.onlineServer,
         onlineCacheLimitGb: onlineCacheLimitGb ?? this.onlineCacheLimitGb,
+        blockedTags: blockedTags ?? this.blockedTags,
       );
 }
 
@@ -178,6 +191,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kBackgroundOpacity = 'hiko-background-opacity';
   static const _kOnlineServer = 'hiko-online-server';
   static const _kOnlineCacheLimit = 'hiko-online-cache-limit';
+  static const _kBlockedTags = 'hiko-online-blocked-tags';
 
   static const _validSorts = {
     'recent_desc',
@@ -258,6 +272,50 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   /// 缓存上限可选档位（设置页下拉用；0 = 关闭缓存）
   static const onlineCacheLimitOptions = _validOnlineCacheLimits;
 
+  /// 黑名单的持久化形态：一个 JSON 数组字符串（`[{"id":1,"name":"…"}]`），
+  /// 而不是 `List<String>` 多键 —— 单键写入天然原子，不会出现「写了一半」的中间态。
+  ///
+  /// 归一化必须是**宽容**的：这一项是用户数据（不像档位是枚举），
+  /// 遇到坏数据只能丢坏的那几条，不能把整张表判无效 —— 否则一次序列化意外
+  /// 就会把用户攒了很久的黑名单整份清空。
+  static String _normalizeBlockedTags(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return '';
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return '';
+      final out = <OnlineTag>[];
+      final seenIds = <int>{};
+      final seenNames = <String>{};
+      for (final item in decoded) {
+        if (item is! Map) continue;
+        final tag = OnlineTag.fromJson(Map<String, dynamic>.from(item));
+        if (tag.name.isEmpty) continue;
+        // 没 id（老数据或手工编辑）时退化成按名字去重
+        final dup = tag.id > 0 ? !seenIds.add(tag.id) : !seenNames.add(tag.name);
+        if (dup) continue;
+        seenNames.add(tag.name);
+        out.add(tag);
+      }
+      return jsonEncode([for (final t in out) t.toJson()]);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  static List<OnlineTag> _decodeBlockedTags(String? raw) {
+    final normalized = _normalizeBlockedTags(raw);
+    if (normalized.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(normalized) as List;
+      return [
+        for (final item in decoded)
+          OnlineTag.fromJson(Map<String, dynamic>.from(item as Map)),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     state = AppSettings(
@@ -287,6 +345,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       onlineServer: _normalizeOnlineServer(prefs.getString(_kOnlineServer)),
       onlineCacheLimitGb:
           _normalizeOnlineCacheLimit(prefs.getDouble(_kOnlineCacheLimit)),
+      blockedTags: _decodeBlockedTags(prefs.getString(_kBlockedTags)),
     );
   }
 
@@ -365,6 +424,39 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     final valid = _normalizeOnlineCacheLimit(gb);
     return _save(
         _kOnlineCacheLimit, valid, state.copyWith(onlineCacheLimitGb: valid));
+  }
+
+  /// 整份替换标签黑名单（1.95.0）
+  Future<void> setBlockedTags(List<OnlineTag> tags) {
+    final encoded = _normalizeBlockedTags(jsonEncode([
+      for (final t in tags) t.toJson(),
+    ]));
+    return _save(
+      _kBlockedTags,
+      encoded,
+      state.copyWith(blockedTags: _decodeBlockedTags(encoded)),
+    );
+  }
+
+  /// 把一个标签加入黑名单（按 id 去重；已在名单里则什么都不做）
+  Future<void> addBlockedTag(OnlineTag tag) {
+    if (tag.name.trim().isEmpty) return Future.value();
+    if (state.blockedTags.any((t) => t.id == tag.id)) return Future.value();
+    return setBlockedTags([...state.blockedTags, tag]);
+  }
+
+  /// 把一个标签移出黑名单
+  Future<void> removeBlockedTag(int id) {
+    if (!state.blockedTags.any((t) => t.id == id)) return Future.value();
+    return setBlockedTags([
+      for (final t in state.blockedTags)
+        if (t.id != id) t,
+    ]);
+  }
+
+  Future<void> clearBlockedTags() {
+    if (state.blockedTags.isEmpty) return Future.value();
+    return setBlockedTags(const []);
   }
 
   static Future<String> _existingBackground(String path) async {
