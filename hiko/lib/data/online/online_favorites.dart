@@ -169,16 +169,24 @@ class OnlineFavoritesNotifier extends StateNotifier<OnlineFavoritesState> {
 
   final Ref _ref;
 
-  /// 歌单列表每页条数（正常用户一页拉完）
-  static const _playlistPageSize = 100;
+  /// 歌单列表每页条数（= 服务端上限；正常用户一页拉完）
+  static const _playlistPageSize = KikoeruClient.playlistMaxPageSize;
 
   /// 歌单列表最多翻几页。纯粹防死循环，正常永远用不到
   static const _maxPlaylistPages = 10;
 
-  /// 单个歌单的作品最多翻几页 × 500 条 = 上限一万首。
-  /// 超过就截断并在 UI 上说明 —— 无上限地翻页会把一个坏掉的 `pagination`
-  /// 变成无限请求循环。
-  static const _maxWorkPages = 20;
+  /// 单个歌单的作品最多翻几页。
+  ///
+  /// 一页 [_workPageSize] 条 × 50 页 = 5000 首；超过就截断并在 UI 上说明 ——
+  /// 无上限地翻页会把一个坏掉的 `pagination` 变成无限请求循环。
+  /// （1.93.0 写的是 500 条/页 × 20 页，但服务端上限其实是 100，见 [_workPageSize]。）
+  static const _maxWorkPages = 50;
+
+  /// 单个歌单的作品每页条数 = playlist 系端点的服务端上限（100）。
+  ///
+  /// 注意别跟 `/api/works` 的 500 混用：1.93.0 这里写死 500，服务端直接 400
+  /// `pageSize: Invalid value`，整个「刷新在线收藏」都失败了。
+  static const _workPageSize = KikoeruClient.playlistMaxPageSize;
 
   /// 同时在飞的歌单请求数。歌单之间没有依赖，但没有节制地并发对公共实例不礼貌
   static const _playlistConcurrency = 4;
@@ -312,13 +320,12 @@ class OnlineFavoritesNotifier extends StateNotifier<OnlineFavoritesState> {
     KikoeruClient client,
     String playlistId,
   ) async {
-    const pageSize = 500;
     final works = <OnlineWork>[];
     for (var page = 1; page <= _maxWorkPages; page++) {
       final result = await client.fetchPlaylistWorks(
         playlistId,
         page: page,
-        pageSize: pageSize,
+        pageSize: _workPageSize,
       );
       works.addAll(result.works);
       if (result.works.isEmpty || works.length >= result.totalCount) {

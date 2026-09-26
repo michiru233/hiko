@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hiko/data/online/kikoeru_client.dart';
@@ -312,4 +314,103 @@ void main() {
       expect(KikoeruException('连不上').isUnauthorized, isFalse);
     });
   });
+
+  // 1.93.0 发布后用户实测「刷新在线收藏」报 `pageSize: Invalid value`：
+  // playlist 系端点（get-playlists / get-playlist-works /
+  // get-work-exist-status-in-my-playlists）**共用同一个校验器，上限 100**，
+  // 传 200/500 是**整个请求被 400 拒掉**。而 `/api/works` 那一系能吃 500，
+  // 是另一套校验 —— 当时把两边的上限混用了。
+  group('playlist 系端点 pageSize 上限（1.93.1 回归锁）', () {
+    test('上限是 100，夹取函数把越界值就地纠正', () {
+      expect(KikoeruClient.playlistMaxPageSize, 100);
+      expect(KikoeruClient.clampPlaylistPageSize(0), 1);
+      expect(KikoeruClient.clampPlaylistPageSize(-5), 1);
+      expect(KikoeruClient.clampPlaylistPageSize(1), 1);
+      expect(KikoeruClient.clampPlaylistPageSize(100), 100);
+      expect(KikoeruClient.clampPlaylistPageSize(101), 100);
+      expect(KikoeruClient.clampPlaylistPageSize(200), 100);
+      expect(KikoeruClient.clampPlaylistPageSize(500), 100);
+    });
+
+    test('/api/works 那一系的上限不同，别互相套用', () {
+      // 这个断言的意义在于钉住「两套校验」这个事实：
+      // 如果哪天有人把 defaultPageSize 当成 playlist 的上限，这条会红。
+      expect(KikoeruClient.defaultPageSize, lessThanOrEqualTo(100));
+      expect(KikoeruClient.playlistMaxPageSize, greaterThanOrEqualTo(20));
+    });
+
+    test('三个端点发出的 pageSize 一律被夹到 100（即使调用方传越界值）', () async {
+      final requested = <Uri>[];
+      HttpOverrides.global = _UrlRecorder(requested);
+      addTearDown(() => HttpOverrides.global = null);
+
+      final client = KikoeruClient(
+        baseUrl: 'https://api.example.invalid',
+        token: 'jwt',
+      );
+      // 每次都传越界值；GET 会逐个镜像重试，所以只断言「发出去的 URI 全部合规」
+      await _swallow(() => client.fetchPlaylists(pageSize: 500));
+      await _swallow(() => client.fetchPlaylistWorks('pid', pageSize: 999));
+      await _swallow(() => client.fetchWorkPlaylistStatus(1, pageSize: 200));
+
+      expect(requested, isNotEmpty, reason: '应当至少发出一次请求');
+      for (final uri in requested) {
+        expect(uri.queryParameters['pageSize'], '100', reason: '$uri');
+      }
+    });
+
+    test('不传 pageSize 时默认值同样在 100 以内', () async {
+      final requested = <Uri>[];
+      HttpOverrides.global = _UrlRecorder(requested);
+      addTearDown(() => HttpOverrides.global = null);
+
+      final client = KikoeruClient(
+        baseUrl: 'https://api.example.invalid',
+        token: 'jwt',
+      );
+      await _swallow(client.fetchPlaylists);
+      await _swallow(() => client.fetchPlaylistWorks('pid'));
+      await _swallow(() => client.fetchWorkPlaylistStatus(1));
+
+      expect(requested, isNotEmpty);
+      for (final uri in requested) {
+        expect(uri.queryParameters['pageSize'], '100', reason: '$uri');
+      }
+    });
+  });
+}
+
+/// 吞掉异常只为了拿到「请求发出时用的 URL」——单测不联网，请求必失败
+Future<void> _swallow(Future<Object?> Function() call) async {
+  try {
+    await call();
+  } catch (_) {
+    // 期望之内：连不上
+  }
+}
+
+/// 记录请求 URL 但不联网的 HttpClient（照抄 online_work_card_test 的做法）
+class _UrlRecorder extends HttpOverrides {
+  _UrlRecorder(this.requested);
+
+  final List<Uri> requested;
+
+  @override
+  HttpClient createHttpClient(SecurityContext? context) =>
+      _UrlRecorderClient(requested);
+}
+
+class _UrlRecorderClient implements HttpClient {
+  _UrlRecorderClient(this.requested);
+
+  final List<Uri> requested;
+
+  @override
+  Future<HttpClientRequest> getUrl(Uri url) async {
+    requested.add(url);
+    throw const SocketException('单测环境不联网');
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }

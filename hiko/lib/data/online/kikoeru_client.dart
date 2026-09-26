@@ -55,6 +55,28 @@ class KikoeruClient {
   /// 列表默认取 20 条/页
   static const defaultPageSize = 20;
 
+  /// **playlist 系列端点**的 `pageSize` 硬上限 = 100。
+  ///
+  /// 1.93.1 实测：`get-playlists` / `get-playlist-works` /
+  /// `get-work-exist-status-in-my-playlists` 三个端点**共用同一个校验器**，
+  /// 传 200/500 一律 400 `{"errors":[{"msg":"Invalid value","param":"pageSize"}]}`
+  /// —— 是**整个请求被拒**，不是静默截断。
+  ///
+  /// 注意 `/api/works` 那一系（含 `/api/search`、`/api/tags/*`）能吃到 500，
+  /// 是**另一套校验**；`defaultPageSize` 与这个常量别互相套用。
+  static const playlistMaxPageSize = 100;
+
+  /// playlist 系端点的 `pageSize` 统一夹到 [1, playlistMaxPageSize]。
+  ///
+  /// 越界时服务端拒整个请求，所以必须在**发出之前**就地纠正 ——
+  /// 这样调用方随便传也不会把 400 透到界面上（1.93.0 的刷新失败就是这么来的）。
+  static int clampPlaylistPageSize(int value) =>
+      value < 1 ? 1 : (value > playlistMaxPageSize ? playlistMaxPageSize : value);
+
+  /// `get-work-exist-status-in-my-playlists` 最多翻几页（纯粹防死循环；
+  /// 按 [playlistMaxPageSize] 算，能覆盖 2000 个歌单，远超真实用量）。
+  static const _maxStatusPages = 20;
+
   /// 封面尺寸白名单（实测：只有这三个值合法，其余一律 400 `{"error":"type: Invalid value"}`）。
   ///
   /// **1.93.0 起列表不再用它**：`240x240` 实际返回 240×180，卡片是 200–260 逻辑像素、
@@ -348,11 +370,11 @@ class KikoeruClient {
   /// 所以固定用 `all`，不要指望它过滤。
   Future<OnlinePlaylistPage> fetchPlaylists({
     int page = 1,
-    int pageSize = 100,
+    int pageSize = playlistMaxPageSize,
   }) async {
     final json = await _getObject('/api/playlist/get-playlists', {
       'page': '$page',
-      'pageSize': '$pageSize',
+      'pageSize': '${clampPlaylistPageSize(pageSize)}',
       'filterBy': 'all',
     });
     return OnlinePlaylistPage.fromJson(json);
@@ -363,12 +385,12 @@ class KikoeruClient {
   Future<PlaylistWorkPage> fetchPlaylistWorks(
     String playlistId, {
     int page = 1,
-    int pageSize = 100,
+    int pageSize = playlistMaxPageSize,
   }) async {
     final json = await _getObject('/api/playlist/get-playlist-works', {
       'id': playlistId,
       'page': '$page',
-      'pageSize': '$pageSize',
+      'pageSize': '${clampPlaylistPageSize(pageSize)}',
     });
     return PlaylistWorkPage.fromJson(json);
   }
@@ -376,21 +398,31 @@ class KikoeruClient {
   /// 某作品在「我的歌单」中的分布（`GET /api/playlist/get-work-exist-status-in-my-playlists`）。
   ///
   /// 返回的每个歌单都带 `exist`（bool），正好喂给多选菜单做预勾选。
-  /// **按页返回**，歌单多于一页时预勾选会漏，所以这里固定拉满一页。
+  /// **按页返回**，歌单多于一页时预勾选会漏 → 这里自己翻页到覆盖 `totalCount` 为止。
+  ///
+  /// 1.93.1 前这里默认 `pageSize = 200`，被服务端 400 拒掉；调用方（多选菜单）
+  /// 把异常吞了，于是「权威勾选」一直是静默失效的 —— 现在改为翻页覆盖。
   Future<List<OnlinePlaylist>> fetchWorkPlaylistStatus(
     int workId, {
-    int pageSize = 200,
+    int pageSize = playlistMaxPageSize,
   }) async {
-    final json = await _getObject(
-      '/api/playlist/get-work-exist-status-in-my-playlists',
-      {
-        'workID': '$workId',
-        'page': '1',
-        'pageSize': '$pageSize',
-        'version': '2',
-      },
-    );
-    return OnlinePlaylistPage.fromJson(json).playlists;
+    final size = clampPlaylistPageSize(pageSize);
+    final out = <OnlinePlaylist>[];
+    for (var page = 1; page <= _maxStatusPages; page++) {
+      final json = await _getObject(
+        '/api/playlist/get-work-exist-status-in-my-playlists',
+        {
+          'workID': '$workId',
+          'page': '$page',
+          'pageSize': '$size',
+          'version': '2',
+        },
+      );
+      final parsed = OnlinePlaylistPage.fromJson(json);
+      out.addAll(parsed.playlists);
+      if (parsed.playlists.isEmpty || out.length >= parsed.totalCount) break;
+    }
+    return out;
   }
 
   /// 新建歌单（`POST /api/playlist/create-playlist`）。
