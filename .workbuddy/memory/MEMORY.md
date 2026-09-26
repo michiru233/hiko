@@ -3,7 +3,7 @@
 ## 定位
 Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter 重写版，`hiko/` 为唯一主线；
 仓库根目录的 Electron + Capacitor 旧代码仅作参考，不再新增功能。GitHub: https://github.com/michiru233/hiko
-当前版本 1.94.0+105（2026-09-26）。平台：macOS（发布）/ Windows（需 Windows 机构建）/ Android（已恢复开发）。
+当前版本 1.95.0+106（2026-09-26）。平台：macOS（发布）/ Windows（需 Windows 机构建）/ Android（已恢复开发）。
 
 ## 架构速查（hiko/lib）
 - `models/` Album / Track / CategoryItem —— Album 是核心，含 played、resumeTrackIndex/Position、rating、tags、genre、favorite、localCover。
@@ -64,7 +64,7 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
    `for d in com.apple.dt.xcodebuild com.apple.dt.Xcode; do for k in IDEPackageSupportDisableManifestSandbox IDEPackageSupportDisablePluginExecutionSandbox IDEPackageSupportDisablePackageSandbox; do defaults write $d $k -bool YES; done; done`
    已排除无效路径：`XCODE_XCCONFIG_FILE`（键属命令行参数级，非构建设置）、`--config-only`（照样跑迁移）、
    单独手跑 resolve（flutter 会用不同 container 重新解析）。
-9. 验证基线（1.94.0 后）：`flutter test` **451 passed / 2 skipped**；`flutter analyze` **39 条**既有 lint 基线，改动文件应 0 新增 error。
+9. 验证基线（1.95.0 后）：`flutter test` **484 passed / 2 skipped**；`flutter analyze` **39 条**既有 lint 基线，改动文件应 0 新增 error。
 10. 环境：Flutter 3.47.0 / Dart 3.13.0（/opt/homebrew/bin/flutter）；Android 模拟器 AVD 名 `kikoeru_test`；
    SDK `/opt/homebrew/share/android-commandlinetools`，JDK `/opt/homebrew/opt/openjdk@21`。
 
@@ -118,6 +118,64 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
   其余 400；`type=main ≡ 不带参数 = 560×420`（md5 相同），`sam` = 100×75，**服务端无中间档**。
   列表以后用缩略图会被放大 2.4~2.9 倍（Retina 卡片需 400~520 物理像素）→ 1.93.0 前的「主界面糊、
   详情页清晰」就是这个原因。`test/ui/online_work_card_test.dart` 用 `HttpOverrides` 拦请求钉住了 URL。
+- **⚠️ 服务端没有通用的「排除」参数，黑名单只能编成搜索关键字（1.95.0 实测）**：
+  `excludeTags` / `exTags` / `blockedTags` / `tag_blacklist` / `exclude` / `tags` 六个名字挂在
+  `/api/works` 上**全部静默忽略**（结果与基线逐位相同）；`/api/tags/{id}/works` 带 `keyword` 同样被忽略。
+  唯一路径 = asmr.one 自己「设置 → 全局筛选」（`globalFilter`）的做法：**把排除项编进关键词**。
+  **语法**：`$命名空间:值$`，**排除前缀 `-` 写在 `$` 之后** → `$-tag:名$`；
+  命名空间有 `tag/t`、`tagw/tw`、`circle/c`、`va/v`、`rate`、`price`、`sell`、`age`、`duration/d`、`lang`
+  （**拼错不报错、只是不筛**，所以必须逐字节钉死在单测里）。
+  - `$tag:<名>$` **≡** `/api/tags/{id}/works`（三个标签逐位比对 totalCount + 前 20 顺序，完全相同）
+  - 标签**只能按名字**匹配：`$tag:222$` → 0 条
+  - 改名**向后兼容**（服务端认识 `i18n.history`）：`cosplay/角色扮演` = `Cosplay` = `コスプレ` = 449
+  - 「空关键词搜索」与 `/api/works` 在 5 个排序键下**逐位完全相同** → 换端点本身不改结果集；
+    **唯一差异是排序键相等的并列项 tie-break 会变**（抓到一例 `release` 同为 2026-06-27 的两件对调）
+  - **`totalCount` 是过滤后的数字，无从得知隐藏了多少件** → 只能说「已屏蔽 N 个标签」
+- **1.95.0 黑名单的端点映射**（`KikoeruClient` 三个列表方法都收 `excludeKeyword`；
+  **黑名单为空时必须逐字节回退到原请求**，否则没用过黑名单的用户也被动换端点）：
+
+  | 来源 | 黑名单为空 | 非空 |
+  |---|---|---|
+  | 浏览 | `/api/works` | `/api/search/{排除项}` |
+  | 搜索 | `/api/search/{关键词}` | `/api/search/{排除项 关键词}` |
+  | 标签筛选 | `/api/tags/{id}/works` | `/api/search/{$tag:名$ 排除项}` |
+
+  三者都继续传 `subtitle=1`；`fetchWorksByTag` 因此**签名收 `OnlineTag`**（搜索路径要名字）。
+  纯逻辑收口在 `lib/data/online/online_blacklist.dart`（`exclusionKeyword` / `blockedIdSet` /
+  `isTagBlocked` / `tag{Exclusion,Include}Term`），UI 收口在 `lib/ui/widgets/online_tag_menu.dart`。
+- **黑名单的存储与交互约定（1.95.0）**：存 `AppSettings.blockedTags`（`List<OnlineTag>`，
+  JSON 数组字符串单键 `hiko-online-blocked-tags`；`OnlineTag.toJson` **只写 id+name**，
+  不写会变的 `count`）；归一化**宽容** —— 坏数据只丢坏的那几条，绝不整份清空（这是用户数据）。
+  黑名单按 **id** 判定「这个标签被屏蔽了吗」，所以唯一的添加入口是标签胶囊的菜单
+  （**刻意不做手动输入**：手工敲名字会存成 `id = 0` → 「能过滤但胶囊不变灰」）。
+  - **右击/长按菜单**只在标签胶囊上（`HikoTagChip.onContextMenu`，且只在 `onTap != null` 时接上）；
+    三个动作 = 按此标签筛选 / 加入黑名单（已屏蔽则移出）/ 复制标签名
+  - **状态行前置**可点标记「已屏蔽 N 个标签」（`_BlockedTagsMarker`）→ 与设置「在线账号」页的
+    「标签黑名单」行指向同一个 `showOnlineBlacklistDialog`
+  - 被屏蔽标签在卡片/详情页**弱化显示**（灰 + 删除线）**不隐藏**；**收藏页不过滤**、详情页照常显示
+  - 点已屏蔽的标签**先确认**（`resolveBlockedTagFilter`，返回 `bool?`：null=取消/false=正常/true=放行）；
+    选「仍要查看」时 `bypassBlocklist` **只放行那一个标签**（`blocked.where((t) => t.id != tag.id)`），
+    不是整份黑名单。**翻页/改排序不清它，换来源（预设/搜索/新标签）才清**
+  - **屏蔽后必须立即重拉，且回第 1 页**（只记状态不重拉 = 屏幕上的作品一件都不消失，像没生效；
+    不回第 1 页 = 结果集变小后原页可能已空，出现「共 2 页」而列表空白）。
+    收口在 `OnlineBrowseNotifier.reloadAfterBlock` / `reloadAfterUnblock`
+  - **「自筛自屏」**：屏蔽的正是当前筛选标签时必须**退出筛选回最新榜**，
+    否则请求是 `$tag:X$ $-tag:X$` → 实测必然 0 条，留下「筛选标记还在、结果页空白」
+- **⚠️ 可点胶囊的 hover 反馈不能靠 `InkWell` 的墨迹（1.95.0）**：墨迹画在**最近的 `Material`** 上，
+  而本项目的详背面板/卡片底色都是不透明的、那层在它**之下** → 墨迹完全被盖住
+  （用户实测反馈的原话是「指针碰到标签没有明显变化」）。`InkResponse` 的光标本来就是
+  `adaptiveClickable`，缺的只是**视觉**反馈。解法 = `HikoPillInteraction`
+  （`detail_kit.dart`，自己管 hover/pressed，反馈由 `builder(context, active)` 画在胶囊自己身上），
+  底色加深 + 同色 1px 描边，走 `foregroundDecoration`（**不参与布局**——
+  卡面标签行的截断是拿 `TextPainter` 真量胶囊宽度算的，任何改变宽度的装饰都得同步改那个预算）。
+  `hikoPillHoverOutline` **始终返回非空 `BoxDecoration`**（不活跃时透明边）：
+  `AnimatedContainer` 只在字段非空时才建 tween，给 `null` 会让「亮起来」没过渡、像闪一下。
+- **⚠️ 量文字的宽度/高度必须带上 `MediaQuery.textScaler`**（1.95.0 修的 bug，1.94.0 引入）：
+  `HikoTagChip` 画出来是 `9pt × scaler`，而 `_CardTagRow._chipWidth` 按 `9pt` 量 →
+  用户把全局字号调到大/超大（`fontScale` 档位到 1.30）时**标签行当场溢出卡片**。
+  凡是用 `TextPainter` 预量尺寸的地方都要传 `textScaler: MediaQuery.textScalerOf(context)`。
+  **1.96.0 做可调外观时必须把高度预算也纳入**（`_kOnlineCardTextBlock = 62` / `kOnlineCardTagRow = 24`
+  是固定像素），否则调大字号会从「宽度溢出」变成「高度裁切」。
 
 ## 在线账号与歌单收藏（1.93.0 起）
 - **⚠️ pageSize 有「两套校验」，别互相套用（1.93.1 的教训）**：
@@ -169,3 +227,15 @@ Hiko = 本地优先的 DLsite 音声（ASMR/音声作品）管理器。Flutter �
 - 1.93.1 遗留：仍是 **macOS 端实测**，Android 只做构建与静态检查；上面 1.91/1.92/1.93.0 的实机项未变。
 - 1.94.0 遗留：Android 未实机验证卡面标签行的**截断宽度**与**可关闭标记**在窄屏的表现
   （其余 1.91/1.92/1.93.0 实机项仍未变）。明确不做：标签筛选下拉、asmr.one 的「顺序」排序变体。
+- 1.95.0 遗留：Android 未实机验证 ① 标签的**右击/长按菜单**（长按落点取胶囊中心）；
+  ② 状态行新增「已屏蔽 N 个标签」标记后的**窄屏换行与省略**；
+  ③ 黑名单管理对话框（宽 420、限高屏高 46%）在手机竖屏的表现。
+  明确不做（已裁决）：「暂时停用黑名单」总开关、黑名单手动输入、按社团/声优屏蔽。
+  **1.96.0 待问**：三组缩放各设哪些档、标签字号档位、`Aa` 按钮摆哪、
+  网格列数下拉（3/4/5/6/7/8，0=自动）的实现位置 —— 均未开问。
+- **测试纪律（1.95.0 新增，务必遵守）**：写「不溢出 / 不回归」这类**回归锁**时，
+  **必须真的把修复摘掉验证它会红**。1.95.0 初版那条「字号 1.30 标签行不溢出」，
+  在漏掉 `textScaler` 的情况下**照样绿**（那个标签集恰好在 1.30 下被 `+N` 的宽度富余吃掉了溢出），
+  用一次性探针遍历 10 个（标签集 × 卡宽 × 缩放）组合才找到真溢出的那个：
+  200px 卡片 + 1.30 + `['双声道立体声/人头麦', '学生', …]`（**第二个标签刻意取窄**，
+  让「第一个放得下、第二个放不下」的临界排布把富余压到最小）→ 漏 scaler 时溢出 36px。

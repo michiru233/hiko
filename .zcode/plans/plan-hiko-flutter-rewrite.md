@@ -2198,3 +2198,209 @@ Release：https://github.com/michiru233/hiko/releases/tag/v1.94.0
 （`hiko-v1.94.0-macos.zip` 32 MB + `hiko-v1.94.0-android.apk` 67 MB）。
 代码提交 `59a14d6`。
 
+---
+
+## 1.95.0 在线标签悬停反馈 + 标签黑名单（2026-09-26）
+
+**动机**：用户在 Mac 端实测后提了两条 ——
+
+1. 「在线的详情页指针碰到标签的时候没有明显变化，这会让用户不知道这些标签是可以点击的。」
+2. 「仿照 asmr.one 的设置，增加黑名单的功能。」（用户笔误写成「加入白名单」，
+   后一句「筛选、搜索的时候就不会出现黑名单上的作品」表明意图是**黑名单**，按黑名单实施。）
+
+范围上还有一条用户追加要求：「字号更大一些（做成可调更好，如果要可调的话把在线页面里面的
+各元素可调的地方都列出来）」—— 本条被裁决**推到 1.96.0**（见文末），本版只做「悬停反馈 + 黑名单」。
+
+### 用户裁决（三轮 grill-me + 一轮追加）
+
+| # | 第一轮问题 | 裁决 |
+|---|---|---|
+| Q1 | 黑名单支持什么粒度 | **甲**：只支持标签，但底层存**结构化排除项列表**（不是一段裸文本） |
+| Q2 | 悬停反馈做成什么样 | **甲**：底色加深 + 同色 1px 描边；**追加**：字号更大、最好可调 |
+| Q3 | 只修标签胶囊还是同类一起修 | **丙**：连同 `HikoPersonPill`（社团/声优）与 `HikoEyebrowPill` 一起修（同根因） |
+| Q4 | 加入黑名单的入口 | **甲**：标签右键（桌面）/ 长按（触屏）菜单 ——「按此标签筛选 / 加入黑名单 / 复制标签名」；设置页另有管理列表 |
+| Q5 | 收藏页与详情页是否过滤被屏蔽作品 | **按推荐**：收藏页**不过滤**、详情页**照常显示** |
+
+| # | 第二轮问题（外观可调，落到 1.96.0） | 裁决 |
+|---|---|---|
+| Q1 | 可调外观怎么分组 | **乙**：三组独立缩放 —— ①标签字号 ②卡片文字 ③详情面板文字 |
+| Q2 | 标签字号默认值 | **乙**：9 → **11** |
+| Q3 | 调节入口放哪 | **按建议**：设置里一组 + 在线页工具栏「Aa」按钮指向同一组值 |
+| Q4 | 网格密度 | **甲**：加「每行卡片数」档位（3/4/5/6/7/8，0=自动），**档位选择改下拉菜单以省界面** |
+| Q5 | 版本切分 | **乙**：1.95.0 = 悬停反馈 + 黑名单；1.96.0 = 可调外观 |
+
+| # | 第三轮问题（黑名单的语义边界） | 裁决 |
+|---|---|---|
+| Q1 | 状态行是否给黑名单一个可见出口 | **甲**：前置可点标记「已屏蔽 N 个标签」，点开进管理 |
+| Q2 | 要不要「暂时停用黑名单」总开关 | **不用** |
+| Q3 | 「加入黑名单」挂在哪些胶囊上 | **甲**：只挂标签胶囊（社团/声优没有） |
+| Q4 | 被屏蔽的标签怎么显示 | **乙**：卡片/详情页**弱化显示**（灰 + 删除线），不隐藏 |
+| Q5 | 黑名单与标签筛选的关系 | **按推荐**：黑名单**无条件叠加**到标签筛选；点一个已被屏蔽的标签时**先弹确认**，选「仍要查看」则本条筛选临时不套黑名单 |
+
+| # | 实施中发现的分叉（追加一轮） | 裁决 |
+|---|---|---|
+| Q1 | 屏蔽后当前列表怎么处理 | **甲**：立即重新拉取当前列表（回第 1 页） |
+| Q2 | 屏蔽的正是「当前正在按它筛选」的那个标签 | **甲**：自动退出该标签筛选、回最新榜 |
+
+### 本轮新增实测（把「黑名单」从猜测变成有依据的设计）
+
+**① 服务端没有任何通用的排除参数。** 逐个试过 `excludeTags` / `exTags` /
+`blockedTags` / `tag_blacklist` / `exclude` / `tags` 六个参数名挂在 `/api/works` 上
+—— **全部静默忽略**（返回与基线逐位相同的结果）；`/api/tags/{id}/works` 带
+`keyword` / `excludeTags` 同样被忽略。结论：**客户端过滤**（页码与 `totalCount` 会错）
+和**给列表端点贴排除参数**（静默失效）两条路都走不通。
+
+**② 唯一的路径是把排除项编成搜索关键字。** asmr.one 自己的「设置 → 全局筛选」
+（`globalFilter`）就是这么干的：存一段文本，应用时 `keyword = globalFilter + " " + 用户关键词`。
+从它的 `SearchKeywordService` bundle 挖出语法：`$命名空间:值$`，**排除前缀 `-` 写在 `$` 之后**
+—— 即 `$-tag:值$`。命名空间有 `tag/t`、`tagw/tw`、`circle/c`、`va/v`、`rate`、`price`、
+`sell`、`age`、`duration/d`、`lang`。
+
+**③ 三条等价性实测**（这是整套端点映射的依据）：
+
+- `$tag:<名>$` **≡** `/api/tags/{id}/works`：三个标签逐一比对，
+  `totalCount` 与**前 20 个作品的顺序**完全相同。
+- **标签只能按名字匹配、不能按 id**：`$tag:222$` → 0 条；`$tag:幼なじみ$` → 1322 条。
+- **改名向后兼容**（服务端认识 `i18n.history`）：`cosplay/角色扮演`（旧名）=
+  `Cosplay`（新名）= `コスプレ`（日文名）= 449。
+- 「空关键词的搜索」与 `/api/works` 在 5 个排序键下**逐位完全相同** ——
+  所以「黑名单非空时从 `/api/works` 换到 `/api/search/`」本身不改变结果集。
+  **唯一差异**：排序键相等的**并列项 tie-break 会变**（抓到一例：`release` 同为
+  2026-06-27 的两件顺序对调）。
+
+**④ 一个必须先说清的语义边界**：服务端过滤后返回的 `totalCount` 就是**过滤后**的数字，
+**无从得知隐藏了多少件**。所以只能提示「已屏蔽 N 个标签」，做不到「已隐藏 M 件作品」。
+已写进黑名单管理对话框的说明文字。
+
+### 改动
+
+| 文件 | 改动 |
+|---|---|
+| `ui/widgets/detail_kit.dart` | 新增 `HikoPillInteraction`（自己管 hover/pressed，因为 InkWell 墨迹被胶囊不透明底色盖住）、`kPillHoverDuration`、`hikoPillHoverOutline`；`HikoTagChip` 加 `blocked` / `onContextMenu`；三处胶囊（眼眉 / 社团声优 / 标签）改用同一套反馈 |
+| `data/online/online_blacklist.dart` | **新建**：`tagExclusionTerm` / `tagIncludeTerm` / `exclusionKeyword` / `blockedIdSet` / `isTagBlocked`；文件头附全部实测结论与服务端语法 |
+| `data/settings_store.dart` | `AppSettings.blockedTags`（`List<OnlineTag>`）+ `_normalizeBlockedTags` / `_decodeBlockedTags`（**宽容**：坏数据只丢坏的那几条）+ 4 个 setter（`setBlockedTags` / `addBlockedTag` / `removeBlockedTag` / `clearBlockedTags`） |
+| `data/online/online_models.dart` | `OnlineTag.toJson`（**只写 id + name**，不写会变的 `count`） |
+| `data/online/kikoeru_client.dart` | 三个列表方法加 `excludeKeyword`，并按「排除项是否为空」切换端点；`fetchWorksByTag` 签名 `int tagId` → `OnlineTag tag`（搜索路径需要名字） |
+| `data/online/online_provider.dart` | `OnlineBrowseState.bypassBlocklist`；`selectTag` 支持临时绕过；`_fetch` 现取黑名单算排除项；新增 `reloadAfterBlock` / `reloadAfterUnblock` / `_reloadFromFirstPage`；新增 `blockedTagIdsProvider` |
+| `ui/widgets/online_tag_menu.dart` | **新建**：`showOnlineTagMenu`（标签菜单）、`resolveBlockedTagFilter`（点已屏蔽标签的确认守卫）、`showOnlineBlacklistDialog`（管理列表 + 说明 + 全部清空） |
+| `ui/screens/online_screen.dart` | 卡面标签接菜单与弱化；新增 `_BlockedTagsMarker`（状态行前置）；`_applyTag` 加确认；`_statusLine` 显示「未套黑名单」；**修 `_CardTagRow._chipWidth` 漏 `textScaler` 的溢出 bug** |
+| `ui/widgets/online_detail_panel.dart` | 详情页标签弱化 + 菜单 |
+| `ui/screens/online_favorites_screen.dart` | 卡面标签走同一个确认守卫；**补上 1.94.0 漏掉的详情页 `onSelectTag`**（卡面能点、详情里点了没反应） |
+| `ui/widgets/settings_dialog.dart` | 「在线账号」页加「标签黑名单」管理入口；分类描述加「黑名单」 |
+| `pubspec.yaml` | `1.94.0+105` → `1.95.0+106` |
+
+### 关键设计决策
+
+**① 悬停反馈的根因不是「忘了加 hover」，而是墨迹被盖住。**
+`InkWell` 的 hover 高亮画在**最近的 `Material`** 上，本项目里那层在胶囊
+**不透明底色之下** → 完全不可见。顺带查 Flutter 源码确认 `InkResponse` 的光标本来
+就是 `adaptiveClickable`（macOS 上是手型），所以缺的只是**视觉**反馈。
+另外三处胶囊同根因，按 Q3=丙 一起修。
+
+**② 反馈画在 `foregroundDecoration` 上，刻意不影响布局尺寸。**
+卡面标签行的截断是拿 `TextPainter` 真量胶囊宽度算出来的
+（`_CardTagRow`），任何会改变胶囊宽度的装饰都必须同步改那个预算 ——
+用 `foregroundDecoration`（不参与布局）就绕开了这个耦合。
+`hikoPillHoverOutline` **始终返回非空** `BoxDecoration`（不活跃时是透明边）：
+`AnimatedContainer` 只在对应字段非空时才建 tween，给 `null` 会让「亮起来」没有过渡、
+只有「灭掉」有，看起来像闪一下。
+
+**③ 端点映射（黑名单非空时才切换，三种都继续传 `subtitle=1`）**
+
+| 来源 | 黑名单为空 | 黑名单非空 |
+|---|---|---|
+| 浏览 | `/api/works` | `/api/search/{排除项}` |
+| 搜索 | `/api/search/{关键词}` | `/api/search/{排除项 关键词}` |
+| 标签筛选 | `/api/tags/{id}/works` | `/api/search/{$tag:名$ 排除项}` |
+
+**「黑名单为空时请求逐字节不变」是一条硬约束**：否则没用过黑名单的用户也会被动换端点。
+
+**④ `bypassBlocklist` 只放行那一个标签，不是整份黑名单。**
+用户点「仍要查看」说的是「我就要看这一个」，把别的屏蔽项一起放出来是替他做了另一个决定。
+实现上是在算排除项时 `blocked.where((t) => t.id != tag.id)`，而不是整体跳过。
+（裁决原文是「本条筛选通过 `bypassBlocklist` 临时不套黑名单」，这里按
+「更窄、更忠实于『本条』」的方向落地，已在交付说明里点明。）
+
+**⑤ 屏蔽后必须立即重拉，且回第 1 页。**
+只记状态不重拉的话，用户右击 → 加入黑名单之后屏幕上那批作品一件都不会消失，
+直到翻页或换排序才突然变少 —— 看起来像功能没生效。
+**回第 1 页而不是留在原页**：结果集变小后 `totalPages` 一起变小，原页可能已经没有内容，
+停在原页会得到「共 2 页」而列表空白的自相矛盾状态。
+
+**⑥ 「自筛自屏」必须处理。** 在按标签 X 筛选的结果页里，每张卡片的标签行都含 X
+（筛出来的作品当然有 X），用户完全可能在这里右击 X → 加入黑名单。组合出来的请求是
+`$tag:X$ $-tag:X$`，实测**必然是 0 条**，于是会出现「筛选标记还在、结果页空白」。
+处理：屏蔽的正好是当前筛选标签时 → 退出筛选、回最新榜（沿用 1.94.0 已定的
+「取消标签筛选一律回最新榜」），并 toast 说明。
+
+**⑦ 黑名单管理**刻意不做**「手动输入」**。黑名单要按 `id` 判断「这个标签被屏蔽了吗」，
+而 `id` 只有从服务端响应里拿得到；手工敲一个名字进来会存成 `id = 0`，
+于是「能过滤、但胶囊不会变灰」—— 同一份名单里出现两种行为。
+所以唯一的添加入口就是标签胶囊的菜单。
+
+**⑧ 状态行必须给黑名单一个可见出口。** 黑名单与标签筛选不一样：标签筛选是用户
+**刚做过**的动作，黑名单是**很久以前**在设置里攒下来的状态。没有可见标记的话，
+用户看到「明明搜得到的东西不见了」只会以为是服务器的问题。
+
+**⑨ 顺带修掉 `_CardTagRow._chipWidth` 漏 `textScaler` 的溢出 bug。**
+全局 `fontScale` 是挂在根层的 `TextScaler`，`HikoTagChip` 画出来的是 `9pt × scaler`，
+而这里按 `9pt` 量宽度 → 用户把字号调到大/超大时就是「量少画宽」，标签行当场溢出卡片。
+量与画必须用同一个 scaler。**这是 bug，不属于 1.96.0 的外观调节。**
+
+### 测试
+
+- `test/data/online_blacklist_test.dart`（**新增 28 条**）：纯函数（排除项拼法 / 空串 /
+  空格连接 / 按 id 去重 / 空名字跳过 / `id<=0` 永不判为屏蔽）、存取（持久化往返
+  **不含 `count`** / 去重 / 只删指定 id / 未知 id 空操作 / 坏数据只丢坏的 /
+  整份非 JSON 时退化不抛）、端点映射（非空时三种来源的路径、空时仍走 `/api/works`、
+  「仍要查看」只放行一个、排序分页 `subtitle` 参数）、收尾（`reloadAfterBlock` 的两个分支、
+  移出不退出筛选、绕过标记的清理）、`bypassBlocklist` 的存活范围。
+- `test/ui/online_work_card_test.dart`（**新增 5 条**）：字号 1.30 不溢出 /
+  被屏蔽标签有删除线 / 右键弹三个动作 / 已在名单时第二项变「移出黑名单」/
+  `id=0` 连菜单都不给。
+- **两个必须记下的坑**：
+  - **回归锁必须验证它真的会红。** 初版「字号 1.30 不溢出」这条，**把修复摘掉照样绿**
+    —— 那个标签集在 1.30 下恰好被 `+N` 的宽度富余吃掉了溢出。用一次性探针遍历
+    10 个（标签集 × 卡宽 × 缩放）组合，才找到会真溢出的那个：200px 卡片 + 1.30 +
+    `['双声道立体声/人头麦', '学生', …]`（**第二个标签刻意取窄的**，让「第一个放得下、
+    第二个放不下」的临界排布把富余压到最小）→ 漏 scaler 时溢出 36px。
+    只断言 `takeException() == null` 的用例，不验证会红就等于没写。
+  - provider 层单测若要喂黑名单，得**连 `settingsProvider` 一起 override**（用一个
+    构造时直接置 `state` 的 `SettingsNotifier` 子类），否则真 notifier 的 setter 会走
+    SharedPreferences 异步落盘挂起。这与 1.94.0 记下的「只 override client」并不矛盾：
+    那时不需要黑名单，现在需要。
+
+### 验证
+
+- `flutter test` → **484 passed / 2 skipped**（基线 451/2，**净增 33**）
+- `flutter analyze` → **39 条**（= 基线，0 新增）
+- macOS `build/macos/Build/Products/Release/Hiko.app` → `1.95.0 (106)`
+- Android `build/app/outputs/flutter-apk/app-release.apk`
+- 双端构建一次通过（摘代理 + `IDEPackageSupportDisable*Sandbox` + macOS 沙箱外前台跑）
+
+### 本版待裁决 / 未验证
+
+- 1.91.0 遗留三项（**仍未裁决**）：① 在线曲目行点击是否跳全屏播放页；
+  ② 移动端无 hover → 目录行「播放该目录」在触屏上不存在入口；③ 移动端分页条窄屏表现。
+- 1.92.0 遗留：`_SortMenu` 限高与「展开全部」按钮窄屏换行。
+- 1.93.0 遗留：Android 整条账号/收藏链路未实机验证。
+- 1.94.0 遗留：卡面标签行截断宽度与可关闭标记在窄屏（Android）的表现。
+- **本版新增未验证**：右击 / 长按标签弹菜单在 Android 触屏上的表现（长按落点取胶囊中心）；
+  状态行新增「已屏蔽 N 个标签」标记后，窄屏那一行的换行与省略；
+  黑名单管理对话框（宽 420、限高屏高 46%）在手机竖屏上的表现。
+- 明确不做：「暂时停用黑名单」总开关（Q2 不用）、黑名单的手动输入（见决策⑦）、
+  按社团/声优屏蔽（Q1 只做标签）。
+- 本轮**仍是 macOS 端实测**，Android 只做构建与静态检查。
+
+### 下一版（1.96.0）待问
+
+三组缩放各设哪些档、标签字号档位、`Aa` 按钮摆在哪、网格列数下拉的档位集合 ——
+均未开问。另：本轮已确认真实存在「全局字号 → 标签行溢出」这条通路，
+1.96.0 做可调外观时**必须把高度预算（`_kOnlineCardTextBlock` / `kOnlineCardTagRow`）
+一起纳入**，否则调大字号会从「宽度溢出」变成「高度裁切」。
+
+Release：https://github.com/michiru233/hiko/releases/tag/v1.95.0
+（`hiko-v1.95.0-macos.zip` 32 MB + `hiko-v1.95.0-android.apk` 67 MB，两个资产已核验）。
+代码提交 `4a8aad9`。
+
+
