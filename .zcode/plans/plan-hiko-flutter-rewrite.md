@@ -2516,6 +2516,8 @@ Release：https://github.com/michiru233/hiko/releases/tag/v1.95.0
   （`Expanded` 吸收剩余高度）。要不要把标题块改成固定两行高度是另一件事，未裁决。
 
 Release：https://github.com/michiru233/hiko/releases/tag/v1.96.0
-（`hiko-v1.96.0-macos.zip` + `hiko-v1.96.0-android.apk`）。
+（`hiko-v1.96.0-macos.zip` 34,111,290 B（32 MB，`1.96.0 (107)`）+
+`hiko-v1.96.0-android.apk` 69,889,872 B（67 MB），两个资产已核验）。
+双端构建一次通过。代码提交 `e11b393`、文档提交 `96566fb`。
 
 
