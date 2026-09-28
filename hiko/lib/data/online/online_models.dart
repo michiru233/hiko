@@ -246,6 +246,42 @@ class OnlineWorkEdition {
   final bool isOriginal;
 }
 
+/// 声优 / 社团**黑名单**条目（1.99.3）。
+///
+/// `kind` 用字符串（`'va'` / `'circle'`）而不是 `OnlineCreatorKind` 枚举：
+/// 黑名单要落盘进 settings_store，而枚举住在 online_provider（那边 import
+/// settings_store 会成环）。黑名单条目是纯数据，不值得为它搬枚举。
+/// 与标签黑名单同一条纪律：**只存名字**（排除语法实测只认名字），落盘形态
+/// 为 JSON 数组 `[{"kind":"va","name":"…"}]`。
+class OnlineCreatorBlock {
+  const OnlineCreatorBlock({required this.kind, required this.name});
+
+  static const kindVa = 'va';
+  static const kindCircle = 'circle';
+
+  final String kind;
+  final String name;
+
+  bool get isVa => kind == kindVa;
+
+  factory OnlineCreatorBlock.fromJson(Map<String, dynamic> json) =>
+      OnlineCreatorBlock(
+        kind: json['kind'] == OnlineCreatorBlock.kindCircle
+            ? OnlineCreatorBlock.kindCircle
+            : OnlineCreatorBlock.kindVa,
+        name: (json['name'] as String?)?.trim() ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {'kind': kind, 'name': name};
+
+  @override
+  bool operator ==(Object other) =>
+      other is OnlineCreatorBlock && other.kind == kind && other.name == name;
+
+  @override
+  int get hashCode => Object.hash(kind, name);
+}
+
 /// 在线作品分页结果
 class OnlineWorkPage {
   const OnlineWorkPage({

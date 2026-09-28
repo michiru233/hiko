@@ -206,4 +206,26 @@ void main() {
     await reopened.init();
     expect(reopened.isCached('1234567/7654321'), isTrue);
   });
+
+  test('按作品分组统计与按作品删除（1.99.3）', () async {
+    // 手工摆缓存文件：hash 形态 <workId>_<trackId>
+    File(p.join(tmp.path, '1617295_1.mp3')).writeAsBytesSync(List.filled(100, 0));
+    File(p.join(tmp.path, '1617295_2.mp3')).writeAsBytesSync(List.filled(50, 0));
+    File(p.join(tmp.path, '1623920_1.mp3')).writeAsBytesSync(List.filled(30, 0));
+
+    final byWork = await cache.bytesByWork();
+    expect(byWork[1617295], 150);
+    expect(byWork[1623920], 30);
+
+    expect(await cache.removeWork(1617295), isTrue);
+    expect(await cache.bytesByWork(), {1623920: 30});
+    expect(await cache.removeWork(9999999), isFalse);
+
+    // 手摆文件不在 init 时的 _index 里，用新实例重扫目录验证磁盘与索引一致：
+    // 删掉的不再出现，存活的照常命中
+    final recheck = OnlineAudioCache(directory: tmp);
+    await recheck.init();
+    expect(recheck.isCached('1617295/1'), isFalse);
+    expect(recheck.isCached('1623920/1'), isTrue);
+  });
 }

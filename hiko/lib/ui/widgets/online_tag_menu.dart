@@ -150,13 +150,15 @@ class _BlacklistDialog extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final blocked = ref.watch(settingsProvider).blockedTags;
+    final blockedCreators = ref.watch(settingsProvider).blockedCreators;
+    final hasAny = blocked.isNotEmpty || blockedCreators.isNotEmpty;
 
     return AlertDialog(
       title: Row(
         children: [
           Icon(Icons.block_rounded, size: 17, color: theme.colorScheme.primary),
           const SizedBox(width: 8),
-          const Text('标签黑名单', style: TextStyle(fontSize: 15)),
+          const Text('在线黑名单', style: TextStyle(fontSize: 15)),
         ],
       ),
       content: SizedBox(
@@ -165,13 +167,13 @@ class _BlacklistDialog extends ConsumerWidget {
           constraints: BoxConstraints(
             maxHeight: MediaQuery.sizeOf(context).height * 0.46,
           ),
-          child: blocked.isEmpty
+          child: !hasAny
               ? _emptyHint(theme)
-              : _buildList(context, ref, blocked),
+              : _buildList(context, ref, blocked, blockedCreators),
         ),
       ),
       actions: [
-        if (blocked.isNotEmpty)
+        if (hasAny)
           TextButton(
             onPressed: () => unawaited(_clearAll(context, ref)),
             child: Text(
@@ -190,7 +192,8 @@ class _BlacklistDialog extends ConsumerWidget {
   Widget _emptyHint(ThemeData theme) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 18),
         child: Text(
-          '还没有屏蔽任何标签。\n在在线作品的标签上右键（触屏长按）就能加入黑名单。',
+          '还没有屏蔽任何标签或声优 / 社团。\n'
+          '在在线作品的标签、声优、社团胶囊上右键（触屏长按）就能加入黑名单。',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 12, height: 1.8, color: theme.hintColor),
         ),
@@ -200,6 +203,7 @@ class _BlacklistDialog extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     List<OnlineTag> blocked,
+    List<OnlineCreatorBlock> blockedCreators,
   ) {
     final theme = Theme.of(context);
     return Column(
@@ -207,53 +211,91 @@ class _BlacklistDialog extends ConsumerWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Flexible(
-          child: ListView.builder(
+          child: ListView(
             shrinkWrap: true,
             padding: EdgeInsets.zero,
-            itemCount: blocked.length,
-            itemBuilder: (context, index) {
-              final tag = blocked[index];
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(
-                  children: [
-                    // 与被屏蔽的卡面标签同一件视觉件：灰 + 删除线，
-                    // 让用户在管理页里看到的形态和列表页里的一致
-                    HikoTagChip(tag: tag.name, blocked: true),
-                    const SizedBox(width: 8),
-                    // 显示 id 是为了让「名单里两条同名标签」可辨认，
-                    // 也顺带说明这份名单是按 id 结构化的、不是一段文本
-                    if (tag.id > 0)
-                      Text(
-                        '#${tag.id}',
-                        style: TextStyle(fontSize: 10, color: theme.hintColor),
+            children: [
+              for (final tag in blocked)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      // 与被屏蔽的卡面标签同一件视觉件：灰 + 删除线，
+                      // 让用户在管理页里看到的形态和列表页里的一致
+                      HikoTagChip(tag: tag.name, blocked: true),
+                      const SizedBox(width: 8),
+                      // 显示 id 是为了让「名单里两条同名标签」可辨认，
+                      // 也顺带说明这份名单是按 id 结构化的、不是一段文本
+                      if (tag.id > 0)
+                        Text(
+                          '#${tag.id}',
+                          style: TextStyle(fontSize: 10, color: theme.hintColor),
+                        ),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: '移出黑名单',
+                        onPressed: () => unawaited(
+                          ref
+                              .read(settingsProvider.notifier)
+                              .removeBlockedTag(tag.id),
+                        ),
+                        icon: const Icon(Icons.close_rounded, size: 15),
+                        visualDensity: VisualDensity.compact,
+                        constraints:
+                            const BoxConstraints(minWidth: 28, minHeight: 28),
+                        padding: EdgeInsets.zero,
                       ),
-                    const Spacer(),
-                    IconButton(
-                      tooltip: '移出黑名单',
-                      onPressed: () => unawaited(
-                        ref
-                            .read(settingsProvider.notifier)
-                            .removeBlockedTag(tag.id),
-                      ),
-                      icon: const Icon(Icons.close_rounded, size: 15),
-                      visualDensity: VisualDensity.compact,
-                      constraints:
-                          const BoxConstraints(minWidth: 28, minHeight: 28),
-                      padding: EdgeInsets.zero,
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              );
-            },
+              if (blockedCreators.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Text(
+                    '声优 / 社团',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: theme.hintColor,
+                    ),
+                  ),
+                ),
+                for (final block in blockedCreators)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      children: [
+                        // 与详情页的人名胶囊同一套着色（声优蓝 / 社团紫是筛选胶囊的颜色，
+                        // 黑名单条目刻意灰化，与标签的 blocked 形态一致）
+                        HikoTagChip(tag: '${block.isVa ? '声优' : '社团'}：${block.name}', blocked: true),
+                        const Spacer(),
+                        IconButton(
+                          tooltip: '移出黑名单',
+                          onPressed: () => unawaited(
+                            ref
+                                .read(settingsProvider.notifier)
+                                .removeBlockedCreator(block),
+                          ),
+                          icon: const Icon(Icons.close_rounded, size: 15),
+                          visualDensity: VisualDensity.compact,
+                          constraints: const BoxConstraints(
+                              minWidth: 28, minHeight: 28),
+                          padding: EdgeInsets.zero,
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ],
           ),
         ),
         const SizedBox(height: 10),
         Text(
-          '按标签名在服务端过滤（asmr.one 的搜索语法），所以浏览、搜索、'
-          '按标签筛选都不会再出现带这些标签的作品；在线收藏页不受影响。'
+          '按名字在服务端过滤（asmr.one 的搜索语法），所以浏览、搜索、'
+          '按标签或声优 / 社团筛选都不会再出现这些作品；在线收藏页不受影响。'
           '只作用于在线内容，本地音声库完全不受影响。\n'
-          '服务端只回过滤后的总数，所以只能说「屏蔽了几个标签」，'
+          '服务端只回过滤后的总数，所以只能说「屏蔽了几项」，'
           '说不出「隐藏了多少件作品」。',
           style: TextStyle(fontSize: 10.5, height: 1.6, color: theme.hintColor),
         ),
@@ -262,18 +304,20 @@ class _BlacklistDialog extends ConsumerWidget {
   }
 
   Future<void> _clearAll(BuildContext context, WidgetRef ref) async {
-    final count = ref.read(settingsProvider).blockedTags.length;
+    final tagCount = ref.read(settingsProvider).blockedTags.length;
+    final creatorCount = ref.read(settingsProvider).blockedCreators.length;
     final ok = await showConfirmDialog(
       context,
-      title: '清空标签黑名单',
-      message: '这会把 $count 个被屏蔽的标签全部移出黑名单，它们对应的作品会重新出现在'
-          '浏览、搜索与标签筛选结果里。',
+      title: '清空在线黑名单',
+      message: '这会把 $tagCount 个被屏蔽的标签、$creatorCount 位被屏蔽的声优 / 社团'
+          '全部移出黑名单，对应的作品会重新出现在浏览与筛选结果里。',
       okLabel: '全部清空',
     );
     if (!ok || !context.mounted) return;
     await ref.read(settingsProvider.notifier).clearBlockedTags();
+    await ref.read(settingsProvider.notifier).setBlockedCreators(const []);
     if (!context.mounted) return;
     await ref.read(onlineBrowseProvider.notifier).reloadAfterUnblock();
-    if (context.mounted) showHikoToast(context, '已清空标签黑名单');
+    if (context.mounted) showHikoToast(context, '已清空在线黑名单');
   }
 }

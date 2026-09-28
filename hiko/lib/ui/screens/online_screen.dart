@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/online/online_account.dart';
 import '../../data/online/online_favorites.dart';
@@ -59,16 +60,48 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
   final _searchController = TextEditingController();
   int? _detailWorkId;
 
+  /// 搜索历史（1.99.3）：最近 10 条，SharedPreferences 持久化。
+  /// 不是「设置」所以不进 settings_store —— 只有这一处 UI 消费它。
+  static const _kSearchHistory = 'hiko-online-search-history';
+  static const _searchHistoryLimit = 10;
+  List<String> _searchHistory = const [];
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _ensureLoaded());
+    unawaited(_loadSearchHistory());
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSearchHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() => _searchHistory = prefs.getStringList(_kSearchHistory) ?? const []);
+  }
+
+  void _rememberSearch(String keyword) {
+    final next = [keyword, ..._searchHistory.where((w) => w != keyword)];
+    if (next.length > _searchHistoryLimit) {
+      next.removeRange(_searchHistoryLimit, next.length);
+    }
+    _searchHistory = next;
+    unawaited(() async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_kSearchHistory, next);
+    }());
+  }
+
+  Future<void> _clearSearchHistory() async {
+    setState(() => _searchHistory = const []);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kSearchHistory);
+    if (mounted) showHikoToast(context, '已清空搜索历史');
   }
 
   /// 首次进入时自动拉一次热门榜；已有数据则不打扰（切走再切回不重新加载）
@@ -92,6 +125,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
           .applyPreset(OnlineSort.popularPreset);
       return;
     }
+    _rememberSearch(keyword);
     await ref.read(onlineBrowseProvider.notifier).search(keyword);
   }
 
@@ -261,10 +295,51 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
               ),
             ],
           ),
+          // 搜索历史（1.99.3）：只在搜索框为空时出现，点了重搜
+          if (_searchController.text.isEmpty && _searchHistory.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            _buildSearchHistoryRow(theme),
+          ],
           const SizedBox(height: 8),
           _buildFilterLine(state, theme),
         ],
       ),
+    );
+  }
+
+  Widget _buildSearchHistoryRow(ThemeData theme) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final term in _searchHistory)
+                ActionChip(
+                  label: Text(
+                    term,
+                    style: const TextStyle(fontSize: 11),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  tooltip: '重新搜索“$term”',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () {
+                    _searchController.text = term;
+                    unawaited(_submitSearch(term));
+                    setState(() {});
+                  },
+                ),
+            ],
+          ),
+        ),
+        TextButton(
+          onPressed: () => unawaited(_clearSearchHistory()),
+          child: const Text('清空', style: TextStyle(fontSize: 11)),
+        ),
+      ],
     );
   }
 

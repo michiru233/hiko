@@ -87,6 +87,10 @@ class AppSettings {
   /// [OnlineTag.id] 仍然存下来，用于去重、管理页展示，以及卡片上判断「这个标签被屏蔽了」。
   final List<OnlineTag> blockedTags;
 
+  /// 在线**声优 / 社团**黑名单（1.99.3）。与标签黑名单同一套机制：
+  /// 编进搜索关键字在服务端过滤，只作用于在线浏览 / 搜索 / 筛选结果。
+  final List<OnlineCreatorBlock> blockedCreators;
+
   const AppSettings({
     this.theme = 'light',
     this.accent = defaultAccent,
@@ -118,6 +122,7 @@ class AppSettings {
     this.fullscreenPlayerStyle = 'vinyl',
     this.onlinePageSize = 20,
     this.blockedTags = const [],
+    this.blockedCreators = const [],
   });
 
   /// 在线服务默认地址（Kikoeru 协议公共实例；可改成任意自建服务器）
@@ -169,6 +174,7 @@ class AppSettings {
     String? fullscreenPlayerStyle,
     double? onlinePageSize,
     List<OnlineTag>? blockedTags,
+    List<OnlineCreatorBlock>? blockedCreators,
   }) =>
       AppSettings(
         theme: theme ?? this.theme,
@@ -204,6 +210,7 @@ class AppSettings {
             fullscreenPlayerStyle ?? this.fullscreenPlayerStyle,
         onlinePageSize: onlinePageSize ?? this.onlinePageSize,
         blockedTags: blockedTags ?? this.blockedTags,
+        blockedCreators: blockedCreators ?? this.blockedCreators,
       );
 }
 
@@ -257,6 +264,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kFullscreenPlayerStyle = 'hiko-fullscreen-player-style';
   static const _kOnlinePageSize = 'hiko-online-page-size';
   static const _kBlockedTags = 'hiko-online-blocked-tags';
+  static const _kBlockedCreators = 'hiko-online-blocked-creators';
 
   static const _validSorts = {
     'recent_desc',
@@ -437,6 +445,49 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     }
   }
 
+  /// 声优 / 社团黑名单的持久化形态：JSON 数组 `[{"kind":"va","name":"…"}]`。
+  /// 归一化宽容度与标签黑名单一致（丢坏条目，不清整份名单），按 kind+name 去重。
+  static String _normalizeBlockedCreators(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return '';
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return '';
+      final out = <OnlineCreatorBlock>[];
+      final seen = <OnlineCreatorBlock>{};
+      for (final item in decoded) {
+        if (item is! Map) continue;
+        // kind 白名单外的条目直接丢弃，不静默转成 va（那会屏蔽错人）
+        final kind = item['kind'];
+        if (kind != OnlineCreatorBlock.kindVa &&
+            kind != OnlineCreatorBlock.kindCircle) {
+          continue;
+        }
+        final block =
+            OnlineCreatorBlock.fromJson(Map<String, dynamic>.from(item));
+        if (block.name.isEmpty) continue;
+        if (!seen.add(block)) continue;
+        out.add(block);
+      }
+      return jsonEncode([for (final b in out) b.toJson()]);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  static List<OnlineCreatorBlock> _decodeBlockedCreators(String? raw) {
+    final normalized = _normalizeBlockedCreators(raw);
+    if (normalized.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(normalized) as List;
+      return [
+        for (final item in decoded)
+          OnlineCreatorBlock.fromJson(Map<String, dynamic>.from(item as Map)),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     state = AppSettings(
@@ -480,6 +531,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       onlinePageSize:
           _normalizeOnlinePageSize(prefs.getDouble(_kOnlinePageSize)),
       blockedTags: _decodeBlockedTags(prefs.getString(_kBlockedTags)),
+      blockedCreators:
+          _decodeBlockedCreators(prefs.getString(_kBlockedCreators)),
     );
   }
 
@@ -639,6 +692,34 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   Future<void> clearBlockedTags() {
     if (state.blockedTags.isEmpty) return Future.value();
     return setBlockedTags(const []);
+  }
+
+  /// 整份替换声优 / 社团黑名单（1.99.3）
+  Future<void> setBlockedCreators(List<OnlineCreatorBlock> blocks) {
+    final encoded = _normalizeBlockedCreators(jsonEncode([
+      for (final b in blocks) b.toJson(),
+    ]));
+    return _save(
+      _kBlockedCreators,
+      encoded,
+      state.copyWith(blockedCreators: _decodeBlockedCreators(encoded)),
+    );
+  }
+
+  /// 屏蔽一位声优 / 一个社团（按 kind+name 去重；已在名单里则什么都不做）
+  Future<void> addBlockedCreator(OnlineCreatorBlock block) {
+    if (block.name.trim().isEmpty) return Future.value();
+    if (state.blockedCreators.contains(block)) return Future.value();
+    return setBlockedCreators([...state.blockedCreators, block]);
+  }
+
+  /// 移出声优 / 社团黑名单
+  Future<void> removeBlockedCreator(OnlineCreatorBlock block) {
+    if (!state.blockedCreators.contains(block)) return Future.value();
+    return setBlockedCreators([
+      for (final b in state.blockedCreators)
+        if (b != block) b,
+    ]);
   }
 
   static Future<String> _existingBackground(String path) async {

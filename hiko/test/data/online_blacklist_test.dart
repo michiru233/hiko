@@ -405,6 +405,51 @@ void main() {
       expect(notifier.state.bypassBlocklist, isFalse);
     });
   });
+  group('声优 / 社团黑名单（1.99.3）', () {
+    test('creatorExclusionTerm 按 kind 分派 va / circle 命名空间', () {
+      expect(
+        creatorExclusionTerm(
+            const OnlineCreatorBlock(kind: 'va', name: '真白真雪')),
+        r'$-va:真白真雪$',
+      );
+      expect(
+        creatorExclusionTerm(
+            const OnlineCreatorBlock(kind: 'circle', name: 'B-bishop')),
+        r'$-circle:B-bishop$',
+      );
+    });
+
+    test('exclusionKeyword 把标签与声优 / 社团编进同一段关键字', () {
+      final kw = exclusionKeyword(
+        const [OnlineTag(id: 1, name: 'ASMR')],
+        blockedCreators: const [
+          OnlineCreatorBlock(kind: 'va', name: '真白真雪'),
+          OnlineCreatorBlock(kind: 'circle', name: 'B-bishop'),
+        ],
+      );
+      expect(kw, r'$-tag:ASMR$ $-va:真白真雪$ $-circle:B-bishop$');
+    });
+
+    test('只有声优 / 社团排除时也非空 —— 整体就走搜索接口', () {
+      expect(
+        exclusionKeyword(const [],
+            blockedCreators: const [OnlineCreatorBlock(kind: 'va', name: 'x')]),
+        r'$-va:x$',
+      );
+    });
+
+    test('空名跳过，kind+name 去重，黑名单全空回空串', () {
+      expect(
+        exclusionKeyword(const [], blockedCreators: const [
+          OnlineCreatorBlock(kind: 'va', name: ''),
+          OnlineCreatorBlock(kind: 'va', name: 'x'),
+          OnlineCreatorBlock(kind: 'va', name: 'x'),
+        ]),
+        r'$-va:x$',
+      );
+      expect(exclusionKeyword(const [], blockedCreators: const []), '');
+    });
+  });
 }
 
 // ---------------------------------------------------------------- 测试脚手架

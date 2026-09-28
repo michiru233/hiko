@@ -22,6 +22,7 @@ import 'detail_kit.dart';
 import 'online_account_dialogs.dart';
 import 'online_cover.dart';
 import 'online_tag_menu.dart';
+import 'toast.dart';
 
 /// 桌面端：在线作品详情（从右侧滑出的面板）。
 ///
@@ -824,6 +825,17 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
           height: 36,
           child: const Text('复制名字', style: TextStyle(fontSize: 12)),
         ),
+        PopupMenuItem(
+          value: 'block',
+          height: 36,
+          child: Text(
+            isVa ? '屏蔽此声优' : '屏蔽此社团',
+            style: TextStyle(
+              fontSize: 12,
+              color: hikoFavoriteColor,
+            ),
+          ),
+        ),
       ],
     );
     if (!mounted) return;
@@ -832,6 +844,23 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
         widget.onSelectCreator!(
           OnlineCreatorFilter(kind: kind, name: name),
         );
+      case 'block':
+        // 声优 / 社团黑名单（1.99.3）：与标签黑名单同一套机制，
+        // 编进搜索关键字在服务端过滤；管理入口在设置 → 在线账号的黑名单对话框
+        await ref.read(settingsProvider.notifier).addBlockedCreator(
+              OnlineCreatorBlock(
+                kind: isVa
+                    ? OnlineCreatorBlock.kindVa
+                    : OnlineCreatorBlock.kindCircle,
+                name: name,
+              ),
+            );
+        if (mounted && pillContext.mounted) {
+          showHikoToast(
+            pillContext,
+            '已屏蔽${isVa ? '声优' : '社团'}「$name」，浏览与搜索不再出现 TA 的作品',
+          );
+        }
       case 'copy':
         await Clipboard.setData(ClipboardData(text: name));
         if (mounted) {

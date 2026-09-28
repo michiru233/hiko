@@ -5,7 +5,7 @@ import '../utils/natural_compare.dart';
 /// 纯函数便于单测；「未听完」用累计进度 < 总时长判定（修正旧版用曲目数比较的怪癖）。
 List<Album> filterAlbums({
   required List<Album> albums,
-  required String view, // 全部音声 / 最近添加 / 正在播放 / 收藏夹 / 分类名
+  required String view, // 全部音声 / 最近添加 / 最近播放 / 正在播放 / 收藏夹 / 分类名
   required String filter, // all / unplayed / favorite
   required String query,
   required String sort, // recent_desc / recent_asc / title_asc / title_desc / duration_desc / duration_asc
@@ -15,8 +15,15 @@ List<Album> filterAlbums({
   final q = query.trim().toLowerCase();
   final result = albums.where((a) {
     if (view == '收藏夹' && !a.favorite) return false;
-    // 内置视图（全部音声 / 最近添加 / 正在播放 / 收藏夹）之外，所有其它名称均视为分类视图，按 genre 匹配
-    if (view != '全部音声' && view != '最近添加' && view != '正在播放' && view != '收藏夹') {
+    // 「最近播放」（1.99.3）只收播过的：lastPlayedAt 是唯一判据
+    if (view == '最近播放' && a.lastPlayedAt == null) return false;
+    // 内置视图（全部音声 / 最近添加 / 最近播放 / 正在播放 / 收藏夹）之外，
+    // 所有其它名称均视为分类视图，按 genre 匹配
+    if (view != '全部音声' &&
+        view != '最近添加' &&
+        view != '最近播放' &&
+        view != '正在播放' &&
+        view != '收藏夹') {
       if (a.genre != view) return false;
     }
     if (filter == 'unplayed' && a.played >= a.totalDuration) return false;
@@ -102,6 +109,21 @@ List<Album> filterAlbums({
     default:
       // 最近添加在前：保持库原有顺序
       break;
+  }
+
+  // 「最近播放」视图固定按播放时间倒序（1.99.3）：该视图的意义就是「按什么播过
+  // 来排」，排序下拉在这里不生效。断点数据只存在本地库，在线作品不入库，天然不混。
+  if (view == '最近播放') {
+    result.sort((a, b) {
+      final la = a.lastPlayedAt;
+      final lb = b.lastPlayedAt;
+      if (la == null && lb == null) return 0;
+      if (la == null) return 1;
+      if (lb == null) return -1;
+      final cmp = lb.compareTo(la);
+      if (cmp != 0) return cmp;
+      return naturalCompare(a.title, b.title);
+    });
   }
 
   return result;

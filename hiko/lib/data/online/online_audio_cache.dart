@@ -255,6 +255,51 @@ class OnlineAudioCache {
     _index.clear();
   }
 
+  /// 按作品分组的缓存占用（workId → 字节数，1.99.3 设置页「按作品清理」用）。
+  /// workId 取文件名首个 `_` 之前的部分 —— hash 形态是 `<workId>_<trackId>`，
+  /// 这段是数字（`_hashFromFileName` 的既有约定），解析失败的单个文件直接跳过。
+  Future<Map<int, int>> bytesByWork() async {
+    final dir = _dir;
+    if (dir == null) return const {};
+    final out = <int, int>{};
+    for (final f in dir.listSync().whereType<File>()) {
+      final workId = _workIdFromFileName(p.basename(f.path));
+      if (workId == null) continue;
+      try {
+        out[workId] = (out[workId] ?? 0) + await f.length();
+      } catch (_) {}
+    }
+    return out;
+  }
+
+  /// 删除某个作品的全部缓存文件（含 .part 残留），返回是否删到了东西。
+  /// 正在播放中的文件同样可删 —— 这是用户显式动作，优先级高于 LRU 的 pin 保护。
+  Future<bool> removeWork(int workId) async {
+    final dir = _dir;
+    if (dir == null) return false;
+    final prefix = '${workId}_';
+    var removed = false;
+    for (final f in dir.listSync().whereType<File>()) {
+      final name = p.basename(f.path);
+      if (!name.startsWith(prefix)) continue;
+      await _deleteQuietly(f);
+      removed = true;
+      final hash = _hashFromFileName(name);
+      if (hash != null) _index.remove(hash);
+    }
+    return removed;
+  }
+
+  /// 文件名 → workId：`1657200_1937305.mp3` → `1657200`。
+  static int? _workIdFromFileName(String name) {
+    final stem = name.contains('.')
+        ? name.substring(0, name.lastIndexOf('.'))
+        : name;
+    final sep = stem.indexOf('_');
+    if (sep <= 0) return null;
+    return int.tryParse(stem.substring(0, sep));
+  }
+
   static Future<void> _deleteQuietly(File f) async {
     try {
       if (await f.exists()) await f.delete();

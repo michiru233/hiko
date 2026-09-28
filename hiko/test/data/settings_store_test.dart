@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hiko/data/online/online_models.dart';
 import 'package:hiko/data/settings_store.dart';
 import 'package:hiko/playback/gain_chain.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -418,5 +419,33 @@ void main() {
 
     await notifier.setFullscreenPlayerStyle('bogus');
     expect(notifier.state.fullscreenPlayerStyle, 'vinyl', reason: '白名单外回退');
+  });
+
+  test('1.99.3 声优/社团黑名单：默认空 + 落盘往返 + 去重与坏数据丢弃', () async {
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.blockedCreators, isEmpty);
+
+    const va = OnlineCreatorBlock(kind: 'va', name: '真白真雪');
+    const circle = OnlineCreatorBlock(kind: 'circle', name: 'B-bishop');
+    await notifier.addBlockedCreator(va);
+    await notifier.addBlockedCreator(circle);
+    await notifier.addBlockedCreator(va); // 去重：什么都不做
+    expect(notifier.state.blockedCreators, [va, circle]);
+
+    final reloaded = SettingsNotifier();
+    await reloaded.load();
+    expect(reloaded.state.blockedCreators, [va, circle], reason: '落盘往返');
+
+    // 坏数据（空名 / 未知 kind）在 load 归一化时丢弃，不清整份名单
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('hiko-online-blocked-creators',
+        '[{"kind":"va","name":""},{"kind":"magic","name":"x"},{"kind":"va","name":"真白真雪"}]');
+    final repaired = SettingsNotifier();
+    await repaired.load();
+    expect(repaired.state.blockedCreators, [va]);
+
+    await repaired.removeBlockedCreator(va);
+    expect(repaired.state.blockedCreators, isEmpty);
   });
 }

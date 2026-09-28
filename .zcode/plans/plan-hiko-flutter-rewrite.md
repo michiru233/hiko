@@ -2758,3 +2758,41 @@ asmr.one 网页端对有汉化版的作品给「简体中文」跳转链接（RJ
   "outside the bounds of the root"）——沿用 fold 测试的 720×1800。
 - **验证基线**：`flutter test` **549 passed / 2 skipped**（542→549）；
   `flutter analyze` **39 条**（= 基线）。版本 `1.99.2+115`。本版无新增待裁决。
+
+## 1.99.3 五项功能：最近播放 / 缓存按作品清理 / 搜索历史 / 编辑作品信息 / 声优社团黑名单（2026-09-28）
+
+用户点名五项（全部有明确的数据层依托），一次发版：
+
+- **①「最近播放」视图**：侧边栏新增 `⏱ 最近播放`。filterAlbums 加内置视图分支
+  —— 只收 `lastPlayedAt != null`、**固定按播放时间倒序**（排序下拉不生效）；
+  该视图点卡即续播（`_resumeAlbum`，断点缺失退化为从头播放），详情走右键 / 长按。
+  **「本地和在线会不会混」—— 不会**：在线作品刻意不入 library.json
+  （`_persistProgress` 跳过 online- 前缀），lastPlayedAt 只在本地库。
+  移动端底部导航未加入口（4 tab 塞不下），视图本身两端通用，后续要加再说。
+- **②在线缓存按作品清理**：实测发现「当前占用 + 清空全部」设置里**已有**
+  （1.90），真正缺的是按作品。数据层补 `bytesByWork()`（按文件名首个 `_` 前缀
+  分组，hash 形态 `<workId>_<trackId>`）与 `removeWork(workId)`（含 .part，删除
+  同步清 `_index`）；设置 → 在线账号页加「按作品清理」列表（按占用倒序，
+  id 落在 RJ 段显示 RJ 号，1000000xx 段显示 #id，单独删除）。
+- **③在线搜索历史**：SharedPreferences（`hiko-online-search-history`，最近 10 条，
+  去重置顶）。搜索框为空时显示一排 chip，点击重搜；带「清空」。刻意不进
+  settings_store（不是设置，只有这一处消费）。
+- **④手动编辑作品信息**：卡片右键 / 长按菜单加「编辑作品信息」—— 标题 / 声优 /
+  社团三字段对话框，`updateAlbum` 写回（持久化 + 筛选统计即时生效）。分类不
+  放进这个对话框：已有「设置分类」入口且有列表 UX，自由文本会造出侧边栏
+  看不见的孤儿分类。
+- **⑤黑名单扩展到声优 / 社团**：**先实测服务端排除语法**（该文件立过「打真实
+  接口才算数」的纪律）—— `$-va:真白真雪$`（正向 178 → 纯排除 62275 = 全站
+  62453−178）、`$-circle:B-bishop$`（266 → 62187），减法严丝合缝。实现完全
+  对齐标签黑名单：`OnlineCreatorBlock`（kind 用字符串，枚举在 provider、
+  settings_store import 它会成环）+ `blockedCreators` 落盘（JSON 数组，kind
+  白名单外丢弃、按 kind+name 去重）+ `creatorExclusionTerm` 并进
+  `exclusionKeyword`；当前正在按某 creator 筛选时放行 TA 自己（与标签 bypass
+  同语义）。入口：详情页声优 / 社团胶囊菜单加「屏蔽此声优 / 社团」；管理对话框
+  扩展成「在线黑名单」（标签段 + 声优/社团段，全部清空两份一起清）。
+  在线页状态行标记保持「已屏蔽 N 个标签」口径不变（1.97.2 那条挤爆教训）。
+- **测试**：`filter_recent_test.dart` 新建 4 条 + blacklist +4（排除项拼法 / 合编 /
+  去重 / 空串约定）+ settings_store +1（落盘往返 / 去重 / 坏数据丢弃）+
+  online_cache +1（分组统计 / 按作品删除 / 索引重建）。
+- **验证基线**：`flutter test` **559 passed / 2 skipped**（549→559）；
+  `flutter analyze` **39 条**（= 基线）。版本 `1.99.3+116`。本版无新增待裁决。

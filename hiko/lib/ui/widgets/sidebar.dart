@@ -38,12 +38,15 @@ class Sidebar extends ConsumerWidget {
     final count = (String view) => switch (view) {
           '收藏夹' => albums.where((a) => a.favorite).length,
           '全部音声' => albums.length,
+          '最近播放' => albums.where((a) => a.lastPlayedAt != null).length,
           _ => albums.where((a) => a.genre == view).length,
         };
 
     final navItems = [
       ('▦', '全部音声'),
       ('◷', '最近添加'),
+      // 最近播放（1.99.3）：按 lastPlayedAt 倒序，点卡即从断点续播
+      ('⏱', '最近播放'),
       ('▶', '正在播放'),
       ('♡', '收藏夹'),
       ('☁', '在线'),

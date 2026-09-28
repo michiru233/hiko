@@ -32,6 +32,9 @@
 /// - **排除只是过滤、不改排序键**，但排序键相等的**并列项 tie-break 会变**
 ///   （实测抓到一例：`release` 同为 2026-06-27 的两件顺序对调）。这是必须接受的行为。
 /// - 60 个排除项 → 编码后 URL 2552 字节，服务端正常返回。**不需要条数上限**。
+/// - 2026-09-28 补测：排除语法同样覆盖声优 / 社团命名空间 —— `$-va:真白真雪$`
+///   （正向 178 → 纯排除 62275 = 全站 62453−178）、`$-circle:B-bishop$`
+///   （正向 266 → 62187），减法严丝合缝。1.99.3 的声优 / 社团黑名单据此实现。
 library;
 
 import 'online_models.dart';
@@ -55,12 +58,25 @@ String vaIncludeTerm(String name) => '\$va:$name\$';
 /// 按社团（Circle）**正向筛选**的搜索项（1.97.0）。
 String circleIncludeTerm(String name) => '\$circle:$name\$';
 
+/// 按声优 / 社团**排除**的搜索项（1.99.3）。`-` 前缀是同一套排除语法；
+/// 2026-09-28 实测：`$-va:真白真雪$`（正向 178 → 纯排除 62275 = 全站 62453−178）、
+/// `$-circle:B-bishop$`（正向 266 → 62187），两条都是严丝合缝的减法。
+String creatorExclusionTerm(OnlineCreatorBlock block) => block.isVa
+    ? '\$-va:${block.name}\$'
+    : '\$-circle:${block.name}\$';
+
 /// 把黑名单编成一段排除关键字。
 ///
 /// 返回**空串**表示「没有排除项」，这是本版最重要的一条约定：
 /// **黑名单为空时，请求必须与 1.95.0 之前逐字节一致**（端点、参数都不变），
 /// 调用方据此决定走原端点还是走搜索接口。
-String exclusionKeyword(Iterable<OnlineTag> blocked) {
+///
+/// [blockedCreators]（1.99.3）与标签排除编进同一段关键字 —— 服务端把它们
+/// 当成一次搜索的多个条件，任何一段非空整体就要走搜索接口，无需单独判断。
+String exclusionKeyword(
+  Iterable<OnlineTag> blocked, {
+  Iterable<OnlineCreatorBlock> blockedCreators = const [],
+}) {
   final terms = <String>[];
   final seenIds = <int>{};
   final seenNames = <String>{};
@@ -74,6 +90,16 @@ String exclusionKeyword(Iterable<OnlineTag> blocked) {
     if (duplicate) continue;
     seenNames.add(name);
     terms.add(tagExclusionTerm(name));
+  }
+  final seenCreators = <OnlineCreatorBlock>{};
+  for (final block in blockedCreators) {
+    final name = block.name.trim();
+    if (name.isEmpty) continue;
+    if (!seenCreators.add(OnlineCreatorBlock(kind: block.kind, name: name))) {
+      continue;
+    }
+    terms.add(creatorExclusionTerm(
+        OnlineCreatorBlock(kind: block.kind, name: name)));
   }
   return terms.join(' ');
 }

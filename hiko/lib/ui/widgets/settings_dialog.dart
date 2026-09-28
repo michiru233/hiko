@@ -1034,6 +1034,83 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
           ],
         ),
       ),
+      // 按作品清理（1.99.3）：LRU 静默淘汰用户无感，列出「谁占了多少」
+      // 并允许单独删除。RJ 段 id 展示成 RJ 号便于对上作品；
+      // 1000000xx 段是 BJ/VJ 等非 RJ 作品，退回 #id 展示。
+      FutureBuilder<Map<int, int>>(
+        future: ref.read(onlineAudioCacheProvider).bytesByWork(),
+        builder: (context, snap) {
+          final entries = (snap.data ?? const <int, int>{}).entries.toList()
+            ..sort((a, b) => b.value.compareTo(a.value));
+          if (entries.isEmpty) return const SizedBox.shrink();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '按作品清理',
+                    style: TextStyle(fontSize: 11, color: theme.hintColor),
+                  ),
+                ),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 200),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: theme.dividerColor),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: entries.length,
+                    itemBuilder: (context, index) {
+                      final entry = entries[index];
+                      final id = entry.key;
+                      final label =
+                          (id >= 10000000 && id < 100000000)
+                              ? 'RJ${id.toString().padLeft(8, '0')}'
+                              : '#$id';
+                      return ListTile(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        title: Text(label,
+                            style: const TextStyle(fontSize: 12)),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _formatBytes(entry.value),
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: theme.hintColor,
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: '清理该作品缓存',
+                              icon: const Icon(Icons.close_rounded, size: 15),
+                              visualDensity: VisualDensity.compact,
+                              constraints: const BoxConstraints(
+                                  minWidth: 30, minHeight: 30),
+                              onPressed: () async {
+                                await ref
+                                    .read(onlineAudioCacheProvider)
+                                    .removeWork(id);
+                                if (mounted) setState(() {});
+                                _toast('已清理 $label 的缓存');
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
       Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Text(

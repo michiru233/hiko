@@ -961,6 +961,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  /// 「最近播放」视图点卡续播（1.99.3）。断点缺失（旧数据播过但没落上断点）
+  /// 时退化为从头播放，不空手而归。
+  void _resumeAlbum(Album album) {
+    if (album.tracks.isEmpty) return;
+    final hasResume = album.resumeTrackIndex >= 0;
+    ref.read(playbackProvider.notifier).playAlbum(
+          album,
+          index: hasResume ? album.resumeTrackIndex : 0,
+          startPosition: hasResume ? album.resumePosition : 0,
+        );
+    _showToast(hasResume ? '已从上次断点继续播放' : '从头开始播放');
+  }
+
   /// 「随机播放」：盲选一张可播专辑从第 1 轨起播，不改当前播放模式
   void _playRandomAlbum() {
     final albums = ref.read(libraryProvider);
@@ -1563,6 +1576,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ? _multiIds.remove(album.id)
                     : _multiIds.add(album.id);
               });
+            } else if (_view == '最近播放') {
+              // 最近播放视图（1.99.3）：点卡即从断点续播 —— 这个视图的意义
+              // 就是少一次点击；详情走右键 / 长按菜单
+              _resumeAlbum(album);
             } else if (isMobile) {
               // 1.56 移动端：点击卡片进入全屏详情页；1.77 接收胶囊回传筛选
               _openMobileDetail(album.id);
@@ -1592,6 +1609,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           value: 'rating',
           label: '设置星级',
           icon: Icons.star_outline_rounded,
+        ),
+        const HikoContextMenuItem(
+          value: 'edit',
+          label: '编辑作品信息',
+          icon: Icons.edit_outlined,
         ),
         if (albumRjCode(album) != null)
           const HikoContextMenuItem(
@@ -1629,6 +1651,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       switch (action) {
         case 'category':
           _setCategoryForSingle(album);
+        case 'edit':
+          _showEditAlbumDialog(album);
         case 'rating':
           _setRatingForSingle(album);
         case 'scrape':
@@ -1643,6 +1667,67 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           _deleteSingle(album, true);
       }
     });
+  }
+
+  /// 手动编辑作品信息（1.99.3）：刮削认错 RJ / 文件名脏数据时手改
+  /// 标题、声优、社团。分类走「设置分类」入口（那里有现成的列表 UX）。
+  /// `updateAlbum` 写回后筛选、统计、详情页都读库，立刻生效。
+  Future<void> _showEditAlbumDialog(Album album) async {
+    final titleController = TextEditingController(text: album.title);
+    final artistController = TextEditingController(text: album.artist);
+    final circleController = TextEditingController(text: album.albumArtist);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('编辑作品信息', style: TextStyle(fontSize: 16)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleController,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: '标题'),
+              style: const TextStyle(fontSize: 14),
+            ),
+            TextField(
+              controller: artistController,
+              decoration: const InputDecoration(labelText: '声优'),
+              style: const TextStyle(fontSize: 14),
+            ),
+            TextField(
+              controller: circleController,
+              decoration: const InputDecoration(labelText: '社团（专辑艺术家）'),
+              style: const TextStyle(fontSize: 14),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (saved != true) return;
+    final title = titleController.text.trim();
+    if (title.isEmpty) {
+      _showToast('标题不能为空');
+      return;
+    }
+    await ref.read(libraryProvider.notifier).updateAlbum(
+          album.id,
+          (a) => a.copyWith(
+            title: title,
+            artist: artistController.text.trim(),
+            albumArtist: circleController.text.trim(),
+          ),
+        );
+    _showToast('已更新作品信息');
   }
 
   Future<void> _setCategoryForSingle(Album album) async {

@@ -435,11 +435,21 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
     //
     // `bypassBlocklist` 只把那一个标签从排除项里摘出来，其余照旧
     // （见 `OnlineBrowseState.bypassBlocklist` 的注释）。
-    final blocked = _ref.read(settingsProvider).blockedTags;
+    //
+    // 声优 / 社团黑名单（1.99.3）与标签编进同一段排除关键字；当前正在按
+    // 某个 creator 筛选时放行它自己 —— 与标签的 bypass 同语义：用户点
+    // 「按此筛选」是明确要看这一位的作品，黑名单不该把这次筛选打空。
+    final settingsState = _ref.read(settingsProvider);
+    final blocked = settingsState.blockedTags;
+    final activeCreator = state.creator;
+    final blockedCreators = activeCreator == null
+        ? settingsState.blockedCreators
+        : settingsState.blockedCreators.where((c) => c != _creatorBlock(activeCreator));
     final exclude = exclusionKeyword(
       state.bypassBlocklist && tag != null
           ? blocked.where((t) => t.id != tag.id)
           : blocked,
+      blockedCreators: blockedCreators,
     );
 
     // 声优 / 社团筛选（1.97.0）：`/api/works` 会静默丢弃关键词（黑名单 1.95.0
@@ -511,6 +521,15 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
     final text = e is KikoeruException ? e.message : '$e';
     return '加载失败：$text';
   }
+
+  /// 筛选维度 → 黑名单条目（枚举 ↔ 字符串 kind 的换算只此一处）
+  static OnlineCreatorBlock _creatorBlock(OnlineCreatorFilter filter) =>
+      OnlineCreatorBlock(
+        kind: filter.kind == OnlineCreatorKind.va
+            ? OnlineCreatorBlock.kindVa
+            : OnlineCreatorBlock.kindCircle,
+        name: filter.name,
+      );
 }
 
 final onlineBrowseProvider =
