@@ -19,7 +19,9 @@ import '../theme.dart';
 import '../widgets/toast.dart';
 
 /// 全屏播放页（1.57）：仿网易云双层设计
-/// - 黑胶唱片层：封面旋转动画 + 唱针抬起/落下拟真联动
+/// - 封面层（1.100.0 两套可选，AppBar 切换 + 设置持久化）：
+///     - 黑胶唱片：封面旋转动画 + 唱针抬起/落下拟真联动（默认）
+///     - 简约方封面：大圆角方形封面静态展示
 /// - 歌词层：滚动字幕同步播放进度
 /// - 三核心功能键：睡眠定时、音频增益、音轨/章节列表/详情信息
 class FullscreenPlayerScreen extends ConsumerStatefulWidget {
@@ -124,8 +126,12 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     // 尊重系统 reduce-motion 设置，禁用动画时停止旋转
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
 
+    // 播放页样式（1.100.0）：vinyl 黑胶 / simple 简约方封面
+    final simpleStyle = settings.fullscreenPlayerStyle == 'simple';
+
     // 同步旋转动画与播放状态（1.88 增加入场完成门控：转场期间不起转）
-    final shouldSpin = !reduceMotion && _entryFinished && state.playing;
+    // 简约样式没有唱片，不起转（控制器没有监听者，但仍不该空转）
+    final shouldSpin = !reduceMotion && _entryFinished && state.playing && !simpleStyle;
     if (shouldSpin && !_rotationController.isAnimating) {
       _rotationController.repeat();
     } else if (!shouldSpin && _rotationController.isAnimating) {
@@ -184,6 +190,20 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
               onPressed: () => _setShowLyrics(!_showLyrics),
               tooltip: _showLyrics ? '显示封面' : '显示歌词',
             ),
+          // 播放页样式切换（1.100.0）：图标显示要切去的那套
+          IconButton(
+            icon: Icon(
+              simpleStyle ? Icons.album_outlined : Icons.crop_square_rounded,
+              color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+            ),
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              ref
+                  .read(settingsProvider.notifier)
+                  .setFullscreenPlayerStyle(simpleStyle ? 'vinyl' : 'simple');
+            },
+            tooltip: simpleStyle ? '切换为黑胶样式' : '切换为简约样式',
+          ),
         ],
       ),
       body: SafeArea(
@@ -196,12 +216,12 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                   ? Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // 左：唱片区（曲名与进度落在唱片下方，构成独立锚点块）
+                        // 左：封面区（曲名与进度落在封面下方，构成独立锚点块）
                         Expanded(
                           child: Column(
                             children: [
                               Expanded(
-                                child: _buildVinylView(
+                                child: _buildCoverView(
                                   album,
                                   theme,
                                   isDark,
@@ -229,8 +249,9 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                               child: _buildLyricsView(theme, isDark),
                             )
                           : KeyedSubtree(
-                              key: const ValueKey('vinyl'),
-                              child: _buildVinylView(
+                              // 键随样式变：切样式时中央区走同一条 220ms 交叉淡入
+                              key: ValueKey(simpleStyle ? 'simple' : 'vinyl'),
+                              child: _buildCoverView(
                                 album,
                                 theme,
                                 isDark,
@@ -289,6 +310,67 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
         .seek(lines[index].startTime.inMilliseconds / 1000.0);
     ref.read(lyricsProvider.notifier).resumeAutoScroll();
     setState(() => lastRevealedIndex = -1);
+  }
+
+  /// 中央封面区入口：按 `fullscreenPlayerStyle` 分发黑胶 / 简约（1.100.0）。
+  ///
+  /// 两套视图同语义：点按切歌词（[allowToggle]，1.83 宽屏并排时为 false）。
+  Widget _buildCoverView(
+    Album album,
+    ThemeData theme,
+    bool isDark,
+    bool isPlaying, {
+    bool allowToggle = true,
+  }) {
+    if (ref.read(settingsProvider).fullscreenPlayerStyle == 'simple') {
+      return _buildSimpleCoverView(album, isDark, allowToggle: allowToggle);
+    }
+    return _buildVinylView(album, theme, isDark, isPlaying,
+        allowToggle: allowToggle);
+  }
+
+  /// 简约视图（1.100.0，参照网易云等常规播放器形态）：大圆角方形封面，静态展示。
+  ///
+  /// 与黑胶视图共用其余全部结构（曲目信息 / 进度条 / 控制键 / 功能键），
+  /// 只有中央封面区的形态不同 —— 这是「另一套观感」而非另一套交互。
+  Widget _buildSimpleCoverView(
+    Album album,
+    bool isDark, {
+    bool allowToggle = true,
+  }) {
+    return GestureDetector(
+      // 与黑胶视图一致：封面之外的白边点到也切歌词
+      behavior: HitTestBehavior.opaque,
+      onTap: allowToggle ? () => _setShowLyrics(true) : null,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480, maxHeight: 480),
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black
+                          .withValues(alpha: isDark ? 0.45 : 0.2),
+                      blurRadius: 32,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: AlbumCover(album: album, fit: BoxFit.cover),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// 黑胶唱片视图：封面旋转 + 唱针联动

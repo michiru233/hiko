@@ -68,6 +68,10 @@ class AppSettings {
   /// 仍随全局 `fontScale` 缩放（那是系统级可访问性，不该被这里绕开）。
   final double onlineTrackTitleFontSize;
 
+  /// 全屏播放页样式（1.100.0）：`vinyl` 黑胶旋转（默认）/ `simple` 简约方封面。
+  /// 只决定中央封面区的形态，曲目信息 / 进度 / 控制键两套共用。
+  final String fullscreenPlayerStyle;
+
   /// 在线列表**每页条数**（1.97.0 起持久化）。
   ///
   /// 1.96 及以前只是 `OnlineBrowseState` 的内存字段，冷启动回 20；1.97.0 起入口
@@ -111,6 +115,7 @@ class AppSettings {
     this.onlineDetailTextScale = 1.0,
     this.onlineGridColumns = 0,
     this.onlineTrackTitleFontSize = 12,
+    this.fullscreenPlayerStyle = 'vinyl',
     this.onlinePageSize = 20,
     this.blockedTags = const [],
   });
@@ -161,6 +166,7 @@ class AppSettings {
     double? onlineDetailTextScale,
     double? onlineGridColumns,
     double? onlineTrackTitleFontSize,
+    String? fullscreenPlayerStyle,
     double? onlinePageSize,
     List<OnlineTag>? blockedTags,
   }) =>
@@ -194,6 +200,8 @@ class AppSettings {
         onlineGridColumns: onlineGridColumns ?? this.onlineGridColumns,
         onlineTrackTitleFontSize:
             onlineTrackTitleFontSize ?? this.onlineTrackTitleFontSize,
+        fullscreenPlayerStyle:
+            fullscreenPlayerStyle ?? this.fullscreenPlayerStyle,
         onlinePageSize: onlinePageSize ?? this.onlinePageSize,
         blockedTags: blockedTags ?? this.blockedTags,
       );
@@ -246,6 +254,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kOnlineDetailTextScale = 'hiko-online-detail-text-scale';
   static const _kOnlineGridColumns = 'hiko-online-grid-columns';
   static const _kOnlineTrackTitleFontSize = 'hiko-online-track-title-font-size';
+  static const _kFullscreenPlayerStyle = 'hiko-fullscreen-player-style';
   static const _kOnlinePageSize = 'hiko-online-page-size';
   static const _kBlockedTags = 'hiko-online-blocked-tags';
 
@@ -362,6 +371,12 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       ? trackTitleFontSizeDefault
       : val.clamp(trackTitleFontSizeMin, trackTitleFontSizeMax);
 
+  /// 全屏播放页样式白名单：vinyl（黑胶，默认）/ simple（简约方封面）
+  static const _validFullscreenPlayerStyles = {'vinyl', 'simple'};
+
+  static String _normalizeFullscreenPlayerStyle(String? val) =>
+      _validFullscreenPlayerStyles.contains(val) ? val! : 'vinyl';
+
   /// 每页条数档位（1.97.0 起落盘，设置页下拉）。白名单外的值回退 20。
   static const validOnlinePageSizes = [20.0, 60.0, 100.0];
 
@@ -460,6 +475,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
           _normalizeOnlineGridColumns(prefs.getDouble(_kOnlineGridColumns)),
       onlineTrackTitleFontSize: _normalizeTrackTitleFontSize(
           prefs.getDouble(_kOnlineTrackTitleFontSize)),
+      fullscreenPlayerStyle:
+          _normalizeFullscreenPlayerStyle(prefs.getString(_kFullscreenPlayerStyle)),
       onlinePageSize:
           _normalizeOnlinePageSize(prefs.getDouble(_kOnlinePageSize)),
       blockedTags: _decodeBlockedTags(prefs.getString(_kBlockedTags)),
@@ -575,6 +592,13 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     final valid = _normalizeTrackTitleFontSize(size);
     return _save(_kOnlineTrackTitleFontSize, valid,
         state.copyWith(onlineTrackTitleFontSize: valid));
+  }
+
+  /// 全屏播放页样式：vinyl / simple，非法值回退黑胶（1.100.0）
+  Future<void> setFullscreenPlayerStyle(String style) {
+    final valid = _normalizeFullscreenPlayerStyle(style);
+    return _save(_kFullscreenPlayerStyle, valid,
+        state.copyWith(fullscreenPlayerStyle: valid));
   }
 
   /// 在线每页条数（1.97.0 起落盘）

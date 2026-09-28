@@ -2695,3 +2695,28 @@ Android 端体验批次（用户 2026-09-26 明确：安卓端需求不涉及 ma
 - **验证基线**：`flutter test` **537 passed / 2 skipped**（528→537）；
   `flutter analyze` **39 条**（= 基线，改动文件 0 告警）。
   版本 `1.99.0+112`。本版无新增待裁决。
+
+## 1.100.0 全屏播放页第二套样式：简约方封面 + 样式切换（2026-09-28）
+
+用户提供参考截图（常规播放器形态：方形大封面 + 曲目信息 + 进度 + 控制键），
+要求全屏播放页在现有黑胶旋转之外提供另一套观感，并给切换按钮。
+
+- **方案**：双样式只分化**中央封面区**——曲目信息 / 进度条 / 播放控制 /
+  功能键四块原样共用（这是「另一套观感」而非另一套交互，也避免复制 1300 行
+  的 State）。新增 `_buildCoverView` 分发入口 + `_buildSimpleCoverView`
+  （大圆角方封面，静态、带投影，`ConstrainedBox` 480 封顶 + `AspectRatio`
+  撑满可用区）；点按切歌词的语义与黑胶完全一致（含宽屏并排 allowToggle=false）。
+- **切换按钮**：AppBar 常驻一颗，图标显示「要切去的那套」（黑胶页 →
+  `crop_square`，简约页 → `album_outlined`）。落盘为新设置项
+  `fullscreenPlayerStyle`（`vinyl` / `simple`，白名单外回退黑胶），
+  键 `hiko-fullscreen-player-style`。
+- **细节**：简约样式下黑胶旋转控制器不起转（`shouldSpin` 加 `!simpleStyle`）；
+  窄屏切换式 `AnimatedSwitcher` 的 Key 随样式变（`vinyl`/`simple`/`lyrics`），
+  切样式走同一条 220ms 交叉淡入。
+- **测试**：`test/ui/fullscreen_player_style_test.dart` 4 条（默认黑胶 /
+  简约渲染形态用 `ClipOval` vs `ClipRRect` 判别 / 切换按钮翻转设置并更新指向 /
+  简约封面点按进歌词层）+ `settings_store_test.dart` 1 条（默认值、落盘往返、
+  非法值回退）。坑：`AppSettings(fullscreenPlayerStyle: style)` 不能加 const
+  （运行时参数）。
+- **验证基线**：`flutter test` **542 passed / 2 skipped**（537→542）；
+  `flutter analyze` **39 条**（= 基线）。版本 `1.100.0+113`。本版无新增待裁决。

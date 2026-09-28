@@ -403,4 +403,20 @@ void main() {
       expect(notifier.state.onlineGridColumns, 0, reason: '$bad 不在档位里');
     }
   });
+
+  test('1.100.0 全屏播放页样式：默认黑胶 + simple 往返 + 非法值回退', () async {
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.fullscreenPlayerStyle, 'vinyl', reason: '默认黑胶');
+
+    await notifier.setFullscreenPlayerStyle('simple');
+    expect(notifier.state.fullscreenPlayerStyle, 'simple');
+
+    final reloaded = SettingsNotifier();
+    await reloaded.load();
+    expect(reloaded.state.fullscreenPlayerStyle, 'simple', reason: '落盘往返');
+
+    await notifier.setFullscreenPlayerStyle('bogus');
+    expect(notifier.state.fullscreenPlayerStyle, 'vinyl', reason: '白名单外回退');
+  });
 }
