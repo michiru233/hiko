@@ -176,6 +176,8 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
               unawaited(_applyCreator(filter));
               Navigator.of(context).maybePop();
             },
+            // 语言版本跳转（1.99.2）：压一层新详情页，返回键回原作品
+            onOpenWork: _openDetail,
           ),
         ),
       );
@@ -215,6 +217,8 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
               onSelectTag: _applyTag,
               onSelectCreator: (filter) =>
                   unawaited(_applyCreator(filter)),
+              // 语言版本跳转（1.99.2）：桌面端原地换面板
+              onOpenWork: (id) => setState(() => _detailWorkId = id),
             ),
           ),
         ],

@@ -33,6 +33,7 @@ class OnlineWork {
     this.vas = const [],
     this.rjCode,
     this.nsfw = false,
+    this.otherEditions = const [],
   });
 
   final int id;
@@ -57,6 +58,13 @@ class OnlineWork {
   /// DLsite 作品号，服务端字段 `source_id`（如 `RJ01657200`）
   final String? rjCode;
   final bool nsfw;
+
+  /// 其他语言版本（1.99.2）：同作品的不同语言版（汉化版 / 原版等）。
+  ///
+  /// 只收 `other_language_editions_in_db` —— **asmr.one 库里实际存在**的条目，
+  /// 数字 `id` 可直接开详情。详情响应里的 `language_editions` 是 DLsite 全量
+  /// 语言表，其 workno 未必入库（实测 RJ01623919 打不开）、跳不过去，故不取。
+  final List<OnlineWorkEdition> otherEditions;
 
   /// 在线专辑 id 约定：`online-<workId>`。
   ///
@@ -85,8 +93,9 @@ class OnlineWork {
   String? shareUrl(String serverBase) => onlineWorkPageUrl(serverBase, id);
 
   factory OnlineWork.fromJson(Map<String, dynamic> json) {
+    final ownId = (json['id'] as num?)?.toInt() ?? 0;
     return OnlineWork(
-      id: (json['id'] as num?)?.toInt() ?? 0,
+      id: ownId,
       title: (json['title'] as String?)?.trim().isNotEmpty == true
           ? (json['title'] as String).trim()
           : '未命名作品',
@@ -103,6 +112,8 @@ class OnlineWork {
       vas: parseVoiceActorNames(json['vas']),
       rjCode: _normalizeRj(json['source_id']),
       nsfw: json['nsfw'] as bool? ?? false,
+      otherEditions: parseWorkEditions(json['other_language_editions_in_db'],
+          excludeId: ownId),
     );
   }
 
@@ -126,6 +137,8 @@ class OnlineWork {
         vas: detail.vas.isNotEmpty ? detail.vas : vas,
         rjCode: detail.rjCode ?? rjCode,
         nsfw: detail.nsfw,
+        otherEditions:
+            detail.otherEditions.isNotEmpty ? detail.otherEditions : otherEditions,
       );
 
   static DateTime? _parseDate(Object? raw) {
@@ -182,6 +195,55 @@ class OnlineWork {
     }
     return out;
   }
+
+  /// 其他语言版本解析：`[{id, lang, title, source_id, is_original}]`。
+  /// 宽容处理：没有数字 id 的条目跳不了详情，直接丢弃；按 id 去重。
+  static List<OnlineWorkEdition> parseWorkEditions(Object? raw,
+      {int excludeId = 0}) {
+    if (raw is! List) return const [];
+    final out = <OnlineWorkEdition>[];
+    final seen = <int>{};
+    for (final item in raw) {
+      if (item is! Map) continue;
+      final id = (item['id'] as num?)?.toInt() ?? 0;
+      if (id <= 0 || id == excludeId || !seen.add(id)) continue;
+      out.add(OnlineWorkEdition(
+        id: id,
+        lang: ((item['lang'] as String?) ?? '').trim(),
+        title: ((item['title'] as String?) ?? '').trim(),
+        rjCode: _normalizeRj(item['source_id']),
+        isOriginal: item['is_original'] as bool? ?? false,
+      ));
+    }
+    return out;
+  }
+}
+
+/// 同一作品的其他语言版本条目（汉化版 / 原版等，1.99.2）。
+///
+/// 来源是详情响应的 `other_language_editions_in_db` —— 与 `language_editions`
+/// 的区别见 [OnlineWork.otherEditions] 的注释。
+class OnlineWorkEdition {
+  const OnlineWorkEdition({
+    required this.id,
+    required this.lang,
+    this.title = '',
+    this.rjCode,
+    this.isOriginal = false,
+  });
+
+  /// asmr.one 作品数字 id，可直接开详情
+  final int id;
+
+  /// 语言名，服务端已给本地标签（简体中文 / 繁體中文 / 日本語 …）
+  final String lang;
+  final String title;
+
+  /// 该版本的 DLsite 作品号（`source_id`），展示用
+  final String? rjCode;
+
+  /// 该条目是否是原版（汉化版详情页里指回日文原作的那条）
+  final bool isOriginal;
 }
 
 /// 在线作品分页结果

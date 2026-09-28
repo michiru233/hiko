@@ -35,6 +35,7 @@ class OnlineDetailPanel extends ConsumerWidget {
     required this.onClose,
     this.onSelectTag,
     this.onSelectCreator,
+    this.onOpenWork,
   });
 
   final int workId;
@@ -45,6 +46,9 @@ class OnlineDetailPanel extends ConsumerWidget {
 
   /// 点详情页的声优 / 社团胶囊 → 按其筛选（1.97.0）
   final ValueChanged<OnlineCreatorFilter>? onSelectCreator;
+
+  /// 点语言版本胶囊 → 打开该版本的详情（1.99.2）。桌面端原地换面板。
+  final ValueChanged<int>? onOpenWork;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -101,6 +105,7 @@ class OnlineDetailPanel extends ConsumerWidget {
               workId: workId,
               onSelectTag: onSelectTag,
               onSelectCreator: onSelectCreator,
+              onOpenWork: onOpenWork,
             ),
           ),
           // 关闭按钮（玻璃悬浮微圆角）
@@ -136,6 +141,7 @@ class OnlineDetailScreen extends StatelessWidget {
     required this.workId,
     this.onSelectTag,
     this.onSelectCreator,
+    this.onOpenWork,
   });
 
   final int workId;
@@ -145,6 +151,9 @@ class OnlineDetailScreen extends StatelessWidget {
 
   /// 点详情页的声优 / 社团胶囊 → 按其筛选（1.97.0）
   final ValueChanged<OnlineCreatorFilter>? onSelectCreator;
+
+  /// 点语言版本胶囊 → 打开该版本的详情（1.99.2）。移动端在宿主里压栈。
+  final ValueChanged<int>? onOpenWork;
 
   @override
   Widget build(BuildContext context) {
@@ -157,6 +166,7 @@ class OnlineDetailScreen extends StatelessWidget {
         workId: workId,
         onSelectTag: onSelectTag,
         onSelectCreator: onSelectCreator,
+        onOpenWork: onOpenWork,
       ),
     );
   }
@@ -172,6 +182,7 @@ class OnlineDetailBody extends ConsumerStatefulWidget {
     required this.workId,
     this.onSelectTag,
     this.onSelectCreator,
+    this.onOpenWork,
   });
 
   final int workId;
@@ -181,6 +192,9 @@ class OnlineDetailBody extends ConsumerStatefulWidget {
 
   /// 点详情页的声优 / 社团胶囊 → 按其筛选（1.97.0）
   final ValueChanged<OnlineCreatorFilter>? onSelectCreator;
+
+  /// 点语言版本胶囊 → 打开该版本的详情（1.99.2）。null 时胶囊只展示不可点。
+  final ValueChanged<int>? onOpenWork;
 
   @override
   ConsumerState<OnlineDetailBody> createState() => _OnlineDetailBodyState();
@@ -361,6 +375,23 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
                                   kind: OnlineCreatorKind.va,
                                 )),
                       ),
+                    ),
+                ],
+              ),
+            ],
+            // 其他语言版本（1.99.2）：汉化版 / 原版跳转（对齐 asmr.one 网页端）
+            if (work.otherEditions.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final edition in work.otherEditions)
+                    _EditionChip(
+                      edition: edition,
+                      onTap: widget.onOpenWork == null
+                          ? null
+                          : () => widget.onOpenWork!(edition.id),
                     ),
                 ],
               ),
@@ -1003,6 +1034,62 @@ class OnlineFavoriteButton extends ConsumerWidget {
 
 /// 目录行（裁决 Q14=C）：折叠三角 + 文件夹名 + 「N 个项目 · 总时长」，
 /// hover 时右侧换成播放图标（播放该目录下的全部音频）。
+/// 语言版本胶囊（1.99.2）：翻译图标 + 语言名，点按跳到该版本详情。
+///
+/// 汉化版是主场景（asmr.one 网页端同款入口）；从汉化版跳回原版时
+/// 标注「原版」，不然用户不知道「日本語」这颗胶囊是回去的路。
+class _EditionChip extends StatelessWidget {
+  const _EditionChip({required this.edition, this.onTap});
+
+  final OnlineWorkEdition edition;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final label = edition.isOriginal
+        ? '${edition.lang}（原版）'
+        : edition.lang;
+    return Tooltip(
+      message: onTap == null ? label : '查看$label版本',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: (isDark ? HikoColors.darkMuted : HikoColors.lightMuted)
+                  .withValues(alpha: 0.5),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.translate_rounded,
+                size: 13,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: isDark ? HikoColors.darkInk : HikoColors.lightInk,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _FolderRow extends StatefulWidget {
   const _FolderRow({
     required this.title,

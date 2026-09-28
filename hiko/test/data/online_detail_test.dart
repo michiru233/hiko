@@ -154,4 +154,56 @@ void main() {
       expect(state.sort, OnlineSort.rjDesc);
     });
   });
+
+  group('OnlineWork 其他语言版本（1.99.2）', () {
+    test('解析 other_language_editions_in_db：id / lang / RJ / 原版标记', () {
+      final work = OnlineWork.fromJson({
+        'id': 1617295,
+        'title': 'x',
+        'source_id': 'RJ01617295',
+        'other_language_editions_in_db': [
+          {
+            'id': 1623920,
+            'lang': '简体中文',
+            'title': '【简体中文版】x',
+            'source_id': 'RJ01623920',
+            'is_original': false,
+          },
+        ],
+      });
+      expect(work.otherEditions, hasLength(1));
+      final e = work.otherEditions.single;
+      expect(e.id, 1623920);
+      expect(e.lang, '简体中文');
+      expect(e.rjCode, 'RJ01623920');
+      expect(e.isOriginal, isFalse);
+    });
+
+    test('排除自己、丢掉没有数字 id 的条目、按 id 去重', () {
+      final work = OnlineWork.fromJson({
+        'id': 1,
+        'title': 'x',
+        'other_language_editions_in_db': [
+          {'id': 1, 'lang': '日本語'},
+          {'lang': 'bad'},
+          {'id': 2, 'lang': '简体中文'},
+          {'id': 2, 'lang': '重复'},
+        ],
+      });
+      expect(work.otherEditions.map((e) => e.id).toList(), [2]);
+    });
+
+    test('merged 以详情侧为准回填', () {
+      final brief = OnlineWork.fromJson({'id': 1, 'title': 'x'});
+      expect(brief.otherEditions, isEmpty);
+      final detail = OnlineWork.fromJson({
+        'id': 1,
+        'title': 'x',
+        'other_language_editions_in_db': [
+          {'id': 9, 'lang': '简体中文', 'is_original': false},
+        ],
+      });
+      expect(brief.merged(detail).otherEditions.single.id, 9);
+    });
+  });
 }

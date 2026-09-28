@@ -2728,3 +2728,33 @@ Android 端体验批次（用户 2026-09-26 明确：安卓端需求不涉及 ma
 保证 Android 覆盖安装与「检查更新」比较不受影响。AGENTS.md 版本号规则已同步。
 原 `v1.100.0` Release 已撤下，本版内容以 `v1.99.1` 重新发布（资产与内容完全一致，
 仅版本号与 versionCode 变更：113 → 114）。
+
+## 1.99.2 在线详情页「其他语言版本」跳转：汉化版 / 原版互通（2026-09-28）
+
+asmr.one 网页端对有汉化版的作品给「简体中文」跳转链接（RJ 号不同），要求 hiko
+在线详情页加入同款入口。
+
+- **数据源甄别**（实测 2026-09-28，RJ01617295 样本）：详情响应有两个相关字段
+  —— `language_editions` 是 DLsite 全量语言表（含 `CHI_HANS` 的 workno），但其
+  workno **未必在 asmr.one 库里**（RJ01623919 实测 404「未找到该音声」），跳不过
+  去；`other_language_editions_in_db` 是**库里实际存在**的其他语言条目（数字
+  `id` + `lang` + `title` + `source_id` + `is_original`），实测可开详情。取后者。
+  且该字段是**双向**的：汉化版详情里同样带原版条目（`is_original: true`），
+  一次接入天然支持「跳过去」和「跳回来」。
+- **模型**：`OnlineWorkEdition`（id/lang/title/rjCode/isOriginal）+
+  `OnlineWork.otherEditions`（`parseWorkEditions` 宽容解析：无数字 id 丢弃、
+  按 id 去重、排除自身）；`merged()` 以详情侧为准回填。
+- **UI**：详情页声优/社团胶囊行下方新增语言版本胶囊行（翻译图标 + 语言名，
+  原版条目标注「（原版）」）。`OnlineDetailPanel` / `OnlineDetailScreen` /
+  `OnlineDetailBody` 三层统一加 `onOpenWork(int)` 回调，null 时胶囊只展示不可点。
+- **跳转语义按平台分流**（与标签/声优筛选同一套模式）：桌面端 `onOpenWork`
+  原地换面板（宿主 setState 改 `_detailWorkId`，ValueKey 触发详情重建）；
+  移动端压一层新 `OnlineDetailScreen`（浏览页复用 `_openDetail`，收藏页拆出
+  `_openDetailById` 供 id 入口复用），返回键回原作品。
+- **测试**：`test/data/online_detail_test.dart` +3（字段解析 / 排除自身与去重 /
+  merged 回填）+ `test/ui/online_edition_jump_test.dart` +4（胶囊可见且点按回传
+  id / 原版标注 / 无版本不出行 / 未接回调点按无副作用）。坑：测试窗口忘设
+  `physicalSize` 时详情页超出默认 800×600，胶囊在屏外点不到（tap 警告
+  "outside the bounds of the root"）——沿用 fold 测试的 720×1800。
+- **验证基线**：`flutter test` **549 passed / 2 skipped**（542→549）；
+  `flutter analyze` **39 条**（= 基线）。版本 `1.99.2+115`。本版无新增待裁决。

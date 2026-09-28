@@ -137,9 +137,11 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
               // 1.94.0 漏了这一处 —— 卡面能点、详情里点了没反应
               onSelectTag: (tag) => unawaited(_filterByTag(tag)),
               // 1.97.0：声优 / 社团胶囊同理（结果在「在线」浏览页）
-              onSelectCreator: (filter) =>
-                  unawaited(_filterByCreator(filter)),
-            ),
+            onSelectCreator: (filter) =>
+                unawaited(_filterByCreator(filter)),
+            // 语言版本跳转（1.99.2）：桌面端原地换面板
+            onOpenWork: (id) => setState(() => _detailWorkId = id),
+          ),
           ),
         ],
       ],
@@ -397,12 +399,15 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
 
   // ---------------------------------------------------------------- 交互
 
-  void _openDetail(OnlineWork work) {
+  void _openDetail(OnlineWork work) => _openDetailById(work.id);
+
+  /// 按作品 id 打开详情（收藏卡入口传 [OnlineWork]，语言版本跳转只有 id）。
+  void _openDetailById(int workId) {
     if (widget.isMobile) {
       Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => OnlineDetailScreen(
-            workId: work.id,
+            workId: workId,
             // 移动端的详情是整页盖在列表上，点完筛选要把这页收起来才看得到结果
             // （与浏览页 `_openDetail` 同一套做法）
             onSelectTag: (tag) {
@@ -413,12 +418,14 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
               Navigator.of(context).maybePop();
               unawaited(_filterByCreator(filter));
             },
+            // 语言版本跳转（1.99.2）：压一层新详情页，返回键回原作品
+            onOpenWork: _openDetailById,
           ),
         ),
       );
       return;
     }
-    setState(() => _detailWorkId = work.id);
+    setState(() => _detailWorkId = workId);
   }
 
   /// 卡片右键 / 长按菜单。
