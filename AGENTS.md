@@ -16,7 +16,7 @@ flutter run -d emulator-5554   # Android 模拟器（AVD：kikoeru_test）
 flutter test              # 单测（RJ 提取/自然排序/repairText/模型往返/播放模式队列）
 ```
 
-- **版本号与封包规则（重要）**：每次修复 bug / 发新功能必须 bump `hiko/pubspec.yaml` 的 `version`（1.x.0）。**改动完成后必须自动执行 Release 封包构建（macOS: `flutter build macos --release`；Android: `flutter build apk --release`），并在交付时明确提供产物路径**。
+- **版本号与封包规则（重要）**：每次修复 bug / 发新功能必须 bump `hiko/pubspec.yaml` 的 `version`。**版本号走 patch 位逐次累计（2026-09-28 用户裁决）：1.99.0 → 1.99.1 → 1.99.2 … 直到 1.99.99，不再进位 minor**（build 号 `+N` 独立递增不回退）。**改动完成后必须自动执行 Release 封包构建（macOS: `flutter build macos --release`；Android: `flutter build apk --release`），并在交付时明确提供产物路径**。
 - **架构**：`lib/models/` 数据模型；`lib/data/` 存储与扫描（library.json 原子写 + 每 5 张增量保存）；`lib/playback/` 桌面播放引擎；`lib/ui/` 桌面 UI（三栏布局、侧边栏、播放条等）。
 - **播放模式**：列表循环/单曲循环/随机（专辑内避免连播）/专辑循环（跨专辑接续）。
 - **GitHub 自动备份与 Release 发布（强制）**：每次完成代码更新、bug 修复或新功能开发并验证通过后：
