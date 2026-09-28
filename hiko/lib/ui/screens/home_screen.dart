@@ -886,9 +886,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final trackNo =
         candidate.resumeTrackIndex.clamp(0, candidate.tracks.length - 1) + 1;
     return Padding(
+      // 顶部留白：上一行是「显示 N 张专辑」（自带 0 底距），0 顶距会贴死
       padding: EdgeInsets.fromLTRB(
         isMobile ? 16 : 48,
-        0,
+        10,
         isMobile ? 16 : 48,
         12,
       ),

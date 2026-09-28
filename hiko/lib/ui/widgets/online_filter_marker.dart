@@ -41,6 +41,7 @@ class OnlineTagFilterMarker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final fg = hikoTagFgColorOf(isDark);
     return Container(
       padding: const EdgeInsets.only(left: 8, right: 3, top: 3, bottom: 3),
       decoration: BoxDecoration(
@@ -59,11 +60,11 @@ class OnlineTagFilterMarker extends StatelessWidget {
                 '标签：$tag',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11, color: hikoTagFgColor),
+                style: TextStyle(fontSize: 11, color: fg),
               ),
             ),
           ),
-          _MarkerCloseButton(onClear: onClear, tooltip: '退出标签筛选', color: hikoTagFgColor),
+          _MarkerCloseButton(onClear: onClear, tooltip: '退出标签筛选', color: fg),
         ],
       ),
     );

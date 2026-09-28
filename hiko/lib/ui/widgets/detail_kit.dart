@@ -22,6 +22,14 @@ const Color hikoVoiceColor = Color(0xFF90CAF9);
 const Color hikoTagBgColor = Color(0xFFE3F4F2);
 const Color hikoTagFgColor = Color(0xFF2E8A8F);
 
+/// 暗色主题下的标签字色（1.99.0）：0xFF2E8A8F 在深底上对比不足，
+/// 同一色相提亮保证可读；亮色主题维持原色
+const Color hikoTagFgColorDark = Color(0xFF8FDDE2);
+
+/// 标签字色随主题取亮 / 暗
+Color hikoTagFgColorOf(bool isDark) =>
+    isDark ? hikoTagFgColorDark : hikoTagFgColor;
+
 /// 收藏红 / 评分金（详情页操作胶囊用）
 const Color hikoFavoriteColor = Color(0xFFD34C44);
 const Color hikoRatingColor = Color(0xFFE8B33C);
@@ -389,7 +397,7 @@ class HikoTagChip extends StatelessWidget {
     final dim = muted || blocked;
     final fg = dim
         ? (isDark ? HikoColors.darkMuted : HikoColors.lightMuted)
-        : hikoTagFgColor;
+        : hikoTagFgColorOf(isDark);
     final radius = BorderRadius.circular(6);
 
     return HikoPillInteraction(

@@ -7,6 +7,7 @@ import '../../utils/person_names.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
 import '../theme.dart';
+import 'detail_kit.dart';
 
 /// 专辑卡片：玻璃拟态质感卡片（双层微反光边缘 + 柔和投光 + 胶囊标签）
 class AlbumCard extends ConsumerWidget {
@@ -224,15 +225,17 @@ class AlbumCard extends ConsumerWidget {
                                   for (final tag in album.tags.take(3))
                                     _Tag(
                                       text: tag,
-                                      color: const Color(0xFF2E8A8F),
-                                      bg: const Color(0xFFE3F4F2).withValues(alpha: isDark ? 0.2 : 0.8),
+                                      // 1.99.0：改走主题化标签色（1.42.0 待裁决项），
+                                      // 深底上写死的 0xFF2E8A8F 不够显眼
+                                      color: hikoTagFgColorOf(isDark),
+                                      bg: hikoTagBgColor.withValues(alpha: isDark ? 0.2 : 0.8),
                                       maxWidth: contentWidth,
                                     ),
                                   if (album.tags.length > 3)
                                     _Tag(
                                       text: '+${album.tags.length - 3}',
-                                      color: const Color(0xFF2E8A8F),
-                                      bg: const Color(0xFFD7ECEA).withValues(alpha: isDark ? 0.2 : 0.8),
+                                      color: hikoTagFgColorOf(isDark),
+                                      bg: hikoTagBgColor.withValues(alpha: isDark ? 0.2 : 0.8),
                                       maxWidth: contentWidth,
                                     ),
                                 ],

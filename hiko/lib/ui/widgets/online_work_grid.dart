@@ -162,9 +162,11 @@ class OnlineWorkGrid extends ConsumerWidget {
 
 /// 在线分页条（浏览页走服务端翻页；收藏页在已拉到的列表上做本地切片）。
 ///
-/// 形态与 1.92.0 的浏览页完全一致（裁决 Q6=A）：每页条数 + 首页/末页 +
-/// 上一页/下一页 + 当前页 ±2 的页码 + 跳页输入。**越界由调用方夹**，
-/// 这里只负责把点击翻译成页码意图。
+/// 桌面：每页条数 + 首页/末页 + 上一页/下一页 + 当前页 ±2 的页码 + 跳页输入
+/// （1.92.0 浏览页形态，裁决 Q6=A）。移动端（1.99.0）：上一页/下一页钉在
+/// 两端不参与横滑，页码只留当前页 ±1 —— 原先整套塞一行，窄屏上「下一页」
+/// 被挤出可视区，翻页得先把分页条往右滑；首末页由跳页输入覆盖。
+/// **越界由调用方夹**，这里只负责把点击翻译成页码意图。
 class OnlinePager extends StatelessWidget {
   const OnlinePager({
     super.key,
@@ -195,6 +197,26 @@ class OnlinePager extends StatelessWidget {
     final pad = isMobile ? 16.0 : 48.0;
     final total = totalPages;
 
+    final numbers = <Widget>[
+      for (final item in isMobile
+          ? mobilePageItems(page, total)
+          : buildPageItems(page, total, radius: 2))
+        if (item == null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Text(
+              '…',
+              style: TextStyle(fontSize: 11, color: theme.hintColor),
+            ),
+          )
+        else
+          _PageNumberButton(
+            page: item,
+            current: item == page,
+            onPressed: () => onPage(item),
+          ),
+    ];
+
     return Container(
       padding: EdgeInsets.fromLTRB(pad, 6, pad, 12),
       decoration: BoxDecoration(
@@ -209,54 +231,60 @@ class OnlinePager extends StatelessWidget {
             _PageSizeButton(pageSize: pageSize, onSelected: onPageSize),
             const SizedBox(width: 10),
           ],
-          Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _PagerIcon(
-                    icon: Icons.first_page_rounded,
-                    tooltip: '首页',
-                    onPressed: hasPrev ? () => onPage(1) : null,
-                  ),
-                  _PagerIcon(
-                    icon: Icons.chevron_left_rounded,
-                    tooltip: '上一页',
-                    onPressed: hasPrev ? () => onPage(page - 1) : null,
-                  ),
-                  // 移动端页码半径缩到 1（当前 ±1）：窄屏上 ±2 的序列
-                  // 会把「共 N 页」和跳页挤到滚动区外面去
-                  for (final item in buildPageItems(page, total,
-                      radius: isMobile ? 1 : 2))
-                    if (item == null)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                        child: Text(
-                          '…',
-                          style: TextStyle(fontSize: 11, color: theme.hintColor),
-                        ),
-                      )
-                    else
-                      _PageNumberButton(
-                        page: item,
-                        current: item == page,
-                        onPressed: () => onPage(item),
-                      ),
-                  _PagerIcon(
-                    icon: Icons.chevron_right_rounded,
-                    tooltip: '下一页',
-                    onPressed: hasNext ? () => onPage(page + 1) : null,
-                  ),
-                  _PagerIcon(
-                    icon: Icons.last_page_rounded,
-                    tooltip: '末页',
-                    onPressed: hasNext ? () => onPage(total) : null,
-                  ),
-                ],
+          if (isMobile) ...[
+            _PagerIcon(
+              icon: Icons.chevron_left_rounded,
+              tooltip: '上一页',
+              onPressed: hasPrev ? () => onPage(page - 1) : null,
+            ),
+            // ±1 三颗页码最宽 ~114px，Expanded 内放得下；极端字号缩放时
+            // FittedBox 等比缩而不是溢出/滚动
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: numbers,
+                ),
               ),
             ),
-          ),
+            _PagerIcon(
+              icon: Icons.chevron_right_rounded,
+              tooltip: '下一页',
+              onPressed: hasNext ? () => onPage(page + 1) : null,
+            ),
+          ] else
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _PagerIcon(
+                      icon: Icons.first_page_rounded,
+                      tooltip: '首页',
+                      onPressed: hasPrev ? () => onPage(1) : null,
+                    ),
+                    _PagerIcon(
+                      icon: Icons.chevron_left_rounded,
+                      tooltip: '上一页',
+                      onPressed: hasPrev ? () => onPage(page - 1) : null,
+                    ),
+                    ...numbers,
+                    _PagerIcon(
+                      icon: Icons.chevron_right_rounded,
+                      tooltip: '下一页',
+                      onPressed: hasNext ? () => onPage(page + 1) : null,
+                    ),
+                    _PagerIcon(
+                      icon: Icons.last_page_rounded,
+                      tooltip: '末页',
+                      onPressed: hasNext ? () => onPage(total) : null,
+                    ),
+                  ],
+                ),
+              ),
+            ),
           const SizedBox(width: 10),
           _PageJumpField(totalPages: total, onSubmit: onPage),
         ],
@@ -264,6 +292,13 @@ class OnlinePager extends StatelessWidget {
     );
   }
 }
+
+/// 移动端页码序列：当前页 ±1 夹到 1..N 去重（如第 1 页 → `[1, 2]`）。
+/// 不放首末页与省略号 —— 它们是分页条在窄屏上溢出的元凶，远页跳转交给跳页输入。
+List<int> mobilePageItems(int page, int total) => [
+      for (final p in {page - 1, page, page + 1})
+        if (p >= 1 && p <= total) p,
+    ]..sort();
 
 /// 每页条数选择（20 / 60 / 100；实测服务端支持到 500）
 class _PageSizeButton extends StatelessWidget {
