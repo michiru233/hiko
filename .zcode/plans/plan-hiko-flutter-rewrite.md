@@ -2860,3 +2860,112 @@ Release: https://github.com/michiru233/hiko/releases/tag/v1.99.4
 **顺带发现（待用户处置）**：`hiko/` 下残留 `hiko-v1.100.0-macos.zip` 与
 `hiko-v1.100.0-android.apk`（2026-09-28 21:27 构建），GitHub 上**没有 v1.100.0
 这个 Release**（版本号规则改 patch 累计前的产物），本地是唯一副本，故未清理。
+
+## 1.99.5 ✕ 热区 / 在线返回键 / 字幕正交 / 分级筛选（2026-09-29）
+
+**需求（四条）**：① 社团筛选胶囊上的 ✕ 点不动，尝试复现；② 在线页带着筛选时
+右滑返回会跳到**本地专辑页**而不是在线主界面；③ 有无字幕筛选只在最新界面可用，
+筛选后的界面不能选；④ 加 R15 / R18 / 全年龄筛选，三个复选框，位置自定。
+
+### 实测（真接口，别猜）
+
+- **①确认是真 bug**：✕ 的实际热区只有 **19×19**（13px 图标 + 3px 内边距），
+  widget 测试量化：中心点击命中，**指尖偏 14px 完全落空**。Material 最小推荐 48。
+- **③的前提是错的**：`subtitle=1` 这个**查询参数在三个端点都生效** ——
+  `/api/works`、`/api/tags/{id}/works`、`/api/search/{kw}`。
+  对照组：tag222 无参 11/50 带字幕 → 带参 **50/50**；搜索「おねえさん」
+  6/50 → **7/7**。旧注释「搜索端点没这个筛选」是误判，据此做的限制（chip
+  只在「全站浏览且无 creator」下显示）是多余的。
+- **④的分级取值是完备的**：`age_category_string` 采样（全站 62453）只有
+  `adult` 55442 / `general` 5886 / `r15` 1125 三个值，**三者相加正好 62453**。
+  搜索语法 `$age:adult$` / `$age:r15$` / `$age:general$` 完美生效；
+  排除式减法也严丝合缝：`$-age:r15$` = 61328 = 62453 − 1125。
+- **关键坑**：`$age:A$ $age:B$` 之间是 **AND 不是 OR**（同时写两个正向项 = 0 条）。
+  所以「同时显示两个分级」**不能拼两个正向项，必须用排除式**。
+
+### 裁决（grilling 一轮，五问，用户逐条回答）
+
+- **Q1=A**：✕ 只**扩热区**，不改观感（图标仍是 13px，胶囊略变厚）。
+- **Q2=B**：在线视图内返回键**只清筛选，永不切视图**（旧兜底「不在本地音声就
+  切回本地」正是需求②的成因）。
+- **Q3=B**：字幕筛选**放开到所有来源**，与来源**正交保留**（换标签/换搜索词/点
+  社团都不丢），并且必须有**可关闭标记**（不许出现看不见的筛选）。
+- **Q4=B**：分级筛选做成**三个复选框放进排序下拉**；勾选 = 显示该分级；
+  **全勾或全不勾 = 不筛**（全部显示）。
+- **Q5=A**：在线**收藏页不吃这套筛选**（分级/字幕只作用于在线主页）。
+
+### 实现
+
+- **①** `online_filter_marker.dart`：`_MarkerCloseButton.hitSize = 36`
+  （`SizedBox(36,36)` + `CircleBorder` 水波纹 + `Center`）；承载热区的盒子必须
+  同步变高（Flutter 的 hit test 不会命中父级尺寸之外），故三处标记 Container
+  的上下内边距归零、左右统一 `EdgeInsets.only(left: 4, right: 0)` —— 40px
+  极端窄屏下文字 `Flexible` 压到 0，正好容下 36px 热区（1.97.1 布局不变量全保住）。
+- **②** `home_screen.dart`：新增 `_handleOnlineBack({required bool allowExit})`，
+  安卓返回键（`allowExit: true`）与桌面 Esc（`allowExit: isMobile`）都先问它：
+  `在线` → 每次只清筛选回最新榜，本来就在主界面且 `allowExit` 才
+  `SystemNavigator.pop()`；`在线收藏` → 退回 `在线`；其它视图返回 false 交回旧兜底。
+  配套 `OnlineBrowseState.hasActiveFilter` / `isAtOnlineHome` 与
+  `resetToLatest()`（返回 `bool` = 这次有没有真的做事）。
+- **③** 删 `OnlineBrowseState.canFilterSubtitle`（限制的来源），
+  `toggleSubtitleOnly` 去掉前置门槛；`search` / `selectTag` / `selectCreator`
+  里三处 `subtitleOnly: false` 删除（正交保留）；`kikoeru_client.dart` 的
+  `searchWorks` / `fetchWorksByTag` 补 `subtitleOnly` 参数并透传 `'subtitle': '1'`；
+  UI 侧 chip 无条件显示。
+- **④** `online_provider.dart`：新增 `enum OnlineAgeCategory { adult('adult','R18'),
+  r15('r15','R15'), general('general','全年龄') }`、`ageCategories`（默认全集）、
+  `isAgeSelected` / `ageFilterActive`（1 或 2 个被勾才算在筛）/ `ageTerm`
+  / `ageFilterLabel`、`toggleAgeCategory` / `clearAgeFilter`；
+  `online_blacklist.dart` 新增 `ageIncludeTerm` / `ageExclusionTerm`。
+  `_fetch` 路由把分级词与 creator 词合流成 `filterTerms`，**任一非空即全部改走
+  search 端点**（`/api/works` 会静默丢弃关键词，与黑名单/creator 同构）。
+  勾 1 个 → `$age:<key>$`；勾 2 个 → `$-age:<未勾的那个>$`。
+- **筛选行** `online_screen.dart`：新增 `OnlineSimpleFilterMarker`（字幕/分级共用，
+  抽到 `online_filter_marker.dart`），标记统一收进 `markers` 列表；移动端从 `Row`
+  改 **`Wrap`**（标记从 2 个涨到 4 个，单行 Row 会自己溢出），桌面保持内联。
+  新增 `OnlineSortMenu`（`lib/ui/widgets/online_sort_menu.dart`，1.99.5 抽出）+
+  `_AgeFilterItem`。
+
+### 关键实现选择
+
+- **`_AgeFilterItem` 覆写 `handleTap` 而不是用 `PopupMenuItem(enabled: false)`**。
+  两者都能「让菜单不关」（禁用条目的 InkWell `onTap` 为 null），但禁用条目在 M3 下
+  会把 `DefaultTextStyle` 换成 onSurface@38% 灰、并套 `Semantics(enabled: false)`
+  —— 复选框本身**可用**，被念成「已禁用」是错的。覆写后内边距/行高/`MergeSemantics`
+  /`menuItem` 角色全部继承，三行与排序条目严丝合缝。
+  复选框用 `IgnorePointer` 包住当**纯指示器**（`onChanged: (_) {}` 仅保持「可用」
+  外观）：整行由父类 InkWell 接住，避免两个 tap recognizer 争抢同一手势。
+- **菜单绝对上限 320 → 400**：菜单从 5 项涨到 8 项（+1 分隔线）约 336px，
+  卡在 320 会把第三行「全年龄」**永久切在折线下**（320 是硬上限、与屏高无关，
+  桌面也一样）。提到 400 后手机上生效的仍是 45% 那条（800px 屏 → 360，刚好装下）。
+- **标记抽成公开组件**（`OnlineSimpleFilterMarker`、`OnlineSortMenu`）的理由与
+  1.97.1 抽筛选标记一致：**可测**。
+
+### 测试
+
+- `test/ui/online_filter_marker_test.dart` +3：实测热区正好 36×36 且图标仍 13px、
+  **指尖偏 14px 仍命中**（旧 19×19 此偏移落空）、四件套共用同一热区。
+  已按规矩验红：把 `hitSize` 改回 19，这 3 条全红、5 条 1.97.1 旧锁仍绿。
+- 新建 `test/ui/online_sort_menu_test.dart` 5 条：默认全勾、**点分级文字回调恰好
+  一次且菜单不关**、点复选框本体也只触发一次、连着勾两个菜单一路开着、
+  排序项仍关菜单。已验红：`handleTap` 改回 `super` 时后 3 条红。
+- `test/data/online_browse_source_test.dart`：+6 分级（端点/词形/排除式）+3 返回键；
+  改 2 条旧断言（标签来源下字幕可用、creator 下字幕可用）。
+- `test/data/online_detail_test.dart`：3 处 `canFilterSubtitle` 断言改写。
+
+### 坑（已记）
+
+- 测试窗口默认 600px 高 → `maxHeight = 45%×600 = 270`，菜单折线以下的条目
+  `tap()` 会**落在 ModalBarrier 上把菜单关掉**，失败信息看起来像「找不到控件」。
+  解法：测试里把 `tester.view.physicalSize` 调高（1200×1000）。
+- `tester.tap(find.byType(Checkbox))` 会报 hit-test warning：复选框被
+  `IgnorePointer` 包着，命中的是上层 InkWell —— 加 `warnIfMissed: false`。
+- `PopupMenuItemState` 的 `createState` 返回类型是
+  `PopupMenuItemState<T, PopupMenuItem<T>>`（**不是** `State<...>`），
+  且 `PopupMenuItem.child` 是**必填**（即便内容由 `buildChild()` 覆写提供）。
+- `online_sort_menu.dart` 需要**同时** import `online_models.dart`（`OnlineSort`）
+  与 `online_provider.dart`（`OnlineAgeCategory` / `onlineBrowseProvider`）——
+  provider 文件不 re-export models。
+
+**验证基线**：`flutter test` **579 passed / 2 skipped**；`flutter analyze` **39 条**
+（= 基线，0 新增 error）。版本 `1.99.5+118`。

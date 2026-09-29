@@ -2,7 +2,7 @@
 
 ## 定位
 Hiko = 本地优先 DLsite 音声管理器，Flutter 主线在 `hiko/`（根目录 Electron+Capacitor 仅参考）。
-GitHub: github.com/michiru233/hiko。当前 1.99.4+117（2026-09-29）。macOS 发布 / Windows 需 Win 机构建 / Android 已恢复。
+GitHub: github.com/michiru233/hiko。当前 1.99.5+118（2026-09-29）。macOS 发布 / Windows 需 Win 机构建 / Android 已恢复。
 架构速查：models(Album核心) / data(library_store 原子写、settings_store 白名单归一、online/) / playback(just_audio+media_kit 增益) / platform(android MethodChannel) / lyrics / ui(screens+widgets+theme, covers 三级缓存) / utils(rj、natural_compare、repair_text)。
 
 ## 默认规则（必须遵守）
@@ -16,8 +16,8 @@ GitHub: github.com/michiru233/hiko。当前 1.99.4+117（2026-09-29）。macOS �
 6. 发版 zip/apk 只入 Releases 不入 git，**发完即清本地副本**（删前逐字节比对资产尺寸，v1.88.1 Release 为空），trash 分批≤10。
 7. 测试内容日文为主，覆盖 UTF-8 与 Shift-JIS。
 8. 跑 test/build 前摘代理：`env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy NO_PROXY=localhost,127.0.0.1 <cmd>`（WebSocket/SPM 被代理吃掉）。build macos 需前台跑（沙箱放行标志后台不生效）。**git push / gh 同理要摘代理**，否则 `SSL: no alternative certificate subject name matches target host name 'github.com'`。长命令（test/build）别在用户会插话的窗口里前台跑——会被打断成 SIGTERM 137 且日志截断。
-8b. `flutter build macos` 报 sandbox_exec 不许限制性 profile：对 `com.apple.dt.xcodebuild`+`com.apple.dt.Xcode` 两域写 `IDEPackageSupport{DisableManifestSandbox,DisablePluginExecutionSandbox,DisablePackageSandbox}=-bool YES`。
-9. 验证基线（1.99.4 后）：test **562 passed / 2 skipped**；analyze 39 条 lint 基线，0 新增 error。
+8b. `flutter build macos` 报 sandbox_exec 不许限制性 profile：对 `com.apple.dt.xcodebuild`+`com.apple.dt.Xcode` 两域写 `IDEPackageSupport{DisableManifestSandbox,DisablePluginExecutionSandbox,DisablePackageSandbox}=-bool YES`。**实测 2026-09-29（1.99.5）后台跑 `flutter build macos --release` 38s 成功**——三个 defaults 域写好后「必须前台」已不再是硬约束（保留这条以防 defaults 被清）。
+9. 验证基线（1.99.5 后）：test **579 passed / 2 skipped**；analyze 39 条 lint 基线，0 新增 error。
 10. Flutter 3.47.0/Dart 3.13.0（/opt/homebrew/bin/flutter）；AVD `kikoeru_test`；SDK /opt/homebrew/share/android-commandlinetools；JDK openjdk@21。
 
 ## 动效约定（1.88）
@@ -33,11 +33,15 @@ GitHub: github.com/michiru233/hiko。当前 1.99.4+117（2026-09-29）。macOS �
 - api.asmr.one/works/{id}=404，网页在 www.asmr.one。
 - 黑名单：存 `AppSettings.blockedTags`（单键 JSON，按 id 判定）；长按菜单在标签胶囊上；屏蔽后立即重拉+回第 1 页（`reloadAfterBlock`）；自筛自屏要退出筛选。可点胶囊 hover 用 `HikoPillInteraction`（InkWell 墨迹被不透明底盖住）。
 - TextPainter 预量必须传 `MediaQuery.textScalerOf(context)`。
-- **胶囊标记布局不变量（1.97.1/1.97.2）**：筛选标记（标签/creator/黑名单，`online_filter_marker.dart`）内部「文字 + ✕」的 Row，**文字必须 Flexible**——外层被 flex 挤压时非 flex 文字会让 ✕ 溢出屏幕（安卓实机踩过）；**外层使用处也必须再包 Flexible**（1.97.1 重构丢过一次）。**移动端激活的筛选标记独占一行**（第二行下方，maxTextWidth 320），第二行在手机上只有一百多像素、塞什么都截断（1.97.0/1.97.1 两轮实机截图栽 here）；桌面保持内联。回归锁 `test/ui/online_filter_marker_test.dart`。
+- **胶囊标记布局不变量（1.97.1/1.97.2/1.99.5）**：筛选标记（标签/creator/黑名单/字幕/分级，`online_filter_marker.dart`）内部「文字 + ✕」的 Row，**文字必须 Flexible**——外层被 flex 挤压时非 flex 文字会让 ✕ 溢出屏幕（安卓实机踩过）；**外层使用处也必须再包 Flexible**（1.97.1 重构丢过一次）。**✕ 热区 `_MarkerCloseButton.hitSize = 36`**（1.99.5 裁决 Q1=A）：旧热区仅 19×19（13px 图标+3px 内边距），指尖偏 14px 就落空；承载热区的盒子必须同步变高（hit test 不命中父级尺寸之外），所以标记 Container 上下内边距为 0、左右统一 `left:4/right:0`（40px 极端窄屏下 Flexible 压到 0 正好容得下）。**移动端激活的筛选标记独占一行**（第二行下方），1.99.5 起由 `Row` 改 **`Wrap`**（标记 2→4 个，单行 Row 会自己溢出），maxTextWidth 由屏宽推导 `(屏宽−140).clamp(96,320)`；桌面保持内联。回归锁 `test/ui/online_filter_marker_test.dart`（含「偏 14px 仍命中」）。
 - 账号：JWT 存 `hiko-online-token`，不进 AppSettings；令牌失效仍 200 只看字段；写操作先本地后校准；收藏差分 `planPlaylistDiff`；自测只在临时歌单。
 - 在线外观（1.97.0 起滑杆）：常量单一来源 `settings_store` 范围常量（tagFontSize 8–18 默认 11 全局、card/detail 倍率 0.75–1.60、trackTitleFontSize 10–20 默认 12 绝对值不乘详情倍率）+ 列数 0/3–8 档位；设置页「在线外观」与在线页 Aa chip 两入口共用 `OnlineFontSliderRow`（带重置）；**白名单归一化已改 clamp**（旧档位值兼容）。卡面高度预算 = `onlineCardTextBlockHeight`/`onlineCardTagRowHeight` 纯函数（grid 与 card 共用），行高写死 1.3/1.2。详情面板 `HikoDetailTextScale`（专辑标题 22、副标题 12）；曲目标题走独立旋钮（`HikoTrackRow.titleFontSize` 可空，本地传 null 保持 12×scale）。每页条数落盘 `hiko-online-page-size`（20/60/100），移动端分页条隐藏该 chip、页码半径 ±1。
 - 声优/社团筛选（1.97.0）：`OnlineCreatorFilter{va|circle,name}`，机制 = `$va:名$`/`$circle:名$` 关键词（`online_blacklist.dart` 的 `vaIncludeTerm`/`circleIncludeTerm`）；入口 = 详情页胶囊菜单（浏览页+收藏页）；creator 正交保留于翻页/排序/刷新，applyPreset/search/selectTag 清除，取消回最新榜；激活时三来源全改走 search 端点（tag 换 `$tag:` 拼接），字幕 chip 与预设高亮熄灭。
-- 测试坑：同一 testWidgets 两次 pumpWidget 换 overrides 第二次不生效；ticker 首帧 elapsed=0，ensureVisible 后 pump 两次；回归锁必须摘掉修复验证会红。**widget 测试里凡是会写到设置的交互（如 `setNavViewVisible`）必须 `SharedPreferences.setMockInitialValues({})`**，否则 `getInstance()` 永不返回、测试**挂死**（不是失败）；**设置对话框新增分类会改变既有分类可见性**，按文案点设置项的测试要 `ensureVisible` 后再 tap。
+- **字幕筛选（1.99.5 裁决 Q3=B 重写认知）**：`subtitle=1` 是**查询参数**，实测在 `/api/works`、`/api/tags/{id}/works`、`/api/search/{kw}` **三处都生效**（tag222：11/50→50/50；搜索「おねえさん」：6/50→7/7）。旧版「搜索端点没这个筛选」是误判，`canFilterSubtitle` 已删除，任何来源都可用且**正交保留**（换标签/搜索/社团都不丢），必须有可关闭标记兜底（不许看不见的筛选）。
+- **分级筛选（1.99.5 裁决 Q4=B）**：`OnlineAgeCategory{adult'R18', r15'R15', general'全年龄'}`，`age_category_string` 取值**完备**（adult 55442 / general 5886 / r15 1125 = 全站 62453）。UI = 三个复选框放进**排序下拉**（`lib/ui/widgets/online_sort_menu.dart` 的 `OnlineSortMenu`）；勾选语义：勾 1 个 → `$age:key$`，勾 2 个 → **`$-age:未勾的那个$`**，全勾/全不勾 = 不筛。**⚠️ `$age:A$ $age:B$` 之间是 AND 不是 OR（两个正向项 = 0 条），「显示两个」只能用排除式**。词形在 `online_blacklist.dart` 的 `ageIncludeTerm`/`ageExclusionTerm`。分级词与 creator 词合流成 `filterTerms`，**任一非空即全部改走 search 端点**。
+- **在线返回键（1.99.5 裁决 Q2=B）**：`home_screen.dart` 的 `_handleOnlineBack({allowExit})` —— 安卓返回键 true / 桌面 Esc `isMobile`。`在线` 视图只清筛选回最新榜（干净态且 allowExit 才 `SystemNavigator.pop`），`在线收藏` 退回 `在线`，其它视图返回 false 交回旧兜底（**旧的「不在本地音声就切回本地」会把带筛选的在线用户直接扔到本地专辑页**）。判定用 `hasActiveFilter` / `isAtOnlineHome`。
+- **⚠️ 排序下拉不要用 `PopupMenuItem(enabled: false)` 来「留住菜单」**：禁用条目在 M3 下会把 `DefaultTextStyle` 换成 onSurface@38% 灰 + 套 `Semantics(enabled: false)`（复选框可用却被念成「已禁用」）。正确做法见 `online_sort_menu.dart` 的 `_AgeFilterItem`：继承 `PopupMenuItemState` 只覆写 `handleTap`（不 `Navigator.pop`）；复选框用 `IgnorePointer` 包住当纯指示器（`onChanged: (_) {}` 只保持外观），整行由父类 InkWell 接住。菜单绝对上限 400（8 项约 336px，卡 320 会把末尾项永久切在折线下）。**`PopupMenuItem.child` 是必填**（即便内容由 `buildChild()` 覆写提供）；`createState` 的返回类型是 `PopupMenuItemState<T, PopupMenuItem<T>>`。
+- 测试坑：同一 testWidgets 两次 pumpWidget 换 overrides 第二次不生效；ticker 首帧 elapsed=0，ensureVisible 后 pump 两次；回归锁必须摘掉修复验证会红。**widget 测试里凡是会写到设置的交互（如 `setNavViewVisible`）必须 `SharedPreferences.setMockInitialValues({})`**，否则 `getInstance()` 永不返回、测试**挂死**（不是失败）；**设置对话框新增分类会改变既有分类可见性**，按文案点设置项的测试要 `ensureVisible` 后再 tap。**测弹出菜单要调 `tester.view.physicalSize`**：默认 600px 高 → 菜单 `maxHeight=45%×600=270`，折线以下的条目 `tap()` 会**落在 ModalBarrier 上把菜单关掉**，报错却像「找不到控件」。**`tap(find.byType(Checkbox))` 被 `IgnorePointer` 包着时必报 hit-test warning**，加 `warnIfMissed: false`。
 
 ## 导航栏可见配置（1.99.4）
 - 一级导航（桌面侧栏 + 安卓底栏）**两端共用一份** `AppSettings.navViews`（有序可见列表，单键 JSON `hiko-nav-views`）。列表内 = 显示且按此排序，不在列表 = 隐藏。
@@ -49,4 +53,4 @@ GitHub: github.com/michiru233/hiko。当前 1.99.4+117（2026-09-29）。macOS �
 
 
 ## 遗留待裁决（摘要）
-1.42 tag 颜色对比度；1.53 Android 整理入口语义/TALB 分组；1.54 右滑手势排除区/原位替换不重扫；1.87 U+30FB 拆名误伤（已接受）；1.91-1.97 多项 Android 未实机验证（曲目行点击行为、hover 缺失、分页条/菜单/对话框窄屏、滑杆手感、creator 菜单触屏、分页条精简后观感、8 列观感）；1.96 卡面单行标题封面偏高是否统一（未裁决）。1.95 明确不做：黑名单总开关/手动输入/按社团声优屏蔽。
+1.42 tag 颜色对比度；1.53 Android 整理入口语义/TALB 分组；1.54 右滑手势排除区/原位替换不重扫；1.87 U+30FB 拆名误伤（已接受）；1.91-1.99 多项 Android 未实机验证（曲目行点击行为、hover 缺失、分页条/菜单/对话框窄屏、滑杆手感、creator 菜单触屏、分页条精简后观感、8 列观感、**1.99.5 的 36px 热区手感 / 分级复选框点选 / 移动端 4 标记 Wrap 排布**）；1.96 卡面单行标题封面偏高是否统一（未裁决）。1.95 明确不做：黑名单总开关/手动输入/按社团声优屏蔽。**遗留文件**：`hiko/hiko-v1.100.0-{macos.zip,android.apk}` 本地唯一副本（GitHub 无该 Release），待用户裁决补发还是丢弃。
