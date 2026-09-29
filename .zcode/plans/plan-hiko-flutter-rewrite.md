@@ -2840,10 +2840,23 @@ asmr.one 网页端对有汉化版的作品给「简体中文」跳转链接（RJ
 **测试**：`settings_store_test.dart` +1（默认全集 / 排序 + 白名单过滤去重 /
 落盘往返 / 根视图保底 / 单项开关 no-op / 坏 JSON 回退）；
 新建 `test/ui/sidebar_nav_views_test.dart` 2 条（隐藏项不渲染 + 顺序生效 /
-重新显示回到列表）。
-**坑（已记）**：widget 测试里触发 `setNavViewVisible` 会写 SharedPreferences，
-不设 `setMockInitialValues` 时 `getInstance()` **永不返回 → 测试挂死**（不是
-失败而是卡住，全套 560 条跑完卡在这一个用例上几分钟）。
+重新显示回到列表）。另修既有 `test/ui/activity_overlay_test.dart`：设置分类首页
+多了「导航栏」一项后「音乐目录」落到可视区外，`tap` 未命中导致后续 finder
+「Bad state: No element」——点击前补 `ensureVisible`（应用行为本身没问题）。
 
-**验证基线**：`flutter test` 561 passed / 2 skipped；`flutter analyze` 39 条
-（= 基线，0 新增）。版本 `1.99.4+117`。本版无新增待裁决。
+**坑（已记）**：
+- widget 测试里触发 `setNavViewVisible` 会写 SharedPreferences，不设
+  `setMockInitialValues` 时 `getInstance()` **永不返回 → 测试挂死**（不是失败
+  而是卡住：全套 560 条跑完卡在这一个用例上几分钟，最后被超时杀掉）。
+- 设置对话框的分类列表是固定顺序的 `SingleChildScrollView`，**新增分类会改变
+  既有分类的可见性**，凡按文案点击设置项的测试都可能踩「点了但没命中」。
+
+**验证基线**：`flutter test` 562 passed / 2 skipped（559 + 新增 3）；
+`flutter analyze` 39 条（= 基线，0 新增）。版本 `1.99.4+117`。
+Release: https://github.com/michiru233/hiko/releases/tag/v1.99.4
+（资产 `hiko-v1.99.4-macos.zip` 34210660B / `hiko-v1.99.4-android.apk` 70250928B，
+上传后逐字节核对一致，本地副本已清）。本版无新增待裁决。
+
+**顺带发现（待用户处置）**：`hiko/` 下残留 `hiko-v1.100.0-macos.zip` 与
+`hiko-v1.100.0-android.apk`（2026-09-28 21:27 构建），GitHub 上**没有 v1.100.0
+这个 Release**（版本号规则改 patch 累计前的产物），本地是唯一副本，故未清理。
