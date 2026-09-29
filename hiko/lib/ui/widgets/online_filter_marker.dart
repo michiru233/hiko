@@ -12,6 +12,12 @@
 /// - 内层若再放一个「不可收缩的文字 + 关闭钮」的 Row，溢出的恰好是关闭钮，
 ///   用户就只剩一个退不出的筛选（1.97.0 实机截图问题）。
 /// `ConstrainedBox(maxWidth: 140)` 只作桌面上限，不承担收缩职责。
+///
+/// ## 布局不变量（1.99.5 追加）
+///
+/// **✕ 的可点区域 ≥36×36**（`_MarkerCloseButton.hitSize`）：19×19 的热区在真机上
+/// 偏一指节就落空。所以四件套共用同一个关闭钮实现，高度不变量也只在那一处；
+/// 新增标记一律走 [OnlineSimpleFilterMarker]，不要再手抄布局。
 library;
 
 import 'package:flutter/material.dart';
@@ -43,7 +49,7 @@ class OnlineTagFilterMarker extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final fg = hikoTagFgColorOf(isDark);
     return Container(
-      padding: const EdgeInsets.only(left: 8, right: 3, top: 3, bottom: 3),
+      padding: const EdgeInsets.only(left: 4, right: 0),
       decoration: BoxDecoration(
         color: hikoTagBgColor.withValues(alpha: isDark ? 0.2 : 0.8),
         borderRadius: BorderRadius.circular(10),
@@ -96,7 +102,7 @@ class OnlineCreatorFilterMarker extends StatelessWidget {
         ? hikoVoiceColor
         : hikoCircleColor;
     return Container(
-      padding: const EdgeInsets.only(left: 8, right: 3, top: 3, bottom: 3),
+      padding: const EdgeInsets.only(left: 4, right: 0),
       decoration: BoxDecoration(
         color: color.withValues(alpha: isDark ? 0.22 : 0.16),
         borderRadius: BorderRadius.circular(10),
@@ -181,21 +187,107 @@ class _MarkerCloseButton extends StatelessWidget {
     required this.color,
   });
 
+  /// ✕ 的**可点区域**边长（1.99.5，裁决 Q1=A）。
+  ///
+  /// 修的是一个实机问题：此前 ✕ 的热区就是「13px 图标 + 3px 内边距」= **19×19**，
+  /// 只有 Material 最小推荐值（48）的 16% 面积 —— widget 测试里量化过：
+  /// 中心点击命中，**指尖偏 14px 就完全落空**（回调不再触发），
+  /// 用户感受就是「点不了」。
+  ///
+  /// 取值 36 与「标记整体的高度代价」：
+  /// 热区想变大，承载它的盒子就必须变高（Flutter 的 hit test 不会命中父级尺寸
+  /// 之外，OverflowBox 那套绕不过去），所以这里同步把容器的上下内边距**归零**，
+  /// 让标记高度正好等于热区高度 —— 胶囊从 21px 长到 36px（可点面积 ×3.6），
+  /// 文字左起点与横向留白不变，图标仍是 13px（观感是「胶囊略厚」，不是「✕ 变大」）。
+  static const double hitSize = 36;
+
   final VoidCallback onClear;
   final String tooltip;
   final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onClear,
-      borderRadius: BorderRadius.circular(8),
-      child: Tooltip(
-        message: tooltip,
-        child: Padding(
-          padding: const EdgeInsets.all(3),
-          child: Icon(Icons.close, size: 13, color: color),
+    return SizedBox(
+      width: hitSize,
+      height: hitSize,
+      child: InkWell(
+        onTap: onClear,
+        // 圆形水波纹跟随 36 的热区，比原来 8 的圆角更贴合手感
+        customBorder: const CircleBorder(),
+        child: Tooltip(
+          message: tooltip,
+          child: Center(
+            child: Icon(Icons.close, size: 13, color: color),
+          ),
         ),
+      ),
+    );
+  }
+}
+
+/// 通用「可关闭筛选标记」（1.99.5）。
+///
+/// 1.97.1 抽出的三件套只覆盖了标签 / 声优社团 / 黑名单三种；1.99.5 新增的
+/// **字幕**与**分级**筛选也需要「看得见 + 一键退出」的出口（裁决 Q3=B 的
+/// 那条理由：不许出现看不见的筛选）。与其再抄一份布局，这里把共同部分抽出来，
+/// 保证四条布局不变量（文字 Flexible / ✕ 热区 36 / 圆角/内边距/字号一致）
+/// 只在一处生效。
+class OnlineSimpleFilterMarker extends StatelessWidget {
+  const OnlineSimpleFilterMarker({
+    super.key,
+    required this.label,
+    required this.tooltip,
+    required this.onClear,
+    this.icon,
+    this.color,
+    this.maxTextWidth = 140,
+  });
+
+  final String label;
+  final String tooltip;
+  final VoidCallback onClear;
+
+  /// 可选前置图标（字幕 / 分级各一个，帮助区分同族标记）
+  final IconData? icon;
+
+  /// 底色与文字色。默认取主题 hintColor（中性灰，与黑名单标记同族）。
+  final Color? color;
+
+  /// 同 [OnlineTagFilterMarker.maxTextWidth]。
+  final double maxTextWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final c = color ?? theme.hintColor;
+    return Container(
+      padding: const EdgeInsets.only(left: 4, right: 0),
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: c.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 12, color: c),
+            const SizedBox(width: 4),
+          ],
+          // 文字必须可收缩（见文件头「布局不变量」）
+          Flexible(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxTextWidth),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11, color: c),
+              ),
+            ),
+          ),
+          _MarkerCloseButton(onClear: onClear, tooltip: tooltip, color: c),
+        ],
       ),
     );
   }

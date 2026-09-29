@@ -15,6 +15,7 @@ import '../widgets/online_appearance.dart';
 import '../widgets/online_cover.dart';
 import '../widgets/online_detail_panel.dart';
 import '../widgets/online_filter_marker.dart';
+import '../widgets/online_sort_menu.dart';
 import '../widgets/online_tag_menu.dart';
 import '../widgets/online_work_grid.dart';
 import '../widgets/toast.dart';
@@ -381,14 +382,14 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     );
   }
 
-  /// 第二行：字幕筛选（仅全站浏览可用）+ 排序下拉 + 状态行。
+  /// 第二行：字幕筛选 + 排序/分级菜单 + 状态行。
   ///
   /// 状态行右对齐并留出固定间距 —— 旧版紧贴在左边控件后面，读起来像它的后缀。
   ///
-  /// **激活的筛选标记（标签 / 声优 / 社团）在移动端独占一行**（1.97.2）：
-  /// 第二行在手机竖屏上只剩一百多像素给尾部，标记塞进去必然截断到看不清
-  /// （1.97.0/1.97.1 两轮实机截图都栽在这里）。挪出来后它有整行可用，
-  /// 长名字也能显示完整；桌面空间充裕，保持内联不动。
+  /// **激活的筛选标记（标签 / 声优 / 社团 / 字幕 / 分级）在移动端独占一行**
+  /// （1.97.2 起；1.99.5 起从 `Row` 改成 `Wrap`）：第二行在手机竖屏上只剩
+  /// 一百多像素给尾部，标记塞进去必然截断到看不清；标记数量从 2 个涨到 4 个后，
+  /// 单行 `Row` 也会自己溢出，`Wrap` 让它们换行排布，窄屏不再有溢出风险。
   Widget _buildFilterLine(OnlineBrowseState state, ThemeData theme) {
     // 数量从 settings 取，与黑名单管理对话框里列出的条数同源 ——
     // 用 id 集合的 size 会让「id 为 0 的坏数据」在两处显示成不同的数字
@@ -397,27 +398,70 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     final tagActive = state.source == OnlineSource.tag && state.tag != null;
     final creatorActive = state.creator != null;
     final inlineMarkers = !widget.isMobile;
+    // Wrap 里的标记拿不到「被压缩」的机会，长名字必须自己带上限，
+    // 否则 320 的文字宽 + 关闭钮会超出窄屏（320 宽的老机型）
+    final markerTextWidth =
+        (MediaQuery.sizeOf(context).width - 140).clamp(96.0, 320.0);
+
+    final markers = <Widget>[
+      if (tagActive)
+        OnlineTagFilterMarker(
+          tag: state.tag!.name,
+          onClear: () => unawaited(_applyTag(state.tag!)),
+          maxTextWidth: inlineMarkers ? 140 : markerTextWidth,
+        ),
+      if (creatorActive)
+        OnlineCreatorFilterMarker(
+          filter: state.creator!,
+          onClear: () => unawaited(_applyCreator(state.creator!)),
+          maxTextWidth: inlineMarkers ? 140 : markerTextWidth,
+        ),
+      // 字幕 / 分级（1.99.5 裁决 Q3=B）：两者都是**正交**筛选 ——
+      // 换标签、换搜索词、点社团都保留，所以必须给一个「看得见 + 一键退出」
+      // 的出口，否则就成了 1.94 裁决点名的「看不见的筛选」
+      if (state.subtitleOnly)
+        OnlineSimpleFilterMarker(
+          label: '只看带字幕',
+          icon: Icons.subtitles_outlined,
+          tooltip: '取消只看带字幕',
+          onClear: () =>
+              unawaited(ref.read(onlineBrowseProvider.notifier).clearSubtitleOnly()),
+          maxTextWidth: inlineMarkers ? 140 : markerTextWidth,
+        ),
+      if (state.ageFilterActive)
+        OnlineSimpleFilterMarker(
+          label: '分级：${state.ageFilterLabel}',
+          icon: Icons.escalator_warning_outlined,
+          tooltip: '取消分级筛选',
+          onClear: () =>
+              unawaited(ref.read(onlineBrowseProvider.notifier).clearAgeFilter()),
+          maxTextWidth: inlineMarkers ? 140 : markerTextWidth,
+        ),
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
-            if (state.canFilterSubtitle) ...[
-              FilterChip(
-                label: const Text('只看带字幕', style: TextStyle(fontSize: 11)),
-                selected: state.subtitleOnly,
-                visualDensity: VisualDensity.compact,
-                onSelected: (_) => unawaited(
-                  ref.read(onlineBrowseProvider.notifier).toggleSubtitleOnly(),
-                ),
+            // 字幕筛选（1.99.5）：任何来源下都可用 —— 实测 `subtitle=1`
+            // 在 /api/works、/api/tags/{id}/works、/api/search/{kw} 三处都生效
+            FilterChip(
+              label: const Text('只看带字幕', style: TextStyle(fontSize: 11)),
+              selected: state.subtitleOnly,
+              visualDensity: VisualDensity.compact,
+              onSelected: (_) => unawaited(
+                ref.read(onlineBrowseProvider.notifier).toggleSubtitleOnly(),
               ),
-              const SizedBox(width: 8),
-            ],
-            _SortMenu(
+            ),
+            const SizedBox(width: 8),
+            OnlineSortMenu(
               current: state.sort,
               onSelected: (sort) =>
                   ref.read(onlineBrowseProvider.notifier).setSort(sort),
+              onToggleAge: (category) => ref
+                  .read(onlineBrowseProvider.notifier)
+                  .toggleAgeCategory(category),
             ),
             const SizedBox(width: 8),
             // 「Aa」：就地调在线外观（1.96.0 裁决 Q5=甲）。放排序 chip 右边是因为
@@ -452,25 +496,11 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                     ],
                     // 桌面：标记内联在状态行左边（1.94.0 裁决 Q7=甲）。
                     // 移动端挪到下面独占一行 —— 内联必然截断（见方法头注释）
-                    if (inlineMarkers && tagActive) ...[
-                      Flexible(
-                        child: OnlineTagFilterMarker(
-                          tag: state.tag!.name,
-                          onClear: () => unawaited(_applyTag(state.tag!)),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
-                    if (inlineMarkers && creatorActive) ...[
-                      Flexible(
-                        child: OnlineCreatorFilterMarker(
-                          filter: state.creator!,
-                          onClear: () =>
-                              unawaited(_applyCreator(state.creator!)),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
+                    if (inlineMarkers)
+                      for (final marker in markers) ...[
+                        Flexible(child: marker),
+                        const SizedBox(width: 8),
+                      ],
                     Flexible(
                       child: Text(
                         _statusLine(state),
@@ -486,30 +516,9 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
             ),
           ],
         ),
-        if (!inlineMarkers && (tagActive || creatorActive)) ...[
+        if (!inlineMarkers && markers.isNotEmpty) ...[
           const SizedBox(height: 8),
-          Row(
-            children: [
-              if (tagActive)
-                Flexible(
-                  child: OnlineTagFilterMarker(
-                    tag: state.tag!.name,
-                    onClear: () => unawaited(_applyTag(state.tag!)),
-                    // 独占一行，长标签名可以显示得更完整
-                    maxTextWidth: 320,
-                  ),
-                ),
-              if (tagActive && creatorActive) const SizedBox(width: 8),
-              if (creatorActive)
-                Flexible(
-                  child: OnlineCreatorFilterMarker(
-                    filter: state.creator!,
-                    onClear: () => unawaited(_applyCreator(state.creator!)),
-                    maxTextWidth: 320,
-                  ),
-                ),
-            ],
-          ),
+          Wrap(spacing: 8, runSpacing: 6, children: markers),
         ],
       ],
     );
@@ -625,75 +634,6 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
   }
 }
 
-/// 排序下拉（裁决 Q6=①）。
-///
-/// 形态对齐 asmr.one 的「排序」菜单：**一条扁平列表，方向写进条目名**
-/// （「销量倒序」而不是「销量」+独立箭头），因此没有「再点一次反转」这种隐藏状态。
-///
-/// 限高是为了安卓：竖屏高度有限，菜单不该顶到天花板。`PopupMenu` 的菜单体本来就是
-/// `SingleChildScrollView`，所以给出 `maxHeight` 即自动获得滚动，不必自己实现。
-/// 当前 5 项在桌面与多数手机上都不会触发滚动，护栏留给以后加条目时用。
-class _SortMenu extends StatelessWidget {
-  const _SortMenu({required this.current, required this.onSelected});
-
-  final OnlineSort current;
-  final Future<void> Function(OnlineSort sort) onSelected;
-
-  /// min(320, 屏高 × 0.45)：小屏按比例缩，大屏封顶
-  static double _menuMaxHeight(BuildContext context) {
-    final screen = MediaQuery.sizeOf(context).height;
-    final scaled = screen * 0.45;
-    return scaled < 320 ? scaled : 320;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return PopupMenuButton<OnlineSort>(
-      tooltip: '排序方式',
-      constraints: BoxConstraints(
-        minWidth: 200,
-        maxWidth: 280,
-        maxHeight: _menuMaxHeight(context),
-      ),
-      onSelected: (sort) => unawaited(onSelected(sort)),
-      itemBuilder: (_) => [
-        for (final sort in OnlineSort.values)
-          PopupMenuItem<OnlineSort>(
-            value: sort,
-            height: 38,
-            child: SizedBox(
-              // 固定宽度让条目里的 Expanded 有确定边界，菜单宽度也就可预期
-              width: 168,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      sort.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ),
-                  if (sort == current)
-                    Icon(
-                      Icons.check_rounded,
-                      size: 14,
-                      color: theme.colorScheme.primary,
-                    ),
-                ],
-              ),
-            ),
-          ),
-      ],
-      child: Chip(
-        label: Text('排序：${current.label}', style: const TextStyle(fontSize: 11)),
-        avatar: const Icon(Icons.swap_vert_rounded, size: 13),
-        visualDensity: VisualDensity.compact,
-      ),
-    );
-  }
-}
 
 /// 在线页右上角的账号入口（1.93.0，裁决 Q2=C）。
 ///

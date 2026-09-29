@@ -98,6 +98,75 @@ void main() {
       expect(find.byTooltip('管理标签黑名单'), findsOneWidget);
     });
   });
+
+  /// 1.99.5 裁决 Q1=A：只扩 ✕ 热区，不改观感（图标仍是 13px，胶囊只是变厚）。
+  ///
+  /// 实机问题：旧热区 = 13px 图标 + 3px 内边距 = **19×19**，widget 测试量化过
+  /// 「中心能点、偏 14px 落空」。这里把两条都钉住 ——
+  /// 尺寸不变量（36×36）与行为不变量（偏 14px 仍命中）。
+  group('✕ 热区 ≥36×36（1.99.5 裁决 Q1=A）', () {
+    /// 取标记内那个承载 ✕ 的 InkWell 尺寸（四件套共用同一个 `_MarkerCloseButton`）。
+    Size closeHitSize(WidgetTester tester) {
+      return tester.getSize(
+        find.ancestor(
+          of: find.byIcon(Icons.close),
+          matching: find.byType(InkWell),
+        ),
+      );
+    }
+
+    testWidgets('实测热区正好 36×36，图标保持 13px', (tester) async {
+      await pumpMarker(
+        tester,
+        const OnlineTagFilterMarker(tag: '耳舐め', onClear: _noop),
+        width: 300,
+      );
+      expect(closeHitSize(tester), const Size(36, 36));
+      expect(tester.widget<Icon>(find.byIcon(Icons.close)).size, 13);
+    });
+
+    testWidgets('指尖偏 14px 仍命中（旧 19×19 实现此偏移会落空）', (tester) async {
+      var taps = 0;
+      await pumpMarker(
+        tester,
+        OnlineTagFilterMarker(tag: '耳舐め', onClear: () => taps++),
+        width: 300,
+      );
+      final center = tester.getCenter(find.byIcon(Icons.close));
+      // 旧热区半宽 9.5，偏 14 已出界；新热区半宽 18，偏 14 仍在内。
+      await tester.tapAt(center + const Offset(14, 0));
+      await tester.pump();
+      expect(taps, 1, reason: '偏 14px 的指尖必须仍落在 ✕ 热区内');
+    });
+
+    testWidgets('四件套共用同一热区（标签/声优/新通用标记）', (tester) async {
+      final cases = <(String, Widget)>[
+        ('标签', const OnlineTagFilterMarker(tag: 'タグ', onClear: _noop)),
+        (
+          '声优',
+          OnlineCreatorFilterMarker(
+            filter: const OnlineCreatorFilter(
+              kind: OnlineCreatorKind.va,
+              name: '涼花みなせ',
+            ),
+            onClear: _noop,
+          ),
+        ),
+        (
+          '通用',
+          const OnlineSimpleFilterMarker(
+            label: '仅字幕',
+            tooltip: '只看有字幕',
+            onClear: _noop,
+          ),
+        ),
+      ];
+      for (final (name, widget) in cases) {
+        await pumpMarker(tester, widget, width: 300);
+        expect(closeHitSize(tester), const Size(36, 36), reason: '$name 标记热区应为 36');
+      }
+    });
+  });
 }
 
 void _noop() {}

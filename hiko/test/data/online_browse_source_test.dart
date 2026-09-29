@@ -120,23 +120,24 @@ void main() {
 
       expect(notifier.state.source, OnlineSource.tag);
       expect(notifier.state.tag?.id, 222);
-      // 这两个筛选项在标签来源下是隐藏的，留着就会变成「看不见的筛选」
+      // 搜索词在标签来源下是隐藏的，留着就会变成「看不见的筛选」
       expect(notifier.state.keyword, isEmpty);
-      expect(notifier.state.subtitleOnly, isFalse);
+      // 字幕筛选则相反（1.99.5 裁决 Q3=B）：它是正交筛选，切标签后保留
+      expect(notifier.state.subtitleOnly, isFalse, reason: '本来就没开，不是被清掉的');
     });
 
-    test('标签来源下「只看带字幕」不可用', () async {
+    test('标签来源下「只看带字幕」可用，且请求带上 subtitle=1（1.99.5 裁决 Q3=B）', () async {
       final h = harness();
       final notifier = h.container.read(onlineBrowseProvider.notifier);
 
       await notifier.selectTag(const OnlineTag(id: 222, name: '青梅竹马'));
-      expect(notifier.state.canFilterSubtitle, isFalse);
-
-      // 即便被调用也不该发起新请求（避免发出服务端不认的 subtitle 参数）
-      final before = h.requested.length;
       await notifier.toggleSubtitleOnly();
-      expect(h.requested.length, before);
-      expect(notifier.state.subtitleOnly, isFalse);
+
+      expect(notifier.state.subtitleOnly, isTrue,
+          reason: '标签来源下字幕筛选同样生效（实测 /api/tags/{id}/works 认 subtitle=1）');
+      expect(pathOf(h.requested.last), '/api/tags/222/works');
+      expect(h.requested.last.queryParameters['subtitle'], '1',
+          reason: '字幕参数必须透传到结构化标签端点');
     });
 
     test('搜索会清掉标签（两个来源互斥，不同时生效）', () async {
@@ -212,8 +213,11 @@ void main() {
       expect(pathOf(h.requested.last), '/api/search/\$va:涼花みなせ\$',
           reason: '/api/works 会静默丢弃关键词，必须换搜索接口');
       expect(notifier.state.creator, vaFilter);
-      expect(notifier.state.canFilterSubtitle, isFalse,
-          reason: '搜索端点没有字幕参数，chip 必须藏起来');
+      // 字幕筛选在声优筛选下也保留、也能开（1.99.5 裁决 Q3=B 推翻了
+      // 「搜索端点没有字幕参数」这个旧前提，见 kikoeru_client.searchWorks 注释）
+      await notifier.toggleSubtitleOnly();
+      expect(notifier.state.subtitleOnly, isTrue);
+      expect(h.requested.last.queryParameters['subtitle'], '1');
     });
 
     test('搜索来源 + 声优筛选 = \$va: 与关键词拼接', () async {
@@ -298,6 +302,162 @@ void main() {
       expect(circleFilter.term, '\$circle:Whisper Secret\$');
       expect(vaIncludeTerm('あ'), '\$va:あ\$');
       expect(circleIncludeTerm('あ'), '\$circle:あ\$');
+      // 分级（1.99.5）：2026-09-29 实测，拼错就静默不筛，一并对齐
+      expect(ageIncludeTerm('general'), '\$age:general\$');
+      expect(ageExclusionTerm('r15'), '\$-age:r15\$');
+    });
+  });
+
+  group('分级筛选（1.99.5 裁决 Q4=B）', () {
+    /// 勾选集 → 状态
+    OnlineBrowseState withAges(Set<OnlineAgeCategory> ages) =>
+        OnlineBrowseState(ageCategories: ages);
+
+    test('拼法：勾 1 个用正向、勾 2 个用排除未勾的那个、全勾/全不勾不拼', () {
+      // 为什么必须这样：实测 `$age:A$ $age:B$` 之间是 **AND**（两个正向项一起 = 0 条），
+      // 所以「同时显示两个分级」只能写成「排除第三个」。
+      expect(withAges(const {OnlineAgeCategory.general}).ageTerm, '\$age:general\$');
+      expect(withAges(const {OnlineAgeCategory.r15}).ageTerm, '\$age:r15\$');
+      expect(withAges(const {OnlineAgeCategory.adult}).ageTerm, '\$age:adult\$');
+
+      expect(
+        withAges(const {OnlineAgeCategory.general, OnlineAgeCategory.r15}).ageTerm,
+        '\$-age:adult\$',
+        reason: '勾了全年龄+R15 = 不显示 R18',
+      );
+      expect(
+        withAges(const {OnlineAgeCategory.adult, OnlineAgeCategory.general}).ageTerm,
+        '\$-age:r15\$',
+      );
+
+      expect(withAges(OnlineAgeCategory.values.toSet()).ageTerm, '',
+          reason: '全勾 = 不筛（用户裁决）');
+      expect(withAges(const {}).ageTerm, '', reason: '全不勾 = 不筛（用户裁决）');
+    });
+
+    test('活跃判定与标记文案', () {
+      expect(withAges(OnlineAgeCategory.values.toSet()).ageFilterActive, isFalse);
+      expect(withAges(const {}).ageFilterActive, isFalse);
+      expect(withAges(const {OnlineAgeCategory.general}).ageFilterActive, isTrue);
+
+      expect(withAges(const {OnlineAgeCategory.general}).ageFilterLabel, '仅全年龄');
+      expect(
+        withAges(const {OnlineAgeCategory.general, OnlineAgeCategory.r15})
+            .ageFilterLabel,
+        '不含 R18',
+      );
+    });
+
+    test('勾选 = 显示该分级：全站浏览下改走搜索端点（关键词端点映射同黑名单）', () async {
+      final h = harness();
+      final notifier = h.container.read(onlineBrowseProvider.notifier);
+
+      // 只留「全年龄」= 排除 R18/R15 两个？不 —— 三个里勾一个，走正向项
+      for (final c in OnlineAgeCategory.values) {
+        await notifier.toggleAgeCategory(c);
+      }
+      expect(notifier.state.ageCategories, isEmpty);
+      await notifier.toggleAgeCategory(OnlineAgeCategory.adult);
+      await notifier.toggleAgeCategory(OnlineAgeCategory.r15);
+      // 此时只剩 adult+r15 → 排除 general
+      expect(pathOf(h.requested.last), '/api/search/\$-age:general\$',
+          reason: '/api/works 会丢弃关键词，分级筛必须走搜索端点');
+      expect(notifier.state.sort, OnlineSort.popularPreset,
+          reason: '分级是正交筛选，不该动排序');
+    });
+
+    test('分级 + 字幕：两者同在搜索端点上生效', () async {
+      final h = harness();
+      final notifier = h.container.read(onlineBrowseProvider.notifier);
+
+      for (final c in OnlineAgeCategory.values) {
+        if (c != OnlineAgeCategory.general) await notifier.toggleAgeCategory(c);
+      }
+      await notifier.toggleSubtitleOnly();
+
+      expect(pathOf(h.requested.last), '/api/search/\$age:general\$');
+      expect(h.requested.last.queryParameters['subtitle'], '1');
+    });
+
+    test('分级是正交筛选：翻页 / 换排序 / 新搜索 / 点标签都保留', () async {
+      final h = harness();
+      final notifier = h.container.read(onlineBrowseProvider.notifier);
+
+      for (final c in OnlineAgeCategory.values) {
+        if (c != OnlineAgeCategory.general) await notifier.toggleAgeCategory(c);
+      }
+
+      await notifier.setSort(OnlineSort.dlCountDesc);
+      expect(notifier.state.ageFilterActive, isTrue, reason: '改排序不清分级');
+
+      await notifier.search('催眠');
+      expect(notifier.state.ageFilterActive, isTrue, reason: '新搜索保留分级');
+      expect(pathOf(h.requested.last), '/api/search/\$age:general\$ 催眠');
+
+      await notifier.selectTag(const OnlineTag(id: 222, name: '青梅竹马'));
+      expect(notifier.state.ageFilterActive, isTrue, reason: '点标签保留分级');
+      expect(pathOf(h.requested.last), '/api/search/\$tag:青梅竹马\$ \$age:general\$');
+    });
+
+    test('clearAgeFilter 勾回全集并重拉', () async {
+      final h = harness();
+      final notifier = h.container.read(onlineBrowseProvider.notifier);
+
+      for (final c in OnlineAgeCategory.values) {
+        if (c != OnlineAgeCategory.general) await notifier.toggleAgeCategory(c);
+      }
+      await notifier.clearAgeFilter();
+
+      expect(notifier.state.ageFilterActive, isFalse);
+      expect(pathOf(h.requested.last), '/api/works',
+          reason: '没有分级词后回到原端点（逐字节回退）');
+    });
+  });
+
+  group('返回键「回在线主界面」（1.99.5 裁决 Q2=B）', () {
+    test('带着筛选时：清标签/社团/搜索词/字幕/分级，排序回最新榜', () async {
+      final h = harness();
+      final notifier = h.container.read(onlineBrowseProvider.notifier);
+
+      await notifier.setSort(OnlineSort.dlCountDesc);
+      await notifier.toggleSubtitleOnly();
+      await notifier.toggleAgeCategory(OnlineAgeCategory.adult); // → 排除 R18 之外的语义
+      await notifier.selectTag(const OnlineTag(id: 222, name: '青梅竹马'));
+      expect(notifier.state.hasActiveFilter, isTrue);
+
+      final didReset = await notifier.resetToLatest();
+
+      expect(didReset, isTrue);
+      expect(notifier.state.tag, isNull);
+      expect(notifier.state.subtitleOnly, isFalse);
+      expect(notifier.state.ageFilterActive, isFalse);
+      expect(notifier.state.source, OnlineSource.browse);
+      expect(notifier.state.sort, OnlineSort.latestPreset);
+      expect(pathOf(h.requested.last), '/api/works', reason: '清干净后回到原端点');
+    });
+
+    test('已经停在在线主界面：「返回键」没有可清的（false = 上层决定最小化）', () async {
+      final h = harness();
+      final notifier = h.container.read(onlineBrowseProvider.notifier);
+
+      await notifier.applyPreset(OnlineSort.latestPreset);
+      expect(notifier.state.isAtOnlineHome, isTrue);
+
+      final before = h.requested.length;
+      expect(await notifier.resetToLatest(), isFalse);
+      expect(h.requested.length, before, reason: '不该白刷一次');
+    });
+
+    test('停在热门榜且无筛选：算「不在主界面」，返回键回最新榜', () async {
+      final h = harness();
+      final notifier = h.container.read(onlineBrowseProvider.notifier);
+
+      expect(notifier.state.sort, OnlineSort.popularPreset);
+      expect(notifier.state.hasActiveFilter, isFalse);
+      expect(notifier.state.isAtOnlineHome, isFalse);
+
+      expect(await notifier.resetToLatest(), isTrue);
+      expect(notifier.state.sort, OnlineSort.latestPreset);
     });
   });
 }

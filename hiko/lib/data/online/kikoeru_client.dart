@@ -209,11 +209,17 @@ class KikoeruClient {
   /// [excludeKeyword] 会拼在关键词**前面**（与 asmr.one 的 `globalFilter` 同一做法）。
   /// 注意「两边都空才早退」：只有排除项、没有关键词也是一次合法请求
   /// （实测 `$-tag:X$` 单独就能筛出「全站去掉 X」）。
+  ///
+  /// [subtitleOnly]（1.99.5 实测修正）：**搜索端点也认 `subtitle=1` 这个查询参数**，
+  /// 与 `/api/works` 同一套。实测对照组：搜索「おねえさん」无参 6/50 带字幕 →
+  /// 带参 7/7 全带字幕。此前认为「搜索端点没有字幕筛选」是错的（见 provider 里
+  /// `canFilterSubtitle` 的旧注释），1.99.5 起这里透传（该 getter 已删除）。
   Future<OnlineWorkPage> searchWorks(
     String keyword, {
     int page = 1,
     int pageSize = defaultPageSize,
     OnlineSort sort = OnlineSort.createDate,
+    bool subtitleOnly = false,
     String excludeKeyword = '',
   }) async {
     final kw = keyword.trim();
@@ -228,6 +234,7 @@ class KikoeruClient {
       'pageSize': '$pageSize',
       'order': sort.key,
       'sort': OnlineSort.sortParam,
+      if (subtitleOnly) 'subtitle': '1',
     });
     return OnlineWorkPage.fromJson(json);
   }
@@ -238,11 +245,15 @@ class KikoeruClient {
   /// [excludeKeyword] 非空时**必须**并进搜索 —— 搜索接口不支持「结构化标签 + 排除项」
   /// 的组合，而结构化标签端点又会忽略排除参数，所以改用**实测等价**的
   /// `$tag:<名>$`：三个标签逐一比对过 totalCount 与逐位顺序，完全相同。
+  ///
+  /// [subtitleOnly]（1.99.5 实测）：结构化标签端点同样认 `subtitle=1`。
+  /// 实测对照组 tag222：无参 11/50 带字幕 → 带参 50/50。
   Future<OnlineWorkPage> fetchWorksByTag(
     OnlineTag tag, {
     int page = 1,
     int pageSize = defaultPageSize,
     OnlineSort sort = OnlineSort.dlCountDesc,
+    bool subtitleOnly = false,
     String excludeKeyword = '',
   }) async {
     final exclude = excludeKeyword.trim();
@@ -251,6 +262,7 @@ class KikoeruClient {
       'pageSize': '$pageSize',
       'order': sort.key,
       'sort': OnlineSort.sortParam,
+      if (subtitleOnly) 'subtitle': '1',
     };
     // 名字为空（坏数据）时只能退回结构化端点：那样黑名单这一条就不生效，
     // 但「按标签筛对了、只是没滤黑名单」比「给出了没筛的结果」好。

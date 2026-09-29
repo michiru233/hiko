@@ -53,6 +53,24 @@ enum OnlineSource {
 /// 声优 / 社团筛选的维度（1.97.0）。
 enum OnlineCreatorKind { va, circle }
 
+/// 在线作品的**分级**（年龄分类，1.99.5 裁决 Q4=B）。
+///
+/// 取值与服务端 `age_category_string` 一一对应：2026-09-29 采样（全站 62453）
+/// 只出现过这三个值，且三者相加正好等于全站数 —— 所以它们是**完备**的，
+/// 三个复选框可以覆盖全集。
+///
+/// [key] 用于搜索语法 `$age:<key>$` / `$-age:<key>$`，[label] 用于 UI。
+enum OnlineAgeCategory {
+  adult('adult', 'R18'),
+  r15('r15', 'R15'),
+  general('general', '全年龄');
+
+  const OnlineAgeCategory(this.key, this.label);
+
+  final String key;
+  final String label;
+}
+
 /// 按声优 / 社团**正向筛选**（1.97.0）。
 ///
 /// 在线作品没有本地播放器那种 artist / albumArtist 标签体系，可筛的 creator
@@ -98,6 +116,11 @@ class OnlineBrowseState {
     this.tag,
     this.creator,
     this.subtitleOnly = false,
+    this.ageCategories = const {
+      OnlineAgeCategory.adult,
+      OnlineAgeCategory.r15,
+      OnlineAgeCategory.general,
+    },
     this.bypassBlocklist = false,
     this.works = const [],
     this.totalCount = 0,
@@ -121,7 +144,26 @@ class OnlineBrowseState {
   /// 换来源的动作（`applyPreset` / `search` / `selectTag`）清掉它 ——
   /// 对齐 1.94 标签的裁决「看不见的筛选比没有筛选更糟」。
   final OnlineCreatorFilter? creator;
+
+  /// 「只看带字幕」。1.99.5（裁决 Q3=B）起是**正交**筛选，且**到处可用**：
+  /// 搜索 / 标签 / 社团筛选下都保留、也都能改 —— 实测 `subtitle=1` 这个
+  /// 查询参数在 `/api/works`、`/api/tags/{id}/works`、`/api/search/{kw}`
+  /// **三处都生效**（对照组：tag222 无参 11/50 带字幕 → 带参 50/50；
+  /// 搜索「おねえさん」6/50 → 7/7）。此前「搜索端点没有这个筛选」的判断是错的，
+  /// 旧版据此把 chip 限制在「全站浏览且无 creator」下显示，1.99.5 已放开。
+  /// 「看不见的筛选」由筛选行上的可关闭标记兜住（同样是 Q3=B 的要求）。
   final bool subtitleOnly;
+
+  /// 分级筛选：**勾选 = 显示该分级**（1.99.5 裁决 Q4=B）。
+  ///
+  /// 默认全勾（= 不筛）。与实测的服务端语义对齐：
+  /// - 勾 1 个 → `$age:<key>$`
+  /// - 勾 2 个 → `$-age:<未勾的那个>$`（`$age:A$ $age:B$` 之间是 **AND**，
+  ///   两个正向项一起 = 0 条，所以「显示两个」只能用排除式）
+  /// - 全勾 / 全不勾 → 不拼任何分级词 = 不筛（用户裁决：「全部内容都显示」）
+  ///
+  /// 与字幕同族的正交维度：换来源（搜索 / 标签 / 社团）都保留它。
+  final Set<OnlineAgeCategory> ageCategories;
 
   /// 这一次标签筛选**放行被屏蔽的标签自己**（1.95.0 裁决 Q5）。
   ///
@@ -150,12 +192,54 @@ class OnlineBrowseState {
   bool get hasNext => page < totalPages;
   bool get isEmpty => !loading && works.isEmpty;
 
-  /// 「只看带字幕」只对全站浏览有意义：它是 `/api/works` 这类列表端点的参数，
-  /// 搜索与标签端点没有这个筛选。所以可用性挂**数据来源**，不挂榜单（裁决 Q8=A）。
-  /// 声优/社团筛选激活时请求改走搜索接口（`/api/works` 会静默丢弃关键词），
-  /// 字幕参数也到不了服务端，所以同样视为不可用。
-  bool get canFilterSubtitle =>
-      source == OnlineSource.browse && creator == null;
+  /// 分级复选框的选中判定
+  bool isAgeSelected(OnlineAgeCategory category) =>
+      ageCategories.contains(category);
+
+  /// 是否真的在按分级筛：**1 或 2 个被勾**。全勾 / 全不勾都等于「不筛」
+  /// （裁决原话：「全勾或者全不勾视为不进行筛选，全部内容都显示」）。
+  bool get ageFilterActive =>
+      ageCategories.isNotEmpty &&
+      ageCategories.length < OnlineAgeCategory.values.length;
+
+  /// 编进搜索关键词的分级项；不活跃时是**空串** —— 调用方据此判定
+  /// 要不要把请求从原端点改走搜索接口（与黑名单 `exclusionKeyword` 同一条约定）。
+  String get ageTerm {
+    if (!ageFilterActive) return '';
+    if (ageCategories.length == 1) {
+      return ageIncludeTerm(ageCategories.single.key);
+    }
+    final missing = OnlineAgeCategory.values
+        .firstWhere((c) => !ageCategories.contains(c));
+    return ageExclusionTerm(missing.key);
+  }
+
+  /// 分级标记的文案：「仅全年龄」/「不含 R18」
+  String get ageFilterLabel {
+    if (!ageFilterActive) return '';
+    if (ageCategories.length == 1) {
+      return '仅${ageCategories.single.label}';
+    }
+    final missing = OnlineAgeCategory.values
+        .firstWhere((c) => !ageCategories.contains(c));
+    return '不含 ${missing.label}';
+  }
+
+  /// 有没有「用户设过的筛选」。返回键（1.99.5 裁决 Q2=B）据此判断
+  /// 这一下该清筛选还是该最小化应用 —— 排序（怎么排）不算筛选。
+  bool get hasActiveFilter =>
+      tag != null ||
+      creator != null ||
+      subtitleOnly ||
+      ageFilterActive ||
+      keyword.isNotEmpty;
+
+  /// 是否已经停在「在线主界面」= 最新榜 + 无任何筛选。
+  /// 返回键在这一状态下没有可清的，交给上层决定「最小化」还是「什么都不做」。
+  bool get isAtOnlineHome =>
+      !hasActiveFilter &&
+      source == OnlineSource.browse &&
+      sort == OnlineSort.latestPreset;
 
   /// 预设 chip 的高亮判定：**只有当前正好停在该预设上**才亮。
   /// 改了排序就不再属于任何榜单 —— 否则会出现「热门亮着、实际按评价排」的错位。
@@ -175,6 +259,7 @@ class OnlineBrowseState {
     OnlineCreatorFilter? creator,
     bool clearCreator = false,
     bool? subtitleOnly,
+    Set<OnlineAgeCategory>? ageCategories,
     bool? bypassBlocklist,
     List<OnlineWork>? works,
     int? totalCount,
@@ -191,6 +276,7 @@ class OnlineBrowseState {
         tag: clearTag ? null : (tag ?? this.tag),
         creator: clearCreator ? null : (creator ?? this.creator),
         subtitleOnly: subtitleOnly ?? this.subtitleOnly,
+        ageCategories: ageCategories ?? this.ageCategories,
         bypassBlocklist: bypassBlocklist ?? this.bypassBlocklist,
         works: works ?? this.works,
         totalCount: totalCount ?? this.totalCount,
@@ -249,11 +335,8 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
     state = state.copyWith(
       source: OnlineSource.search,
       keyword: kw,
-      // 离开全站浏览就清掉字幕筛选：搜索/标签下这个 chip 是隐藏的，
-      // 留着会让「看不见的筛选」在切回浏览时突然生效
-      subtitleOnly: false,
       clearTag: true,
-      // 声优/社团筛选同理：新一轮搜索的语义由搜索框决定，
+      // 声优/社团筛选清掉：新一轮搜索的语义由搜索框决定，
       // 把上一轮的 creator 悄悄叠上去 = 看不见的筛选
       clearCreator: true,
       bypassBlocklist: false,
@@ -263,6 +346,9 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
       loading: true,
       clearError: true,
     );
+    // 注意：刻意不清 subtitleOnly / ageCategories —— 它们是正交筛选，
+    // 而且「看得见」（chip 高亮 + 筛选行上的可关闭标记），所以不构成
+    // 1.94 裁决要防的「看不见的筛选」（1.99.5 裁决 Q3=B 明确要求保留）。
     await _fetch(1);
   }
 
@@ -272,7 +358,6 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
     state = state.copyWith(
       source: OnlineSource.tag,
       tag: tag,
-      subtitleOnly: false,
       keyword: '',
       clearCreator: true,
       bypassBlocklist: bypassBlocklist,
@@ -282,12 +367,13 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
       loading: true,
       clearError: true,
     );
+    // 字幕 / 分级是正交筛选：换标签时保留（1.99.5 裁决 Q3=B / Q4=B）
     await _fetch(1);
   }
 
   /// 按声优 / 社团筛选（1.97.0）。
   ///
-  /// 与标签筛选同语义的「覆盖式进入」：清字幕筛选、回第 1 页；**保留**当前的
+  /// 与标签筛选同语义的「覆盖式进入」：回第 1 页、清标签；**保留**当前的
   /// 来源与搜索词 —— 从搜索结果里点开详情再点声优，得到的是「这批关键词 ∩
   /// 这个声优」，而不是突然把用户扔回全站。取消（再点同一个 / 关闭标记）
   /// 由 UI 层走 `applyPreset(latestPreset)`，对齐标签的「取消回最新榜」。
@@ -296,7 +382,92 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
     if (state.creator == filter) return;
     state = state.copyWith(
       creator: filter,
+      works: const [],
+      page: 1,
+      totalCount: 0,
+      loading: true,
+      clearError: true,
+    );
+    // 字幕 / 分级同样保留（1.99.5 裁决 Q3=B / Q4=B）
+    await _fetch(1);
+  }
+
+  /// 切换某个分级的显示（1.99.5 裁决 Q4=B）。
+  ///
+  /// **只碰这一个维度**，不动排序 / 来源 / 其它筛选 —— 分级与字幕同族的
+  /// 正交筛选。勾选语义（显示 vs 不筛）见 [OnlineBrowseState.ageTerm]。
+  Future<void> toggleAgeCategory(OnlineAgeCategory category) async {
+    final next = {...state.ageCategories};
+    if (!next.remove(category)) next.add(category);
+    state = state.copyWith(
+      ageCategories: next,
+      works: const [],
+      page: 1,
+      totalCount: 0,
+      loading: true,
+      clearError: true,
+    );
+    await _fetch(1);
+  }
+
+  /// 返回键「回在线主界面」（1.99.5 裁决 Q2=B）。
+  ///
+  /// 在线视图内按返回键**不再切回本地音声**（旧兜底会把带着筛选的用户直接
+  /// 扔到另一个模块），而是把当前状态清干净：清掉标签 / 社团 / 搜索词 /
+  /// 字幕 / 分级，排序与来源回到「最新榜」。**再按一次**（此时无可清）
+  /// 由上层决定最小化应用。
+  ///
+  /// 返回值 = 这一次是否真的做了事（false 表示本来就停在最新榜且无筛选）。
+  /// 排序不落在最新预设上也算「有事可做」——用户的预期是「返回到在线主界面」，
+  /// 而那个主界面的默认状态就是最新榜。
+  Future<bool> resetToLatest() async {
+    if (state.isAtOnlineHome) return false;
+    state = state.copyWith(
+      source: OnlineSource.browse,
+      sort: OnlineSort.latestPreset,
+      keyword: '',
+      clearTag: true,
+      clearCreator: true,
       subtitleOnly: false,
+      ageCategories: const {
+        OnlineAgeCategory.adult,
+        OnlineAgeCategory.r15,
+        OnlineAgeCategory.general,
+      },
+      bypassBlocklist: false,
+      works: const [],
+      page: 1,
+      totalCount: 0,
+      loading: true,
+      clearError: true,
+    );
+    await _fetch(1);
+    return true;
+  }
+
+  /// 关掉「只看带字幕」（筛选行标记 / chip 的出口）
+  Future<void> clearSubtitleOnly() async {
+    if (!state.subtitleOnly) return;
+    state = state.copyWith(
+      subtitleOnly: false,
+      works: const [],
+      page: 1,
+      totalCount: 0,
+      loading: true,
+      clearError: true,
+    );
+    await _fetch(1);
+  }
+
+  /// 清掉分级筛选（勾回全集 = 不筛）
+  Future<void> clearAgeFilter() async {
+    if (!state.ageFilterActive) return;
+    state = state.copyWith(
+      ageCategories: const {
+        OnlineAgeCategory.adult,
+        OnlineAgeCategory.r15,
+        OnlineAgeCategory.general,
+      },
       works: const [],
       page: 1,
       totalCount: 0,
@@ -318,9 +489,8 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
     await _fetch(1);
   }
 
-  /// 只看带字幕（仅全站浏览可用）
+  /// 只看带字幕（1.99.5 起**任何来源下都可用**，`toggleSubtitleOnly` 不再有前置门槛）
   Future<void> toggleSubtitleOnly() async {
-    if (!state.canFilterSubtitle) return;
     state = state.copyWith(
       subtitleOnly: !state.subtitleOnly,
       works: const [],
@@ -455,11 +625,17 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
     // 声优 / 社团筛选（1.97.0）：`/api/works` 会静默丢弃关键词（黑名单 1.95.0
     // 同款坑），所以 creator 激活时一律改走搜索接口 —— 与「黑名单激活」的
     // 端点映射完全同构，两者可以叠加（关键词里各占一段）。
+    //
+    // 分级筛选（1.99.5）走的是同一套：`$age:X$` / `$-age:X$` 也是关键词，
+    // `/api/works` 同样丢弃，所以它激活时也强制走搜索接口。
     final creatorTerm = state.creator?.term ?? '';
+    final ageTerm = state.ageTerm;
+    final filterTerms =
+        [creatorTerm, ageTerm].where((s) => s.isNotEmpty).join(' ');
 
     try {
       final result = await switch (state.source) {
-        OnlineSource.browse => creatorTerm.isEmpty
+        OnlineSource.browse => filterTerms.isEmpty
             ? client.fetchWorks(
                 page: page,
                 pageSize: size,
@@ -468,35 +644,37 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
                 excludeKeyword: exclude,
               )
             : client.searchWorks(
-                creatorTerm,
+                filterTerms,
                 page: page,
                 pageSize: size,
                 sort: sort,
+                subtitleOnly: state.subtitleOnly,
                 excludeKeyword: exclude,
               ),
         OnlineSource.search => client.searchWorks(
-            creatorTerm.isEmpty
-                ? state.keyword
-                : '$creatorTerm ${state.keyword}',
+            [filterTerms, state.keyword].where((s) => s.isNotEmpty).join(' '),
             page: page,
             pageSize: size,
             sort: sort,
+            subtitleOnly: state.subtitleOnly,
             excludeKeyword: exclude,
           ),
-        OnlineSource.tag => creatorTerm.isEmpty
+        OnlineSource.tag => filterTerms.isEmpty
             ? client.fetchWorksByTag(
                 tag!,
                 page: page,
                 pageSize: size,
                 sort: sort,
+                subtitleOnly: state.subtitleOnly,
                 excludeKeyword: exclude,
               )
-            // 结构化标签端点同样吃不下 creator，换成实测等价的 `$tag:` 关键词
+            // 结构化标签端点同样吃不下关键词，换成实测等价的 `$tag:` 关键词
             : client.searchWorks(
-                '${tagIncludeTerm(tag!.name.trim())} $creatorTerm',
+                '${tagIncludeTerm(tag!.name.trim())} $filterTerms',
                 page: page,
                 pageSize: size,
                 sort: sort,
+                subtitleOnly: state.subtitleOnly,
                 excludeKeyword: exclude,
               ),
       };

@@ -65,6 +65,23 @@ String creatorExclusionTerm(OnlineCreatorBlock block) => block.isVa
     ? '\$-va:${block.name}\$'
     : '\$-circle:${block.name}\$';
 
+/// 按**分级**（年龄分类）正向筛选的搜索项（1.99.5）。
+///
+/// 命名空间 `age`，取值与服务端 `age_category_string` 一一对应。
+/// 2026-09-29 实测（真接口，全站 62453）：
+/// `$age:adult$` → 55442（R18）、`$age:general$` → 5886（全年龄）、
+/// `$age:r15$` → 1125，三者相加正好 62453 —— 三个取值是**完备**的。
+///
+/// **多个取值之间是 AND，不是 OR**：`$age:adult$ $age:general$` → 0 条。
+/// 所以「同时显示两个分级」不能拼两个正向项，必须改用排除式
+/// [ageExclusionTerm]（见 `OnlineBrowseState.ageTerm`）。
+String ageIncludeTerm(String key) => '\$age:$key\$';
+
+/// 按**分级**排除的搜索项（1.99.5）。实测减法同样严丝合缝：
+/// `$-age:r15$` → 61328 = 62453 − 1125、`$-age:general$` → 56567、
+/// `$-age:adult$` → 7011。
+String ageExclusionTerm(String key) => '\$-age:$key\$';
+
 /// 把黑名单编成一段排除关键字。
 ///
 /// 返回**空串**表示「没有排除项」，这是本版最重要的一条约定：

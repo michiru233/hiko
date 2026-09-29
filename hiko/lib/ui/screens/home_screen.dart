@@ -15,6 +15,7 @@ import '../../data/import_service.dart';
 import '../../data/library_provider.dart';
 import '../../data/library_reorganizer.dart';
 import '../../data/music_folder_scanner.dart';
+import '../../data/online/online_provider.dart';
 import '../../data/settings_store.dart';
 import '../../data/stats.dart';
 import '../../data/update_checker.dart';
@@ -465,6 +466,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           setState(() => _detailAlbum = null);
         } else if (_drawerOpen) {
           setState(() => _drawerOpen = false);
+        } else if (_handleOnlineBack(allowExit: true)) {
+          // 在线模块自己消费掉（清筛选 / 在线收藏退回在线 / 干净状态最小化）
         } else if (_view != '本地音声') {
           setState(() => _view = '本地音声');
         } else {
@@ -512,6 +515,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     setState(() => _detailAlbum = null);
                   } else if (_drawerOpen) {
                     setState(() => _drawerOpen = false);
+                  } else if (_handleOnlineBack(allowExit: isMobile)) {
+                    // 在线模块自己消费掉；桌面 Esc 不退出应用（与旧行为一致）
                   } else if (_view != '本地音声') {
                     setState(() => _view = '本地音声');
                   }
@@ -770,6 +775,35 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (own >= 0) return own;
     }
     return navViews.indexOf(AppSettings.navViewHome);
+  }
+
+  /// 在线模块的「返回」语义（1.99.5，裁决 Q2=B）。
+  ///
+  /// 旧兜底是「不在本地音声就切回本地音声」—— 于是用户在**带着筛选的在线页**
+  /// 右滑返回时，会直接被扔到本地专辑页（实机反馈的 bug，也说不清自己怎么过来的）。
+  /// 现在：
+  /// - `在线`：**只清筛选**（标签 / 社团 / 搜索词 / 字幕 / 分级 → 回最新榜），
+  ///   本来就在「在线主界面」（最新榜 + 无筛选）时，若 [allowExit] 则最小化应用；
+  /// - `在线收藏`：**退回在线**（它就是从在线进去的，同一模块内退一层，
+  ///   而不是跳到本地音声）；
+  /// - 其它视图：返回 false，交给调用点的旧兜底（本地视图的切换逻辑不变）。
+  ///
+  /// [allowExit] 的区别只在「干净状态下要不要退出应用」：安卓返回键与 Esc
+  /// 共用这段逻辑，但 Esc 在桌面上不该关掉应用。
+  bool _handleOnlineBack({required bool allowExit}) {
+    if (_view == '在线') {
+      if (!ref.read(onlineBrowseProvider).isAtOnlineHome) {
+        unawaited(ref.read(onlineBrowseProvider.notifier).resetToLatest());
+      } else if (allowExit) {
+        SystemNavigator.pop();
+      }
+      return true;
+    }
+    if (_view == '在线收藏') {
+      setState(() => _view = '在线');
+      return true;
+    }
+    return false;
   }
 
   /// 移动端打开全屏详情页；详情页胶囊点选时回传 ('circle'|'voice', 名字) 应用为列表筛选

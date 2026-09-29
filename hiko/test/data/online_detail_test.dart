@@ -105,13 +105,13 @@ void main() {
   });
 
   group('OnlineBrowseState 来源 × 排序解耦（裁决 Q8=A）', () {
-    test('冷启动落在热门预设，字幕筛选可用', () {
+    test('冷启动落在热门预设，字幕筛选默认关', () {
       const state = OnlineBrowseState();
       expect(state.source, OnlineSource.browse);
       expect(state.sort, OnlineSort.popularPreset);
       expect(state.isPopularPreset, isTrue);
       expect(state.isLatestPreset, isFalse);
-      expect(state.canFilterSubtitle, isTrue);
+      expect(state.subtitleOnly, isFalse);
     });
 
     test('改了排序则两个预设 chip 都不亮', () {
@@ -119,8 +119,8 @@ void main() {
       const state = OnlineBrowseState(sort: OnlineSort.rjDesc);
       expect(state.isPopularPreset, isFalse);
       expect(state.isLatestPreset, isFalse);
-      // 排序不影响字幕筛选的可用性：可用性挂的是来源
-      expect(state.canFilterSubtitle, isTrue);
+      // 字幕筛选与排序无关（1.99.5 起它也不再与来源绑定）
+      expect(state.subtitleOnly, isFalse);
     });
 
     test('停在最新预设时只有最新亮', () {
@@ -129,17 +129,19 @@ void main() {
       expect(state.isPopularPreset, isFalse);
     });
 
-    test('搜索 / 标签来源下字幕筛选不可用，预设也不高亮', () {
+    test('搜索 / 标签来源下预设不高亮（字幕筛选 1.99.5 起不再挂来源）', () {
       const search =
           OnlineBrowseState(source: OnlineSource.search, keyword: 'ASMR');
-      expect(search.canFilterSubtitle, isFalse);
+      // 1.99.5 裁决 Q3=B：`canFilterSubtitle` 已删除 —— `subtitle=1` 实测在
+      // 三个端点都生效，所以可用性不再按来源/creator 收紧。这里只锁预设高亮。
+      expect(search.subtitleOnly, isFalse);
       expect(search.isPopularPreset, isFalse);
 
       final tag = OnlineBrowseState(
         source: OnlineSource.tag,
         tag: const OnlineTag(id: 1, name: 'ASMR'),
       );
-      expect(tag.canFilterSubtitle, isFalse);
+      expect(tag.subtitleOnly, isFalse);
       expect(tag.isPopularPreset, isFalse);
     });
 
