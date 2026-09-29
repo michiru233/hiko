@@ -50,10 +50,10 @@ void main() {
     expect(result.map((a) => a.id).toList(), ['a1', 'a2']);
   });
 
-  test('其它视图行为不变：全部音声包含从未播放的', () {
+  test('其它视图行为不变：本地音声包含从未播放的', () {
     final result = filterAlbums(
       albums: [newer, older, never],
-      view: '全部音声',
+      view: '本地音声',
       filter: 'all',
       query: '',
       sort: 'recent_desc',

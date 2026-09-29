@@ -55,7 +55,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  String _view = '全部音声';
+  String _view = '本地音声';
   String _filter = 'all';
   // 1.77 详情页胶囊回传的社团/声优点选筛选（至多一个生效，kind: 'circle' | 'voice'）
   String? _personFilterKind;
@@ -263,13 +263,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         }
       }
       setState(() {
-        _view = '全部音声';
+        _view = '本地音声';
         _filter = 'all';
       });
       _showToast(
         albums.isEmpty
             ? '没有在所选文件夹中找到支持的音频文件'
-            : '已导入 ${albums.length} 张专辑，已显示在全部音声',
+            : '已导入 ${albums.length} 张专辑，已显示在本地音声',
       );
     } catch (e) {
       _showToast('导入失败：$e');
@@ -424,6 +424,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final albums = ref.watch(libraryProvider);
+    // 1.99.4（裁决 Q4=A）：当前视图在导航配置里被隐藏 → 立即回退到第一个
+    // 仍显示的导航视图。只对内置导航视图生效；分类 / 搜索残留视图不受影响。
+    final navViews = ref.watch(settingsProvider).navViews;
+    if (AppSettings.navViewsAll.contains(_view) && !navViews.contains(_view)) {
+      _view = navViews.first;
+    }
     final currentSort = ref.watch(settingsProvider.select((s) => s.albumSort));
     // 1.48：排序/过滤走 memo——列表实例与参数不变时复用结果，大库重建不再全量重算；
     // 「统计」视图不走筛选（面板直接聚合全库）；「在线」「在线收藏」的数据来自远程
@@ -459,8 +465,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           setState(() => _detailAlbum = null);
         } else if (_drawerOpen) {
           setState(() => _drawerOpen = false);
-        } else if (_view != '全部音声') {
-          setState(() => _view = '全部音声');
+        } else if (_view != '本地音声') {
+          setState(() => _view = '本地音声');
         } else {
           SystemNavigator.pop(); // 无浮层 → 最小化/退出
         }
@@ -506,8 +512,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     setState(() => _detailAlbum = null);
                   } else if (_drawerOpen) {
                     setState(() => _drawerOpen = false);
-                  } else if (_view != '全部音声') {
-                    setState(() => _view = '全部音声');
+                  } else if (_view != '本地音声') {
+                    setState(() => _view = '本地音声');
                   }
                   return null;
                 },
@@ -728,39 +734,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
                       ),
                     ),
-                    child: BottomNavigationBar(
-                      currentIndex: _navIndex,
+                    child: _MobileBottomNav(
+                      views: navViews,
+                      currentIndex: _navIndex(navViews),
                       onTap: (i) {
-                        // 超出 _navViews 的末位固定为「设置」（1.90 起在线视图占第 3 位）
-                        if (i >= _navViews.length) {
+                        // 超出 navViews 的末位固定为「设置」（1.99.4 起项与顺序由设置驱动）
+                        if (i >= navViews.length) {
                           _openSettings(context);
                           return;
                         }
-                        setState(() => _view = _navViews[i]);
+                        setState(() => _view = navViews[i]);
                       },
-                      type: BottomNavigationBarType.fixed,
-                      backgroundColor: Colors.transparent,
-                      elevation: 0,
-                      selectedItemColor: theme.colorScheme.primary,
-                      unselectedItemColor: theme.hintColor,
-                      items: const [
-                        BottomNavigationBarItem(
-                          icon: Icon(Icons.grid_view_rounded),
-                          label: '全部',
-                        ),
-                        BottomNavigationBarItem(
-                          icon: Icon(Icons.favorite_border_rounded),
-                          label: '收藏',
-                        ),
-                        BottomNavigationBarItem(
-                          icon: Icon(Icons.cloud_outlined),
-                          label: '在线',
-                        ),
-                        BottomNavigationBarItem(
-                          icon: Icon(Icons.settings_outlined),
-                          label: '设置',
-                        ),
-                      ],
                     ),
                   ),
                 ),
@@ -770,20 +754,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  /// 移动端底部导航对应的视图（末位之后的固定为「设置」按钮，不在本表内）
-  static const _navViews = ['全部音声', '收藏夹', '在线'];
-
   /// 数据全来自远程服务端的视图（不走本地库筛选，也不参与本地网格）
   bool get _isOnlineView => _view == '在线' || _view == '在线收藏';
 
-  int get _navIndex {
-    final i = _navViews.indexOf(_view);
+  /// 当前视图在移动端底栏的高亮位置（1.99.4 起底栏项由 navViews 驱动）。
+  /// 「在线收藏」优先归到「在线」那一格（它是在线模块的一部分，1.90 语义保留，
+  /// 在线被隐藏时才高亮自己的格子）；非导航视图（分类等）高亮本地音声。
+  int _navIndex(List<String> navViews) {
+    final i = navViews.indexOf(_view);
     if (i >= 0) return i;
-    // 「在线收藏」没有独立底栏格：它是在线模块的一部分，归到「在线」这一格，
-    // 免得底栏高亮停在「全部」而内容完全对不上
-    if (_view == '在线收藏') return _navViews.indexOf('在线');
-    // 设置项不在 _navViews 中，单独处理
-    return 0;
+    if (_view == '在线收藏') {
+      final online = navViews.indexOf('在线');
+      if (online >= 0) return online;
+      final own = navViews.indexOf('在线收藏');
+      if (own >= 0) return own;
+    }
+    return navViews.indexOf(AppSettings.navViewHome);
   }
 
   /// 移动端打开全屏详情页；详情页胶囊点选时回传 ('circle'|'voice', 名字) 应用为列表筛选
@@ -987,7 +973,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   /// 「定位当前播放」（1.49）：网格滚回正在播放的专辑卡并短暂高亮；
-  /// 专辑不在当前列表（筛选/其它视图/统计）时先清筛选切回「全部音声」
+  /// 专辑不在当前列表（筛选/其它视图/统计）时先清筛选切回「本地音声」
   void _locatePlayingAlbum() {
     final target = ref.read(playbackProvider).album;
     if (target == null) return;
@@ -1006,7 +992,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (!inCurrentView) {
         // 与「清除筛选」同语义
         _filter = 'all';
-        _view = '全部音声';
+        _view = '本地音声';
       }
       _locateTargetId = target.id;
     });
@@ -1447,7 +1433,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildResultsLine(ThemeData theme, int count) {
-    final hasFilter = _filter != 'all' || _view != '全部音声';
+    final hasFilter = _filter != 'all' || _view != '本地音声';
     final hasPersonFilter = _personFilterName != null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(48, 8, 48, 0),
@@ -1466,7 +1452,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             TextButton(
               onPressed: () => setState(() {
                 _filter = 'all';
-                _view = '全部音声';
+                _view = '本地音声';
                 _personFilterKind = null;
                 _personFilterName = null;
               }),
@@ -2054,6 +2040,92 @@ class _SortSelector extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 移动端底部导航（1.99.4，裁决 Q2=B / Q6=B）：底栏项改为设置驱动
+/// （与桌面侧栏共用一份 navViews，最多 8 项 + 固定「设置」）。
+/// BottomNavigationBar 在超过 5 项时标签会挤压溢出，改为自绘行：
+/// 放得下时均分宽度，放不下时整行横向滑动。
+class _MobileBottomNav extends StatelessWidget {
+  const _MobileBottomNav({
+    required this.views,
+    required this.currentIndex,
+    required this.onTap,
+  });
+
+  final List<String> views;
+  final int currentIndex;
+  final ValueChanged<int> onTap;
+
+  /// 导航视图 → Material 图标（桌面侧栏的字符图标映射见 sidebar.dart）
+  static const _icons = <String, IconData>{
+    '本地音声': Icons.grid_view_rounded,
+    '最近添加': Icons.schedule_rounded,
+    '最近播放': Icons.history_rounded,
+    '正在播放': Icons.play_arrow_rounded,
+    '收藏夹': Icons.favorite_border_rounded,
+    '在线': Icons.cloud_outlined,
+    '在线收藏': Icons.favorite_rounded,
+    '统计': Icons.bar_chart_rounded,
+  };
+
+  static const _itemWidth = 76.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final fits =
+            (views.length + 1) * _itemWidth <= constraints.maxWidth;
+        Widget item(
+          int index,
+          String label,
+          IconData icon,
+        ) {
+          final selected = index == currentIndex;
+          final color =
+              selected ? theme.colorScheme.primary : theme.hintColor;
+          final child = InkWell(
+            onTap: () => onTap(index),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 22, color: color),
+                  const SizedBox(height: 2),
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 10.5, color: color),
+                  ),
+                ],
+              ),
+            ),
+          );
+          return fits
+              ? Expanded(child: child)
+              : SizedBox(width: _itemWidth, child: child);
+        }
+
+        final row = Row(
+          children: [
+            for (final (i, view) in views.indexed)
+              item(i, view, _icons[view] ?? Icons.circle_outlined),
+            // 末位固定「设置」，不占 navViews 表（与旧版约定一致）
+            item(views.length, '设置', Icons.settings_outlined),
+          ],
+        );
+        if (fits) return row;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: row,
+        );
+      },
     );
   }
 }

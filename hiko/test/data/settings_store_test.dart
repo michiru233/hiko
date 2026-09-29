@@ -448,4 +448,49 @@ void main() {
     await repaired.removeBlockedCreator(va);
     expect(repaired.state.blockedCreators, isEmpty);
   });
+
+  // ------------------------------------------------------------ 1.99.4 导航栏可见视图与顺序
+
+  test('1.99.4 导航视图：默认全集 + 顺序往返 + 白名单过滤与去重 + 根视图保底', () async {
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.navViews, AppSettings.navViewsAll,
+        reason: '无存量配置 = 全部显示、默认顺序（升级兼容）');
+
+    // 拖动排序（重排）+ 混入白名单外与重复项
+    await notifier.setNavViews(['统计', '在线', 'hacker视图', '本地音声', '在线']);
+    expect(notifier.state.navViews, ['统计', '在线', '本地音声'],
+        reason: '白名单外丢弃、重复去重、顺序保持用户排的');
+
+    final reloaded = SettingsNotifier();
+    await reloaded.load();
+    expect(reloaded.state.navViews, ['统计', '在线', '本地音声'], reason: '落盘往返');
+
+    // 根视图不可隐藏：列表里没有时归一化补回首位（裁决 Q1=B）
+    await notifier.setNavViews(['统计']);
+    expect(notifier.state.navViews, ['本地音声', '统计']);
+
+    // 只剩根视图也合法（其余 7 项全隐藏）
+    await notifier.setNavViews(const []);
+    expect(notifier.state.navViews, ['本地音声']);
+    await notifier.setNavViewVisible('统计', false);
+    expect(notifier.state.navViews, ['本地音声']);
+
+    // 重新显示：追加到末尾
+    await notifier.setNavViewVisible('统计', true);
+    expect(notifier.state.navViews, ['本地音声', '统计']);
+
+    // 根视图与白名单外视图的开关是 no-op
+    await notifier.setNavViewVisible(AppSettings.navViewHome, false);
+    expect(notifier.state.navViews, ['本地音声', '统计']);
+    await notifier.setNavViewVisible('不存在的视图', true);
+    expect(notifier.state.navViews, ['本地音声', '统计']);
+
+    // 存量坏数据（非 JSON / 非 List）回退全集
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('hiko-nav-views', 'not-json');
+    final repaired = SettingsNotifier();
+    await repaired.load();
+    expect(repaired.state.navViews, AppSettings.navViewsAll);
+  });
 }

@@ -49,7 +49,7 @@ class _CategoryEditDialogState extends ConsumerState<_CategoryEditDialog> {
       setState(() => _errorText = '请输入分类名称');
       return;
     }
-    const reserved = {'全部音声', '最近添加', '正在播放', '收藏夹', '未分类'};
+    const reserved = {'本地音声', '最近添加', '正在播放', '收藏夹', '未分类'};
     if (reserved.contains(name)) {
       setState(() => _errorText = '该名称为系统保留视图，不可使用');
       return;

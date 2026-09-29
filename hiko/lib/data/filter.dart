@@ -5,7 +5,7 @@ import '../utils/natural_compare.dart';
 /// 纯函数便于单测；「未听完」用累计进度 < 总时长判定（修正旧版用曲目数比较的怪癖）。
 List<Album> filterAlbums({
   required List<Album> albums,
-  required String view, // 全部音声 / 最近添加 / 最近播放 / 正在播放 / 收藏夹 / 分类名
+  required String view, // 本地音声 / 最近添加 / 最近播放 / 正在播放 / 收藏夹 / 分类名
   required String filter, // all / unplayed / favorite
   required String query,
   required String sort, // recent_desc / recent_asc / title_asc / title_desc / duration_desc / duration_asc
@@ -17,9 +17,9 @@ List<Album> filterAlbums({
     if (view == '收藏夹' && !a.favorite) return false;
     // 「最近播放」（1.99.3）只收播过的：lastPlayedAt 是唯一判据
     if (view == '最近播放' && a.lastPlayedAt == null) return false;
-    // 内置视图（全部音声 / 最近添加 / 最近播放 / 正在播放 / 收藏夹）之外，
+    // 内置视图（本地音声 / 最近添加 / 最近播放 / 正在播放 / 收藏夹）之外，
     // 所有其它名称均视为分类视图，按 genre 匹配
-    if (view != '全部音声' &&
+    if (view != '本地音声' &&
         view != '最近添加' &&
         view != '最近播放' &&
         view != '正在播放' &&

@@ -91,6 +91,14 @@ class AppSettings {
   /// 编进搜索关键字在服务端过滤，只作用于在线浏览 / 搜索 / 筛选结果。
   final List<OnlineCreatorBlock> blockedCreators;
 
+  /// 导航栏**可见视图与顺序**（1.99.4，裁决 Q1=B / Q2=B / Q3=共用 / Q6=B）。
+  ///
+  /// 一份配置两端共用：桌面侧栏按此列表渲染一级导航，安卓底部导航按同一顺序
+  /// 显示（末尾固定追加「设置」，不占本表）。列表内即「显示中」的视图，
+  /// 不在列表内即隐藏；顺序即显示顺序（设置页可拖动排序）。
+  /// [navViewHome]（本地音声）是根视图、永久显示，归一化保证它总在列表里。
+  final List<String> navViews;
+
   const AppSettings({
     this.theme = 'light',
     this.accent = defaultAccent,
@@ -123,7 +131,24 @@ class AppSettings {
     this.onlinePageSize = 20,
     this.blockedTags = const [],
     this.blockedCreators = const [],
+    this.navViews = navViewsAll,
   });
+
+  /// 导航根视图（1.99.4 起由「全部音声」改名）：永久显示、不可隐藏。
+  static const navViewHome = '本地音声';
+
+  /// 导航视图的**全集与默认顺序**（桌面侧栏 8 项）。
+  /// 白名单之外的名称在归一化时丢弃（旧版本残留 / 手改存储不至于污染 UI）。
+  static const navViewsAll = [
+    navViewHome, // 本地音声
+    '最近添加',
+    '最近播放',
+    '正在播放',
+    '收藏夹',
+    '在线',
+    '在线收藏',
+    '统计',
+  ];
 
   /// 在线服务默认地址（Kikoeru 协议公共实例；可改成任意自建服务器）
   static const defaultOnlineServer = 'https://api.asmr.one';
@@ -175,6 +200,7 @@ class AppSettings {
     double? onlinePageSize,
     List<OnlineTag>? blockedTags,
     List<OnlineCreatorBlock>? blockedCreators,
+    List<String>? navViews,
   }) =>
       AppSettings(
         theme: theme ?? this.theme,
@@ -211,6 +237,7 @@ class AppSettings {
         onlinePageSize: onlinePageSize ?? this.onlinePageSize,
         blockedTags: blockedTags ?? this.blockedTags,
         blockedCreators: blockedCreators ?? this.blockedCreators,
+        navViews: navViews ?? this.navViews,
       );
 }
 
@@ -265,6 +292,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kOnlinePageSize = 'hiko-online-page-size';
   static const _kBlockedTags = 'hiko-online-blocked-tags';
   static const _kBlockedCreators = 'hiko-online-blocked-creators';
+  static const _kNavViews = 'hiko-nav-views';
 
   static const _validSorts = {
     'recent_desc',
@@ -488,6 +516,39 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     }
   }
 
+  // ------------------------------------------------------------ 导航栏可见视图与顺序（1.99.4）
+
+  /// 导航可见视图的归一化：白名单过滤 + 去重 + 保序，
+  /// 并保证 [AppSettings.navViewHome] 永远在列（Q1=B：根视图不可隐藏，
+  /// 缺失时补回首位）。空列表 / 全坏数据回退全集（升级兼容：老用户无此键 = 全显示）。
+  static List<String> _normalizeNavViewList(List<dynamic> raw) {
+    final seen = <String>{};
+    final out = <String>[];
+    for (final item in raw) {
+      if (item is! String) continue;
+      if (!AppSettings.navViewsAll.contains(item)) continue;
+      if (!seen.add(item)) continue;
+      out.add(item);
+    }
+    if (!out.contains(AppSettings.navViewHome)) {
+      out.insert(0, AppSettings.navViewHome);
+    }
+    return out;
+  }
+
+  static List<String> _decodeNavViews(String? raw) {
+    if (raw == null || raw.trim().isEmpty) {
+      return List.unmodifiable(AppSettings.navViewsAll);
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return List.unmodifiable(AppSettings.navViewsAll);
+      return List.unmodifiable(_normalizeNavViewList(decoded));
+    } catch (_) {
+      return List.unmodifiable(AppSettings.navViewsAll);
+    }
+  }
+
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     state = AppSettings(
@@ -533,6 +594,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       blockedTags: _decodeBlockedTags(prefs.getString(_kBlockedTags)),
       blockedCreators:
           _decodeBlockedCreators(prefs.getString(_kBlockedCreators)),
+      navViews: _decodeNavViews(prefs.getString(_kNavViews)),
     );
   }
 
@@ -720,6 +782,26 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       for (final b in state.blockedCreators)
         if (b != block) b,
     ]);
+  }
+
+  /// 导航栏可见视图与顺序（1.99.4）：整份替换，白名单过滤 + 保序 + 保证根视图在列
+  Future<void> setNavViews(List<String> views) {
+    final valid = _decodeNavViews(jsonEncode(views));
+    return _save(_kNavViews, jsonEncode(valid), state.copyWith(navViews: valid));
+  }
+
+  /// 把一个导航视图设为显示 / 隐藏（根视图不可隐藏，Q1=B）。
+  /// 新显示的视图追加到末尾（顺序可在设置页拖动调整）。
+  Future<void> setNavViewVisible(String view, bool visible) {
+    if (!AppSettings.navViewsAll.contains(view)) return Future.value();
+    if (view == AppSettings.navViewHome) return Future.value();
+    final current = [...state.navViews];
+    if (visible) {
+      if (!current.contains(view)) current.add(view);
+    } else {
+      current.remove(view);
+    }
+    return setNavViews(current);
   }
 
   static Future<String> _existingBackground(String path) async {

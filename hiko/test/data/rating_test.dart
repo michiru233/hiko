@@ -76,7 +76,7 @@ void main() {
       ];
       final sorted = filterAlbums(
         albums: data,
-        view: '全部音声',
+        view: '本地音声',
         filter: 'all',
         query: '',
         sort: 'rating_desc',

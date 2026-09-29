@@ -39,7 +39,7 @@ void main() {
   }) {
     return filterAlbums(
       albums: albums,
-      view: '全部音声',
+      view: '本地音声',
       filter: 'all',
       query: '',
       sort: 'recent',
@@ -66,11 +66,11 @@ void main() {
   test('FilterAlbumsMemo 缓存键包含新参数（换筛选即失效重算）', () {
     final memo = FilterAlbumsMemo();
     final albums = [a1, a2, a3];
-    expect(memo.get(albums: albums, view: '全部音声', filter: 'all', query: '', sort: 'recent').length, 3);
+    expect(memo.get(albums: albums, view: '本地音声', filter: 'all', query: '', sort: 'recent').length, 3);
     final hit1 = memo.hits;
     final circleRes = memo.get(
       albums: albums,
-      view: '全部音声',
+      view: '本地音声',
       filter: 'all',
       query: '',
       sort: 'recent',
@@ -78,7 +78,7 @@ void main() {
     );
     expect(circleRes.map((a) => a.id), ['1']);
     expect(memo.hits, hit1); // 参数变化不得命中缓存
-    expect(memo.get(albums: albums, view: '全部音声', filter: 'all', query: '', sort: 'recent', circleFilter: 'えもこ本舗').length, 1);
+    expect(memo.get(albums: albums, view: '本地音声', filter: 'all', query: '', sort: 'recent', circleFilter: 'えもこ本舗').length, 1);
     expect(memo.hits, hit1 + 1); // 同参数再取命中缓存
   });
 }

@@ -17,10 +17,10 @@ void main() {
       final albums = [_album('A'), _album('B')];
       final memo = FilterAlbumsMemo();
       final r1 = memo.get(
-        albums: albums, view: '全部音声', filter: 'all', query: '', sort: 'recent_desc',
+        albums: albums, view: '本地音声', filter: 'all', query: '', sort: 'recent_desc',
       );
       final r2 = memo.get(
-        albums: albums, view: '全部音声', filter: 'all', query: '', sort: 'recent_desc',
+        albums: albums, view: '本地音声', filter: 'all', query: '', sort: 'recent_desc',
       );
       expect(identical(r1, r2), isTrue);
       expect(memo.hits, 1);
@@ -30,10 +30,10 @@ void main() {
       final albums = [_album('A'), _album('B')];
       final memo = FilterAlbumsMemo();
       final r1 = memo.get(
-        albums: albums, view: '全部音声', filter: 'all', query: '', sort: 'recent_desc',
+        albums: albums, view: '本地音声', filter: 'all', query: '', sort: 'recent_desc',
       );
       final r2 = memo.get(
-        albums: albums, view: '全部音声', filter: 'all', query: 'A', sort: 'recent_desc',
+        albums: albums, view: '本地音声', filter: 'all', query: 'A', sort: 'recent_desc',
       );
       expect(identical(r1, r2), isFalse);
       expect(memo.hits, 0);
@@ -49,12 +49,12 @@ void main() {
       final memo = FilterAlbumsMemo();
       final list1 = [_album('A'), _album('B')];
       final r1 = memo.get(
-        albums: list1, view: '全部音声', filter: 'all', query: '', sort: 'recent_desc',
+        albums: list1, view: '本地音声', filter: 'all', query: '', sort: 'recent_desc',
       );
       // 同内容的新 List 实例（模拟 LibraryNotifier 每次更新生成新列表）
       final list2 = [_album('A'), _album('B')];
       final r2 = memo.get(
-        albums: list2, view: '全部音声', filter: 'all', query: '', sort: 'recent_desc',
+        albums: list2, view: '本地音声', filter: 'all', query: '', sort: 'recent_desc',
       );
       expect(identical(r1, r2), isFalse);
       expect(memo.hits, 0);
@@ -64,11 +64,11 @@ void main() {
       final memo = FilterAlbumsMemo();
       final list1 = [_album('A'), _album('B')];
       final r1 = memo.get(
-        albums: list1, view: '全部音声', filter: 'all', query: '', sort: 'recent_desc',
+        albums: list1, view: '本地音声', filter: 'all', query: '', sort: 'recent_desc',
       );
       final list2 = [_album('A'), _album('B'), _album('C')];
       final r2 = memo.get(
-        albums: list2, view: '全部音声', filter: 'all', query: '', sort: 'recent_desc',
+        albums: list2, view: '本地音声', filter: 'all', query: '', sort: 'recent_desc',
       );
       expect(r2.length, 3);
       expect(identical(r1, r2), isFalse);
@@ -85,10 +85,10 @@ void main() {
       final memo = FilterAlbumsMemo();
       for (final sort in ['recent_desc', 'title_asc', 'title_desc', 'artist_asc', 'duration_desc']) {
         final viaMemo = memo.get(
-          albums: albums, view: '全部音声', filter: 'all', query: '', sort: sort,
+          albums: albums, view: '本地音声', filter: 'all', query: '', sort: sort,
         );
         final direct = filterAlbums(
-          albums: albums, view: '全部音声', filter: 'all', query: '', sort: sort,
+          albums: albums, view: '本地音声', filter: 'all', query: '', sort: sort,
         );
         expect(
           viaMemo.map((a) => a.title).toList(),

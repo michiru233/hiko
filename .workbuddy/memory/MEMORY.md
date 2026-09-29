@@ -2,7 +2,7 @@
 
 ## 定位
 Hiko = 本地优先 DLsite 音声管理器，Flutter 主线在 `hiko/`（根目录 Electron+Capacitor 仅参考）。
-GitHub: github.com/michiru233/hiko。当前 1.97.2+110（2026-09-26）。macOS 发布 / Windows 需 Win 机构建 / Android 已恢复。
+GitHub: github.com/michiru233/hiko。当前 1.98.0+111（2026-09-26）。macOS 发布 / Windows 需 Win 机构建 / Android 已恢复。
 架构速查：models(Album核心) / data(library_store 原子写、settings_store 白名单归一、online/) / playback(just_audio+media_kit 增益) / platform(android MethodChannel) / lyrics / ui(screens+widgets+theme, covers 三级缓存) / utils(rj、natural_compare、repair_text)。
 
 ## 默认规则（必须遵守）
@@ -10,13 +10,14 @@ GitHub: github.com/michiru233/hiko。当前 1.97.2+110（2026-09-26）。macOS �
 1. 新功能只写 `hiko/`；Android 不是暂停线。用户 2026-09-26 强调：安卓端需求不涉及 mac 就别动 mac 端。
 2. 改动必 bump `hiko/pubspec.yaml` version。
 3. 完成必 Release 封包（macos `flutter build macos --release`；安卓 `flutter build apk --release`）给产物路径。
-4. 验证后 commit+push，`gh release create vX.Y.Z <产物> --title --notes-file -`（notes 走 stdin heredoc），附下载链接。
+4. 验证后 commit+push，`gh release create vX.Y.Z <产物> --title --notes-file -`（notes 走 stdin heredoc），附下载链接。gh release create 传大资产可能被超时 SIGTERM 打断（release 建了资产没传上），用 `gh release upload vX.Y.Z <产物> --clobber` 补传。
+4b. 更新检查契约（1.98.0）：`update_checker.dart` API 非 200 自动兜底 `github.com/.../releases/latest` 302 重定向，`releaseFromTag` 按命名约定 `hiko-<tag>-android.apk`/`hiko-<tag>-macos.zip` 合成直链；兜底 body 为空。测试断言 pickAsset 必须按宿主 `Platform.operatingSystem` 取（写死 android 在 macOS 宿主必红）。
 5. 记录追加 `.zcode/plans/plan-hiko-flutter-rewrite.md`；PROGRESS.md/BLOCKED.md 已停用。
 6. 发版 zip/apk 只入 Releases 不入 git，**发完即清本地副本**（删前逐字节比对资产尺寸，v1.88.1 Release 为空），trash 分批≤10。
 7. 测试内容日文为主，覆盖 UTF-8 与 Shift-JIS。
 8. 跑 test/build 前摘代理：`env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy NO_PROXY=localhost,127.0.0.1 <cmd>`（WebSocket/SPM 被代理吃掉）。build macos 需前台跑（沙箱放行标志后台不生效）。
 8b. `flutter build macos` 报 sandbox_exec 不许限制性 profile：对 `com.apple.dt.xcodebuild`+`com.apple.dt.Xcode` 两域写 `IDEPackageSupport{DisableManifestSandbox,DisablePluginExecutionSandbox,DisablePackageSandbox}=-bool YES`。
-9. 验证基线（1.97.1 后）：test 522 passed/2 skipped；analyze 39 条 lint 基线，0 新增 error。
+9. 验证基线（1.98.0 后）：test 528 passed/2 skipped；analyze 39 条 lint 基线，0 新增 error。
 10. Flutter 3.47.0/Dart 3.13.0（/opt/homebrew/bin/flutter）；AVD `kikoeru_test`；SDK /opt/homebrew/share/android-commandlinetools；JDK openjdk@21。
 
 ## 动效约定（1.88）

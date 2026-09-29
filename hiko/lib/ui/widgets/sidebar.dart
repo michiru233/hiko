@@ -5,14 +5,29 @@ import '../../data/categories_provider.dart';
 import '../../data/library_provider.dart';
 import '../../data/online/online_account.dart';
 import '../../data/online/online_favorites.dart';
+import '../../data/settings_store.dart';
 import '../../models/category.dart';
 import 'category_dialog.dart';
 import 'confirm_dialog.dart';
 import 'context_menu.dart';
 
+/// 导航视图的字符图标（桌面侧栏用；安卓底栏的 Material 图标映射见 home_screen）
+const navViewIcons = {
+  '本地音声': '▦',
+  '最近添加': '◷',
+  // 最近播放（1.99.3）：按 lastPlayedAt 倒序，点卡即从断点续播
+  '最近播放': '⏱',
+  '正在播放': '▶',
+  '收藏夹': '♡',
+  '在线': '☁',
+  // 1.93.0（裁决 Q3=A）：在线收藏独立成一级项。
+  // 用实心心形与本地「收藏夹」的空心区分，但语义不同源，标签写清楚
+  '在线收藏': '♥',
+  '统计': '∑',
+};
+
 /// 侧栏（对应旧版 aside.sidebar）：主导航 + 分类 + 偏好设置入口
-class Sidebar extends ConsumerWidget {
-  const Sidebar({
+class Sidebar extends ConsumerWidget {  const Sidebar({
     super.key,
     required this.activeView,
     required this.onViewChanged,
@@ -37,23 +52,16 @@ class Sidebar extends ConsumerWidget {
 
     final count = (String view) => switch (view) {
           '收藏夹' => albums.where((a) => a.favorite).length,
-          '全部音声' => albums.length,
+          '本地音声' => albums.length,
           '最近播放' => albums.where((a) => a.lastPlayedAt != null).length,
           _ => albums.where((a) => a.genre == view).length,
         };
 
+    // 1.99.4（裁决 Q3=共用）：导航一级项改为设置驱动 —— 与安卓底部导航共用
+    // 一份「可见 + 顺序」配置（settings.navViews），本地音声永久显示。
+    final navViews = ref.watch(settingsProvider).navViews;
     final navItems = [
-      ('▦', '全部音声'),
-      ('◷', '最近添加'),
-      // 最近播放（1.99.3）：按 lastPlayedAt 倒序，点卡即从断点续播
-      ('⏱', '最近播放'),
-      ('▶', '正在播放'),
-      ('♡', '收藏夹'),
-      ('☁', '在线'),
-      // 1.93.0（裁决 Q3=A）：在线收藏独立成一级项。
-      // 用实心心形与本地「收藏夹」的空心区分，但语义不同源，标签写清楚
-      ('♥', '在线收藏'),
-      ('∑', '统计'),
+      for (final view in navViews) (navViewIcons[view] ?? '•', view),
     ];
 
     Widget item({
@@ -174,7 +182,7 @@ class Sidebar extends ConsumerWidget {
           if (ok) {
             await ref.read(categoriesProvider.notifier).removeCategory(cat.name);
             if (activeView == cat.name) {
-              onViewChanged('全部音声');
+              onViewChanged('本地音声');
             }
           }
         }
@@ -226,7 +234,7 @@ class Sidebar extends ConsumerWidget {
                     icon: icon,
                     view: view,
                     count: switch (view) {
-                      '全部音声' || '收藏夹' => count(view),
+                      '本地音声' || '收藏夹' => count(view),
                       '在线收藏' => onlineLoggedIn ? onlineFavorites : null,
                       _ => null,
                     },

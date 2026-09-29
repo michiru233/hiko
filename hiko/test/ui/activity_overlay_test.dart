@@ -103,6 +103,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(SettingsDialog), findsOneWidget);
     // 1.85 分类导航：「立即重新扫描」位于「音乐目录」二级页
+    // 1.99.4：设置分类多了「导航栏」一项，「音乐目录」可能落在可视区外，
+    // 先 ensureVisible 再点（否则 tap 未命中，后续 finder 找不到元素）
+    await tester.ensureVisible(find.text('音乐目录'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('音乐目录'));
     await tester.pumpAndSettle();
     final rescan = find.ancestor(

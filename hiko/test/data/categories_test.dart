@@ -207,10 +207,10 @@ void main() {
 
     final allAlbums = [a1, a2, a3];
 
-    test('全部音声 视图返回全部', () {
+    test('本地音声 视图返回全部', () {
       final res = filterAlbums(
         albums: allAlbums,
-        view: '全部音声',
+        view: '本地音声',
         filter: 'all',
         query: '',
         sort: 'recent',
@@ -245,7 +245,7 @@ void main() {
     test('搜索关键词匹配自定义分类名', () {
       final res = filterAlbums(
         albums: allAlbums,
-        view: '全部音声',
+        view: '本地音声',
         filter: 'all',
         query: '同人剧情',
         sort: 'recent',
@@ -293,7 +293,7 @@ void main() {
 
       final res = filterAlbums(
         albums: [albShortManyTracks, albLongFewTracks, albMedium],
-        view: '全部音声',
+        view: '本地音声',
         filter: 'all',
         query: '',
         sort: 'duration_desc',
@@ -303,7 +303,7 @@ void main() {
 
       final resAsc = filterAlbums(
         albums: [albShortManyTracks, albLongFewTracks, albMedium],
-        view: '全部音声',
+        view: '本地音声',
         filter: 'all',
         query: '',
         sort: 'duration_asc',
@@ -334,7 +334,7 @@ void main() {
 
       final resAsc = filterAlbums(
         albums: [b, a],
-        view: '全部音声',
+        view: '本地音声',
         filter: 'all',
         query: '',
         sort: 'title_asc',
@@ -343,7 +343,7 @@ void main() {
 
       final resDesc = filterAlbums(
         albums: [a, b],
-        view: '全部音声',
+        view: '本地音声',
         filter: 'all',
         query: '',
         sort: 'title_desc',
@@ -369,7 +369,7 @@ void main() {
 
       final resRecent = filterAlbums(
         albums: [a1, a2],
-        view: '全部音声',
+        view: '本地音声',
         filter: 'all',
         query: '',
         sort: 'recent_desc',
@@ -378,7 +378,7 @@ void main() {
 
       final resOldest = filterAlbums(
         albums: [a1, a2],
-        view: '全部音声',
+        view: '本地音声',
         filter: 'all',
         query: '',
         sort: 'recent_asc',
@@ -436,7 +436,7 @@ void main() {
 
       final res = filterAlbums(
         albums: [a1, g2, b1, g1, b2],
-        view: '全部音声',
+        view: '本地音声',
         filter: 'all',
         query: '',
         sort: 'artist_asc',
@@ -479,7 +479,7 @@ void main() {
 
       final res = filterAlbums(
         albums: [a3, a2, a1],
-        view: '全部音声',
+        view: '本地音声',
         filter: 'all',
         query: '',
         sort: 'artist_asc',
@@ -521,7 +521,7 @@ void main() {
 
       final res = filterAlbums(
         albums: [aEmpty1, a1, aEmpty2],
-        view: '全部音声',
+        view: '本地音声',
         filter: 'all',
         query: '',
         sort: 'artist_asc',
@@ -581,7 +581,7 @@ void main() {
 
       final res = filterAlbums(
         albums: [a2, b1, a1, b2, a3],
-        view: '全部音声',
+        view: '本地音声',
         filter: 'all',
         query: '',
         sort: 'artist_asc',

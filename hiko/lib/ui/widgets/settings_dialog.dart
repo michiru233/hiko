@@ -38,6 +38,9 @@ const _categories = [
       Icons.graphic_eq_rounded),
   _SettingsCategory('home', '主界面', '刮削标签 · 每行专辑数',
       Icons.grid_view_outlined),
+  // 1.99.4：导航栏可见项与顺序（桌面侧栏 + 安卓底栏共用一份配置）
+  _SettingsCategory('nav', '导航栏', '侧栏与底栏入口 · 显示与拖动排序',
+      Icons.menu_rounded),
   // 1.93.0：在线相关设置从「数据」页集中到这里
   _SettingsCategory('online', '在线账号',
       '登录 asmr.one · 歌单收藏 · 卡片标签 · 黑名单 · 服务器 · 缓存',
@@ -252,6 +255,8 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
         return _audioPage(theme, settings);
       case 'home':
         return _homePage(theme, settings);
+      case 'nav':
+        return _navPage(theme, settings);
       case 'online':
         return _onlineAccountPage(theme, settings);
       case 'onlineAppearance':
@@ -642,6 +647,119 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       ];
 
   // ---- 主界面 ----
+
+  // ---- 导航栏（1.99.4，裁决 Q1=B / Q2=B / Q3=共用 / Q4=A / Q6=B） ----
+
+  List<Widget> _navPage(ThemeData theme, AppSettings settings) {
+    final notifier = ref.read(settingsProvider.notifier);
+    final navViews = settings.navViews;
+    final hidden = [
+      for (final view in AppSettings.navViewsAll)
+        if (!navViews.contains(view)) view,
+    ];
+    return [
+      _pageHeader(theme, '导航栏'),
+      Padding(
+        padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+        child: Text(
+          '桌面侧栏与安卓底部导航共用此配置：决定显示哪些一级入口及顺序。'
+          '「本地音声」是根视图，始终显示；安卓底栏末尾固定为「设置」，'
+          '项较多时底栏可横向滑动。',
+          style: TextStyle(fontSize: 11, color: theme.hintColor),
+        ),
+      ),
+      // 显示中的视图：拖动排序 + 开关（根视图开关禁用）
+      ReorderableListView(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        buildDefaultDragHandles: false,
+        onReorderItem: (oldIndex, newIndex) {
+          // onReorderItem 已把 newIndex 调整为「移除旧位后」的插入位置
+          final list = [...navViews];
+          final view = list.removeAt(oldIndex);
+          list.insert(newIndex, view);
+          notifier.setNavViews(list);
+        },
+        children: [
+          for (final (i, view) in navViews.indexed)
+            Container(
+              key: ValueKey('nav-$view'),
+              margin: const EdgeInsets.symmetric(vertical: 2),
+              padding: const EdgeInsets.only(left: 4, right: 4),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest
+                    .withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  ReorderableDragStartListener(
+                    index: i,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 9),
+                      child: Icon(Icons.drag_handle_rounded,
+                          size: 16, color: theme.hintColor),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      view,
+                      style: const TextStyle(fontSize: 12.5),
+                    ),
+                  ),
+                  Switch(
+                    value: true,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    onChanged: view == AppSettings.navViewHome
+                        ? null
+                        : (v) => notifier.setNavViewVisible(view, v),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+      if (hidden.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+          child: Text(
+            '已隐藏',
+            style: TextStyle(
+              fontSize: 10,
+              letterSpacing: 1,
+              fontWeight: FontWeight.w600,
+              color: theme.hintColor,
+            ),
+          ),
+        ),
+        for (final view in hidden)
+          Container(
+            key: ValueKey('nav-hidden-$view'),
+            margin: const EdgeInsets.symmetric(vertical: 2),
+            padding: const EdgeInsets.only(left: 28, right: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    view,
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        color: theme.hintColor.withValues(alpha: 0.7)),
+                  ),
+                ),
+                Switch(
+                  value: false,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  onChanged: (v) => notifier.setNavViewVisible(view, v),
+                ),
+              ],
+            ),
+          ),
+      ],
+    ];
+  }
 
   List<Widget> _homePage(ThemeData theme, AppSettings settings) => [
         _pageHeader(theme, '主界面'),
