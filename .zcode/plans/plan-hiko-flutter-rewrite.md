@@ -2969,3 +2969,12 @@ Release: https://github.com/michiru233/hiko/releases/tag/v1.99.4
 
 **验证基线**：`flutter test` **579 passed / 2 skipped**；`flutter analyze` **39 条**
 （= 基线，0 新增 error）。版本 `1.99.5+118`。
+提交：`ba3e5a8`（代码）+ `0bf11ac`（文档/记忆）。
+Release: https://github.com/michiru233/hiko/releases/tag/v1.99.5
+（资产 `hiko-v1.99.5-macos.zip` 34185301B / `hiko-v1.99.5-android.apk` 70283816B，
+上传后逐字节核对一致，本地副本已清）。本版无新增待裁决。
+
+**当日追加的用户要求（已落进技能与记忆）**：Release notes **只写本次更新了什么**，
+最简洁的语言，**不写思维过程**（成因分析 / 实测过程 / 实现论证 / 踩坑 / 验证数字
+/ 裁决编号一律不写，留在 plan 与 commit 里）。本版初稿写了约 120 行带分节标题与
+实测表格，已用 `gh release edit v1.99.5 --notes-file -` 收敛成 5 行。

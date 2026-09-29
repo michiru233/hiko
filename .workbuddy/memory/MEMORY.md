@@ -11,6 +11,7 @@ GitHub: github.com/michiru233/hiko。当前 1.99.5+118（2026-09-29）。macOS �
 2. 改动必 bump `hiko/pubspec.yaml` version。
 3. 完成必 Release 封包（macos `flutter build macos --release`；安卓 `flutter build apk --release`）给产物路径。
 4. 验证后 commit+push，`gh release create vX.Y.Z <产物> --title --notes-file -`（notes 走 stdin heredoc），附下载链接。gh release create 传大资产可能被超时 SIGTERM 打断（release 建了资产没传上），用 `gh release upload vX.Y.Z <产物> --clobber` 补传。
+4a. **Release notes 只写「本次更新了什么」，用最简洁的语言，不写思维过程**（2026-09-29 用户明确要求）。要写的：3–6 条用户视角的变更 bullet + 产物文件名（+ 可选一行「未在 Android 实机验证」）。**不要写**：成因分析、实测/探针过程、接口采样结论、实现选择的论证、踩坑、验证数字、裁决编号与 Q# 问答 —— 那些留在 plan 文件与 commit message 里。改错过的例子：v1.99.5 初版 notes 约 120 行带分节标题与实测表格，被要求改回 5 行；修订用 `gh release edit vX.Y.Z --notes-file -`。
 4b. 更新检查契约（1.98.0）：`update_checker.dart` API 非 200 自动兜底 `github.com/.../releases/latest` 302 重定向，`releaseFromTag` 按命名约定 `hiko-<tag>-android.apk`/`hiko-<tag>-macos.zip` 合成直链；兜底 body 为空。测试断言 pickAsset 必须按宿主 `Platform.operatingSystem` 取（写死 android 在 macOS 宿主必红）。
 5. 记录追加 `.zcode/plans/plan-hiko-flutter-rewrite.md`；PROGRESS.md/BLOCKED.md 已停用。
 6. 发版 zip/apk 只入 Releases 不入 git，**发完即清本地副本**（删前逐字节比对资产尺寸，v1.88.1 Release 为空），trash 分批≤10。
