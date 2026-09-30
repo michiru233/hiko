@@ -493,4 +493,21 @@ void main() {
     await repaired.load();
     expect(repaired.state.navViews, AppSettings.navViewsAll);
   });
+
+  // ------------------------------------------------------------ 1.99.6 「正在播放」退出导航表
+
+  test('1.99.6 存量配置里的「正在播放」在归一化时被丢弃（删项即自动迁移）', () async {
+    final prefs = await SharedPreferences.getInstance();
+    // 老用户（1.99.4/1.99.5）落盘的配置里带着「正在播放」
+    await prefs.setString('hiko-nav-views', '["本地音声","正在播放","统计"]');
+    final migrated = SettingsNotifier();
+    await migrated.load();
+    expect(
+      migrated.state.navViews,
+      ['本地音声', '统计'],
+      reason: '1.99.6 起「正在播放」不再是导航项，白名单外的项由归一化静默丢弃',
+    );
+    expect(AppSettings.navViewsAll, isNot(contains('正在播放')));
+    expect(AppSettings.navViewsAll.length, 7);
+  });
 }

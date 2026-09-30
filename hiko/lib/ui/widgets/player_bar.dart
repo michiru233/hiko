@@ -20,13 +20,24 @@ import 'toast.dart';
 /// 底部播放条：玻璃拟态悬浮胶囊设计（毛玻璃模糊背景 + 双层边框 + 环境反光）
 /// compact（移动端）为两行布局：控件在上，全宽进度条下移成一行。
 class PlayerBar extends ConsumerStatefulWidget {
-  const PlayerBar({super.key, this.onCoverTap, this.compact = false});
+  const PlayerBar({
+    super.key,
+    this.onCoverTap,
+    this.compact = false,
+    this.onDismiss,
+  });
 
   /// 点击当前封面 → 打开详情
   final void Function(Album album)? onCoverTap;
 
   /// 移动端紧凑两行布局
   final bool compact;
+
+  /// 从左往右划掉播放栏（仅移动端传；为 null 时**不套** [Dismissible]，桌面行为不变）。
+  ///
+  /// 1.99.6（裁决 Q1=B / Q5=A）：划掉 = 移动端的一种「收起」手势，调用方负责
+  /// 藏起本组件并在重新开始播放时还原（见 `home_screen` 的 `_dismissPlayerBar`）。
+  final VoidCallback? onDismiss;
 
   @override
   ConsumerState<PlayerBar> createState() => _PlayerBarState();
@@ -116,7 +127,7 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
             ],
           );
 
-    return RepaintBoundary(
+    final content = RepaintBoundary(
       child: GlassContainer(
         blur: 20,
         borderRadius: widget.compact ? 20 : 0,
@@ -139,6 +150,25 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
         ],
         child: innerContent,
       ),
+    );
+
+    // 1.99.6（裁决 Q5=A）：移动端「从左往右划掉」——跟手位移，过阈值（或带速度
+    // 轻扫）即消失；不加振动。桌面端不传 onDismiss，完全保持原样。
+    //
+    // 栏内的三个 Slider（进度 / 增益 / 倍速）**天然排除**：手势竞技场里最内层的
+    // 横向拖动识别器优先，Slider 会赢下竞技场，所以音量与进度拖动照旧可用。
+    // `resizeDuration: null` = 滑出动画一结束就回调 onDismissed，**跳过** Dismissible
+    // 内部的「高度收缩到 0」动画：本组件不是列表项，收缩动画只会让收起多等 300ms、
+    // 且与父级直接摘除互相打架（也是唯一能避开「dismissed but still in the tree」断言的方式）。
+    final onDismiss = widget.onDismiss;
+    if (onDismiss == null) return content;
+    return Dismissible(
+      key: const ValueKey('player-bar-dismiss'),
+      direction: DismissDirection.startToEnd,
+      dismissThresholds: const {DismissDirection.startToEnd: 0.35},
+      resizeDuration: null,
+      onDismissed: (_) => onDismiss(),
+      child: content,
     );
   }
 

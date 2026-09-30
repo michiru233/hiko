@@ -663,7 +663,8 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
         child: Text(
           '桌面侧栏与安卓底部导航共用此配置：决定显示哪些一级入口及顺序。'
-          '「本地音声」是根视图，始终显示；安卓底栏末尾固定为「设置」，'
+          '「本地音声」是根视图，始终显示；安卓底栏末尾还固定有'
+          '「正在播放」（打开全屏播放页）与「设置」两格，不在此表内、无法隐藏；'
           '项较多时底栏可横向滑动。',
           style: TextStyle(fontSize: 11, color: theme.hintColor),
         ),

@@ -35,6 +35,7 @@ import '../widgets/category_dialog.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/context_menu.dart';
 import '../widgets/detail_drawer.dart';
+import '../widgets/mobile_bottom_nav.dart';
 import '../widgets/toast.dart';
 import '../widgets/player_bar.dart';
 import '../widgets/rating_dialog.dart';
@@ -49,7 +50,12 @@ import '../transitions/fullscreen_player_route.dart';
 /// 主界面：桌面三栏布局（侧栏 | 网格 | 详情抽屉）+ 底部播放条；
 /// Android 触屏（≤1000px）切换为移动布局：底部导航 + 抽屉侧栏 + 全屏详情 + 长按菜单 + 系统返回逐层关闭。
 class HomeScreen extends ConsumerStatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.debugMobileLayout});
+
+  /// 仅供测试：widget 测试跑在 macOS 宿主上，`Platform.isAndroid` 恒为 false，
+  /// 移动端（≤1000px 那套）布局与手势否则完全不可达。**生产代码永不传它。**
+  @visibleForTesting
+  final bool? debugMobileLayout;
 
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
@@ -79,6 +85,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // 1.54 移动端左边缘右滑呼出抽屉：起手点在左缘 ≤24dp 时累计横向位移
   double? _edgeDragDx;
   double? _edgeStartDy;
+  // 1.99.6（裁决 Q1=B / Q8=A / Q9=A）：移动端从左往右划掉播放栏 = 收起 + 暂停；
+  // 任何一次「从暂停变成播放」（含系统媒体键 / 锁屏 / 耳机键）都会把它还原。
+  bool _playerBarDismissed = false;
+  // 播放栏矩形（用于裁决 Q4=A：手势落在播放栏上时，播放栏的横划优先于左边缘呼出抽屉）
+  final _playerBarKey = GlobalKey();
 
   @override
   void initState() {
@@ -448,9 +459,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           );
     final theme = Theme.of(context);
     // 移动布局仅 Android 触屏（≤1000px，与旧版桥接层一致）；桌面永远桌面布局
-    final isMobile = Platform.isAndroid
-        ? MediaQuery.sizeOf(context).width <= 1000
-        : false;
+    final isMobile = widget.debugMobileLayout ??
+        (Platform.isAndroid
+            ? MediaQuery.sizeOf(context).width <= 1000
+            : false);
+
+    // 1.99.6（裁决 Q8=A）：划掉播放栏后的**还原判据** = 任何一次「暂停 → 播放」的
+    // 跳变（点歌、点播放条上的播放键、系统媒体键 / 通知栏 / 耳机线控都算）。
+    // 必须用 ref.listen 的 prev/next：ref.watch 只给当前值，分不清「本来就在播」。
+    ref.listen<bool>(playbackProvider.select((s) => s.playing), (prev, next) {
+      if (prev == false && next == true && _playerBarDismissed) {
+        setState(() => _playerBarDismissed = false);
+      }
+    });
+
+    // 播放栏当前是否可见：桌面恒定显示；移动端要求「有正在播放的专辑」且
+    // 「没有被左划收起」。详情抽屉的底部留白必须跟着它走（否则收起后抽屉下方
+    // 会留一条 58px 的空洞）。
+    final playerBarVisible =
+        !isMobile ||
+        (ref.watch(playbackProvider).album != null && !_playerBarDismissed);
 
     return PopScope(
       canPop: !isMobile,
@@ -537,6 +565,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               child: Listener(
                 onPointerDown: (d) {
                   final edge = d.localPosition.dx <= 24;
+                  // 1.99.6（裁决 Q4=A）：起手点落在播放栏上时，播放栏的「从左往右
+                  // 划掉」**优先**于左边缘呼出抽屉。本 Listener 是播放栏的祖先，
+                  // raw pointer 事件不进手势竞技场、永远会送到这里 —— 不显式让位
+                  // 就会出现「想划掉播放栏，却把侧栏抽屉拉了出来」。
+                  if (edge && _isInPlayerBar(d.position)) {
+                    _edgeDragDx = null;
+                    _edgeStartDy = null;
+                    return;
+                  }
                   _edgeDragDx = edge ? 0 : null;
                   _edgeStartDy = edge ? d.localPosition.dy : null;
                 },
@@ -608,10 +645,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
                       ),
                       // 1.54 移动端：未播放任何专辑时整个播放条隐藏，底部导航贴底
-                      if (!isMobile ||
-                          ref.watch(playbackProvider).album != null)
+                      // 1.99.6：移动端从左往右划掉（收起 + 暂停）后同样隐藏，
+                      // 直到重新开始播放（见 build 开头的 ref.listen）
+                      if (playerBarVisible)
                         PlayerBar(
+                          key: _playerBarKey,
                           compact: isMobile,
+                          onDismiss: isMobile ? _dismissPlayerBar : null,
                           onCoverTap: (_) {
                             // 1.79 桌面对齐移动端：点击播放条封面进入全屏播放页
                             // （详情抽屉仍可从专辑卡片/统计页进入）
@@ -692,10 +732,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     Positioned(
                       right: 0,
                       top: 0,
-                      // 移动端：播放条显示时留播放条+导航位，未播放只留底部导航（1.54）
-                      bottom: isMobile
-                          ? (ref.watch(playbackProvider).album != null ? 118 : 60)
-                          : 0,
+                      // 移动端：播放条显示时留播放条+导航位，未播放/已划掉只留底部导航
+                      // （1.54 / 1.99.6）
+                      bottom: isMobile ? (playerBarVisible ? 118 : 60) : 0,
                       left: isMobile ? 0 : null,
                       // 桌面：抽屉宽 390，窗口过窄时收缩到窗口可用宽，避免抽屉本身溢出右缘
                       width: isMobile
@@ -739,17 +778,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
                       ),
                     ),
-                    child: _MobileBottomNav(
+                    child: MobileBottomNav(
                       views: navViews,
                       currentIndex: _navIndex(navViews),
-                      onTap: (i) {
-                        // 超出 navViews 的末位固定为「设置」（1.99.4 起项与顺序由设置驱动）
-                        if (i >= navViews.length) {
-                          _openSettings(context);
-                          return;
-                        }
-                        setState(() => _view = navViews[i]);
+                      onTapView: (i) => setState(() => _view = navViews[i]),
+                      // 1.99.6：固定格「正在播放」→ 全屏播放页。没在播时置灰，
+                      // 但格子留在原位（裁决 Q7=A）
+                      playerEnabled: ref.watch(playbackProvider).album != null,
+                      onOpenPlayer: () {
+                        // 1.99.6（裁决 Q9=A）：进全屏播放页本身**不**还原播放栏，
+                        // 还原只认「暂停 → 播放」的跳变
+                        Navigator.of(context).push(FullscreenPlayerRoute());
                       },
+                      onOpenSettings: () => _openSettings(context),
                     ),
                   ),
                 ),
@@ -775,6 +816,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (own >= 0) return own;
     }
     return navViews.indexOf(AppSettings.navViewHome);
+  }
+
+  /// 播放栏当前占据的屏幕矩形（未挂载 / 还没有尺寸时返回 null）
+  Rect? _playerBarRect() {
+    final box = _playerBarKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.attached || !box.hasSize) return null;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  /// 全局坐标是否落在播放栏内（1.99.6 裁决 Q4=A 的手势优先级判定，
+  /// 消费方是包裹整页的那个 `Listener` 的左边缘呼出抽屉）
+  bool _isInPlayerBar(Offset globalPos) =>
+      _playerBarRect()?.contains(globalPos) ?? false;
+
+  /// 从左往右划掉播放栏（1.99.6，裁决 Q1=B）：**收起 + 暂停**。
+  ///
+  /// 只收起不暂停会留下「音频在放、却没有任何停止入口」的状态，用户明确要暂停。
+  /// 还原交给 [build] 里的 `ref.listen`：任何一次「暂停 → 播放」都还原，
+  /// 所以暂停这一步本身也是还原路径的前提（见裁决 Q8=A）。
+  void _dismissPlayerBar() {
+    if (!_playerBarDismissed) setState(() => _playerBarDismissed = true);
+    // 本来就没在播（例如已被系统 / 耳机键暂停）就别再发一次 pause
+    if (ref.read(playbackProvider).playing) {
+      unawaited(ref.read(playbackProvider.notifier).pause());
+    }
   }
 
   /// 在线模块的「返回」语义（1.99.5，裁决 Q2=B）。
@@ -2074,92 +2140,6 @@ class _SortSelector extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-/// 移动端底部导航（1.99.4，裁决 Q2=B / Q6=B）：底栏项改为设置驱动
-/// （与桌面侧栏共用一份 navViews，最多 8 项 + 固定「设置」）。
-/// BottomNavigationBar 在超过 5 项时标签会挤压溢出，改为自绘行：
-/// 放得下时均分宽度，放不下时整行横向滑动。
-class _MobileBottomNav extends StatelessWidget {
-  const _MobileBottomNav({
-    required this.views,
-    required this.currentIndex,
-    required this.onTap,
-  });
-
-  final List<String> views;
-  final int currentIndex;
-  final ValueChanged<int> onTap;
-
-  /// 导航视图 → Material 图标（桌面侧栏的字符图标映射见 sidebar.dart）
-  static const _icons = <String, IconData>{
-    '本地音声': Icons.grid_view_rounded,
-    '最近添加': Icons.schedule_rounded,
-    '最近播放': Icons.history_rounded,
-    '正在播放': Icons.play_arrow_rounded,
-    '收藏夹': Icons.favorite_border_rounded,
-    '在线': Icons.cloud_outlined,
-    '在线收藏': Icons.favorite_rounded,
-    '统计': Icons.bar_chart_rounded,
-  };
-
-  static const _itemWidth = 76.0;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final fits =
-            (views.length + 1) * _itemWidth <= constraints.maxWidth;
-        Widget item(
-          int index,
-          String label,
-          IconData icon,
-        ) {
-          final selected = index == currentIndex;
-          final color =
-              selected ? theme.colorScheme.primary : theme.hintColor;
-          final child = InkWell(
-            onTap: () => onTap(index),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, size: 22, color: color),
-                  const SizedBox(height: 2),
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 10.5, color: color),
-                  ),
-                ],
-              ),
-            ),
-          );
-          return fits
-              ? Expanded(child: child)
-              : SizedBox(width: _itemWidth, child: child);
-        }
-
-        final row = Row(
-          children: [
-            for (final (i, view) in views.indexed)
-              item(i, view, _icons[view] ?? Icons.circle_outlined),
-            // 末位固定「设置」，不占 navViews 表（与旧版约定一致）
-            item(views.length, '设置', Icons.settings_outlined),
-          ],
-        );
-        if (fits) return row;
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: row,
-        );
-      },
     );
   }
 }
