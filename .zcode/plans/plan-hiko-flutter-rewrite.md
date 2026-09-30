@@ -2978,3 +2978,101 @@ Release: https://github.com/michiru233/hiko/releases/tag/v1.99.5
 最简洁的语言，**不写思维过程**（成因分析 / 实测过程 / 实现论证 / 踩坑 / 验证数字
 / 裁决编号一律不写，留在 plan 与 commit 里）。本版初稿写了约 120 行带分节标题与
 实测表格，已用 `gh release edit v1.99.5 --notes-file -` 收敛成 5 行。
+
+## 1.99.6 安卓端：左划收起播放栏 + 底栏固定「正在播放」（2026-09-30）
+
+**需求（用户给截图，两条）**：① 仅限安卓端，播放栏加「从左往右划掉取消播放栏」；
+② 顺带在安卓底栏加一个「正在播放」按钮，点了进当前歌曲的全屏播放页。
+
+### 裁决（grilling 两轮，十一问，用户逐条回答）
+
+- **Q1=B**：划掉 = **收起 + 暂停**（不是继续播、不是清空）。
+- **Q2 / Q3**：「点击任意一个歌曲进行播放即可重新叫回来」——点歌播放即还原。
+- **Q4=A**：做了 Q2 的新按钮后，**播放栏上的手势优先于左边缘呼出抽屉**。
+- **Q5=A**：跟手位移 + 按比例过阈值（或带速度轻扫）消失，不加振动。
+- **Q6=A**：**改造**底栏已有的「正在播放」格为全屏播放页按钮，同时从「导航栏」
+  设置可选项里移除「正在播放」。
+- **Q7=A**：没在播放时该格**置灰不可点**，但格子留在原位（不跳位）。
+- **Q8=A**：还原判据 = **任何一次「暂停 → 播放」**（含系统媒体键 / 通知栏 / 耳机线控）。
+- **Q9=A**：进入全屏播放页本身**不**还原播放栏。
+- **Q10=A**：只做 `isMobile`（≤1000px）那套 compact 布局，桌面不动。
+- **Q11=A**：**两端一起**从 `navViewsAll` 移除「正在播放」（8→7 项）；
+  安卓底栏在「设置」**左侧固定**一格、**用户关不掉**（保住「收起后一定能找回来」）。
+
+### 实现
+
+- **播放栏** `player_bar.dart`：新增 `onDismiss`（为 null 就**不套** `Dismissible`，
+  桌面路径逐字节不变）。套上时 `direction: startToEnd` + `dismissThresholds: {startToEnd: 0.35}`
+  + **`resizeDuration: null`**。为什么是 null 而不是 `Duration.zero`：源码里
+  `_startResizeAnimation` 只在 `resizeDuration == null` 时**立即**回调 `onDismissed`；
+  走 Duration.zero 仍需开一根 AnimationController 并等它 complete，`build` 还会进
+  「resizeAnimation != null」分支去断言「dismissed but still in the tree」。
+  本组件不是列表项，收缩动画没有意义（父级会整块摘掉它）。
+- **栏内三个 Slider 天然排除**：手势竞技场里最内层的水平拖动识别器优先，
+  进度/增益/倍速滑杆会赢下竞技场，所以拖动照旧可用（不需要显式包装，
+  更不能设 `eagerGestureRecognizer`）。已用测试钉死（见下）。
+- **主界面接线** `home_screen.dart`：
+  - 新增 `_playerBarDismissed` + `_dismissPlayerBar()`（收起 + `pause()`，
+    本来就没在播就不重复发 pause）；
+  - `ref.listen<bool>(playbackProvider.select((s) => s.playing), ...)` 认
+    **prev==false && next==true** 的跳变还原 —— `ref.watch` 只给当前值，分不清
+    「本来就在播」，必须用 listen 的 prev/next；
+  - 抽出 `playerBarVisible`（= `!isMobile || (album != null && !_playerBarDismissed)`），
+    播放栏的 `if` 与详情抽屉的底部留白（`118 : 60`）都改用它 —— 否则划掉后
+    抽屉下面会留一条 58px 空洞；
+  - `_handleOnlineBack` 旁边新增 `_playerBarRect()` / `_isInPlayerBar(globalPos)`：
+    包裹整页的 `Listener`（1.54 左边缘呼出抽屉）在 `onPointerDown` 里先问它，
+    起手点落在播放栏内就让位。**为什么必须显式让位**：`Listener` 是播放栏的祖先，
+    raw pointer 事件不进手势竞技场、永远会送到这里 —— 不判位置就会出现
+    「想划掉播放栏，却把侧栏抽屉拉了出来」。
+- **底栏** `widgets/mobile_bottom_nav.dart`：`home_screen.dart` 的私有
+  `_MobileBottomNav` 抽成公开 `MobileBottomNav`（理由与 1.97.1 抽筛选标记一致：
+  **可测** —— widget 测试宿主是 macOS，`Platform.isAndroid` 恒 false，移动布局在
+  整页测试里够不着）。末尾固定两格（**正在播放、设置**），不占 `navViews` 表；
+  `fits` 估算从 `+1` 变 **`+2`**；`playerEnabled: album != null` 控制置灰，
+  禁用格**照旧占位**（`Expanded` / 固定宽），所以不会跳位。
+- **配置** `settings_store.navViewsAll` 8→7（删 `'正在播放'`）；`sidebar.navViewIcons`
+  删 `'正在播放': '▶'`；设置页「导航栏」的说明文案补一句固定两格不可隐藏。
+  **存量配置自动迁移**：`_normalizeNavViewList` 本来就是「白名单外丢弃」，删项即迁移。
+  `filter.dart` 里 `view != '正在播放'` 与 `category_dialog` 的保留字**保留不动**
+  （前者是分类视图的判定白名单，后者防止用户建出同名分类）。
+- **测试缝** `HomeScreen(debugMobileLayout)`：`@visibleForTesting` 的可选参数，
+  只用来在 macOS 宿主上打开移动布局。**生产代码永不传它。**
+
+### 测试（新增 16 条，已验红）
+
+- 新建 `test/ui/mobile_bottom_nav_test.dart`（6）：固定两格恒在列且顺序固定、
+  7+2 齐全、置灰不可点 + 格子不跳位、可点并回调、点一级视图回传下标、
+  **`fits` 边界**（620px：9×76=684>620 必横向滑动 —— 旧 `+1` 算法会误判为放得下；
+  700px：684≤700 不包滚动）。
+- 新建 `test/ui/player_bar_dismiss_test.dart`（5）：不传 `onDismiss` 时无 `Dismissible`、
+  划过大半回调恰好一次、未过阈值不回调、**从右往左**划不回调（方向锁 startToEnd）、
+  **横划落在进度条上时进度条赢**（同时断言 `seekCalls > 0`，否则这条是空过的）。
+  用计数器版控制器（`_FakePlayback extends PlaybackController`）避免碰媒体通道。
+- 新建 `test/ui/mobile_player_bar_flow_test.dart`（4）：划掉→栏消失 + `pause` 正好一次、
+  暂停→播放的跳变把栏叫回来、**划掉后固定格仍可点并打开全屏播放页**（且进全屏页
+  不还原播放栏）、**左缘起手落在播放栏内不呼出抽屉**、左缘起手在播放栏以外抽屉照旧。
+- `test/data/settings_store_test.dart` +1：存量 `["本地音声","正在播放","统计"]`
+  load 后归一化成 `["本地音声","统计"]`。
+- **四处验红**（改完即还原）：`+2`→`+1` 红 1 条；撤掉 `pause()` 红 1 条；
+  固定格恒可点 → 置灰用例红；去掉 `_isInPlayerBar` 让位 → 左缘优先级用例红
+  （`Sidebar` 被拉了出来）。
+- `test/ui/sidebar_nav_views_test.dart` 无需改（它传入的配置只有 3 项，
+  `正在播放 findsNothing` 删项后依然成立）。
+
+**验证**：`flutter test` **595 passed / 2 skipped**（基线 579 + 新增 16）；
+`flutter analyze` **39 条** = 基线，0 新增。版本 `1.99.6+119`。
+
+### 坑（已记）
+
+- **`pumpAndSettle` 撞上无限旋转动画会超时**：全屏播放页的唱片在**播放中**是不停
+  转的，点了它之后只能有界 pump（3×300ms）。顺带一个副作用：撤掉 `pause()` 的
+  时候，别的用例会因为「还在播 → 唱片继续转 → pumpAndSettle 超时」而红，
+  报错文本完全不指向真因（"pumpAndSettle timed out"），所以那里改成有界 pump，
+  把 「划掉=暂停」 这条语义**只**交给断言 `pauseCalls == 1` 的那条用例。
+- `PlaybackController` 可以子类化做假控制器：构造参数是私有的 `_ref`，
+  所以只能 `_Fake(Ref ref) : super(ref);`（不能写 `super._ref` 简写）；
+  `container.read(playbackProvider.notifier)` 的静态类型是基类，需要 `as _Fake`。
+- 测试宿主不是安卓 → `isMobile` 恒 false。整页移动测试必须有个缝
+  （`HomeScreen(debugMobileLayout)`）；同时因为宿主是 macOS，播放栏会多一个
+  桌面歌词按钮，画布不能按真机宽度给（900 宽才不溢出）。
