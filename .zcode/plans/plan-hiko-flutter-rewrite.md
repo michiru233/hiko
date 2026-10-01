@@ -3076,3 +3076,47 @@ Release: https://github.com/michiru233/hiko/releases/tag/v1.99.5
 - 测试宿主不是安卓 → `isMobile` 恒 false。整页移动测试必须有个缝
   （`HomeScreen(debugMobileLayout)`）；同时因为宿主是 macOS，播放栏会多一个
   桌面歌词按钮，画布不能按真机宽度给（900 宽才不溢出）。
+
+---
+
+## 1.99.7（2026-10-01）：迷你播放栏（方案A）+ 在线页顶栏滚动收起（仅 Android）
+
+用户裁决：播放栏走方案 A（单行迷你条），顶栏走滚动收起；**macOS 本版零改动、只封 Android 包**（后续发版如需桌面包可后补）。动机：底部播放栏 + 顶部四层头部（全局图标行/预设搜索行/筛选行/激活标记）把中间浏览区压得只剩两行卡片。
+
+### 改动一：PlayerBar compact 压成单行迷你条
+
+- `player_bar.dart` compact 分支重写：`[封面40] [标题·声优·曲目（弹性）] [⏮][▶][⏭]` 单行约 56px（原两行约 120px）；进度降级为**顶边 2.5px 细进度线**（`_buildMiniProgress`，只显示不可拖 —— seek 去全屏页，3px 热区拖不动不值得做）；点文字区任意处 = 点封面进全屏页（`GestureDetector` 包 `_buildMeta`）。
+- 模式/睡眠/倍速/音量入口从迷你条移除（全屏页都有）；`gap` 变量删除。
+- 桌面端 `compact=false` 分支**一行未改**；`Dismissible` 划掉收起逻辑不动（套在最外层）。
+
+### 改动二：在线页顶栏滚动收起（仅 `isMobile`）
+
+- `online_screen.dart`：移动端结果区改为 `CustomScrollView`：头部 = `SliverAppBar(pinned:false, floating:true, snap:false, toolbarHeight:0, bottom:PreferredSize(_buildHeader))`，网格 = `OnlineWorkGridSliver`；2px 换页进度条与分页条保持 Column 两端固定；加载/出错/空态走 `SliverFillRemaining`（空态文案抽 `_buildEmptyResults` 两端共用）。
+- **snap 必须 false（实测踩坑）**：`snap:true` 时用户滚动方向一变 forward 就触发弹回动画，弹回的头部以 `layoutExtent:0 / paintExtent:100` **覆盖**在内容上（模拟器复现：停手即盖住第一行卡片；render tree 实锤 `effective scroll offset:0.0`）。`floating` 本身的 performLayout reveal 就是「上滑跟着手指即时滑回」，语义正好。
+- **头部自然高度测量**：SliverAppBar 会把 bottom 撑满 extent、量不出自然高度 → Stack 里放一份 `Positioned+Offstage` 的头部副本（共用 search controller 无副作用），postFrame 量高喂 `_headerExtent`，高度有变下一帧收敛（头部高约 100dp，初始 fallback 200）。
+- bottom child 垫 `scaffoldBackgroundColor`：floating 半开（跟手 reveal 停中间）时内容会从透明头部后穿过。
+- 结果集一换（翻页/换标签/新搜索）`jumpTo(0)` 回顶（`ref.listen` select `s.works`）。
+- 桌面端布局完全不动；**在线收藏页本版不动**，模式验证好用后下一版照搬。
+
+### 改动三：OnlineWorkGrid 抽共用 + sliver 形态
+
+- `online_work_grid.dart`：列数解析（`_resolveColumns`）、grid delegate（`_gridDelegate`）、卡片装配（`OnlineWorkGrid.buildWorkCard`）抽出共用；新增 `OnlineWorkGridSliver`（`SliverPadding+SliverGrid`，视口宽取 MediaQuery——其唯一场景是移动端整屏宽）。
+
+### 改动四：全屏播放页加倍速键（仅 `Platform.isAndroid`）
+
+- `fullscreen_player_screen.dart`：功能键行 4→5 键（定时/增益/**倍速**/播放模式/列表）；`_showRateDialog` 滑杆 0.5~2.0 步进 0.1 + 恢复 1.0x，松手 `setPlaybackRate`（内部落设置持久化）。macOS 全屏页不加键。
+
+### 测试
+
+- 新建 `test/ui/player_bar_mini_test.dart`（3）：360dp 单行无溢出 + 进度线值 0.1 + 无滑杆、点文字区回调 `onCoverTap`、桌面端仍有滑杆（回归守卫）。
+- `player_bar_dismiss_test.dart` 更新：原「横划落进度条→滑杆赢」契约随单行化失效，改为「compact 无滑杆、横划进度线区域照样收起」。
+- `flutter test` **598 passed / 2 skipped**；`flutter analyze` 全部为基线旧提示（stash 对比 37=37）。
+- 模拟器实测（新建 AVD `kikoeru_test`，1080×2400@420dpi，android-36）：单行播放栏显示/划掉/进全屏、倍速设 x1.3 生效、在线页滚动收起无重叠、上滑跟手滑回、翻页回顶。
+
+### 坑（已记）
+
+- **模拟器 AVD 会丢**：`~/.android/avd` 被清过，且 homebrew cmdline-tools 缺 `devices.xml`（`--device pixel_6` 不可用）→ 先默认创建，再改 `config.ini`（`hw.lcd.width/height/density` + `skin.name=1080x2400`）。
+- 模拟器截图是缩放过的（1080 设备出 900px 图），**点击要用设备像素坐标**（×1.2），UI 树 resolve 给的才是真坐标。
+- `flutter test` 里控制器状态注入要**首帧之后**再 set（初始化会把 position 归零）。
+
+**版本**：`1.99.7+120`；Release：`hiko-v1.99.7-android.apk`（70.4MB）→ https://github.com/michiru233/hiko/releases/tag/v1.99.7 。本版无新增待裁决。
