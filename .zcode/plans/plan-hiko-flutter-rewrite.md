@@ -3148,3 +3148,16 @@ Release: https://github.com/michiru233/hiko/releases/tag/v1.99.5
 - `flutter test` 598 全过；analyze 基线持平。模拟器验证按用户指示跳过（本版改动与 1.99.7 已实测模式同款；实机手感待用户确认）。
 
 **版本**：`1.99.9+122`；Release：`hiko-v1.99.9-android.apk`（70.5MB）→ https://github.com/michiru233/hiko/releases/tag/v1.99.9 。本版无新增待裁决。
+
+---
+
+## 1.99.10（2026-10-01）：详情曲目行曲名两行 + 曲名跟随详情倍率
+
+用户反馈：移动端曲目列表文件夹/曲名字号太小、曲名看不到全名。裁决：不加新设置项 —— 「在线详情文字」倍率（1.96.0）本就桌面 390px 右栏与移动全屏页共用（作用域挂在 `OnlineDetailBody`），曲名却走 `onlineTrackTitleFontSize` 绝对值旋钮、故意不乘倍率（1.97.0），成为拉倍率时的漏网之鱼；曲名截断用两行解。
+
+- `detail_kit.dart` `HikoTrackRow`：曲名 `maxLines: 1→2`（本地详情抽屉与在线面板两端生效，ellipsis 只兜底超长尾巴）；字号语义由「绝对」改「基准」，`(titleFontSize ?? 12) × textScale` —— 本地不套作用域，观感零变化。
+- 提示文案同步（`settings_dialog.dart` / `online_appearance.dart`）：曲目标题字号 hint 改为「基准字号；最终再乘详情文字倍率」。
+- 增量扫描改进（文件级 lastModified/size 缓存，解决「1 个新文件整目录重解析 / 同 URI 替换检不出 / 每次重读 metadata」）**本版不做**，用户指示 UI 交付后提醒立项。
+- `flutter test` 598 全过。
+
+**版本**：`1.99.10+123`；Release：见下方补充。本版无新增待裁决。

@@ -631,12 +631,12 @@ class HikoTrackRow extends StatelessWidget {
   /// 右侧时长左边额外的角标（在线用来放字幕图标）
   final Widget? trailing;
 
-  /// 曲目标题的**绝对**字号（1.97.0，在线详情页专用旋钮）。
+  /// 曲目标题的**基准**字号（1.97.0，在线详情页专用旋钮）。
   ///
-  /// 给了就用它本身（**不再乘 `HikoDetailTextScale`** —— 否则详情倍率一动
-  /// 这行就跟着动，「独立旋钮」名存实亡）；不传（本地详情抽屉）保持
-  /// 既有行为 `12 × textScale`，本地观感零变化。
-  /// 序号/时长等辅助文字不受影响，仍乘详情倍率。
+  /// 给了就以它为基准；不传（本地详情抽屉）基准 12。1.99.10 起基准字号
+  /// **再乘 `HikoDetailTextScale`** —— 曲名是详情页里信息量最大的文字，
+  /// 倍率拉动时它不动会显得「其他都大了就曲名没大」；要单独微调就用本旋钮。
+  /// 序号/时长等辅助文字同样乘详情倍率。
   final double? titleFontSize;
 
   @override
@@ -712,10 +712,12 @@ class HikoTrackRow extends StatelessWidget {
               Expanded(
                 child: Text(
                   name,
-                  maxLines: 1,
+                  // 两行（1.99.10）：长日文标题单行截断在窄面板/移动端基本
+                  // 看不到全名，放两行后 ellipsis 只兜底超长尾巴
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    fontSize: titleFontSize ?? 12 * textScale,
+                    fontSize: (titleFontSize ?? 12) * textScale,
                     color: color,
                     fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                   ),

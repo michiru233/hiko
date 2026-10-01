@@ -865,7 +865,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       ),
       OnlineFontSliderRow(
         title: '曲目标题字号',
-        hint: '在线详情页里每首音频的标题；不受「详情文字」倍率影响',
+        hint: '在线详情页里每首音频的标题基准字号；最终再乘「详情文字」倍率',
         value: settings.onlineTrackTitleFontSize,
         min: SettingsNotifier.trackTitleFontSizeMin,
         max: SettingsNotifier.trackTitleFontSizeMax,
