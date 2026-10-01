@@ -3134,3 +3134,17 @@ Release: https://github.com/michiru233/hiko/releases/tag/v1.99.5
 - **验证边界（记入 BLOCKED.md）**：模拟器无 asmr.one 凭据，收藏页只能验证到未登录引导层；结果列表代码路径与已实测的浏览页同款，实机效果待用户确认。
 
 **版本**：`1.99.8+121`；Release：`hiko-v1.99.8-android.apk`（70.4MB）→ https://github.com/michiru233/hiko/releases/tag/v1.99.8 。本版无新增待裁决。
+
+---
+
+## 1.99.9（2026-10-01）：本地视图顶栏滚动收起（1.99.7 模式收官，仅 Android）
+
+用户裁决：本地音声也照搬。至此三处网格页（在线 / 在线收藏 / 本地）移动端统一为「头部滚动收起」模式。
+
+- `home_screen.dart` `_buildMain`：本地网格视图（本地音声/最近添加/最近播放/收藏夹）移动端走 `_buildLocalScrollable` —— `Stack[CustomScrollView, 离屏头部副本]`；头部 = hero + 筛选行 + 结果行 + 续播横幅，作 `SliverAppBar(pinned:false, floating:true, snap:false, toolbarHeight:0)`，`ColoredBox(scaffoldBackgroundColor)` 垫底；测量/回顶逻辑与在线页同款（fallback extent 300，本地头部更高）。
+- **瀑布流 sliver 化**：`MasonryGridView.builder` → `SliverMasonryGrid`（flutter_staggered_grid_view 0.7 自带，`SliverSimpleGridDelegate*` 直接复用）；卡片装配抽 `_buildAlbumCard`、空态抽 `_buildGridEmptyContent`，桌面 box 网格共用，两端不漂移。
+- **定位当前播放适配**：`_gridScrollController` 现在驱动整个 CustomScrollView，`_jumpToLocatedCard` 的粗跳偏移补 `_localHeaderExtent`（桌面恒 0 不受影响），终态仍靠 `Scrollable.ensureVisible` 逐帧校正；桌面抽屉滚轮转发绑在桌面的 box 网格上，不受影响。
+- **统计视图移动端保持旧结构**（自带滚动体，不进本模式）。
+- `flutter test` 598 全过；analyze 基线持平。模拟器验证按用户指示跳过（本版改动与 1.99.7 已实测模式同款；实机手感待用户确认）。
+
+**版本**：`1.99.9+122`；Release：`hiko-v1.99.9-android.apk`（70.5MB）→ https://github.com/michiru233/hiko/releases/tag/v1.99.9 。本版无新增待裁决。
