@@ -39,3 +39,9 @@
 - **偏差（已记 BLOCKED.md）**：activity_overlay_test 编译被 API 改名卡死，最小机械更新（回调接 onFullScanRequested、点按文案改全量扫描、新增「增量扫描按钮存在」断言，无一放宽）。
 - flutter test：**604 passed / 2 skipped**（基线 598+6）。
 - 版本已 bump 1.99.11+124。封包/发版进行中。
+
+## 任务 3：完成（2026-10-01）
+- 版本 1.99.11+124（aapt2 验证 versionName=1.99.11 versionCode=124）。
+- 双端封包：macOS Hiko.app / app-release.apk；zip+apk 已传 Release v1.99.11，资产核验（apk 70480528 / zip 34195594）。
+- commit 58571e5 已推 origin main。模拟器实测：全量（新增 3）/增量（RJ09000001 入库，3→4）/不登记 三项全部通过。
+- 状态：**全部任务完成**。
