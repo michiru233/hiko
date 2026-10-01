@@ -150,18 +150,21 @@ void main() {
     expect(dismissCalls, 0);
   });
 
-  testWidgets('横划落在进度条上 → 进度条赢，播放栏不收起', (tester) async {
+  testWidgets('compact 单行化后没有滑杆（1.99.7）：横划进度线区域也走收起', (tester) async {
     var dismissCalls = 0;
     await pumpBar(tester, onDismiss: () => dismissCalls++);
 
-    final slider = find.byType(Slider);
-    expect(slider, findsOneWidget, reason: 'compact 布局只有进度条一个滑杆');
+    expect(find.byType(Slider), findsNothing,
+        reason: '迷你条只显示进度线，seek 去全屏页 —— 栏内再无滑杆与手势竞技场竞争');
 
-    await tester.dragFrom(tester.getCenter(slider), const Offset(400, 0));
+    // 起手点取顶边细进度线（栏内最上沿），横划照样被 Dismissible 接管
+    final rect = tester.getRect(find.byType(PlayerBar));
+    await tester.dragFrom(
+      Offset(rect.left + 120, rect.top + 10),
+      const Offset(500, 0),
+    );
     await tester.pumpAndSettle();
 
-    expect(playback.seekCalls, greaterThan(0),
-        reason: '拖拽确实落在滑杆上（否则这条测试是空过的）');
-    expect(dismissCalls, 0, reason: '滑杆在竞技场里更内层，横划不该被播放栏吃掉');
+    expect(dismissCalls, 1, reason: '没有滑杆竞争，过阈值即收起');
   });
 }

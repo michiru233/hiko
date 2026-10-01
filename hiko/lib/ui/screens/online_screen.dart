@@ -61,6 +61,13 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
   final _searchController = TextEditingController();
   int? _detailWorkId;
 
+  // 1.99.7 移动端：头部滚动收起（floating+snap）的三件套 ——
+  // 滚动控制器（翻页回顶）、头部自然高度的离屏测量锚点、测量结果
+  //（SliverPersistentHeaderDelegate 的 extent 不会自己算，见 _buildScrollableResults）。
+  final _mobileScroll = ScrollController();
+  final _headerMeasureKey = GlobalKey();
+  double? _headerExtent;
+
   /// 搜索历史（1.99.3）：最近 10 条，SharedPreferences 持久化。
   /// 不是「设置」所以不进 settings_store —— 只有这一处 UI 消费它。
   static const _kSearchHistory = 'hiko-online-search-history';
@@ -77,6 +84,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _mobileScroll.dispose();
     super.dispose();
   }
 
@@ -227,16 +235,30 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     final theme = Theme.of(context);
     final showPanel = !widget.isMobile && _detailWorkId != null;
 
+    // 1.99.7 移动端：结果集一换（翻页/换标签/新搜索）就跳回顶部，
+    // 否则新内容会从旧滚动深度中间开始看
+    if (widget.isMobile) {
+      ref.listen(onlineBrowseProvider.select((s) => s.works), (prev, next) {
+        if (prev != null && _mobileScroll.hasClients) {
+          _mobileScroll.jumpTo(0);
+        }
+      });
+    }
+
     return Row(
       children: [
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildHeader(state, theme),
-              Expanded(child: _buildResults(state, theme)),
-            ],
-          ),
+          child: widget.isMobile
+              // 移动端：头部进滚动视图（向下滚走、向上轻滑 floating+snap 弹回），
+              // 换页进度条与分页条仍固定在两端
+              ? _buildScrollableResults(state, theme)
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildHeader(state, theme),
+                    Expanded(child: _buildResults(state, theme)),
+                  ],
+                ),
         ),
         if (showPanel) ...[
           VerticalDivider(
@@ -559,6 +581,138 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
 
   // ---------------------------------------------------------------- 结果
 
+  /// 移动端滚动结构（1.99.7）：
+  ///
+  /// ```
+  /// Column[
+  ///   2px 换页进度条（固定）,
+  ///   Expanded(Stack[
+  ///     CustomScrollView[ floating+snap 头部, 网格 sliver ],
+  ///     离屏的头部副本（测自然高度）,
+  ///   ]),
+  ///   分页条（固定）,
+  /// ]
+  /// ```
+  ///
+  /// 头部做成 `SliverAppBar(floating: true, snap: true)` 才有
+  /// 「向下滚走、向上轻滑立即弹回」；代价是 delegate 的 extent 必须**预先**
+  /// 给出，而头部高度是动态的（搜索历史行只在空搜索框时出现、激活标记
+  /// 会 Wrap 换行）。所以渲染一份离屏副本量自然高度，喂回 extent ——
+  /// 高度有变时下一帧就收敛，最多闪一帧。
+  Widget _buildScrollableResults(OnlineBrowseState state, ThemeData theme) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _headerMeasureKey.currentContext;
+      final h = ctx?.size?.height;
+      if (h != null && h > 0 && (h - (_headerExtent ?? 0)).abs() > 0.5) {
+        setState(() => _headerExtent = h);
+      }
+    });
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 翻页请求期间旧页仍在屏上，用一条细进度条说明「正在换页」
+        SizedBox(
+          height: 2,
+          child: state.loading && state.works.isNotEmpty
+              ? const LinearProgressIndicator(minHeight: 2)
+              : null,
+        ),
+        Expanded(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: CustomScrollView(
+                  controller: _mobileScroll,
+                  slivers: [
+                    // snap 是 SliverAppBar 的能力（SliverPersistentHeader 没有），
+                    // 用「零高 toolbar + 头部作 bottom」把自定义头部挂进去。
+                    // 注意 snap 必须为 false：snap 的弹回动画以 layoutExtent=0
+                    // 覆盖在内容上（实测模拟器复现：停手即盖住第一行卡片），
+                    // floating 本身就有「上滑跟着手指即时滑回」的 reveal 行为，够用
+                    SliverAppBar(
+                      primary: false,
+                      automaticallyImplyLeading: false,
+                      pinned: false,
+                      floating: true,
+                      snap: false,
+                      toolbarHeight: 0,
+                      backgroundColor: Colors.transparent,
+                      surfaceTintColor: Colors.transparent,
+                      elevation: 0,
+                      scrolledUnderElevation: 0,
+                      bottom: PreferredSize(
+                        preferredSize:
+                            Size.fromHeight(_headerExtent ?? 200),
+                        // 垫页面背景色：floating 头部半开（跟手 reveal 停在中间）
+                        // 时内容会从透明头部后穿过，文字叠文字没法读
+                        child: ColoredBox(
+                          color: Theme.of(context).scaffoldBackgroundColor,
+                          child: _buildHeader(state, theme),
+                        ),
+                      ),
+                    ),
+                    if (state.loading && state.works.isEmpty)
+                      const SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(
+                          child: SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      )
+                    else if (state.error != null && state.works.isEmpty)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: _OnlineError(
+                          message: state.error!,
+                          onRetry: () => unawaited(
+                            ref.read(onlineBrowseProvider.notifier).refresh(),
+                          ),
+                        ),
+                      )
+                    else if (state.isEmpty)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: _buildEmptyResults(state, theme),
+                      )
+                    else
+                      OnlineWorkGridSliver(
+                        works: state.works,
+                        isMobile: widget.isMobile,
+                        selectedId: _detailWorkId,
+                        onTap: (work) => _openDetail(work.id),
+                        showTags:
+                            ref.watch(settingsProvider).showOnlineTags,
+                        onTagTap: (tag) => unawaited(_applyTag(tag)),
+                      ),
+                  ],
+                ),
+              ),
+              // 离屏副本：delegate 里的头部被 extent 撑满，量不出自然高度，
+              // 得靠这份不受约束的拷贝（TextField 共用 controller，无副作用）
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                child: Offstage(
+                  offstage: true,
+                  child: KeyedSubtree(
+                    key: _headerMeasureKey,
+                    child: _buildHeader(state, theme),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        _buildPager(state),
+      ],
+    );
+  }
+
   Widget _buildResults(OnlineBrowseState state, ThemeData theme) {
     if (state.loading && state.works.isEmpty) {
       return const Center(
@@ -579,17 +733,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     }
     if (state.isEmpty) {
       return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.cloud_off_outlined, size: 30, color: theme.hintColor),
-            const SizedBox(height: 10),
-            Text(
-              state.source == OnlineSource.search ? '没有找到匹配的作品' : '没有拿到数据',
-              style: TextStyle(fontSize: 12, color: theme.hintColor),
-            ),
-          ],
-        ),
+        child: _buildEmptyResults(state, theme),
       );
     }
     return Column(
@@ -601,6 +745,21 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
         ),
         Expanded(child: _buildGrid(state)),
         _buildPager(state),
+      ],
+    );
+  }
+
+  /// 空态文案（桌面结果区与移动端 sliver 共用）
+  Widget _buildEmptyResults(OnlineBrowseState state, ThemeData theme) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.cloud_off_outlined, size: 30, color: theme.hintColor),
+        const SizedBox(height: 10),
+        Text(
+          state.source == OnlineSource.search ? '没有找到匹配的作品' : '没有拿到数据',
+          style: TextStyle(fontSize: 12, color: theme.hintColor),
+        ),
       ],
     );
   }

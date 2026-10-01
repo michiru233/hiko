@@ -67,40 +67,35 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
 
     final position = _dragging ? _dragValue : state.position;
     final duration = state.duration;
-    // compact(移动端窄屏)压缩间距与按钮密度,容纳睡眠定时/倍速两个新入口
-    final gap = widget.compact ? 6.0 : 12.0;
+    // compact(移动端)单行化后不再需要按钮间密排间距（1.99.7 移除 gap）
 
-    final topRow = Row(
-      children: [
-        _buildCover(theme, album),
-        SizedBox(width: widget.compact ? 8 : 12),
-        // compact 窄屏：meta 必须弹性收缩，否则溢出
-        widget.compact
-            ? Expanded(child: _buildMeta(theme, state, album, track))
-            : _buildMeta(theme, state, album, track),
-        SizedBox(width: widget.compact ? 8 : 10),
-        _buildControls(theme, state),
-        const Spacer(),
-        _buildModeButton(theme, state),
-        SizedBox(width: gap),
-        _buildSleepButton(theme, state),
-        SizedBox(width: gap),
-        _buildSpeedButton(theme, settings),
-        if (Platform.isMacOS) ...[
-          SizedBox(width: widget.compact ? 6 : 12),
-          _buildDesktopLyricsButton(theme),
-        ],
-        SizedBox(width: gap),
-        _buildVolumeButton(theme, settings),
-      ],
-    );
-
+    // 1.99.7（方案A，仅移动端）：compact 从两行压成单行迷你条 ——
+    // 封面 + 元信息 + 上一首/播放/下一首，进度降级为顶边 2.5px 细进度线
+    // （只显示，seek 去全屏播放页）。模式/睡眠/倍速/音量入口同步移除，
+    // 全屏页都有（倍速是本版新补的第五键）。
     final innerContent = widget.compact
         ? Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              topRow,
-              _buildTimeline(theme, position, duration),
+              _buildMiniProgress(theme, position, duration),
+              const SizedBox(height: 7),
+              Row(
+                children: [
+                  _buildCover(theme, album),
+                  const SizedBox(width: 8),
+                  // 点文字区任意处 = 点封面，都进全屏播放页
+                  Expanded(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: album == null
+                          ? null
+                          : () => widget.onCoverTap?.call(album),
+                      child: _buildMeta(theme, state, album, track),
+                    ),
+                  ),
+                  _buildControls(theme, state),
+                ],
+              ),
             ],
           )
         : Row(
@@ -255,6 +250,23 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
           onPressed: state.album == null ? null : () => ref.read(playbackProvider.notifier).next(),
         ),
       ],
+    );
+  }
+
+  // ---- 迷你进度线（仅 compact：顶边 2.5px，只显示不可拖）----
+  Widget _buildMiniProgress(ThemeData theme, double position, double duration) {
+    final pct = duration > 0 ? (position / duration).clamp(0.0, 1.0) : 0.0;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(2),
+      child: SizedBox(
+        height: 2.5,
+        child: LinearProgressIndicator(
+          value: pct,
+          minHeight: 2.5,
+          backgroundColor: theme.dividerColor.withValues(alpha: 0.55),
+          valueColor: AlwaysStoppedAnimation(theme.colorScheme.primary),
+        ),
+      ),
     );
   }
 

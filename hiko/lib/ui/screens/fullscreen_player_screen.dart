@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -831,7 +832,9 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     );
   }
 
-  /// 四核心功能键：睡眠定时、音频增益、播放模式、音轨列表
+  /// 核心功能键：睡眠定时、音频增益、播放模式、音轨列表；
+  /// Android 1.99.7 起加第五键「倍速」（迷你播放栏砍掉的入口在此回归，
+  /// macOS 全屏页保持原样不动）
   Widget _buildFunctionButtons(
     dynamic state,
     AppSettings settings,
@@ -859,6 +862,15 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
             isDark: isDark,
             onTap: () => _showGainDialog(settings, theme, isDark),
           ),
+          // 倍速（仅 Android）
+          if (Platform.isAndroid)
+            _buildFunctionButton(
+              icon: Icons.speed_outlined,
+              label: '倍速',
+              theme: theme,
+              isDark: isDark,
+              onTap: () => _showRateDialog(settings, theme, isDark),
+            ),
           // 播放模式
           _buildPlayModeButton(state.mode, theme, isDark),
           // 音轨列表
@@ -1218,6 +1230,71 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                 showHikoToast(context, '增益已设为 x${tempGain.toStringAsFixed(1)}');
               },
               child: const Text('确定'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 倍速对话框（仅 Android，1.99.7）：0.5~2.0 步进 0.1，拖动松手即生效
+  Future<void> _showRateDialog(
+    AppSettings settings,
+    ThemeData theme,
+    bool isDark,
+  ) async {
+    double tempRate = settings.playbackRate;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('播放倍速', style: TextStyle(fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'x${tempRate.toStringAsFixed(1)}',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+              Slider(
+                min: 0.5,
+                max: 2.0,
+                divisions: 15,
+                value: tempRate.clamp(0.5, 2.0),
+                label: 'x${tempRate.toStringAsFixed(1)}',
+                onChanged: (v) =>
+                    setDialogState(() => tempRate = (v * 10).round() / 10),
+                onChangeEnd: (v) {
+                  final r = (v * 10).round() / 10;
+                  // setPlaybackRate 内部落设置持久化
+                  ref.read(playbackProvider.notifier).setPlaybackRate(r);
+                },
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('0.5x', style: TextStyle(fontSize: 11)),
+                  TextButton(
+                    onPressed: () {
+                      setDialogState(() => tempRate = 1.0);
+                      ref.read(playbackProvider.notifier).setPlaybackRate(1.0);
+                    },
+                    child: const Text('恢复 1.0x'),
+                  ),
+                  const Text('2.0x', style: TextStyle(fontSize: 11)),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('关闭'),
             ),
           ],
         ),

@@ -107,40 +107,151 @@ class OnlineWorkGrid extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final pad = isMobile ? 16.0 : 48.0;
     const spacing = 14.0;
-    // `select` 而非整个 settings：否则改任何一个无关设置都会重建整张网格
-    final cardScale =
-        ref.watch(settingsProvider.select((s) => s.onlineCardTextScale));
-    final configured =
-        ref.watch(settingsProvider.select((s) => s.onlineGridColumns)).round();
-    // 全局字号缩放与标签字号都要进高度预算（见文件头的「量画同源」说明）
-    final scaler = MediaQuery.textScalerOf(context);
-    final tagFontSize = HikoTagFontScope.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final available = constraints.maxWidth - pad * 2;
-        // 0 = 自动：桌面按可用宽度塞下「至少 200px 一张」，移动端维持 2 列。
-        // 固定档位（3–8）两端共用 —— 裁决 Q4=甲：一个值管两端，
-        // 代价是手机上也能选出很窄的列，但那是用户自己选的。
-        final columns = configured > 0
-            ? configured
-            : (isMobile
-                ? 2
-                : ((available + spacing) / (200 + spacing)).floor().clamp(3, 8));
+        final columns = _resolveColumns(
+          isMobile: isMobile,
+          configured: ref.watch(settingsProvider
+              .select((s) => s.onlineGridColumns))
+              .round(),
+          available: available,
+        );
         final cardWidth = (available - spacing * (columns - 1)) / columns;
         return GridView.builder(
           padding: EdgeInsets.fromLTRB(pad, 0, pad, 12),
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: columns,
-            mainAxisSpacing: spacing,
-            crossAxisSpacing: spacing,
-            // 封面正方形 + 两行标题 + 一行副标题（+ 标签行），
-            // 高度按当前字号算出来，避免不同标题把网格撑歪
-            mainAxisExtent: cardWidth +
-                onlineCardTextBlockHeight(scaler, cardScale) +
-                (showTags ? onlineCardTagRowHeight(scaler, tagFontSize) : 0),
+          gridDelegate: _gridDelegate(
+            columns: columns,
+            cardWidth: cardWidth,
+            scaler: MediaQuery.textScalerOf(context),
+            cardScale: ref.watch(
+                settingsProvider.select((s) => s.onlineCardTextScale)),
+            showTags: showTags,
+            tagFontSize: HikoTagFontScope.of(context),
           ),
           itemCount: works.length,
-          itemBuilder: (context, index) {
+          itemBuilder: (context, index) => buildWorkCard(
+            ref,
+            context,
+            works[index],
+            selected: selectedId == works[index].id,
+          ),
+        );
+      },
+    );
+  }
+
+  /// 单张卡片的装配（box 网格与 sliver 网格共用，1.99.7）。
+  Widget buildWorkCard(
+    WidgetRef ref,
+    BuildContext context,
+    OnlineWork work, {
+    required bool selected,
+  }) {
+    return OnlineWorkCard(
+      work: work,
+      selected: selected,
+      showTags: showTags,
+      textScale: ref.watch(
+          settingsProvider.select((s) => s.onlineCardTextScale)),
+      onTagTap: onTagTap,
+      onTap: () => onTap(work),
+      onContextMenu: onContextMenu == null
+          ? null
+          : (position) => onContextMenu!(work, position),
+    );
+  }
+}
+
+/// 列数解析：0 = 自动（桌面按可用宽度塞「至少 200px 一张」，移动端 2 列），
+/// 固定档位（3–8）两端共用（裁决 Q4=甲）。
+int _resolveColumns({
+  required bool isMobile,
+  required int configured,
+  required double available,
+}) {
+  const spacing = 14.0;
+  return configured > 0
+      ? configured
+      : (isMobile
+          ? 2
+          : ((available + spacing) / (200 + spacing)).floor().clamp(3, 8));
+}
+
+/// 网格 delegate（box 与 sliver 共用）：封面正方形 + 两行标题 + 一行副标题
+/// （+ 标签行），高度按当前字号算出来，避免不同标题把网格撑歪。
+SliverGridDelegate _gridDelegate({
+  required int columns,
+  required double cardWidth,
+  required TextScaler scaler,
+  required double cardScale,
+  required bool showTags,
+  required double tagFontSize,
+}) {
+  const spacing = 14.0;
+  return SliverGridDelegateWithFixedCrossAxisCount(
+    crossAxisCount: columns,
+    mainAxisSpacing: spacing,
+    crossAxisSpacing: spacing,
+    mainAxisExtent: cardWidth +
+        onlineCardTextBlockHeight(scaler, cardScale) +
+        (showTags ? onlineCardTagRowHeight(scaler, tagFontSize) : 0),
+  );
+}
+
+/// 在线作品网格的 **sliver 形态**（1.99.7）：给在线浏览页移动端的
+/// `CustomScrollView` 用 —— 头部要做成 floating+snap 的滚动收起，
+/// 网格必须以 sliver 身份跟它住在同一个滚动视图里。
+/// 列宽公式与卡片装配与 [OnlineWorkGrid] 同源，不会漂移。
+class OnlineWorkGridSliver extends ConsumerWidget {
+  const OnlineWorkGridSliver({
+    super.key,
+    required this.works,
+    required this.isMobile,
+    this.selectedId,
+    required this.onTap,
+    this.showTags = false,
+    this.onTagTap,
+  });
+
+  final List<OnlineWork> works;
+  final bool isMobile;
+  final int? selectedId;
+  final ValueChanged<OnlineWork> onTap;
+  final bool showTags;
+  final ValueChanged<OnlineTag>? onTagTap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pad = isMobile ? 16.0 : 48.0;
+    const spacing = 14.0;
+    // sliver 里拿不到 box 约束，移动端视口就是整屏宽（与本组件唯一的使用场景一致）
+    final available = MediaQuery.sizeOf(context).width - pad * 2;
+    final columns = _resolveColumns(
+      isMobile: isMobile,
+      configured: ref.watch(
+          settingsProvider.select((s) => s.onlineGridColumns))
+          .round(),
+      available: available,
+    );
+    final cardWidth = (available - spacing * (columns - 1)) / columns;
+    final cardScale = ref.watch(
+        settingsProvider.select((s) => s.onlineCardTextScale));
+    final tagFontSize = HikoTagFontScope.of(context);
+    return SliverPadding(
+      padding: EdgeInsets.fromLTRB(pad, 0, pad, 12),
+      sliver: SliverGrid(
+        gridDelegate: _gridDelegate(
+          columns: columns,
+          cardWidth: cardWidth,
+          scaler: MediaQuery.textScalerOf(context),
+          cardScale: cardScale,
+          showTags: showTags,
+          tagFontSize: tagFontSize,
+        ),
+        delegate: SliverChildBuilderDelegate(
+          childCount: works.length,
+          (context, index) {
             final work = works[index];
             return OnlineWorkCard(
               work: work,
@@ -149,13 +260,10 @@ class OnlineWorkGrid extends ConsumerWidget {
               textScale: cardScale,
               onTagTap: onTagTap,
               onTap: () => onTap(work),
-              onContextMenu: onContextMenu == null
-                  ? null
-                  : (position) => onContextMenu!(work, position),
             );
           },
-        );
-      },
+        ),
+      ),
     );
   }
 }
