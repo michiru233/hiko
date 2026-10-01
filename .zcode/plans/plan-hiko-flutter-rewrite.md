@@ -3120,3 +3120,17 @@ Release: https://github.com/michiru233/hiko/releases/tag/v1.99.5
 - `flutter test` 里控制器状态注入要**首帧之后**再 set（初始化会把 position 归零）。
 
 **版本**：`1.99.7+120`；Release：`hiko-v1.99.7-android.apk`（70.4MB）→ https://github.com/michiru233/hiko/releases/tag/v1.99.7 。本版无新增待裁决。
+
+---
+
+## 1.99.8（2026-10-01）：在线收藏页顶栏滚动收起（1.99.7 模式照搬，仅 Android）
+
+用户裁决：收藏页也搬过去。
+
+- `online_favorites_screen.dart`：移动端结果区改 `CustomScrollView`，与浏览页完全同款 —— 头部 `SliverAppBar(pinned:false, floating:true, snap:false, toolbarHeight:0)`、离屏副本测头部自然高度（fallback 120，收藏页头部只有一行 chips + 状态行）、`ColoredBox(scaffoldBackgroundColor)` 垫底；加载/同步失败/空歌单走 `SliverFillRemaining`；分页条固定 Column 底部。
+- `OnlineWorkGridSliver` 补 `onContextMenu`（收藏页长按菜单「加入其它歌单 / 移出本歌单」要用）。
+- 回顶时机：歌单 chips 切换、翻页、改每页条数（`_resetScroll()`），以及 `ref.listen` 索引刷新（刷新按钮 / 登录后快照替换）。
+- 桌面端布局不动。`flutter test` 598 全过；analyze 基线持平。
+- **验证边界（记入 BLOCKED.md）**：模拟器无 asmr.one 凭据，收藏页只能验证到未登录引导层；结果列表代码路径与已实测的浏览页同款，实机效果待用户确认。
+
+**版本**：`1.99.8+121`；Release：`hiko-v1.99.8-android.apk`（70.4MB）→ https://github.com/michiru233/hiko/releases/tag/v1.99.8 。本版无新增待裁决。
