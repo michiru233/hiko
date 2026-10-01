@@ -63,7 +63,8 @@ class SettingsDialog extends ConsumerStatefulWidget {
   const SettingsDialog({
     super.key,
     this.onImportRequested,
-    this.onRescanRequested,
+    this.onIncrementalScanRequested,
+    this.onFullScanRequested,
     this.onReorganizeRequested,
     this.onCleanMissingRequested,
     this.onDownloadUpdateRequested,
@@ -72,7 +73,12 @@ class SettingsDialog extends ConsumerStatefulWidget {
 
   /// 数据区「导入音声」入口
   final VoidCallback? onImportRequested;
-  final VoidCallback? onRescanRequested;
+
+  /// 数据区「增量扫描」（1.99.11）：弹目录选择器，只解析新增/变化文件，不登记常驻目录
+  final VoidCallback? onIncrementalScanRequested;
+
+  /// 数据区「全量扫描」（1.99.11）：弹目录选择器，全部重新解析（修复存量封面/标题）
+  final VoidCallback? onFullScanRequested;
   final VoidCallback? onReorganizeRequested;
   final VoidCallback? onCleanMissingRequested;
   final ValueChanged<GithubRelease>? onDownloadUpdateRequested;
@@ -145,8 +151,12 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     widget.onReorganizeRequested?.call();
   }
 
-  void _startRescan() {
-    widget.onRescanRequested?.call();
+  void _startIncrementalScan() {
+    widget.onIncrementalScanRequested?.call();
+  }
+
+  void _startFullScan() {
+    widget.onFullScanRequested?.call();
   }
 
   Future<void> _pickBackground() async {
@@ -1437,11 +1447,13 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
           ),
         Row(
           children: [
-            _ActionButton(label: '立即重新扫描', onTap: _startRescan),
+            _ActionButton(label: '增量扫描', onTap: _startIncrementalScan),
+            const SizedBox(width: 8),
+            _ActionButton(label: '全量扫描', onTap: _startFullScan),
             if (settings.musicFolders.isNotEmpty) ...[
               const SizedBox(width: 8),
               Text(
-                '共 ${settings.musicFolders.length} 个目录',
+                '共 ${settings.musicFolders.length} 个常驻目录',
                 style: TextStyle(fontSize: 10, color: theme.hintColor),
               ),
             ],
@@ -1449,9 +1461,10 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
         ),
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
-          child: Text(
-            '每次启动会静默扫描常驻目录同步新增专辑；目录被移动/删除后请更新此处设置。',
-            style: TextStyle(
+            child: Text(
+              '增量扫描只解析选中目录里新增/变化的文件；全量扫描重建全部元数据。'
+              '两者不登记常驻目录，启动静默扫描仅覆盖「导入文件夹」登记的目录。',
+              style: TextStyle(
               fontSize: 10.5,
               height: 1.5,
               color: theme.hintColor,

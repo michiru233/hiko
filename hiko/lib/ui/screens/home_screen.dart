@@ -162,9 +162,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           Navigator.pop(context);
           _importFolder();
         },
-        onRescanRequested: () {
+        onIncrementalScanRequested: () {
           Navigator.pop(context);
-          _startRescan();
+          _scanPicked(full: false);
+        },
+        onFullScanRequested: () {
+          Navigator.pop(context);
+          _scanPicked(full: true);
         },
         onReorganizeRequested: () {
           Navigator.pop(context);
@@ -335,15 +339,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
   }
 
-  Future<void> _startRescan() async {
+  /// 手动扫描用户选中的单个目录（1.99.11）：增量只解析新增/变化，全量重建。
+  /// 选中的目录不登记常驻目录；启动静默扫描仍覆盖全部常驻目录。
+  Future<void> _scanPicked({required bool full}) async {
     if (activityOverlayController.isActive) return;
     activityOverlayController.start(label: '准备扫描...');
     try {
       final added = await ref
           .read(musicFolderScannerProvider)
-          .scanAll(
-            silent: false,
-            full: true, // 手动重扫 = 全量重建（1.54）：修复存量封面/标题
+          .scanPicked(
+            full: full,
             onProgress: (p) {
               activityOverlayController.update(
                 label: p.phase == 'walk'

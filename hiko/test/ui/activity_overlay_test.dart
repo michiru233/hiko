@@ -85,7 +85,8 @@ void main() {
                 onPressed: () => showDialog<void>(
                   context: context,
                   builder: (dialogContext) => SettingsDialog(
-                    onRescanRequested: () {
+                    // 1.99.11：「立即重新扫描」拆为「增量扫描/全量扫描」，语义不变
+                    onFullScanRequested: () {
                       Navigator.pop(dialogContext);
                       controller.start(label: '准备扫描...', progress: 0.0);
                     },
@@ -102,15 +103,17 @@ void main() {
     await tester.tap(find.text('打开设置'));
     await tester.pumpAndSettle();
     expect(find.byType(SettingsDialog), findsOneWidget);
-    // 1.85 分类导航：「立即重新扫描」位于「音乐目录」二级页
+    // 1.85 分类导航：扫描按钮位于「音乐目录」二级页
     // 1.99.4：设置分类多了「导航栏」一项，「音乐目录」可能落在可视区外，
     // 先 ensureVisible 再点（否则 tap 未命中，后续 finder 找不到元素）
     await tester.ensureVisible(find.text('音乐目录'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('音乐目录'));
     await tester.pumpAndSettle();
+    // 1.99.11：入口拆为「增量扫描/全量扫描」两按钮，两个都要在
+    expect(find.text('增量扫描'), findsOneWidget);
     final rescan = find.ancestor(
-      of: find.text('立即重新扫描'),
+      of: find.text('全量扫描'),
       matching: find.byType(OutlinedButton),
     );
     await tester.ensureVisible(rescan);

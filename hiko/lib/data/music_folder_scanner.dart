@@ -105,6 +105,70 @@ class MusicFolderScanner {
     final service = ImportService(_ref.read(libraryStoreProvider));
     return service.scanPath(folder, onProgress: onProgress);
   }
+
+  /// 手动扫描用户选中的单个目录（1.99.11）：**不登记**常驻目录。
+  /// [full] false=增量（Android 带 known 集合；桌面快速 diff，无新文件秒回）；
+  /// true=全量重建（空 known / 强制解析，修复存量封面/标题）。
+  /// 返回新增专辑数（已 merge 入库）；用户取消选择器返回 0。
+  Future<int> scanPicked({
+    required bool full,
+    void Function(ImportProgress)? onProgress,
+  }) async {
+    final platform = _ref.read(platformServiceProvider);
+    final knownUrls = <String>{
+      for (final a in _ref.read(libraryProvider)) ...a.tracks.map((t) => t.url),
+    };
+
+    // Android：SAF 目录选择器内嵌在原生 importAudioFolder 里（树内递归多专辑），
+    // treeUri 不登记（拍板：扫描与常驻目录解耦）；桌面实现返回 null 落到下方分支。
+    final saf = await platform.importAudioFolder(
+      known: full ? const {} : knownUrls,
+      onProgress: onProgress == null
+          ? null
+          : (p, t, phase, unit) => onProgress(ImportProgress(
+                folderIndex: 1,
+                folderTotal: 1,
+                processed: p,
+                total: t,
+                phase: phase,
+                unit: unit,
+              )),
+    );
+    if (saf != null) {
+      final before = _ref.read(libraryProvider).length;
+      await _ref.read(libraryProvider.notifier).mergeNew(saf.albums);
+      return _ref.read(libraryProvider).length - before;
+    }
+
+    // 桌面：目录选择（单选即可，接口返回列表按多目录处理）
+    final paths = await platform.pickDirectories();
+    if (paths == null || paths.isEmpty) return 0;
+    final service = ImportService(_ref.read(libraryStoreProvider));
+    final albums = <Album>[];
+    for (var i = 0; i < paths.length; i++) {
+      final path = paths[i];
+      if (!full) {
+        final dir = Directory(path);
+        if (!await dir.exists()) continue;
+        // 快速 diff：目录内全部音频均已知 → 该目录无新内容，跳过解析
+        final files = await scanner.collectFiles(path);
+        final hasNewFiles = files
+            .where((p) => scanner.audioExtensions.contains(_ext(p)))
+            .any((p) => !knownUrls.contains(Uri.file(p).toString()));
+        if (!hasNewFiles) continue;
+      }
+      albums.addAll(await service.scanPath(
+        path,
+        folderIndex: i + 1,
+        folderTotal: paths.length,
+        onProgress: onProgress,
+      ));
+    }
+    if (albums.isEmpty) return 0;
+    final before = _ref.read(libraryProvider).length;
+    await _ref.read(libraryProvider.notifier).mergeNew(albums);
+    return _ref.read(libraryProvider).length - before;
+  }
 }
 
 String _ext(String path) {

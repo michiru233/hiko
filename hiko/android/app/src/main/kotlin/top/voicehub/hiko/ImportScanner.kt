@@ -543,8 +543,10 @@ object ImportScanner {
      * 有 ALBUM 标签按「专辑艺术家|专辑名」聚合（跨文件夹）；无标签按文件夹。
      * [known] 为已导入音轨 URI 集合（1.54 增量）：目录内全部音频均已知的目录整目录跳过
      * 不解析（与桌面 knownUrls diff 同语义）；含任一新文件的目录全量解析——合并按 id 整表
-     * 替换曲目，绝不部分重建。ponytail: 同名文件原位替换（URI 不变）不触发重扫，由设置页
-     * "重新扫描"（传空 known=全量）兜底。
+     * 替换曲目，绝不部分重建。
+     * 1.99.11 文件级缓存（ScanCache）：未跳过的目录内，mtime/size 未变的文件直接复用
+     * 上次解析的文字元数据，只对新增/变化/mtime 取不到的文件走 parseFile——同名文件
+     * 原位替换由此自动检出，不再依赖"重新扫描"兜底。缓存不存封面（由当次解析/提取提供）。
      */
     fun scanAlbums(
         context: Context,
@@ -584,17 +586,45 @@ object ImportScanner {
         val toParse = entries.filter { it.dir.uri.toString() !in skipDirs }
         val skipped = entries.size - toParse.size
 
+        // 1.99.11 文件级缓存：未变文件复用缓存元数据，只解析新增/变化文件
+        val cache = ScanCache(context)
+        val freshMetas = mutableListOf<FileMeta>()
+        val stale = mutableListOf<Entry>()
+        for (e in toParse) {
+            val uri = e.file.uri.toString()
+            val cached = cache.get(uri)
+            if (cached != null && cached.isFresh(e.file.lastModified(), e.file.length())) {
+                freshMetas.add(
+                    FileMeta(uri, cached.fileName, cached.dirUri, cached.dirName, cached.title,
+                        cached.artist, cached.album, cached.albumArtist, cached.trackNumber, cached.duration, null)
+                )
+            } else {
+                stale.add(e)
+            }
+        }
+        val cachedCount = freshMetas.size
+
         val executor = Executors.newFixedThreadPool(minOf(Runtime.getRuntime().availableProcessors(), 8))
         try {
-            val futures = toParse.map { e ->
+            val futures = stale.map { e ->
                 executor.submit<FileMeta?> { parseFile(context, e.file, e.dir) }
             }
-            onProgress(skipped, entries.size, "files", null)
+            onProgress(skipped + cachedCount, entries.size, "files", null)
             val metas = mutableListOf<FileMeta>()
+            metas.addAll(freshMetas)
             futures.forEachIndexed { index, future ->
-                try { future.get()?.let { metas.add(it) } } catch (_: Exception) { }
-                onProgress(skipped + index + 1, entries.size, "files", null)
+                try {
+                    future.get()?.let {
+                        metas.add(it)
+                        // 只缓存成功解析的文件；失败文件下轮仍会重试解析
+                        val src = stale[index]
+                        cache.put(src.file.uri.toString(), src.file.lastModified(), src.file.length(), it)
+                    }
+                } catch (_: Exception) { }
+                onProgress(skipped + cachedCount + index + 1, entries.size, "files", null)
             }
+            cache.retainAll(entries.map { it.file.uri.toString() }.toSet())
+            cache.save()
             val groups = LinkedHashMap<String, MutableList<FileMeta>>()
             val directoryAlbums = metas.groupBy { it.dirUri }
                 .mapValues { (_, values) -> mostCommon(values.map { it.album }) }

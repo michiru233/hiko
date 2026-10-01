@@ -3161,3 +3161,19 @@ Release: https://github.com/michiru233/hiko/releases/tag/v1.99.5
 - `flutter test` 598 全过。
 
 **版本**：`1.99.10+123`；Release：见下方补充。本版无新增待裁决。
+
+---
+
+## 1.99.11（2026-10-01）：增量/全量扫描改选文件夹 + Android 文件级 mtime/size 缓存
+
+用户裁决：设置页加增量扫描入口；原「立即重新扫描」改为「全量扫描」；两者都由用户选一个文件夹；选中目录**不登记**常驻目录（启动静默扫描仍覆盖「导入文件夹」登记目录）。
+
+- `music_folder_scanner.dart` 新增 `scanPicked({required bool full})`：分支沿用 `_importFolder` 惯用法（先 `importAudioFolder`，桌面返回 null 落 `pickDirectories`）——Android known 语义因此在桌面测试宿主可测。增量带全库 known 集合，全量传空集合；桌面增量快速 diff（无新文件秒回），全量强制 `scanPath`。
+- `settings_dialog.dart`：数据页两按钮「增量扫描」「全量扫描」+ 新说明文案；回调拆 `onIncrementalScanRequested`/`onFullScanRequested`。
+- Android 原生（任务书核心）：新增 `ScanCache.kt`——`uri→(lastModified,size,文字元数据)` JSON 持久化（tmp+rename 原子写，损坏按空缓存兜底）；`ImportScanner.scanAlbums` 在 1.54 目录级跳过快路径之后按文件命中缓存：未变文件复用元数据，只对新增/变化/mtime≤0 文件走 `parseFile`——同名文件原位替换由「mtime/size 变化」自动检出，堵住旧版盲区（旧注释自认靠手动重扫兜底）。缓存不含封面（拍板：封面由同目录当次解析/提取提供）。`retainAll` 防膨胀，只缓存解析成功的文件。
+- 单测：Dart 新增 `music_folder_scanner_test.dart` 6 条（增量 known 非空/全量 known 空/取消不新增/桌面增量扫描/桌面增量秒跳/桌面全量强制重解析）；Kotlin 新增 `ScanCacheTest` 5 条命中/失效契约；反向验证红→绿（忽略 size 比较→`size 变化则失效` 红，还原全绿）。`flutter test` **604 passed / 2 skipped**（基线 598）。
+- **偏差（BLOCKED.md 已记）**：`activity_overlay_test.dart` 被 API 改名编译卡死，最小机械更新（接 `onFullScanRequested`、点按文案改「全量扫描」、新增增量按钮存在断言），断言无一放宽；任务书「不许改既有测试」的必要豁免待追认。
+- 模拟器实测（kikoeru_test，arm64）：全量扫描选 Download/hiko-scan →「扫描完成，新增 3 张专辑」；往同目录加 RJ09000001 后增量扫描 → 正确入库（3→4 张）；音乐目录页保持「尚未设置」= 不登记 ✓。
+- 任务书事实修正：macOS 菜单栏本无「重新扫描」入口，拍板第 2 条无对象（进度文件已记录）。
+
+**版本**：`1.99.11+124`；Release：`hiko-v1.99.11-android.apk` + `hiko-v1.99.11-macos.zip` → https://github.com/michiru233/hiko/releases/tag/v1.99.11 。本版新增待裁决 1 条（测试机械更新豁免追认）。
