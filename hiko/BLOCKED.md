@@ -95,3 +95,5 @@ HIKO_NETWORK_TESTS=1 flutter test \
 1.78.0（防社死模糊溢出修复）：发版记录——pubspec 1.78.0+87，`hiko-v1.78.0-android.apk` 65.8MB（aapt2 校验 versionCode='87' versionName='1.78.0'）、`hiko-v1.78.0-macos.zip` 31MB，GitHub Release v1.78.0 附双资产。终验 `flutter test` 279 passed/2 skipped/0 failed（基线 278/2/0，净增 1 条）、`flutter analyze` 改动文件 0 error、模拟器高对比条纹封面端到端通过（模糊止于封面边界，标题完整）。本版无新增待裁决；既有 1.42.0 深色主题 tag 对比度、1.53.0/1.54.0 各两项与 Mimosa 历史 high 遗留保持不变。
 
 1.79.0–1.85.0（补记，2026-09-14 洁癖收尾）：这 7 个版本发版时未逐版补记本清单，现一次性补齐——期内**无新增待裁决项**，各版发版记录见 `.zcode/plans/plan-hiko-flutter-rewrite.md` 对应章节。既有 1.42.0 深色主题 tag 对比度、1.53.0 两项、1.54.0 两项与 Mimosa 历史 high 遗留保持不变。**自 1.79.0 起，本文件不再逐版追加「无新增待裁决」流水账，各版待裁决状态以 plan 文件对应章节为准**（AGENTS.md 已同步该约定）。
+
+1.99.8（在线收藏页滚动收起）：本版**无待裁决**。备注一项验证边界：收藏页的滚动收起在模拟器上只能验证到「未登录引导」层 —— asmr.one 登录凭据在用户实机上，模拟器无凭据无法进结果列表；代码路径与 1.99.7 已模拟器实测通过的在线浏览页完全同款（同 SliverAppBar/离屏测量/网格 sliver），实机效果请用户确认。

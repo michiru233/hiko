@@ -210,6 +210,7 @@ class OnlineWorkGridSliver extends ConsumerWidget {
     required this.isMobile,
     this.selectedId,
     required this.onTap,
+    this.onContextMenu,
     this.showTags = false,
     this.onTagTap,
   });
@@ -218,6 +219,10 @@ class OnlineWorkGridSliver extends ConsumerWidget {
   final bool isMobile;
   final int? selectedId;
   final ValueChanged<OnlineWork> onTap;
+
+  /// 右键 / 长按菜单（在线收藏页用来提供「移出本歌单 / 加入其它歌单」）
+  final void Function(OnlineWork work, Offset globalPosition)? onContextMenu;
+
   final bool showTags;
   final ValueChanged<OnlineTag>? onTagTap;
 
@@ -260,6 +265,9 @@ class OnlineWorkGridSliver extends ConsumerWidget {
               textScale: cardScale,
               onTagTap: onTagTap,
               onTap: () => onTap(work),
+              onContextMenu: onContextMenu == null
+                  ? null
+                  : (position) => onContextMenu!(work, position),
             );
           },
         ),

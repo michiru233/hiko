@@ -51,6 +51,22 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
 
   int? _detailWorkId;
 
+  // 1.99.7 移动端：与在线浏览页同款的头部滚动收起三件套（见该页同注释）
+  final _mobileScroll = ScrollController();
+  final _headerMeasureKey = GlobalKey();
+  double? _headerExtent;
+
+  @override
+  void dispose() {
+    _mobileScroll.dispose();
+    super.dispose();
+  }
+
+  /// 歌单切换 / 翻页 / 刷新后回到顶部（含滚走的头部）
+  void _resetScroll() {
+    if (_mobileScroll.hasClients) _mobileScroll.jumpTo(0);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -91,37 +107,54 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
             (page * _pageSize).clamp(0, works.length),
           );
 
+    // 索引刷新（显式刷新按钮 / 登录后快照替换）→ 回顶，与结果更新保持一致
+    if (widget.isMobile) {
+      ref.listen(onlineFavoritesProvider.select((s) => s.index), (prev, next) {
+        if (prev != null && !identical(prev, next)) _resetScroll();
+      });
+    }
+
     return Row(
       children: [
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildHeader(theme, index, favorites),
-              Expanded(
-                child: _buildResults(
+          child: widget.isMobile
+              // 移动端：头部进滚动视图（向下滚走、上滑跟手滑回），分页条固定
+              ? _buildScrollableResults(
                   theme: theme,
                   favorites: favorites,
                   works: works,
                   slice: slice,
-                ),
-              ),
-              if (works.isNotEmpty)
-                OnlinePager(
                   page: page,
-                  pageSize: _pageSize,
-                  totalCount: works.length,
-                  isMobile: widget.isMobile,
-                  onPage: (target) => setState(
-                    () => _page = target.clamp(1, totalPages),
-                  ),
-                  onPageSize: (size) => setState(() {
-                    _pageSize = size;
-                    _page = 1;
-                  }),
+                  totalPages: totalPages,
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildHeader(theme, index, favorites),
+                    Expanded(
+                      child: _buildResults(
+                        theme: theme,
+                        favorites: favorites,
+                        works: works,
+                        slice: slice,
+                      ),
+                    ),
+                    if (works.isNotEmpty)
+                      OnlinePager(
+                        page: page,
+                        pageSize: _pageSize,
+                        totalCount: works.length,
+                        isMobile: widget.isMobile,
+                        onPage: (target) => setState(
+                          () => _page = target.clamp(1, totalPages),
+                        ),
+                        onPageSize: (size) => setState(() {
+                          _pageSize = size;
+                          _page = 1;
+                        }),
+                      ),
+                  ],
                 ),
-            ],
-          ),
         ),
         if (!widget.isMobile && _detailWorkId != null) ...[
           VerticalDivider(
@@ -182,6 +215,7 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                           onSelected: (_) => setState(() {
                             _playlistId = null;
                             _page = 1;
+                            _resetScroll();
                           }),
                         ),
                       ),
@@ -209,6 +243,7 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                             onSelected: (_) => setState(() {
                               _playlistId = playlist.id;
                               _page = 1;
+                              _resetScroll();
                             }),
                           ),
                         ),
@@ -292,6 +327,195 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
   }
 
   // ---------------------------------------------------------------- 结果
+
+  /// 移动端滚动结构（1.99.7，与在线浏览页同款）：
+  /// 头部 = SliverAppBar(floating, snap:false)（snap 会以 layoutExtent=0 覆盖内容，
+  /// 见浏览页踩坑记录），头部自然高度靠离屏副本测量，网格走 sliver 形态，
+  /// 分页条固定在 Column 底部。
+  Widget _buildScrollableResults({
+    required ThemeData theme,
+    required OnlineFavoritesState favorites,
+    required List<OnlineWork> works,
+    required List<OnlineWork> slice,
+    required int page,
+    required int totalPages,
+  }) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _headerMeasureKey.currentContext;
+      final h = ctx?.size?.height;
+      if (h != null && h > 0 && (h - (_headerExtent ?? 0)).abs() > 0.5) {
+        setState(() => _headerExtent = h);
+      }
+    });
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 同步期间的细进度条，与桌面端同语义
+        SizedBox(
+          height: 2,
+          child: favorites.loading && works.isNotEmpty
+              ? const LinearProgressIndicator(minHeight: 2)
+              : null,
+        ),
+        Expanded(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: CustomScrollView(
+                  controller: _mobileScroll,
+                  slivers: [
+                    SliverAppBar(
+                      primary: false,
+                      automaticallyImplyLeading: false,
+                      pinned: false,
+                      floating: true,
+                      snap: false,
+                      toolbarHeight: 0,
+                      backgroundColor: Colors.transparent,
+                      surfaceTintColor: Colors.transparent,
+                      elevation: 0,
+                      scrolledUnderElevation: 0,
+                      bottom: PreferredSize(
+                        preferredSize:
+                            Size.fromHeight(_headerExtent ?? 120),
+                        // 垫页面背景色：半开时内容会从透明头部后穿过
+                        child: ColoredBox(
+                          color: Theme.of(context).scaffoldBackgroundColor,
+                          child: _buildHeader(
+                            theme,
+                            favorites.index,
+                            favorites,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (favorites.loading &&
+                        favorites.index.playlists.isEmpty)
+                      const SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(
+                          child: SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      )
+                    else if (favorites.error != null &&
+                        favorites.index.playlists.isEmpty)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(32),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.cloud_off_outlined,
+                                  size: 30,
+                                  color: theme.hintColor,
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  '同步失败：${favorites.error}',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: theme.hintColor,
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                OutlinedButton(
+                                  onPressed: () => unawaited(
+                                    ref
+                                        .read(onlineFavoritesProvider.notifier)
+                                        .refresh(),
+                                  ),
+                                  child: const Text('重试'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      )
+                    else if (works.isEmpty)
+                      SliverFillRemaining(
+                        hasScrollBody: false,
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.bookmark_border_rounded,
+                                size: 30,
+                                color: theme.hintColor,
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                _playlistId == null
+                                    ? '还没有收藏任何作品\n在在线作品的详情页点「收藏」就能加入歌单'
+                                    : '这个歌单还是空的',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  height: 1.7,
+                                  color: theme.hintColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      OnlineWorkGridSliver(
+                        works: slice,
+                        isMobile: widget.isMobile,
+                        selectedId: _detailWorkId,
+                        onTap: _openDetail,
+                        onContextMenu: _showWorkMenu,
+                        showTags: ref.watch(settingsProvider).showOnlineTags,
+                        onTagTap: _filterByTag,
+                      ),
+                  ],
+                ),
+              ),
+              // 离屏副本：量头部自然高度喂 extent（delegate 会把 child 撑满 extent）
+              Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                child: Offstage(
+                  offstage: true,
+                  child: KeyedSubtree(
+                    key: _headerMeasureKey,
+                    child: _buildHeader(theme, favorites.index, favorites),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (works.isNotEmpty)
+          OnlinePager(
+            page: page,
+            pageSize: _pageSize,
+            totalCount: works.length,
+            isMobile: widget.isMobile,
+            onPage: (target) => setState(() {
+              _page = target.clamp(1, totalPages);
+              _resetScroll();
+            }),
+            onPageSize: (size) => setState(() {
+              _pageSize = size;
+              _page = 1;
+              _resetScroll();
+            }),
+          ),
+      ],
+    );
+  }
 
   Widget _buildResults({
     required ThemeData theme,
