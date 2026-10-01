@@ -78,6 +78,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final _filterMemo = FilterAlbumsMemo();
   // 1.49「定位当前播放」：网格滚动控制、目标卡 Key 与高亮状态
   final _gridScrollController = ScrollController();
+
+  // 1.99.9 移动端本地视图：头部（hero + 筛选行 + 结果行 + 续播横幅）滚动收起
+  // 的离屏测量锚点与测量值。滚动控制器沿用 [_gridScrollController]（定位当前
+  // 播放的 jumpTo / 桌面抽屉滚轮转发都绑在它上），只是它现在驱动整个
+  // CustomScrollView —— 定位偏移差一个头部高度，由事后的
+  // Scrollable.ensureVisible 精确校正（见 _jumpToLocatedCard）。
+  final _localHeaderMeasureKey = GlobalKey();
+  double? _localHeaderExtent;
   final _locateCardKey = GlobalKey();
   String? _locateTargetId; // 需要定位的专辑 id（定位完成后清除）
   String? _highlightedAlbumId; // 高亮中的专辑 id
@@ -929,6 +937,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ],
       );
     }
+    // 1.99.9 移动端：本地网格视图（本地音声/最近添加/最近播放/收藏夹）的头部
+    // 滚动收起 —— hero + 筛选行进滚动 sliver，向下滚走、上滑跟手滑回。
+    // 统计视图有自己的滚动体，保持旧结构；桌面端全部不动。
+    if (isMobile && _view != '统计') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildTopbar(theme, isMobile),
+          Expanded(
+            child: _buildLocalScrollable(filtered, theme, isMobile, currentSort),
+          ),
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -952,6 +974,119 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   },
                 )
               : _buildGrid(filtered, theme, isMobile),
+        ),
+      ],
+    );
+  }
+
+  /// 移动端本地视图的滚动结构（1.99.9，与在线页同款模式）：
+  ///
+  /// ```
+  /// Stack[
+  ///   CustomScrollView[ floating 头部(hero+筛选行+结果行+续播横幅), 瀑布流 sliver ],
+  ///   离屏头部副本（量自然高度喂 extent）,
+  /// ]
+  /// ```
+  ///
+  /// 与在线页的差别：网格是瀑布流（flutter_staggered_grid_view），sliver 形态
+  /// 用同包的 [SliverMasonryGrid]；滚动控制器沿用 [_gridScrollController]，
+  /// 「定位当前播放」的 jumpTo 偏移因此差一个头部高度，靠
+  /// `Scrollable.ensureVisible` 在下一帧精确校正（跳完必然可见，误差只影响
+  /// 一次粗跳的距离）。
+  Widget _buildLocalScrollable(
+    List<Album> filtered,
+    ThemeData theme,
+    bool isMobile,
+    String currentSort,
+  ) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _localHeaderMeasureKey.currentContext;
+      final h = ctx?.size?.height;
+      if (h != null && h > 0 && (h - (_localHeaderExtent ?? 0)).abs() > 0.5) {
+        setState(() => _localHeaderExtent = h);
+      }
+    });
+
+    final headerColumn = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _buildHero(theme, filtered.length, isMobile),
+        _buildToolbar(theme, isMobile, filtered, currentSort),
+        _buildResultsLine(theme, filtered.length),
+        _buildResumeBanner(theme, isMobile),
+      ],
+    );
+
+    final settings = ref.watch(settingsProvider);
+    final fixedColumns = settings.mobileGridColumns.toInt();
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: CustomScrollView(
+            controller: _gridScrollController,
+            slivers: [
+              SliverAppBar(
+                primary: false,
+                automaticallyImplyLeading: false,
+                pinned: false,
+                floating: true,
+                // snap 会以 layoutExtent=0 覆盖内容（1.99.7 实测踩坑，见在线页记录）
+                snap: false,
+                toolbarHeight: 0,
+                backgroundColor: Colors.transparent,
+                surfaceTintColor: Colors.transparent,
+                elevation: 0,
+                scrolledUnderElevation: 0,
+                bottom: PreferredSize(
+                  preferredSize: Size.fromHeight(_localHeaderExtent ?? 300),
+                  // 垫页面背景色：半开时内容会从透明头部后穿过
+                  child: ColoredBox(
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    child: headerColumn,
+                  ),
+                ),
+              ),
+              if (filtered.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(child: _buildGridEmptyContent(theme)),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                  sliver: SliverMasonryGrid(
+                    gridDelegate: fixedColumns > 0
+                        ? SliverSimpleGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: fixedColumns,
+                          )
+                        : const SliverSimpleGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 240,
+                          ),
+                    mainAxisSpacing: 25,
+                    crossAxisSpacing: 18,
+                    delegate: SliverChildBuilderDelegate(
+                      childCount: filtered.length,
+                      (context, index) =>
+                          _buildAlbumCard(filtered[index], isMobile, settings),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          top: 0,
+          child: Offstage(
+            offstage: true,
+            child: KeyedSubtree(
+              key: _localHeaderMeasureKey,
+              child: headerColumn,
+            ),
+          ),
         ),
       ],
     );
@@ -1138,8 +1273,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return;
     }
     final position = _gridScrollController.position;
+    // 1.99.9 移动端网格进了 CustomScrollView，网格自己的坐标前面还压着
+    // 滚动收起的头部；桌面端恒为 0（_localHeaderExtent 不参与）
+    final headerExtent = _localHeaderExtent ?? 0;
     _gridScrollController.jumpTo(
-      (result.scrollOffset - 24).clamp(0.0, position.maxScrollExtent),
+      (result.scrollOffset - 24 + headerExtent)
+          .clamp(0.0, position.maxScrollExtent),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -1605,27 +1744,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ? settings.mobileGridColumns.toInt()
         : (settings.gridColumns > 0 ? settings.gridColumns.toInt() : 0);
     if (filtered.isEmpty) {
-      final empty = ref.watch(libraryProvider).isEmpty;
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              empty ? '还没有导入任何音声' : '没有找到匹配的音声',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: theme.hintColor,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              empty ? '点击右上角「导入」按钮，选择你的音声文件夹' : '试试其他关键词或清除筛选条件',
-              style: TextStyle(fontSize: 12, color: theme.hintColor),
-            ),
-          ],
-        ),
-      );
+      return Center(child: _buildGridEmptyContent(theme));
     }
     return MasonryGridView.builder(
       controller: _gridScrollController,
@@ -1645,38 +1764,64 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       mainAxisSpacing: 25,
       crossAxisSpacing: 18,
       itemCount: filtered.length,
-      itemBuilder: (context, index) {
-        final album = filtered[index];
-        final isSelected = _multiIds.contains(album.id);
-        return AlbumCard(
-          key: album.id == _locateTargetId ? _locateCardKey : null,
-          album: album,
-          multiMode: _multiMode,
-          selected: isSelected,
-          showScrapedTags: settings.showScrapedTags,
-          highlighted: album.id == _highlightedAlbumId,
-          onTap: () {
-            if (_multiMode) {
-              setState(() {
-                isSelected
-                    ? _multiIds.remove(album.id)
-                    : _multiIds.add(album.id);
-              });
-            } else if (_view == '最近播放') {
-              // 最近播放视图（1.99.3）：点卡即从断点续播 —— 这个视图的意义
-              // 就是少一次点击；详情走右键 / 长按菜单
-              _resumeAlbum(album);
-            } else if (isMobile) {
-              // 1.56 移动端：点击卡片进入全屏详情页；1.77 接收胶囊回传筛选
-              _openMobileDetail(album.id);
-            } else {
-              // 桌面端：打开右侧抽屉
-              setState(() => _detailAlbum = album);
-            }
-          },
-          onContextMenu: (position) => _showContextMenu(album, position),
-        );
+      itemBuilder: (context, index) =>
+          _buildAlbumCard(filtered[index], isMobile, settings),
+    );
+  }
+
+  /// 单张专辑卡的装配（box 网格与移动端 sliver 网格共用，1.99.9）
+  Widget _buildAlbumCard(Album album, bool isMobile, AppSettings settings) {
+    final isSelected = _multiIds.contains(album.id);
+    return AlbumCard(
+      key: album.id == _locateTargetId ? _locateCardKey : null,
+      album: album,
+      multiMode: _multiMode,
+      selected: isSelected,
+      showScrapedTags: settings.showScrapedTags,
+      highlighted: album.id == _highlightedAlbumId,
+      onTap: () {
+        if (_multiMode) {
+          setState(() {
+            isSelected
+                ? _multiIds.remove(album.id)
+                : _multiIds.add(album.id);
+          });
+        } else if (_view == '最近播放') {
+          // 最近播放视图（1.99.3）：点卡即从断点续播 —— 这个视图的意义
+          // 就是少一次点击；详情走右键 / 长按菜单
+          _resumeAlbum(album);
+        } else if (isMobile) {
+          // 1.56 移动端：点击卡片进入全屏详情页；1.77 接收胶囊回传筛选
+          _openMobileDetail(album.id);
+        } else {
+          // 桌面端：打开右侧抽屉
+          setState(() => _detailAlbum = album);
+        }
       },
+      onContextMenu: (position) => _showContextMenu(album, position),
+    );
+  }
+
+  /// 网格空态文案（box 网格与移动端 sliver 共用，1.99.9）
+  Widget _buildGridEmptyContent(ThemeData theme) {
+    final empty = ref.watch(libraryProvider).isEmpty;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          empty ? '还没有导入任何音声' : '没有找到匹配的音声',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: theme.hintColor,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          empty ? '点击右上角「导入」按钮，选择你的音声文件夹' : '试试其他关键词或清除筛选条件',
+          style: TextStyle(fontSize: 12, color: theme.hintColor),
+        ),
+      ],
     );
   }
 
