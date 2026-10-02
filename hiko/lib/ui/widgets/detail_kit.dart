@@ -601,6 +601,53 @@ class HikoSegmentedTabs extends StatelessWidget {
   }
 }
 
+/// 曲名展示清洗（1.99.12）：剥掉与左侧序号列重复的 `Track01_` 类半角前缀，
+/// 长中文标题省出的宽度通常正好让两行放下。只改显示不改数据；
+/// 剥完为空（名字本身就叫 Track01）时保留原名。
+final RegExp _trackPrefixRegex =
+    RegExp(r'^\s*track\s*\d{1,4}[\s_\-.]+', caseSensitive: false);
+
+String hikoTrackDisplayName(String name) {
+  final stripped = name.replaceFirst(_trackPrefixRegex, '');
+  return stripped.isEmpty ? name : stripped;
+}
+
+/// 曲目行内标题：默认最多两行，点标题展开全文、再点收起（1.99.12）。
+/// 点标题不再触发行播放（内层手势赢过行 InkWell）——播放仍走左侧圆钮。
+class _ExpandableTrackTitle extends StatefulWidget {
+  const _ExpandableTrackTitle({required this.name, required this.style});
+
+  final String name;
+  final TextStyle style;
+
+  @override
+  State<_ExpandableTrackTitle> createState() => _ExpandableTrackTitleState();
+}
+
+class _ExpandableTrackTitleState extends State<_ExpandableTrackTitle> {
+  bool _expanded = false;
+
+  @override
+  void didUpdateWidget(covariant _ExpandableTrackTitle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.name != widget.name) _expanded = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _expanded = !_expanded),
+      child: Text(
+        widget.name,
+        maxLines: _expanded ? null : 2,
+        overflow: _expanded ? null : TextOverflow.ellipsis,
+        style: widget.style,
+      ),
+    );
+  }
+}
+
 /// 详情页曲目行：圆形播放/暂停键 + 两位序号 + 标题 + 时长。
 ///
 /// 本地与在线共用同一套视觉（1.91.0 抽出）。[indent] 供在线按目录层级缩进，
@@ -710,12 +757,9 @@ class HikoTrackRow extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  name,
-                  // 两行（1.99.10）：长日文标题单行截断在窄面板/移动端基本
-                  // 看不到全名，放两行后 ellipsis 只兜底超长尾巴
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                child: _ExpandableTrackTitle(
+                  // 展示名剥掉 TrackNN_ 前缀（1.99.12）；两行 + 点标题展开全文
+                  name: hikoTrackDisplayName(name),
                   style: TextStyle(
                     fontSize: (titleFontSize ?? 12) * textScale,
                     color: color,

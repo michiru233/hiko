@@ -1187,9 +1187,10 @@ class _FolderRowState extends State<_FolderRow> {
                 const Icon(Icons.folder_rounded, size: 15, color: hikoRatingColor),
                 const SizedBox(width: 8),
                 Expanded(
+                  // 两行（1.99.12）：目录名与曲名同样会被挤截断
                   child: Text(
                     widget.title,
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 12 * textScale,

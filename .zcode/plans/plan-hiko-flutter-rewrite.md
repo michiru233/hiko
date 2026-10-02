@@ -3177,3 +3177,13 @@ Release: https://github.com/michiru233/hiko/releases/tag/v1.99.5
 - 任务书事实修正：macOS 菜单栏本无「重新扫描」入口，拍板第 2 条无对象（进度文件已记录）。
 
 **版本**：`1.99.11+124`；Release：`hiko-v1.99.11-android.apk` + `hiko-v1.99.11-macos.zip` → https://github.com/michiru233/hiko/releases/tag/v1.99.11 。本版新增待裁决 1 条（测试机械更新豁免追认）。
+
+---
+
+## 1.99.12（2026-10-02）：中文曲名显示——剥 Track 前缀 + 点曲名展开全文 + 目录名两行
+
+用户反馈：两行对日文标题够用，长中文标题（普遍以 `Track01_` 类半角前缀开头，与序号列重复）仍被截。裁决：剥离 Track 前缀（显示层）+ 点曲名展开全文 + 目录名同样允许两行。
+
+- `detail_kit.dart`：新增 `hikoTrackDisplayName()`——剥 `^\s*track\s*\d{1,4}[\s_\-.]+` 前缀（大小写不敏感、多分隔符识别、剥完为空保留原名、只剥第一个）；`HikoTrackRow` 标题改 `_ExpandableTrackTitle`（默认两行，点标题展开全文/再点收起，换曲名重置；点标题不再触发行播放，播放仍走左侧圆钮）。
+- `online_detail_panel.dart` `_FolderRow`：目录名 `maxLines: 1→2`。
+- 单测 +6（`test/ui/track_display_test.dart`）；`flutter test` **610 passed / 2 skipped**。
