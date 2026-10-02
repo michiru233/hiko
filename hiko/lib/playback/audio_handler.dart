@@ -211,13 +211,14 @@ class HikoAudioHandler extends BaseAudioHandler with SeekHandler {
 
   @override
   Future<void> fastForward() async {
-    final pos = _controller.state.position + 15.0;
+    final pos = _controller.state.position + _controller.seekStep;
     await _controller.seek(pos);
   }
 
   @override
   Future<void> rewind() async {
-    final pos = (_controller.state.position - 15.0).clamp(0.0, double.infinity);
+    final pos =
+        (_controller.state.position - _controller.seekStep).clamp(0.0, double.infinity);
     await _controller.seek(pos.toDouble());
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/settings_store.dart';
 import '../playback/playback_controller.dart';
+import 'screens/online_screen.dart';
 
 /// 焦点落在输入框（EditableText 及其后代）内时返回 true。
 /// 顶层的可单测守卫：Shortcuts 在焦点链祖先上先于文本输入判定，
@@ -35,11 +36,17 @@ class BackIntent extends Intent {
   const BackIntent();
 }
 
+/// 快捷键 Intent：聚焦在线页搜索框（Cmd/Ctrl+F，1.99.13）
+class FocusSearchIntent extends Intent {
+  const FocusSearchIntent();
+}
+
 /// 全局快捷键（1.86）：挂在 MaterialApp.builder——Navigator 之上，
 /// 详情页 / 全屏播放页 / 对话框打开时同样生效。此前这些键只接在
 /// HomeScreen 内部，push 出去的页面全部收不到，是"mac 没快捷键"的根因。
 /// 空格=播放/暂停；←→=快退/快进（步长=设置里的快进秒数）；↑↓=切曲；
-/// Esc=返回上一级（pop 最顶层路由，无路由可退时 no-op）。
+/// Esc=返回上一级（pop 最顶层路由，无路由可退时 no-op）；
+/// Cmd/Ctrl+F=聚焦在线页搜索框（唯一常驻搜索入口，本地搜索 1.64.0 已移除）。
 class HikoGlobalShortcuts extends ConsumerWidget {
   const HikoGlobalShortcuts({
     super.key,
@@ -63,6 +70,10 @@ class HikoGlobalShortcuts extends ConsumerWidget {
         SingleActivator(LogicalKeyboardKey.arrowUp): StepTrackIntent(-1),
         SingleActivator(LogicalKeyboardKey.arrowDown): StepTrackIntent(1),
         SingleActivator(LogicalKeyboardKey.escape): BackIntent(),
+        SingleActivator(LogicalKeyboardKey.keyF, meta: true):
+            FocusSearchIntent(),
+        SingleActivator(LogicalKeyboardKey.keyF, control: true):
+            FocusSearchIntent(),
       },
       child: Actions(
         actions: {
@@ -98,6 +109,14 @@ class HikoGlobalShortcuts extends ConsumerWidget {
           BackIntent: CallbackAction<BackIntent>(
             onInvoke: (_) {
               navigatorKey.currentState?.maybePop();
+              return null;
+            },
+          ),
+          FocusSearchIntent: CallbackAction<FocusSearchIntent>(
+            onInvoke: (_) {
+              // 不做 _typing 拦截：编辑任何文本时按 Cmd+F 也应跳去搜索
+              final node = ref.read(onlineSearchFocusProvider);
+              if (node.context != null) node.requestFocus();
               return null;
             },
           ),

@@ -228,10 +228,27 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     );
   }
 
+  /// 播完当前专辑停:专辑边界(跨专辑/回绕/队列尽头)处停下,专辑内正常顺延
+  void setSleepEndOfAlbum() {
+    _sleep.startEndOfAlbum();
+    state = state.copyWith(
+      sleepMode: SleepTimerMode.endOfAlbum,
+      sleepRemaining: null,
+    );
+  }
+
   /// 关闭睡眠定时并恢复常规音量
   Future<void> setSleepOff() async {
     _sleep.cancel();
     state = state.copyWith(sleepMode: SleepTimerMode.off, sleepRemaining: null);
+    await syncVolume();
+  }
+
+  /// 睡眠定时触发停止:复位定时状态、暂停并恢复常规音量
+  Future<void> _sleepStop() async {
+    _sleep.cancel();
+    state = state.copyWith(sleepMode: SleepTimerMode.off, sleepRemaining: null);
+    await pause();
     await syncVolume();
   }
 
@@ -427,17 +444,14 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     state = state.copyWith(mode: mode);
   }
 
+  /// 快进/快退步长（秒）：系统媒体通知（fastForward/rewind）与全局快捷键共用
+  double get seekStep => _ref.read(settingsProvider).seekStepSeconds;
+
   /// 切曲（对应旧版 stepTrack 逻辑）
   Future<void> _step(int dir) async {
     // 睡眠定时拦截在切歌路径：「播完当前曲停」/ 倒计时已到点 → 停止,下一首绝不起播
     if (SleepTimerLogic.shouldBlockTrackSwitch(_sleep.state)) {
-      _sleep.cancel();
-      state = state.copyWith(
-        sleepMode: SleepTimerMode.off,
-        sleepRemaining: null,
-      );
-      await pause();
-      await syncVolume();
+      await _sleepStop();
       return;
     }
     final s = state;
@@ -459,6 +473,19 @@ class PlaybackController extends StateNotifier<PlaybackState> {
       mode: s.mode,
       dir: dir,
     );
+    // 「播完当前专辑停」：目标已离开当前专辑（跨专辑/回绕/队列尽头）→ 停
+    if (SleepTimerLogic.shouldBlockAlbumAdvance(
+      s: _sleep.state,
+      currentAlbumId: album.id,
+      queueIndex: s.queueIndex,
+      trackCount: album.tracks.length,
+      dir: dir,
+      targetAlbumId: target?.$1.id,
+      targetIndex: target?.$2,
+    )) {
+      await _sleepStop();
+      return;
+    }
     if (target == null) return;
     await playAlbum(target.$1, index: target.$2);
   }
@@ -477,7 +504,33 @@ class PlaybackController extends StateNotifier<PlaybackState> {
       dir: dir,
     );
     if (target != null) {
+      // 「播完当前专辑停」：list 模式最后一轨回绕第 0 轨同样算离开专辑
+      if (SleepTimerLogic.shouldBlockAlbumAdvance(
+        s: _sleep.state,
+        currentAlbumId: album.id,
+        queueIndex: s.queueIndex,
+        trackCount: album.tracks.length,
+        dir: dir,
+        targetAlbumId: target.$1.id,
+        targetIndex: target.$2,
+      )) {
+        await _sleepStop();
+        return;
+      }
       await playAlbum(target.$1, index: target.$2);
+      return;
+    }
+    // 「播完当前专辑停」：专辑循环越界（无目标）→ 停，不请在线层取相邻作品
+    if (SleepTimerLogic.shouldBlockAlbumAdvance(
+      s: _sleep.state,
+      currentAlbumId: album.id,
+      queueIndex: s.queueIndex,
+      trackCount: album.tracks.length,
+      dir: dir,
+      targetAlbumId: null,
+      targetIndex: null,
+    )) {
+      await _sleepStop();
       return;
     }
     if (s.mode != PlaybackMode.album) return;

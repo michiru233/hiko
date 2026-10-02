@@ -491,7 +491,7 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
       ],
     );
   }
-  // ---- 睡眠定时按钮（菜单：关闭 / 15/30/60 分钟 / 播完当前曲）----
+  // ---- 睡眠定时按钮（菜单：关闭 / 15/30/60 分钟 / 播完当前曲 / 播完当前专辑）----
   Widget _buildSleepButton(ThemeData theme, PlaybackState state) {
     final active = state.sleepMode != SleepTimerMode.off;
     final remainingLabel = state.sleepRemaining == null
@@ -502,6 +502,7 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
       SleepTimerMode.timed =>
         '睡眠定时：剩余 ${remainingLabel ?? '--'}（到期淡出停止）',
       SleepTimerMode.endOfTrack => '睡眠定时：播完当前曲停止',
+      SleepTimerMode.endOfAlbum => '睡眠定时：播完当前专辑停止',
     };
     return MenuAnchor(
       style: MenuStyle(
@@ -545,6 +546,9 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
           ),
         _sleepOption(theme, '播完当前曲', state.sleepMode == SleepTimerMode.endOfTrack, () {
           ref.read(playbackProvider.notifier).setSleepEndOfTrack();
+        }),
+        _sleepOption(theme, '播完当前专辑', state.sleepMode == SleepTimerMode.endOfAlbum, () {
+          ref.read(playbackProvider.notifier).setSleepEndOfAlbum();
         }),
       ],
     );

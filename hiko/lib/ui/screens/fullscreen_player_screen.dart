@@ -1115,58 +1115,103 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     );
   }
 
-  /// 睡眠定时对话框
+  /// 睡眠定时对话框：预设档 + 自定义分钟滑杆（松手生效）+ 曲终/专辑终停
   Future<void> _showSleepTimerDialog(ThemeData theme, bool isDark) async {
-    final options = [5, 10, 15, 30, 45, 60];
     final state = ref.read(playbackProvider);
     final sleepMode = state.sleepMode;
     final sleepRemaining = state.sleepRemaining;
+    int customMin = 30;
 
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('睡眠定时', style: TextStyle(fontSize: 16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (sleepMode == SleepTimerMode.timed && sleepRemaining != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Text(
-                  '剩余 ${(sleepRemaining.inMinutes + 1)} 分钟',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: theme.colorScheme.primary,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('睡眠定时', style: TextStyle(fontSize: 16)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (sleepMode == SleepTimerMode.timed && sleepRemaining != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Text(
+                    '剩余 ${(sleepRemaining.inMinutes + 1)} 分钟',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: theme.colorScheme.primary,
+                    ),
                   ),
                 ),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final min in const [5, 10, 15, 30, 45, 60])
+                    ElevatedButton(
+                      onPressed: () {
+                        ref.read(playbackProvider.notifier).setSleepMinutes(min);
+                        Navigator.pop(context);
+                        showHikoToast(context, '已设置 $min 分钟后停止播放');
+                      },
+                      child: Text('$min 分钟'),
+                    ),
+                ],
               ),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final min in options)
-                  ElevatedButton(
-                    onPressed: () {
-                      ref.read(playbackProvider.notifier).setSleepMinutes(min);
-                      Navigator.pop(context);
-                      showHikoToast(context, '已设置 $min 分钟后停止播放');
-                    },
-                    child: Text('$min 分钟'),
-                  ),
-              ],
-            ),
-            if (sleepMode != SleepTimerMode.off) ...[
               const SizedBox(height: 12),
-              TextButton(
-                onPressed: () {
-                  ref.read(playbackProvider.notifier).setSleepOff();
-                  Navigator.pop(context);
-                  showHikoToast(context, '已取消定时');
-                },
-                child: const Text('取消定时'),
+              Text(
+                '自定义：$customMin 分钟',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: theme.colorScheme.primary,
+                ),
               ),
+              Slider(
+                value: customMin.toDouble(),
+                min: 5,
+                max: 240,
+                divisions: 47,
+                label: '$customMin 分钟',
+                onChanged: (v) => setDialogState(() => customMin = v.round()),
+                onChangeEnd: (v) {
+                  ref
+                      .read(playbackProvider.notifier)
+                      .setSleepMinutes(v.round());
+                  Navigator.pop(context);
+                  showHikoToast(context, '已设置 ${v.round()} 分钟后停止播放');
+                },
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TextButton(
+                    onPressed: () {
+                      ref.read(playbackProvider.notifier).setSleepEndOfTrack();
+                      Navigator.pop(context);
+                      showHikoToast(context, '将在播完当前曲后停止');
+                    },
+                    child: const Text('播完当前曲'),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      ref.read(playbackProvider.notifier).setSleepEndOfAlbum();
+                      Navigator.pop(context);
+                      showHikoToast(context, '将在播完当前专辑后停止');
+                    },
+                    child: const Text('播完当前专辑'),
+                  ),
+                ],
+              ),
+              if (sleepMode != SleepTimerMode.off) ...[
+                TextButton(
+                  onPressed: () {
+                    ref.read(playbackProvider.notifier).setSleepOff();
+                    Navigator.pop(context);
+                    showHikoToast(context, '已取消定时');
+                  },
+                  child: const Text('取消定时'),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

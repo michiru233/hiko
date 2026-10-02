@@ -92,5 +92,76 @@ void main() {
         isFalse,
       );
     });
+
+    test('播完当前专辑:不拦截专辑内顺延,只拦专辑边界', () {
+      final engine = SleepTimerEngine();
+      engine.startEndOfAlbum();
+      expect(engine.state.mode, SleepTimerMode.endOfAlbum);
+      // 专辑内顺延不拦切歌
+      expect(
+        SleepTimerLogic.shouldBlockTrackSwitch(engine.state),
+        isFalse,
+      );
+
+      bool block(String? targetAlbumId, int? targetIndex,
+              {int queueIndex = 0, int trackCount = 5, int dir = 1}) =>
+          SleepTimerLogic.shouldBlockAlbumAdvance(
+            s: engine.state,
+            currentAlbumId: 'RJ123',
+            queueIndex: queueIndex,
+            trackCount: trackCount,
+            dir: dir,
+            targetAlbumId: targetAlbumId,
+            targetIndex: targetIndex,
+          );
+
+      // 专辑内顺延 → 放行
+      expect(block('RJ123', 1), isFalse);
+      expect(block('RJ123', 3, queueIndex: 2), isFalse);
+      // 最后一轨 → 回绕第 0 轨(list 模式) → 拦
+      expect(block('RJ123', 0, queueIndex: 4, trackCount: 5), isTrue);
+      // 单轨专辑顺延 → 拦
+      expect(block('RJ123', 0, queueIndex: 0, trackCount: 1), isTrue);
+      // 跨专辑(album 模式) → 拦
+      expect(block('RJ456', 0), isTrue);
+      // 队列尽头(无目标) → 拦
+      expect(block(null, null), isTrue);
+      // 反向(dir<0)回绕到最后一轨不算「播完」 → 放行
+      expect(block('RJ123', 4,
+          queueIndex: 0, trackCount: 5, dir: -1), isFalse);
+
+      engine.cancel();
+      expect(engine.state.mode, SleepTimerMode.off);
+      expect(
+        SleepTimerLogic.shouldBlockAlbumAdvance(
+          s: engine.state,
+          currentAlbumId: 'RJ123',
+          queueIndex: 4,
+          trackCount: 5,
+          dir: 1,
+          targetAlbumId: 'RJ123',
+          targetIndex: 0,
+        ),
+        isFalse,
+      );
+    });
+
+    test('倒计时模式不触发专辑边界拦截', () {
+      fakeAsync((async) {
+        final s = SleepTimerLogic.startTimed(30);
+        expect(
+          SleepTimerLogic.shouldBlockAlbumAdvance(
+            s: s,
+            currentAlbumId: 'RJ123',
+            queueIndex: 4,
+            trackCount: 5,
+            dir: 1,
+            targetAlbumId: 'RJ456',
+            targetIndex: 0,
+          ),
+          isFalse,
+        );
+      });
+    });
   });
 }

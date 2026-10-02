@@ -29,6 +29,15 @@ const List<(OnlineSort, String)> _onlinePresets = [
   (OnlineSort.latestPreset, '最新'),
 ];
 
+/// 在线页搜索框焦点（1.99.13）：Cmd/Ctrl+F 全局快捷键聚焦用。
+/// App 级单例——OnlineScreen 随视图切换挂载/卸载，节点本身常驻，
+/// global_shortcuts 侧靠 `node.context != null` 判断在线页是否在场。
+final onlineSearchFocusProvider = Provider<FocusNode>((ref) {
+  final node = FocusNode();
+  ref.onDispose(node.dispose);
+  return node;
+});
+
 /// 在线音声视图（Kikoeru / asmr.one）。
 ///
 /// 数据完全来自远程服务，不进本地库——在线专辑只在播放时构造为内存态 `Album`。
@@ -371,6 +380,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
       height: 36,
       child: TextField(
         controller: _searchController,
+        focusNode: ref.watch(onlineSearchFocusProvider),
         textInputAction: TextInputAction.search,
         style: const TextStyle(fontSize: 12),
         onSubmitted: (value) => unawaited(_submitSearch(value)),

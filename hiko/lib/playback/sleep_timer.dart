@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 
-/// 睡眠定时模式:关闭 / 倒计时(15/30/60 分钟) / 播完当前曲停
-enum SleepTimerMode { off, timed, endOfTrack }
+/// 睡眠定时模式:关闭 / 倒计时(任意分钟) / 播完当前曲停 / 播完当前专辑停
+enum SleepTimerMode { off, timed, endOfTrack, endOfAlbum }
 
 /// 睡眠定时状态(仅内存,不跨会话持久化)
 class SleepTimerState {
@@ -28,6 +28,9 @@ class SleepTimerLogic {
   static const SleepTimerState endOfTrack =
       SleepTimerState(mode: SleepTimerMode.endOfTrack);
 
+  static const SleepTimerState endOfAlbum =
+      SleepTimerState(mode: SleepTimerMode.endOfAlbum);
+
   /// 剩余时间(off / endOfTrack 返回 zero,由调用方区分展示)
   static Duration remaining(SleepTimerState s) =>
       s.deadline?.difference(clock.now()) ?? Duration.zero;
@@ -47,8 +50,29 @@ class SleepTimerLogic {
 
   /// 切歌拦截:播完当前曲停,或倒计时已到点 → 停止而非切下一首。
   /// 在 PlaybackController 切歌路径调用,保证下一首绝不起播。
+  /// endOfAlbum 不在此拦截——专辑内正常顺延,只在专辑边界另判。
   static bool shouldBlockTrackSwitch(SleepTimerState s) =>
       s.mode == SleepTimerMode.endOfTrack || expired(s);
+
+  /// 专辑边界拦截:「播完当前专辑停」且目标已离开当前专辑 → 停止。
+  /// 目标由 QueueRules.step 给出;回绕(list 模式最后一轨 → 第 0 轨)、
+  /// 跨专辑(album 模式)与无目标(队列尽头)都算离开。
+  /// 注意 shuffle 模式永远在专辑内随机、不会触发本判定——随机场景请用
+  /// 倒计时或「播完当前曲停」(ponytail: 不做 shuffle 已播集合追踪)。
+  static bool shouldBlockAlbumAdvance({
+    required SleepTimerState s,
+    required String currentAlbumId,
+    required int queueIndex,
+    required int trackCount,
+    required int dir,
+    required String? targetAlbumId,
+    required int? targetIndex,
+  }) {
+    if (s.mode != SleepTimerMode.endOfAlbum) return false;
+    if (targetAlbumId == null) return true;
+    if (targetAlbumId != currentAlbumId) return true;
+    return dir > 0 && targetIndex == 0 && queueIndex == trackCount - 1;
+  }
 }
 
 /// 计时引擎:倒计时期间周期回调(剩余时间 + 淡出系数),到点回调 onExpired。
@@ -76,6 +100,12 @@ class SleepTimerEngine {
     _ticker?.cancel();
     _ticker = null;
     state = SleepTimerLogic.endOfTrack;
+  }
+
+  void startEndOfAlbum() {
+    _ticker?.cancel();
+    _ticker = null;
+    state = SleepTimerLogic.endOfAlbum;
   }
 
   void cancel() {

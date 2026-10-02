@@ -3187,3 +3187,32 @@ Release: https://github.com/michiru233/hiko/releases/tag/v1.99.5
 - `detail_kit.dart`：新增 `hikoTrackDisplayName()`——剥 `^\s*track\s*\d{1,4}[\s_\-.]+` 前缀（大小写不敏感、多分隔符识别、剥完为空保留原名、只剥第一个）；`HikoTrackRow` 标题改 `_ExpandableTrackTitle`（默认两行，点标题展开全文/再点收起，换曲名重置；点标题不再触发行播放，播放仍走左侧圆钮）。
 - `online_detail_panel.dart` `_FolderRow`：目录名 `maxLines: 1→2`。
 - 单测 +6（`test/ui/track_display_test.dart`）；`flutter test` **610 passed / 2 skipped**。
+
+---
+
+## 1.99.13（2026-10-02）：睡眠定时补强 + 媒体通知步长对齐 + Cmd/Ctrl+F 聚焦搜索
+
+批次计划书 `.zcode/plans/plan-hiko-feature-batch-2026-10.md` V1（用户点名 7 项改进分 4 版，本版为第一版快赢包）。批次级裁决：备份不含 JWT 令牌；整包下载由用户勾选内容；离线入口挂在线收藏页。
+
+### 改动一：睡眠定时补强（`sleep_timer.dart` / `playback_controller.dart`）
+
+- `SleepTimerMode` 新增 `endOfAlbum`（播完当前专辑停）；引擎加 `startEndOfAlbum()`（无 ticker，同 endOfTrack）。
+- 拦截判定抽纯函数 `SleepTimerLogic.shouldBlockAlbumAdvance`：目标离开当前专辑（跨专辑/队列尽头/list 模式最后一轨回绕第 0 轨）→ 拦；专辑内顺延放行。**shuffle 模式永远在专辑内随机、不触发本判定**（ponytail：不做已播集合追踪，随机场景用倒计时/曲终停）。
+- controller：`setSleepEndOfAlbum()`；`_step`/`_stepOnline` 在 `QueueRules.step` 出目标后做边界判定；「播完当前曲」路径的停止逻辑抽 `_sleepStop()` 三处共用。
+- 全屏播放页定时对话框：预设 6 档保留 + 自定义分钟滑杆（5–240 步进 5，松手 `onChangeEnd` 生效）+ 「播完当前曲」「播完当前专辑」两键；桌面播放栏睡眠菜单加「播完当前专辑」项 + tooltip 穷举补分支。
+
+### 改动二：媒体通知快进/快退同步 seek 步长（`audio_handler.dart`）
+
+- fastForward/rewind 硬编码 ±15s → `_controller.seekStep`（新 getter，直读 settings `seekStepSeconds`）；全局快捷键 SeekIntent 本就读同一设置值，两路语义归一。
+
+### 改动三：Cmd/Ctrl+F 聚焦在线页搜索框（`global_shortcuts.dart` / `online_screen.dart`）
+
+- 本地搜索框 1.64.0 已移除，唯一常驻搜索入口在在线页 → 快捷键聚焦在线搜索框。app 级 `onlineSearchFocusProvider` 持有 FocusNode（OnlineScreen 随视图挂载/卸载、节点常驻），global_shortcuts 侧 `node.context != null` 判在场，不在场 no-op；不做 _typing 拦截（编辑中按 Cmd+F 也跳搜索）。
+
+### 测试与验证
+
+- 单测 +6：sleep_timer_test 补专辑边界拦截 7 断言组（专辑内放行/回绕拦/单轨拦/跨专辑拦/无目标拦/反向放行/取消后放行）+ 倒计时不误拦；新建 `test/ui/search_focus_shortcut_test.dart` 2 条（meta+F 聚焦生效、节点不在树中安全 no-op）。`flutter test` **614 passed / 2 skipped**（基线 610）；analyze 基线持平（43=43）。
+- 模拟器实测（kikoeru_test）：全量扫描选 Download/hiko-scan 入库 8 张 → 播 RJ00000001（3 轨×3min）→ 定时对话框拖自定义滑杆松手生效（显示剩余 105 分钟、取消定时按钮出现）→ 取消后设「播完当前专辑」→ 第 1→3 轨顺延不拦 → 第 3 轨拖到 3:00 播完**自动暂停、停留原地不回绕不切专辑** ✓；媒体通知正常显示（暂停态）。
+- 验证边界：Android 12+ 通知栏紧凑媒体控件不展示 seekForward/Backward 按钮，步长改动为设置值直通（与快捷键同源），实机系统若展示该按钮即按设置步长执行。
+
+**版本**：`1.99.13+126`；Release：`hiko-v1.99.13-android.apk`（70.5MB）+ `hiko-v1.99.13-macos.zip`（34.2MB）→ 见批次交付。本版无新增待裁决。
