@@ -56,6 +56,17 @@ abstract class PlatformService {
   /// - Android：调起系统安装器（APK）；
   /// - 桌面：在 Finder / 资源管理器中定位文件，由用户手动替换应用。
   Future<void> openDownloadedUpdate(String filePath);
+
+  /// 导出备份文件（1.99.14）：桌面保存对话框 / Android SAF CREATE_DOCUMENT。
+  /// 用户取消返回 null；成功返回落点（路径或 content URI）。
+  Future<String?> exportBackup({
+    required String defaultFileName,
+    required String content,
+  });
+
+  /// 选择并读取备份文件（桌面打开对话框 / Android SAF OPEN_DOCUMENT）。
+  /// 取消返回 null；返回文件全文。
+  Future<String?> importBackup();
 }
 
 class DesktopPlatformService implements PlatformService {
@@ -219,6 +230,30 @@ class DesktopPlatformService implements PlatformService {
     } else if (Platform.isWindows) {
       await Process.run('explorer', ['/select,', filePath]);
     }
+  }
+
+  /// 桌面备份导出：保存对话框 + 直接写文件
+  @override
+  Future<String?> exportBackup({
+    required String defaultFileName,
+    required String content,
+  }) async {
+    final location = await getSaveLocation(suggestedName: defaultFileName);
+    if (location == null) return null;
+    final path = location.path.toLowerCase().endsWith('.json')
+        ? location.path
+        : '${location.path}.json';
+    await File(path).writeAsString(content);
+    return path;
+  }
+
+  /// 桌面备份导入：打开对话框（json 过滤）+ 读全文
+  @override
+  Future<String?> importBackup() async {
+    const typeGroup = XTypeGroup(label: 'Hiko 备份（JSON）', extensions: ['json']);
+    final file = await openFile(acceptedTypeGroups: [typeGroup]);
+    if (file == null) return null;
+    return file.readAsString();
   }
 }
 

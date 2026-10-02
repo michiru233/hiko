@@ -29,6 +29,8 @@ class HikoPlugin : MethodChannel.MethodCallHandler {
         const val CHANNEL = "top.voicehub.hiko/plugin"
         private const val REQ_IMPORT_TREE = 1001
         private const val REQ_POST_NOTIFICATIONS = 1002
+        private const val REQ_CREATE_BACKUP = 1003
+        private const val REQ_OPEN_BACKUP = 1004
     }
 
     private var channel: MethodChannel? = null
@@ -36,6 +38,9 @@ class HikoPlugin : MethodChannel.MethodCallHandler {
     private var pendingImport: MethodChannel.Result? = null
     private var pendingKnown: Set<String> = emptySet()
     private var pendingPermission: MethodChannel.Result? = null
+    private var pendingBackupCreate: MethodChannel.Result? = null
+    private var pendingBackupOpen: MethodChannel.Result? = null
+    private var pendingBackupContent: String? = null
 
     fun register(activity: Activity, engine: FlutterEngine) {
         this.activity = activity
@@ -59,6 +64,8 @@ class HikoPlugin : MethodChannel.MethodCallHandler {
             "shareLibrary" -> shareLibrary(result)
             "requestNotificationPermission" -> requestNotificationPermission(result)
             "installApk" -> installApk(call, result)
+            "exportBackup" -> exportBackup(call, result)
+            "importBackup" -> importBackup(result)
             else -> result.notImplemented()
         }
     }
@@ -363,6 +370,77 @@ class HikoPlugin : MethodChannel.MethodCallHandler {
             result.success(mapOf("ok" to true))
         } catch (e: Exception) {
             result.error("share-failed", e.message, null)
+        }
+    }
+
+    // ---- 备份导出/导入（1.99.14）：SAF CREATE/OPEN_DOCUMENT，单 JSON 文件 ----
+
+    private fun exportBackup(call: MethodCall, result: MethodChannel.Result) {
+        val activity = activity
+        if (activity == null) {
+            result.error("no-activity", "Activity 未就绪", null)
+            return
+        }
+        pendingBackupCreate = result
+        pendingBackupContent = call.argument<String>("content")
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+            putExtra(Intent.EXTRA_TITLE, call.argument<String>("name") ?: "hiko-backup.json")
+        }
+        activity.startActivityForResult(intent, REQ_CREATE_BACKUP)
+    }
+
+    private fun importBackup(result: MethodChannel.Result) {
+        val activity = activity
+        if (activity == null) {
+            result.error("no-activity", "Activity 未就绪", null)
+            return
+        }
+        pendingBackupOpen = result
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+        }
+        activity.startActivityForResult(intent, REQ_OPEN_BACKUP)
+    }
+
+    /** MainActivity.onActivityResult 转发 */
+    fun onBackupResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        when (requestCode) {
+            REQ_CREATE_BACKUP -> {
+                val result = pendingBackupCreate
+                pendingBackupCreate = null
+                val uri = data?.data
+                if (resultCode != Activity.RESULT_OK || uri == null) {
+                    result?.success(mapOf("canceled" to true))
+                    return
+                }
+                try {
+                    activity?.contentResolver?.openOutputStream(uri)?.use { os ->
+                        os.write((pendingBackupContent ?: "").toByteArray(Charsets.UTF_8))
+                    }
+                    result?.success(mapOf("canceled" to false, "uri" to uri.toString()))
+                } catch (e: Exception) {
+                    result?.error("backup-write-failed", e.message, null)
+                }
+            }
+            REQ_OPEN_BACKUP -> {
+                val result = pendingBackupOpen
+                pendingBackupOpen = null
+                val uri = data?.data
+                if (resultCode != Activity.RESULT_OK || uri == null) {
+                    result?.success(mapOf("canceled" to true))
+                    return
+                }
+                try {
+                    val content = activity?.contentResolver?.openInputStream(uri)
+                        ?.use { it.readBytes().toString(Charsets.UTF_8) } ?: ""
+                    result?.success(mapOf("canceled" to false, "content" to content))
+                } catch (e: Exception) {
+                    result?.error("backup-read-failed", e.message, null)
+                }
+            }
         }
     }
 }

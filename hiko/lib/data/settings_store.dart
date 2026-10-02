@@ -299,6 +299,15 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kBlockedCreators = 'hiko-online-blocked-creators';
   static const _kNavViews = 'hiko-nav-views';
 
+  /// 备份导出排除的键（1.99.14）：本机路径类设置（跨机无效）
+  /// + JWT 登录令牌（key 归 online_account 管理；用户裁决：令牌不打入备份）。
+  /// 分类键由 backup.dart 走独立字段，同样不进 settings。
+  static const backupExcludedKeys = <String>{
+    _kMusicFolders,
+    _kBackgroundPath,
+    'hiko-online-token',
+  };
+
   static const _validSorts = {
     'recent_desc',
     'recent_asc',

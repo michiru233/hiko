@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:universal_platform/universal_platform.dart';
 
+import '../../data/backup.dart';
+import '../../data/categories_provider.dart';
 import '../../data/library_provider.dart';
 import '../../data/online/online_account.dart';
 import '../../data/online/online_favorites.dart';
@@ -149,6 +151,85 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
 
   Future<void> _reorganizeLibrary() async {
     widget.onReorganizeRequested?.call();
+  }
+
+  /// 备份导出（1.99.14）：库快照 + 分类 + 设置 → 单 JSON 文件
+  Future<void> _exportBackup() async {
+    try {
+      final backup =
+          await HikoBackup.capture(albums: ref.read(libraryProvider));
+      final d = backup.createdAt;
+      String two(int n) => n.toString().padLeft(2, '0');
+      final name =
+          'hiko-backup-v1-${d.year}${two(d.month)}${two(d.day)}.json';
+      final saved = await ref.read(platformServiceProvider).exportBackup(
+            defaultFileName: name,
+            content: backup.encode(),
+          );
+      if (!mounted) return;
+      _toast(saved == null
+          ? '已取消导出'
+          : '备份已导出（${backup.albums.length} 张专辑）');
+    } catch (e) {
+      if (mounted) _toast('导出失败：$e');
+    }
+  }
+
+  /// 备份导入（1.99.14）：校验 → 二次确认 → 写回分类/设置/库 → 热重载
+  Future<void> _importBackup() async {
+    final content = await ref.read(platformServiceProvider).importBackup();
+    if (content == null || !mounted) return;
+
+    final HikoBackup backup;
+    try {
+      backup = HikoBackup.decode(content);
+    } on BackupFormatException catch (e) {
+      _toast('无法导入：${e.message}');
+      return;
+    } catch (e) {
+      _toast('备份文件损坏或结构不正确');
+      return;
+    }
+
+    final theme = Theme.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认导入备份'),
+        content: Text(
+          '备份包含 ${backup.albums.length} 张专辑'
+          '（${backup.createdAt.toString().substring(0, 10)} 导出）。\n\n'
+          '导入将覆盖当前的全部专辑记录、分类与设置（不删除源文件），'
+          '无法撤销。确认继续？',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              '确认导入',
+              style: TextStyle(color: theme.colorScheme.error),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await backup.restoreToPrefs();
+      await ref.read(settingsProvider.notifier).load();
+      await ref.read(categoriesProvider.notifier).load();
+      await ref.read(libraryProvider.notifier).replaceAll(backup.albums);
+      if (!mounted) return;
+      _toast('备份已导入（${backup.albums.length} 张专辑）');
+      if (context.mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) _toast('导入失败：$e');
+    }
   }
 
   void _startIncrementalScan() {
@@ -1276,6 +1357,26 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
         _SettingRow(
           label: '失效记录',
           trailing: _ActionButton(label: '清理失效记录', onTap: _cleanMissing),
+        ),
+        _SettingRow(
+          label: '备份导出',
+          trailing: _ActionButton(label: '导出备份文件', onTap: _exportBackup),
+        ),
+        _SettingRow(
+          label: '备份导入',
+          trailing: _ActionButton(label: '选择备份文件', onTap: _importBackup),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            '备份包含全部专辑（收藏/评分/进度/刮削）、分类与设置；不含登录令牌、封面与本机路径。'
+            '导入会覆盖当前库与设置，本地源文件路径失效时可用「清理失效记录」清理。',
+            style: TextStyle(
+              fontSize: 10.5,
+              height: 1.5,
+              color: theme.hintColor,
+            ),
+          ),
         ),
         _SettingRow(
           label: '库文件位置',

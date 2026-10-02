@@ -37,6 +37,7 @@ class MainActivity : AudioServiceActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         plugin.onImportTreeResult(requestCode, resultCode, data)
+        plugin.onBackupResult(requestCode, resultCode, data)
     }
 
     override fun onRequestPermissionsResult(

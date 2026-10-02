@@ -9,7 +9,10 @@ class CategoriesNotifier extends StateNotifier<List<CategoryItem>> {
   CategoriesNotifier(this._ref) : super(CategoryItem.defaultCategories);
 
   final Ref _ref;
-  static const _kCategories = 'hiko-custom-categories';
+
+  /// 分类持久化键（公开：backup.dart 备份导出/导入共用，1.99.14）
+  static const categoriesPrefKey = 'hiko-custom-categories';
+  static const _kCategories = categoriesPrefKey;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();

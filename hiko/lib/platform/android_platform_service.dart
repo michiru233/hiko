@@ -171,4 +171,28 @@ class AndroidPlatformService implements PlatformService {
   Future<void> openDownloadedUpdate(String filePath) async {
     await _channel.invokeMethod('installApk', {'path': filePath});
   }
+
+  /// 备份导出（1.99.14）：SAF ACTION_CREATE_DOCUMENT，原生写流
+  @override
+  Future<String?> exportBackup({
+    required String defaultFileName,
+    required String content,
+  }) async {
+    final result = Map<String, dynamic>.from(await _channel.invokeMethod(
+      'exportBackup',
+      {'name': defaultFileName, 'content': content},
+    ) as Map);
+    if (result['canceled'] as bool? ?? false) return null;
+    return result['uri'] as String?;
+  }
+
+  /// 备份导入（1.99.14）：SAF ACTION_OPEN_DOCUMENT，原生读全文
+  @override
+  Future<String?> importBackup() async {
+    final result = Map<String, dynamic>.from(
+      await _channel.invokeMethod('importBackup') as Map,
+    );
+    if (result['canceled'] as bool? ?? false) return null;
+    return result['content'] as String?;
+  }
 }

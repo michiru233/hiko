@@ -3216,3 +3216,23 @@ Release: https://github.com/michiru233/hiko/releases/tag/v1.99.5
 - 验证边界：Android 12+ 通知栏紧凑媒体控件不展示 seekForward/Backward 按钮，步长改动为设置值直通（与快捷键同源），实机系统若展示该按钮即按设置步长执行。
 
 **版本**：`1.99.13+126`；Release：`hiko-v1.99.13-android.apk`（70.5MB）+ `hiko-v1.99.13-macos.zip`（34.2MB）→ 见批次交付。本版无新增待裁决。
+
+---
+
+## 1.99.14（2026-10-02）：备份导出/导入（换机迁移）
+
+批次计划书 V2。裁决落地：JWT 令牌不打入备份；封面与本地音频路径不入备份，导入后靠既有「清理失效记录」兜底、不自动清。
+
+### 改动
+
+- **`lib/data/backup.dart`（新）**：`HikoBackup` 单 JSON 格式 `{schemaVersion:1, createdAt, library:{version,albums}, categories, settings}`——库走模型往返（与 library.json 同 schema）；分类读 `CategoriesNotifier.categoriesPrefKey`（公开化）原样带走原样写回；settings 捕获 SharedPreferences 全部 `hiko-*` 前缀键，排除 `SettingsStore.backupExcludedKeys`（音乐目录/背景图两处本机路径 + `hiko-online-token`，裁决）与分类键；`decode` 校验 JSON 合法性/schemaVersion/结构（错误抛 `BackupFormatException` 带可读信息）；`restoreToPrefs` 按值类型（bool/int/num/String/List）写回。
+- **平台层**：`PlatformService` 新增 `exportBackup({defaultFileName, content})` / `importBackup()`。桌面走 file_selector（`getSaveLocation` 补 .json 扩展名 / `openFile` json 过滤）；Android 新增 SAF `ACTION_CREATE_DOCUMENT`/`ACTION_OPEN_DOCUMENT` 通道（`HikoPlugin.kt` exportBackup/importBackup + `onBackupResult` 回调，MainActivity.onActivityResult 转发；原生 openOutputStream/openInputStream 读写）。
+- **设置 → 数据页**：新增「备份导出」「备份导入」两行 + 说明文案（备份范围与覆盖警示）。导入流程：读文件 → `decode` 校验（损坏/版本不符 toast 拒绝）→ 二次确认弹窗（专辑数 + 导出日期 + 覆盖警示）→ `restoreToPrefs` → settings/categories `load()` 热重载 → `libraryProvider.replaceAll` → toast 后关设置弹窗回主界面。
+
+### 测试与验证
+
+- 新建 `test/data/backup_test.dart` 5 条：捕获排除键（令牌/路径/分类/非 hiko- 键）、encode/decode 往返（专辑收藏/评分/进度 + 三种值类型设置）、损坏 JSON/坏版本/非对象结构拒绝、restore 按类型写回（含不支持类型跳过、计数）、清空后 restore→capture 往返一致。`flutter test` **619 passed / 2 skipped**（基线 614）；analyze 基线持平（43=43）。
+- 模拟器实测（kikoeru_test，8 张专辑库）：设置→数据→备份导出 → SAF CREATE_DOCUMENT 默认名 `hiko-backup-v1-20261002.json` → 保存 → adb 拉回核验（8 专辑、无令牌/路径键泄漏）→ 「重置数据库」清空 → 备份导入 → SAF OPEN 选文件 → 二次确认（8 张专辑/导出日期）→ 确认后回主界面 **8 张专辑全部恢复，「继续收听」断点横幅出现**（播放进度随库快照还原）✓。
+- 坑（已修）：一次 Edit 误删换行把 Kotlin 注释与 `shareLibrary` 挤同行致编译红；`as List<Object>?` 对 jsonDecode 产物 cast 失败改 `.toList()`/`.cast<Object>()`；`FileSaveLocation` 无 toLowerCase 需取 `.path`。
+
+**版本**：`1.99.14+127`；Release：`hiko-v1.99.14-android.apk`（70.5MB）+ `hiko-v1.99.14-macos.zip`（34.2MB）。本版无新增待裁决。
