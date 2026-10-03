@@ -76,6 +76,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _importing = false;
   final Set<String> _resumeDismissed = {}; // 本次会话内被 × 关掉的「继续收听」专辑
   final _filterMemo = FilterAlbumsMemo();
+
+  /// 刮削标签点选筛选（1.99.15）：与视图/过滤叠加（AND），空 = 不筛选
+  String? _tagFilter;
   // 1.49「定位当前播放」：网格滚动控制、目标卡 Key 与高亮状态
   final _gridScrollController = ScrollController();
 
@@ -469,6 +472,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             sort: currentSort,
             circleFilter: _personFilterKind == 'circle' ? _personFilterName : null,
             voiceFilter: _personFilterKind == 'voice' ? _personFilterName : null,
+            tagFilter: _tagFilter,
           );
     final theme = Theme.of(context);
     // 移动布局仅 Android 触屏（≤1000px，与旧版桥接层一致）；桌面永远桌面布局
@@ -1258,6 +1262,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         sort: settings.albumSort,
         circleFilter: _personFilterKind == 'circle' ? _personFilterName : null,
         voiceFilter: _personFilterKind == 'voice' ? _personFilterName : null,
+        tagFilter: _tagFilter,
       ),
       albumId: albumId,
       metrics: MasonryLayoutMetrics(
@@ -1485,7 +1490,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          // Wrap（1.99.15）：加标签入口后窄屏一行放不下，允许换行
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               // 筛选组（玻璃胶囊分段）
               Container(
@@ -1549,7 +1558,60 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ],
                 ),
               ),
-              const Spacer(),
+              // 标签筛选入口（1.99.15）：点开聚合列表选标签；激活时高亮显示标签名
+              InkWell(
+                onTap: _showTagFilterDialog,
+                mouseCursor: SystemMouseCursors.click,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 9,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _tagFilter != null
+                        ? (theme.brightness == Brightness.dark
+                            ? Colors.white.withValues(alpha: 0.12)
+                            : Colors.white)
+                        : (theme.brightness == Brightness.dark
+                            ? HikoColors.darkGlassCard
+                            : HikoColors.lightGlassCard),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _tagFilter != null
+                          ? theme.colorScheme.primary
+                          : (theme.brightness == Brightness.dark
+                              ? HikoColors.darkGlassBorderSubtle
+                              : HikoColors.lightGlassBorderSubtle),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.sell_outlined,
+                        size: 12,
+                        color: _tagFilter != null
+                            ? theme.colorScheme.primary
+                            : theme.hintColor,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _tagFilter ?? '标签',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: _tagFilter != null
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: _tagFilter != null
+                              ? theme.colorScheme.primary
+                              : theme.hintColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
               // 排序
               _SortSelector(
                 currentSort: currentSort,
@@ -1557,7 +1619,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 onSelected: (val) =>
                     ref.read(settingsProvider.notifier).setAlbumSort(val),
               ),
-              const SizedBox(width: 14),
               // 多选（玻璃胶囊，与筛选 chips 同底；激活时反色填充）
               InkWell(
                 onTap: () {
@@ -1907,6 +1968,124 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// 手动编辑作品信息（1.99.3）：刮削认错 RJ / 文件名脏数据时手改
   /// 标题、声优、社团。分类走「设置分类」入口（那里有现成的列表 UX）。
+  /// 标签筛选对话框（1.99.15）：基准集 = 当前视图/过滤（不含标签筛选），
+  /// 聚合刮削标签按使用数倒序，顶部搜索过滤，默认展示 Top 30。
+  Future<void> _showTagFilterDialog() async {
+    final albums = ref.read(libraryProvider);
+    final settings = ref.read(settingsProvider);
+    final base = _filterMemo.get(
+      albums: albums,
+      view: _view,
+      filter: _filter,
+      query: _query,
+      sort: settings.albumSort,
+      circleFilter: _personFilterKind == 'circle' ? _personFilterName : null,
+      voiceFilter: _personFilterKind == 'voice' ? _personFilterName : null,
+      tagFilter: null,
+    );
+    final tags = aggregateTags(base);
+    var search = '';
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+        final theme = Theme.of(context);
+        return AlertDialog(
+          title: const Text('按标签筛选', style: TextStyle(fontSize: 16)),
+          content: SizedBox(
+            width: 320,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    hintText: '搜索标签',
+                    prefixIcon: Icon(Icons.search, size: 16),
+                  ),
+                  style: const TextStyle(fontSize: 12),
+                  onChanged: (v) => setDialogState(() => search = v),
+                ),
+                const SizedBox(height: 8),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      if (_tagFilter != null)
+                        ListTile(
+                          dense: true,
+                          leading: Icon(Icons.close,
+                              size: 16, color: theme.colorScheme.error),
+                          title: Text('清除标签筛选（当前：$_tagFilter）',
+                              style: const TextStyle(fontSize: 12)),
+                          onTap: () {
+                            setState(() => _tagFilter = null);
+                            Navigator.pop(context);
+                          },
+                        ),
+                      for (final (name, count) in tags
+                          .where((e) =>
+                              search.isEmpty ||
+                              e.$1.toLowerCase().contains(search.toLowerCase()))
+                          .take(30))
+                        ListTile(
+                          dense: true,
+                          visualDensity: VisualDensity.compact,
+                          title: Text(name,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: name == _tagFilter
+                                    ? FontWeight.w700
+                                    : FontWeight.w400,
+                                color: name == _tagFilter
+                                    ? theme.colorScheme.primary
+                                    : null,
+                              )),
+                          trailing: Text('$count',
+                              style: TextStyle(
+                                  fontSize: 11, color: theme.hintColor)),
+                          onTap: () {
+                            setState(() => _tagFilter = name);
+                            Navigator.pop(context);
+                          },
+                        ),
+                      if (tags.where((e) =>
+                              search.isEmpty ||
+                              e.$1
+                                  .toLowerCase()
+                                  .contains(search.toLowerCase()))
+                          .isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text(
+                            albums.any((a) => a.tags.isNotEmpty)
+                                ? '没有匹配的标签'
+                                : '当前库还没有刮削标签',
+                            style: TextStyle(
+                                fontSize: 12, color: theme.hintColor),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('关闭'),
+            ),
+          ],
+        );
+        },
+      ),
+    );
+  }
+
   /// `updateAlbum` 写回后筛选、统计、详情页都读库，立刻生效。
   Future<void> _showEditAlbumDialog(Album album) async {
     final titleController = TextEditingController(text: album.title);

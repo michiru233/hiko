@@ -360,7 +360,9 @@ class PlaybackController extends StateNotifier<PlaybackState> {
   Future<void> syncVolume({double? baseVolume, double? gain}) async {
     final settings = _ref.read(settingsProvider);
     final vol = (baseVolume ?? settings.volume).clamp(0.0, 1.0);
-    final g = (gain ?? settings.audioGain).clamp(1.0, desktopGainCap());
+    // 增益优先级：显式参数（自检/睡眠恢复）> 当前专辑覆写记忆 > 全局设置
+    final g = (gain ?? state.album?.gainOverride ?? settings.audioGain)
+        .clamp(1.0, desktopGainCap());
     if (Platform.isAndroid) {
       await _syncVolumeAndroid(vol, g);
       return;
@@ -430,9 +432,11 @@ class PlaybackController extends StateNotifier<PlaybackState> {
     await _applyPlaybackRate();
   }
 
-  /// 应用当前设置中的倍速到引擎（换源/设置变更后调用）
+  /// 应用倍速到引擎（换源/设置变更后调用）：
+  /// 当前专辑有覆写记忆（1.99.15）则用覆写，否则用全局设置
   Future<void> _applyPlaybackRate() async {
-    final rate = _ref.read(settingsProvider).playbackRate;
+    final rate = state.album?.playbackRateOverride ??
+        _ref.read(settingsProvider).playbackRate;
     try {
       await _player.setSpeed(rate);
     } catch (e) {
@@ -446,6 +450,59 @@ class PlaybackController extends StateNotifier<PlaybackState> {
 
   /// 快进/快退步长（秒）：系统媒体通知（fastForward/rewind）与全局快捷键共用
   double get seekStep => _ref.read(settingsProvider).seekStepSeconds;
+
+  /// 按专辑记忆倍速（1.99.15）：写覆写、立即生效并落盘。
+  /// 仅本地专辑（在线专辑不入库，ponytail: workId 级存储待有需求再做）。
+  /// 按专辑记忆倍速（1.99.15）：写覆写、立即生效并落盘。
+  /// 覆写必须写在 library 的实例上（updateAlbum 的 transform 内）——
+  /// 播放中 library 侧实例会被进度 copyWith 重建，与播放态实例分叉，
+  /// 只 mutate 播放态实例不会落盘。
+  Future<void> setAlbumPlaybackRate(double rate) async {
+    final album = state.album;
+    if (album == null || album.isOnline) return;
+    Album? latest;
+    await _ref.read(libraryProvider.notifier).updateAlbum(album.id, (a) {
+      a.playbackRateOverride = rate;
+      latest = a;
+      return a;
+    });
+    album.playbackRateOverride = rate; // 播放态旧实例同步，防 UI 读分叉值
+    state = state.copyWith(album: latest ?? album);
+    await _player.setSpeed(rate);
+  }
+
+  /// 按专辑记忆增益（1.99.15）：同上
+  Future<void> setAlbumGain(double gain) async {
+    final album = state.album;
+    if (album == null || album.isOnline) return;
+    Album? latest;
+    await _ref.read(libraryProvider.notifier).updateAlbum(album.id, (a) {
+      a.gainOverride = gain;
+      latest = a;
+      return a;
+    });
+    album.gainOverride = gain;
+    state = state.copyWith(album: latest ?? album);
+    await syncVolume(gain: gain);
+  }
+
+  /// 清除当前专辑的倍速/增益记忆，回到跟随全局
+  Future<void> clearAlbumPlaybackMemory() async {
+    final album = state.album;
+    if (album == null || album.isOnline) return;
+    Album? latest;
+    await _ref.read(libraryProvider.notifier).updateAlbum(album.id, (a) {
+      a.playbackRateOverride = null;
+      a.gainOverride = null;
+      latest = a;
+      return a;
+    });
+    album.playbackRateOverride = null;
+    album.gainOverride = null;
+    state = state.copyWith(album: latest ?? album);
+    await _applyPlaybackRate();
+    await syncVolume();
+  }
 
   /// 切曲（对应旧版 stepTrack 逻辑）
   Future<void> _step(int dir) async {

@@ -1217,13 +1217,15 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     );
   }
 
-  /// 音频增益对话框
+  /// 音频增益对话框。1.99.15：当前为本地专辑时写「按专辑记忆」，全局设置不动。
   Future<void> _showGainDialog(
     AppSettings settings,
     ThemeData theme,
     bool isDark,
   ) async {
-    double tempGain = settings.audioGain;
+    final album = ref.read(playbackProvider).album;
+    final albumScoped = album != null && !album.isOnline;
+    double tempGain = album?.gainOverride ?? settings.audioGain;
 
     await showDialog(
       context: context,
@@ -1242,6 +1244,16 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                 ),
               ),
               const SizedBox(height: 16),
+              if (albumScoped)
+                Text(
+                  album.gainOverride != null
+                      ? '将记忆到本专辑（当前 x${album.gainOverride!.toStringAsFixed(1)}）'
+                      : '将记忆到本专辑（全局 x${settings.audioGain.toStringAsFixed(1)} 不受影响）',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+                  ),
+                ),
               Slider(
                 value: tempGain,
                 min: 1.0,
@@ -1263,14 +1275,28 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
             ],
           ),
           actions: [
+            if (albumScoped && album.gainOverride != null)
+              TextButton(
+                onPressed: () {
+                  ref.read(playbackProvider.notifier).clearAlbumPlaybackMemory();
+                  Navigator.pop(context);
+                  showHikoToast(context, '已清除本专辑增益记忆');
+                },
+                child: const Text('清除专辑记忆'),
+              ),
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text('取消'),
             ),
             ElevatedButton(
               onPressed: () {
-                ref.read(settingsProvider.notifier).setAudioGain(tempGain);
-                ref.read(playbackProvider.notifier).setAudioGain(tempGain);
+                final controller = ref.read(playbackProvider.notifier);
+                if (albumScoped) {
+                  controller.setAlbumGain(tempGain);
+                } else {
+                  ref.read(settingsProvider.notifier).setAudioGain(tempGain);
+                  controller.setAudioGain(tempGain);
+                }
                 Navigator.pop(context);
                 showHikoToast(context, '增益已设为 x${tempGain.toStringAsFixed(1)}');
               },
@@ -1282,13 +1308,18 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     );
   }
 
-  /// 倍速对话框（仅 Android，1.99.7）：0.5~2.0 步进 0.1，拖动松手即生效
+  /// 倍速对话框（仅 Android，1.99.7）：0.5~2.0 步进 0.1，拖动松手即生效。
+  /// 1.99.15：当前为本地专辑时写「按专辑记忆」，全局设置不动；有记忆时显示清除入口。
   Future<void> _showRateDialog(
     AppSettings settings,
     ThemeData theme,
     bool isDark,
   ) async {
-    double tempRate = settings.playbackRate;
+    final album = ref.read(playbackProvider).album;
+    final albumScoped = album != null && !album.isOnline;
+    final initial =
+        album?.playbackRateOverride ?? settings.playbackRate;
+    double tempRate = initial;
 
     await showDialog(
       context: context,
@@ -1306,6 +1337,16 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                   color: theme.colorScheme.primary,
                 ),
               ),
+              if (albumScoped)
+                Text(
+                  album.playbackRateOverride != null
+                      ? '将记忆到本专辑（当前 x${album.playbackRateOverride!.toStringAsFixed(1)}）'
+                      : '将记忆到本专辑（全局 x${settings.playbackRate.toStringAsFixed(1)} 不受影响）',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+                  ),
+                ),
               Slider(
                 min: 0.5,
                 max: 2.0,
@@ -1316,21 +1357,45 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                     setDialogState(() => tempRate = (v * 10).round() / 10),
                 onChangeEnd: (v) {
                   final r = (v * 10).round() / 10;
-                  // setPlaybackRate 内部落设置持久化
-                  ref.read(playbackProvider.notifier).setPlaybackRate(r);
+                  final controller = ref.read(playbackProvider.notifier);
+                  if (albumScoped) {
+                    controller.setAlbumPlaybackRate(r);
+                  } else {
+                    // setPlaybackRate 内部落设置持久化
+                    controller.setPlaybackRate(r);
+                  }
                 },
               ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('0.5x', style: TextStyle(fontSize: 11)),
-                  TextButton(
-                    onPressed: () {
-                      setDialogState(() => tempRate = 1.0);
-                      ref.read(playbackProvider.notifier).setPlaybackRate(1.0);
-                    },
-                    child: const Text('恢复 1.0x'),
-                  ),
+                  if (albumScoped && album.playbackRateOverride != null)
+                    TextButton(
+                      onPressed: () {
+                        setDialogState(() => tempRate = settings.playbackRate);
+                        ref
+                            .read(playbackProvider.notifier)
+                            .clearAlbumPlaybackMemory();
+                      },
+                      child: const Text('清除专辑记忆'),
+                    )
+                  else
+                    TextButton(
+                      onPressed: () {
+                        setDialogState(() => tempRate = 1.0);
+                        if (albumScoped) {
+                          ref
+                              .read(playbackProvider.notifier)
+                              .setAlbumPlaybackRate(1.0);
+                        } else {
+                          ref
+                              .read(playbackProvider.notifier)
+                              .setPlaybackRate(1.0);
+                        }
+                      },
+                      child: const Text('恢复 1.0x'),
+                    ),
                   const Text('2.0x', style: TextStyle(fontSize: 11)),
                 ],
               ),

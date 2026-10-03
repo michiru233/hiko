@@ -3,6 +3,9 @@ import '../utils/repair_text.dart';
 
 /// 专辑（作品）数据模型，字段对齐旧版 library.json 已验证 schema
 class Album {
+  /// copyWith 哨兵：区分「未传」与「显式传 null（清除）」
+  static const _unset = Object();
+
   final String id; // local-<sha1(sourcePath) 前 16 位>
   final String sourcePath; // 桌面：绝对路径；Android：content:// 目录 URI
   String title;
@@ -28,6 +31,11 @@ class Album {
   List<String> color; // [c1, c2] 渐变兜底封面
   String shape; // 12 种之一
   bool metaFromFolder; // 标题来自文件夹回退（全轨无可用标签），供 DLsite 兜底补标题
+
+  /// 按专辑记忆倍速/增益（1.99.15）：null = 跟随全局设置。
+  /// 在线专辑不入库，不支持记忆（workId 级存储待有需求再做）。
+  double? playbackRateOverride;
+  double? gainOverride;
 
   Album({
     required this.id,
@@ -55,6 +63,8 @@ class Album {
     this.color = const ['#c4b8e8', '#4b416c'],
     this.shape = 'radio',
     this.metaFromFolder = false,
+    this.playbackRateOverride,
+    this.gainOverride,
   });
 
   factory Album.fromJson(Map<String, dynamic> json) => Album(
@@ -91,6 +101,8 @@ class Album {
             const ['#c4b8e8', '#4b416c'],
         shape: json['shape'] as String? ?? 'radio',
         metaFromFolder: json['metaFromFolder'] as bool? ?? false,
+        playbackRateOverride: (json['playbackRateOverride'] as num?)?.toDouble(),
+        gainOverride: (json['gainOverride'] as num?)?.toDouble(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -119,6 +131,9 @@ class Album {
         'color': color,
         'shape': shape,
         if (metaFromFolder) 'metaFromFolder': true,
+        if (playbackRateOverride != null)
+          'playbackRateOverride': playbackRateOverride,
+        if (gainOverride != null) 'gainOverride': gainOverride,
       };
 
   Album copyWith({
@@ -143,6 +158,9 @@ class Album {
     List<String>? color,
     String? shape,
     bool? metaFromFolder,
+    // 覆写字段用哨兵：copyWith(x: null) 表示「清除为跟随全局」而非「保持不变」
+    Object? playbackRateOverride = _unset,
+    Object? gainOverride = _unset,
   }) =>
       Album(
         id: id,
@@ -171,6 +189,11 @@ class Album {
         color: color ?? this.color,
         shape: shape ?? this.shape,
         metaFromFolder: metaFromFolder ?? this.metaFromFolder,
+        playbackRateOverride: identical(playbackRateOverride, _unset)
+            ? this.playbackRateOverride
+            : playbackRateOverride as double?,
+        gainOverride:
+            identical(gainOverride, _unset) ? this.gainOverride : gainOverride as double?,
       );
 
   /// 旧标题是否为「退化标题」：纯 RJ 号或乱码——这类标题没有信息量，

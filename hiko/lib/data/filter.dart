@@ -11,6 +11,7 @@ List<Album> filterAlbums({
   required String sort, // recent_desc / recent_asc / title_asc / title_desc / duration_desc / duration_asc
   String? circleFilter, // 社团（albumArtist）点选筛选，详情页胶囊回传（1.77）
   String? voiceFilter, // 声优（artist）点选筛选；与 circleFilter 同时至多一个非空
+  String? tagFilter, // 刮削标签点选筛选（1.99.15）：tags 精确匹配，与视图/过滤叠加
 }) {
   final q = query.trim().toLowerCase();
   final result = albums.where((a) {
@@ -33,6 +34,8 @@ List<Album> filterAlbums({
     final vf = voiceFilter?.trim();
     if (cf != null && cf.isNotEmpty && !a.albumArtist.contains(cf)) return false;
     if (vf != null && vf.isNotEmpty && !a.artist.contains(vf)) return false;
+    final tf = tagFilter?.trim();
+    if (tf != null && tf.isNotEmpty && !a.tags.contains(tf)) return false;
     if (q.isNotEmpty) {
       final haystack = [a.title, a.artist, a.group, a.genre];
       if (!haystack.any((v) => v.toLowerCase().contains(q))) return false;
@@ -141,6 +144,7 @@ class FilterAlbumsMemo {
   String? _lastSort;
   String? _lastCircle;
   String? _lastVoice;
+  String? _lastTag;
   List<Album>? _result;
   int hits = 0; // 缓存命中计数（测试观测用）
 
@@ -152,6 +156,7 @@ class FilterAlbumsMemo {
     required String sort,
     String? circleFilter,
     String? voiceFilter,
+    String? tagFilter,
   }) {
     if (identical(_lastAlbums, albums) &&
         _lastView == view &&
@@ -159,7 +164,8 @@ class FilterAlbumsMemo {
         _lastQuery == query &&
         _lastSort == sort &&
         _lastCircle == circleFilter &&
-        _lastVoice == voiceFilter) {
+        _lastVoice == voiceFilter &&
+        _lastTag == tagFilter) {
       hits++;
       return _result!;
     }
@@ -171,6 +177,7 @@ class FilterAlbumsMemo {
       sort: sort,
       circleFilter: circleFilter,
       voiceFilter: voiceFilter,
+      tagFilter: tagFilter,
     );
     _lastAlbums = albums;
     _lastView = view;
@@ -179,7 +186,28 @@ class FilterAlbumsMemo {
     _lastSort = sort;
     _lastCircle = circleFilter;
     _lastVoice = voiceFilter;
+    _lastTag = tagFilter;
     _result = result;
     return result;
   }
+}
+
+/// 全库刮削标签聚合（1.99.15 本地标签筛选）：按使用数倒序，同数按名称自然升序。
+/// 空白标签跳过；trim 容忍旧库数据尾随空格。
+List<(String, int)> aggregateTags(List<Album> albums) {
+  final counts = <String, int>{};
+  for (final a in albums) {
+    for (final t in a.tags) {
+      final key = t.trim();
+      if (key.isEmpty) continue;
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+  }
+  final entries = counts.entries.toList()
+    ..sort((x, y) {
+      final byCount = y.value.compareTo(x.value);
+      if (byCount != 0) return byCount;
+      return naturalCompare(x.key, y.key);
+    });
+  return [for (final e in entries) (e.key, e.value)];
 }

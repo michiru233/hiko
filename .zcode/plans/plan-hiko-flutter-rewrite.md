@@ -3236,3 +3236,28 @@ Release: https://github.com/michiru233/hiko/releases/tag/v1.99.5
 - 坑（已修）：一次 Edit 误删换行把 Kotlin 注释与 `shareLibrary` 挤同行致编译红；`as List<Object>?` 对 jsonDecode 产物 cast 失败改 `.toList()`/`.cast<Object>()`；`FileSaveLocation` 无 toLowerCase 需取 `.path`。
 
 **版本**：`1.99.14+127`；Release：`hiko-v1.99.14-android.apk`（70.5MB）+ `hiko-v1.99.14-macos.zip`（34.2MB）。本版无新增待裁决。
+
+---
+
+## 1.99.15（2026-10-03）：倍速/增益按专辑记忆 + 本地 DLsite 标签筛选
+
+批次计划书 V3。
+
+### 改动一：倍速/增益按专辑记忆
+
+- `Album` 模型加可空字段 `playbackRateOverride` / `gainOverride`（null = 跟随全局）；toJson/fromJson 落盘；**copyWith 对这两个字段用哨兵 `_unset`**——`copyWith(x: null)` 语义为「清除」而非「保持」，区别于其它 nullable 字段。
+- `PlaybackController`：覆写解析收敛在两处——`_applyPlaybackRate` 用 `state.album?.playbackRateOverride ?? 全局`；`syncVolume` 的增益用 `gain ?? state.album?.gainOverride ?? 全局`。新增 `setAlbumPlaybackRate` / `setAlbumGain` / `clearAlbumPlaybackMemory`。
+- **实例分叉坑（实测抓到）**：播放中 library 侧的 Album 实例会被进度 `copyWith`（updatePlayed/updatePlayedInMemory）重建，与 playback `state.album` 的旧实例分叉——只 mutate 播放态实例不会落盘（library.json 落盘 None）。修复：覆写写在 `updateAlbum` 的 **transform 里的 library 实例**上，再用最新实例替换 `state.album`（transform 闭包捕获 + 旧实例同步兜底）。
+- 入口（计划书原定「详情菜单」，实施改为**全屏播放页的倍速/增益对话框内**——单入口、就地可见，桌面/Android 同享）：当前为本地专辑时对话框显示「将记忆到本专辑（全局 x1.0 不受影响 / 当前 x1.4）」，调节写专辑记忆；有记忆时出现「清除专辑记忆」。全局设置不被专辑操作触碰，全局调速在无记忆专辑上行为不变。在线作品不支持（不入库，ponytail：workId 级存储待需求）。
+
+### 改动二：本地 DLsite 标签筛选
+
+- `filter.dart`：`filterAlbums`/`FilterAlbumsMemo` 加 `tagFilter` 参数（tags 精确匹配，与视图/过滤/社团/声优叠加 AND）；新增纯函数 `aggregateTags`（按使用数倒序、同数自然升序、trim、跳空白）。
+- `home_screen`：筛选行加「标签」入口 chip（激活时高亮显示标签名）；对话框 = 搜索框 + 聚合列表 Top 30 + 当前筛选清除项；基准集为当前视图/过滤（不含标签筛选）的 memo 结果。memo 缓存键加 `_lastTag`。
+- **布局坑**：筛选行加 chip 后窄屏溢出 11px → 该行 `Row` 改 `Wrap`（spacing 8 / runSpacing 8，去 Spacer）。
+
+### 测试与验证
+
+- 新建 `test/data/filter_tag_test.dart` 4 条：覆写 toJson/fromJson 往返（null 不落盘）、copyWith 哨兵三态、tagFilter 精确/叠加/空白/memo 命中、aggregateTags 排序。`flutter test` **623 passed / 2 skipped**（基线 619）；analyze 基线持平（43=43）。
+- 模拟器实测（kikoeru_test）：run-as 注入 8 张专辑刮削标签 → 标签聚合对话框正确（ASMR×3/耳舐め×3/…倒序）→ 点 ASMR 筛出 3 张、chip 高亮、清除恢复 8 张 → 播 RJ00000001 全屏页倍速设 x1.4 → library.json 落盘 1.4 → 切「测试声音」对话框回全局 x1.0 → 切回 RJ00000001 自动 x1.4 +「清除专辑记忆」入口 → 点清除落盘 None。**首测发现并修复实例分叉 bug**（见上）。
+- 版本 `1.99.15+128`；Release：`hiko-v1.99.15-android.apk`（70.6MB）+ `hiko-v1.99.15-macos.zip`（34.2MB）。本版无新增待裁决。
