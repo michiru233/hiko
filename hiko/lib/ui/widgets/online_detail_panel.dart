@@ -19,6 +19,8 @@ import '../lyrics/drawer_lyrics_view.dart';
 import '../theme.dart';
 import '../transitions/fullscreen_player_route.dart';
 import 'detail_kit.dart';
+import 'offline_download_dialog.dart';
+import '../../data/online/offline_downloads.dart';
 import 'online_account_dialogs.dart';
 import 'online_cover.dart';
 import 'online_tag_menu.dart';
@@ -511,6 +513,12 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
           ),
         ),
         OnlineFavoriteButton(work: work),
+        _OfflineActionButton(
+          work: work,
+          audio: audio,
+          actionStyle: actionStyle,
+          isDark: isDark,
+        ),
         OutlinedButton.icon(
           style: hikoOutlinedPillStyle(isDark: isDark),
           onPressed: () => unawaited(_openInBrowser(work)),
@@ -1266,5 +1274,96 @@ class _ErrorView extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// 离线下载状态按钮（1.99.16）：未离线→勾选对话框；排队/下载中→取消；
+/// 已离线→确认删除（缓存文件 + 离线索引一并移除）。
+class _OfflineActionButton extends ConsumerWidget {
+  const _OfflineActionButton({
+    required this.work,
+    required this.audio,
+    required this.actionStyle,
+    required this.isDark,
+  });
+
+  final OnlineWork work;
+  final List<OnlineTrack> audio;
+  final TextStyle actionStyle;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final downloadState = ref.watch(offlineDownloadProvider)[work.id];
+    final offlineWorks = ref.watch(offlineIndexListProvider);
+    final isOffline = offlineWorks.any((e) => e.workId == work.id);
+    final theme = Theme.of(context);
+
+    final (label, icon, onPressed_) = switch (downloadState) {
+      DownloadRunning(:final done, :final total) => (
+          '下载中 $done/$total',
+          Icons.downloading_rounded,
+          () => unawaited(
+              ref.read(offlineDownloadProvider.notifier).cancel(work.id)),
+        ),
+      DownloadQueued() => (
+          '排队中',
+          Icons.schedule_rounded,
+          () => unawaited(
+              ref.read(offlineDownloadProvider.notifier).cancel(work.id)),
+        ),
+      DownloadFailed(:final message) => (
+          '下载失败',
+          Icons.error_outline_rounded,
+          () => showHikoToast(context, message),
+        ),
+      _ when isOffline => (
+          '已离线',
+          Icons.download_done_rounded,
+          () => unawaited(_confirmRemove(context, ref, theme)),
+        ),
+      _ => (
+          '离线下载',
+          Icons.download_rounded,
+          audio.isEmpty
+              ? null
+              : () => OfflineDownloadDialog.show(context, work: work, audio: audio),
+        ),
+    };
+
+    return OutlinedButton.icon(
+      style: hikoOutlinedPillStyle(isDark: isDark),
+      onPressed: onPressed_,
+      icon: Icon(icon, size: 15),
+      label: Text(label, style: actionStyle),
+    );
+  }
+
+  Future<void> _confirmRemove(
+      BuildContext context, WidgetRef ref, ThemeData theme) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除离线内容'),
+        content: const Text(
+          '将删除该作品已下载的音轨、字幕与封面缓存，'
+          '再次收听需要重新联网。确认删除？',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('删除',
+                style: TextStyle(color: theme.colorScheme.error)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await ref.read(onlineAudioCacheProvider).removeWork(work.id);
+    await ref.read(offlineIndexListProvider.notifier).remove(work.id);
+    if (context.mounted) showHikoToast(context, '已删除离线内容');
   }
 }

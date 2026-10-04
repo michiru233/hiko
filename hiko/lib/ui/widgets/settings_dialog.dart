@@ -9,6 +9,7 @@ import 'package:universal_platform/universal_platform.dart';
 import '../../data/backup.dart';
 import '../../data/categories_provider.dart';
 import '../../data/library_provider.dart';
+import '../../data/online/offline_downloads.dart';
 import '../../data/online/online_account.dart';
 import '../../data/online/online_favorites.dart';
 import '../../data/online/online_provider.dart';
@@ -1306,6 +1307,10 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                                 await ref
                                     .read(onlineAudioCacheProvider)
                                     .removeWork(id);
+                                // 该作品若已离线，同步移除离线索引（1.99.16 一致性）
+                                await ref
+                                    .read(offlineIndexListProvider.notifier)
+                                    .remove(id);
                                 if (mounted) setState(() {});
                                 _toast('已清理 $label 的缓存');
                               },

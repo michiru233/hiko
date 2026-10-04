@@ -3261,3 +3261,40 @@ Release: https://github.com/michiru233/hiko/releases/tag/v1.99.5
 - 新建 `test/data/filter_tag_test.dart` 4 条：覆写 toJson/fromJson 往返（null 不落盘）、copyWith 哨兵三态、tagFilter 精确/叠加/空白/memo 命中、aggregateTags 排序。`flutter test` **623 passed / 2 skipped**（基线 619）；analyze 基线持平（43=43）。
 - 模拟器实测（kikoeru_test）：run-as 注入 8 张专辑刮削标签 → 标签聚合对话框正确（ASMR×3/耳舐め×3/…倒序）→ 点 ASMR 筛出 3 张、chip 高亮、清除恢复 8 张 → 播 RJ00000001 全屏页倍速设 x1.4 → library.json 落盘 1.4 → 切「测试声音」对话框回全局 x1.0 → 切回 RJ00000001 自动 x1.4 +「清除专辑记忆」入口 → 点清除落盘 None。**首测发现并修复实例分叉 bug**（见上）。
 - 版本 `1.99.15+128`；Release：`hiko-v1.99.15-android.apk`（70.6MB）+ `hiko-v1.99.15-macos.zip`（34.2MB）。本版无新增待裁决。
+
+---
+
+## 1.99.16（2026-10-04）：在线作品整包离线下载（批次收官）
+
+批次计划书 V4，独立任务书 `.zcode/plans/plan-hiko-offline-downloads.md`。裁决落地：默认全不选由用户勾选（对话框显示体积）；离线入口挂在线收藏页（含未登录也可用的入口行）。
+
+### 架构（新 `lib/data/online/offline_downloads.dart`）
+
+- **离线索引** `OfflineIndex`（`offline_index.json`，tmp+rename 原子写，损坏按空索引）：作品级元数据（title/rjCode/circleName/coverUrl/addedAt）+ 文件清单（hash → kind(audio/lyrics/cover)/size/title/folder/linkedHash）。`tracksOf(workId)` 从索引还原 `OnlineTrack`（字幕经 linkedHash 反查）供无网直接起播。
+- **下载服务** `OfflineDownloadService`（StateNotifier<Map<int,WorkDownloadState>>）：作品级 FIFO、单并发；文件本体复用 `OnlineAudioCache.download`（.part 原子落盘/并发去重/长度校验），**文件粒度跳过即断点续传**；清单 = 勾选音轨 + 各自字幕 + 封面（`client.coverHash(workId)= '<id>/cover'` 新约定，兼容 byWork 解析）；完成写索引。状态 Queued/Running(done/total)/Done/Failed；cancel 中止 + 清 .part。
+- **LRU 豁免**：`OnlineAudioCache` 加 `isProtected(hash)` 构造参数，`enforceLimit` 跳过离线作品文件；provider 组装时接索引。
+- **字幕离线命中**：`OnlinePlayback.fetchLyricsText`（buildAlbum 起播曲 / _fillLyricsLazily / _ensureLyrics 三处统一走）→ `cachedPath` 命中读文件，否则网络。
+- **播放零改动**：buildAlbum 的 cachedPath 命中本就返回 file://——离线可播的核心是预取 + 免淘汰。
+
+### UI
+
+- 详情面板操作行加 `_OfflineActionButton`（状态机：离线下载→排队中/下载中 d/t→已离线/下载失败→toast；已离线点击=确认删除缓存+索引）。移动端 OnlineDetailScreen 与桌面面板共用。
+- 勾选对话框 `OfflineDownloadDialog`（新文件）：按 relativePath 分组复选（组头带子数/体积）+ 全选 + 实时「N/M 轨 · xx MB」+ 提交按钮带体积；**默认全不选**。
+- 在线收藏页：chips 行加「离线 N」固定 tab（`_playlistId='__offline__'`）；未登录时登录引导上方保留只含离线 chip 的头行（离线不依赖账号）；离线模式点卡片**直接从索引起播**（不开详情、无网可用）；状态行显示「本地下载的整包内容，无网可播」。
+- 设置页「按作品清理」缓存时同步移除离线索引条目（一致性）。
+
+### 实测抓到的三个 bug（模拟器+真 asmr.one 全链路）
+
+1. **Cloudflare 拦裸 UA**：cache.download 的 HttpClient 无浏览器头 → 403。修复：`KikoeruClient.newDownloadClient()`（复用 _newClient 的 proxy + 官方实例浏览器 UA），service 每文件短连接。
+2. **cache init 竞态**：provider 惰性构建 + settings select 重建实例 → 下载开始时 `_dir == null` 静默 false（日志 ready=false 实锤）。修复：`_runJob` 开头幂等 `await cache.init()`。
+3. **离线 tab 被兜底重置**：收藏页「选中歌单被删则回退全部」检查把 `__offline__` 当失效歌单清掉 → 点卡片开了详情。修复：检查跳过 `_offlineTab`。
+
+（调试期间临时加的 4xx body 日志、job start 日志保留为 debugPrint，属正常运行日志。）
+
+### 测试与验证
+
+- 新建 `test/data/offline_downloads_test.dart` 5 条：索引往返/containsHash/tracksOf 字幕反查、损坏容错+removeWork 落盘、LRU isProtected（本地 HttpServer + mtime 拨旧）、下载服务端到端（HttpServer 冒充 CDN：Done/索引登记/文件落盘/字幕 linkedHash）、重复 enqueue 忽略。**修复测试自身两处**：StateNotifierProvider 自带 dispose 勿再 onDispose（双重 dispose）；server 响应需设 contentLength 以过长度校验。`flutter test` **628 passed / 2 skipped**（基线 623）；analyze 基线持平（43=43）。
+- 模拟器实测（kikoeru_test + 用户 asmr.one 账号）：详情页「离线下载」→ 勾选对话框（默认全不选，mp3 44.4MB / wav 321.6MB 分项可见）→ 勾 mp3 → 下载 → 46.5MB mp3 + 封面落盘（run-as 核验）→ 按钮变「已离线」→ 收藏页「离线 2」chip → 点卡片直接起播 → **开启飞行模式后播放正常**（✈ 状态栏 + ⏸ 播放态）。
+- 已知边界：离线模式点卡片直接播放不进详情（详情需网络拉取）；LRU 豁免在 UI 上不可见（缓存统计含离线文件，属预期——它确实占磁盘）。
+
+**版本**：`1.99.16+129`；Release：`hiko-v1.99.16-android.apk`（70.8MB）+ `hiko-v1.99.16-macos.zip`（34.3MB）。本版无新增待裁决。**批次计划书 4 版全部收官。**

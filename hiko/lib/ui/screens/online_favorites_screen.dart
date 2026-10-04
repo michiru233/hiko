@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/online/online_account.dart';
+import '../../data/online/offline_downloads.dart';
 import '../../data/online/online_favorites.dart';
 import '../../data/online/online_models.dart';
 import '../../data/online/online_provider.dart';
@@ -46,6 +47,9 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
   /// null = 「全部」；否则是歌单 UUID
   String? _playlistId;
 
+  /// 「离线」分区标记（1.99.16）：特殊 tab 值，不对应任何服务端歌单
+  static const _offlineTab = '__offline__';
+
   int _page = 1;
   int _pageSize = 60;
 
@@ -82,22 +86,71 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
         ),
       );
     }
-    if (!account.loggedIn) {
-      return _LoginGuide(
-        onLogin: () => unawaited(showOnlineLoginDialog(context)),
+    // 离线分区（1.99.16）不依赖登录——下载与播放都不走账号
+    final offlineMode = _playlistId == _offlineTab;
+    final offlineEntries = offlineMode
+        ? ref.watch(offlineIndexListProvider)
+        : const <OfflineWorkEntry>[];
+    if (!offlineMode && !account.loggedIn) {
+      // 未登录也能用「离线」分区（下载与播放不依赖账号）——
+      // 登录引导上方保留一条只含离线 chip 的头行作为入口
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+            child: Row(
+              children: [
+                ChoiceChip(
+                  avatar: Icon(
+                    Icons.offline_pin_rounded,
+                    size: 12,
+                    color: theme.colorScheme.primary,
+                  ),
+                  label: Text(
+                    '离线 ${ref.watch(offlineIndexListProvider).length}',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  selected: false,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) => setState(() {
+                    _playlistId = _offlineTab;
+                    _page = 1;
+                  }),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _LoginGuide(
+              onLogin: () => unawaited(showOnlineLoginDialog(context)),
+            ),
+          ),
+        ],
       );
     }
 
     final index = favorites.index;
-    // 选中的歌单被删掉（或正在加载首个快照）时退回「全部」
+    // 选中的歌单被删掉（或正在加载首个快照）时退回「全部」。
+    // 「离线」是本地 tab（_offlineTab），不在服务端歌单列表里，跳过本检查（1.99.16）
     if (_playlistId != null &&
+        _playlistId != _offlineTab &&
         index.playlists.isNotEmpty &&
         !index.playlists.any((p) => p.id == _playlistId)) {
       _playlistId = null;
       _page = 1;
     }
 
-    final works = index.worksOf(_playlistId);
+    final works = offlineMode
+        ? [
+            for (final e in offlineEntries)
+              OnlineWork(
+                id: e.workId,
+                title: e.title,
+                circleName: e.circleName,
+                rjCode: e.rjCode,
+              ),
+          ]
+        : index.worksOf(_playlistId);
     final totalPages = works.isEmpty ? 0 : (works.length + _pageSize - 1) ~/ _pageSize;
     final page = totalPages == 0 ? 1 : _page.clamp(1, totalPages);
     final slice = works.isEmpty
@@ -206,6 +259,30 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                       Padding(
                         padding: const EdgeInsets.only(right: 6),
                         child: ChoiceChip(
+                          avatar: Icon(
+                            Icons.offline_pin_rounded,
+                            size: 12,
+                            color: _playlistId == _offlineTab
+                                ? theme.colorScheme.primary
+                                : null,
+                          ),
+                          label: Text(
+                            '离线 ${ref.watch(offlineIndexListProvider).length}',
+                            style: const TextStyle(fontSize: 11),
+                          ),
+                          selected: _playlistId == _offlineTab,
+                          visualDensity: VisualDensity.compact,
+                          onSelected: (_) => setState(() {
+                            _playlistId = _offlineTab;
+                            _page = 1;
+                            _resetScroll();
+                          }),
+                        ),
+                      ),
+                      if (_playlistId != _offlineTab) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ChoiceChip(
                           label: Text(
                             '全部 ${index.countOf(null)}',
                             style: const TextStyle(fontSize: 11),
@@ -248,8 +325,9 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                           ),
                         ),
                     ],
-                  ),
+                  ],
                 ),
+              ),
               ),
               const SizedBox(width: 8),
               // 歌单管理：只在选中具体歌单、且它可改名/可删时出现
@@ -317,6 +395,7 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
     OnlineFavoritesState favorites,
     OnlinePlaylist? selected,
   ) {
+    if (_playlistId == _offlineTab) return '本地下载的整包内容，无网可播';
     if (favorites.error != null) return '同步失败：${favorites.error}';
     if (favorites.loading) return '正在同步歌单…';
     final scope = selected == null
@@ -454,7 +533,9 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                               ),
                               const SizedBox(height: 10),
                               Text(
-                                _playlistId == null
+                                _playlistId == _offlineTab
+                                    ? '还没有离线内容——在作品详情里点「离线下载」'
+                                    : _playlistId == null
                                     ? '还没有收藏任何作品\n在在线作品的详情页点「收藏」就能加入歌单'
                                     : '这个歌单还是空的',
                                 textAlign: TextAlign.center,
@@ -623,7 +704,29 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
 
   // ---------------------------------------------------------------- 交互
 
-  void _openDetail(OnlineWork work) => _openDetailById(work.id);
+  void _openDetail(OnlineWork work) {
+    // 离线分区：直接从离线索引起播（不依赖网络拉详情，飞行模式可用）
+    if (_playlistId == _offlineTab) {
+      unawaited(_playOffline(work));
+      return;
+    }
+    _openDetailById(work.id);
+  }
+
+  /// 从离线索引构造内存曲目并起播（cachedPath 命中 file://，无网可播）
+  Future<void> _playOffline(OnlineWork work) async {
+    final entry = ref.read(offlineIndexProvider).workOf(work.id);
+    final tracks = ref.read(offlineIndexProvider).tracksOf(work.id);
+    if (entry == null || tracks.isEmpty) {
+      if (mounted) showHikoToast(context, '离线内容不存在或已损坏');
+      return;
+    }
+    final error = await ref.read(onlinePlaybackProvider).play(
+          work,
+          tracks,
+        );
+    if (error != null && mounted) showHikoToast(context, error);
+  }
 
   /// 按作品 id 打开详情（收藏卡入口传 [OnlineWork]，语言版本跳转只有 id）。
   void _openDetailById(int workId) {

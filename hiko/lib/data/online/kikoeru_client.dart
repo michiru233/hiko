@@ -572,6 +572,20 @@ class KikoeruClient {
   ///    只存一份、详情页能直接命中列表已经下好的图。
   String coverMainUrl(int workId) => coverUrl(workId, size: coverMainSize);
 
+  /// 封面在在线缓存/离线索引里的 hash（约定 fileId='cover'，1.99.16）。
+  /// 兼容 `_hashFromFileName` / `bytesByWork` 的 `<workId>_` 前缀解析。
+  String coverHash(int workId) => '$workId/cover';
+
+  /// 供**媒体文件下载**（离线整包 1.99.16）用的 HttpClient：
+  /// 与 _send 同一套伪装（官方实例前置 Cloudflare，浏览器 UA/Referer 才放行）。
+  HttpClient newDownloadClient() {
+    final client = _newClient();
+    if (isOfficial) {
+      client.userAgent = _browserUa;
+    }
+    return client;
+  }
+
   /// 音频流入口。返回 302 到 CDN 直链，交由播放器跟随重定向。
   ///
   /// 刻意不用曲目树里的 `mediaStreamUrl` 裸直链：那是 CDN 内部地址，

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +11,7 @@ import '../../playback/playback_controller.dart';
 import '../settings_store.dart';
 import 'kikoeru_client.dart';
 import 'online_account.dart';
+import 'offline_downloads.dart';
 import 'online_audio_cache.dart';
 import 'online_blacklist.dart';
 import 'online_models.dart';
@@ -26,12 +28,15 @@ final onlineClientProvider = Provider<KikoeruClient>((ref) {
   return KikoeruClient(baseUrl: server, proxy: proxy, token: token);
 });
 
-/// 在线音频磁盘缓存（上限随设置变化重建；0 GB 表示完全关闭缓存）
+/// 在线音频磁盘缓存（上限随设置变化重建；0 GB 表示完全关闭缓存）。
+/// 离线作品（offline_index.json 里登记的）豁免 LRU 淘汰（1.99.16）。
 final onlineAudioCacheProvider = Provider<OnlineAudioCache>((ref) {
   final limitGb =
       ref.watch(settingsProvider.select((s) => s.onlineCacheLimitGb));
+  final offline = ref.watch(offlineIndexProvider);
   final cache = OnlineAudioCache(
     limitBytes: (limitGb * 1024 * 1024 * 1024).round(),
+    isProtected: offline.containsHash,
   );
   unawaited(cache.init());
   return cache;
@@ -857,7 +862,7 @@ class OnlinePlayback {
 
     final index = startIndex.clamp(0, audio.length - 1);
     if (audio[index].lyricsHash != null) {
-      final text = await client.fetchText(audio[index].lyricsHash!);
+      final text = await fetchLyricsText(client, audio[index].lyricsHash!);
       if (text != null) tracks[index].lyricsText = text;
     }
     unawaited(_fillLyricsLazily(client, audio, tracks, skipIndex: index));
@@ -894,7 +899,7 @@ class OnlinePlayback {
       await Future.wait([
         for (var i = start; i < end; i++)
           if (i != skipIndex && audio[i].lyricsHash != null)
-            client.fetchText(audio[i].lyricsHash!).then((text) {
+            fetchLyricsText(client, audio[i].lyricsHash!).then((text) {
               if (text != null) tracks[i].lyricsText = text;
             }),
       ]);
@@ -937,12 +942,26 @@ class OnlinePlayback {
     final hash = _lyricsIndex[_hashFromUrl(track.url)];
     if (hash == null) return;
     unawaited(() async {
-      final text = await _ref.read(onlineClientProvider).fetchText(hash);
+      final text = await fetchLyricsText(
+          _ref.read(onlineClientProvider), hash);
       if (text == null || text.trim().isEmpty) return;
       track.lyricsText = text;
       // 曲目已在播放中，歌词控制器不会自行重读，需要显式触发一次
       await _ref.read(lyricsProvider.notifier).reload();
     }());
+  }
+
+  /// 字幕全文：离线缓存命中直接读文件（1.99.16），否则走网络
+  Future<String?> fetchLyricsText(KikoeruClient client, String hash) async {
+    final path = _ref.read(onlineAudioCacheProvider).cachedPath(hash);
+    if (path != null) {
+      try {
+        return await File(path).readAsString();
+      } catch (_) {
+        // 本地文件读不出来回退网络
+      }
+    }
+    return client.fetchText(hash);
   }
 
   void _ensureCached(Track track) {

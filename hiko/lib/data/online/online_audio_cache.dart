@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -15,9 +16,12 @@ import 'package:path_provider/path_provider.dart';
 ///
 /// 目录独立于本地曲库与封面缓存，不写入 `library.json`。
 class OnlineAudioCache {
-  OnlineAudioCache({Directory? directory, int? limitBytes})
+  OnlineAudioCache(
+      {Directory? directory, int? limitBytes, bool Function(String hash)? isProtected})
       : _overrideDirectory = directory,
-        _limitBytes = limitBytes ?? defaultLimitBytes;
+        _limitBytes = limitBytes ?? defaultLimitBytes,
+        // ignore: prefer_initializing_formals —— 命名参数私有字段无法用 this. 初始化
+        _isProtected = isProtected;
 
   /// 默认上限：桌面 5 GB / 移动 2 GB（移动端流量与存储都更紧张）
   static const desktopLimitBytes = 5 * 1024 * 1024 * 1024;
@@ -28,6 +32,9 @@ class OnlineAudioCache {
 
   final Directory? _overrideDirectory;
   final int _limitBytes;
+
+  /// 离线保留判据（1.99.16）：命中的 hash 豁免 LRU 淘汰（由 offline_index 注入）
+  final bool Function(String hash)? _isProtected;
 
   Directory? _dir;
   bool _inited = false;
@@ -140,7 +147,9 @@ class OnlineAudioCache {
       final request = await http.getUrl(uri);
       final response = await request.close();
       if (response.statusCode >= 400) {
-        await response.drain<void>();
+        final body = await response.transform(utf8.decoder).take(1).join();
+        debugPrint('[online-cache] HTTP ${response.statusCode} $uri: '
+            '${body.length > 200 ? body.substring(0, 200) : body}');
         return false;
       }
       final total = response.contentLength > 0
@@ -223,6 +232,7 @@ class OnlineAudioCache {
     final candidates = files.where((f) {
       final hash = _hashFromFileName(p.basename(f.path));
       if (hash != null && _pinned.contains(hash)) return false;
+      if (hash != null && _isProtected?.call(hash) == true) return false;
       try {
         return now.difference(f.statSync().modified) > const Duration(minutes: 10);
       } catch (_) {
