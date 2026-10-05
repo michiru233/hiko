@@ -37,6 +37,19 @@ lg.GlassQuality hikoGlassQuality(HikoGlassTier tier) =>
 ///   一屏几十张卡就是几十个独立合成层。
 bool hikoGlassUseOwnLayer(HikoGlassTier tier) => tier == HikoGlassTier.surface;
 
+/// 档位 → 模糊强度。
+///
+/// 纯函数，公开给回归锁直接断言。**这是性能契约里最关键的一条**：
+/// `tile` 档必须为 `0`。只要大于 0，每个实例都会 push 一个 `BackdropFilterLayer`
+/// 去实时模糊背后内容并强制成为独立合成层 —— 长列表里就是逐卡实时模糊，
+/// 而卡片上真正能看见玻璃的面积很小（顶部被封面盖住），等于为看不出来的效果
+/// 付最高档的代价。1.99.22 专辑卡滑动卡顿即由此而来。
+///
+/// `surface` 档是静止的浮层 / 栏，数量少、面积大、背景可见，实时模糊是它最抓眼的
+/// 特征，代价可以接受。
+double hikoGlassBlur(HikoGlassTier tier) =>
+    tier == HikoGlassTier.surface ? 20 : 0;
+
 /// 档位 → 玻璃基色。沿用 [HikoColors] 既有的玻璃 token，不另起一套配色。
 Color hikoGlassTint(HikoGlassTier tier, {required bool isDark}) {
   final surface = tier == HikoGlassTier.surface;
@@ -74,16 +87,26 @@ Color hikoGlassBorder(HikoGlassTier tier, {required bool isDark}) {
 /// |---|---|---|
 /// | 质量 | premium（满血多 pass） | standard（单 pass 轻量表） |
 /// | 渲染图层 | 自建（`useOwnLayer: true`） | 共享（不建图层） |
+/// | 模糊 `blur` | 20 | **0** |
 /// | 适用 | 静止浮层/栏 | 滚动中的长列表 |
 ///
-/// **不传 `backgroundKey`**：轻量档只有拿到 `backgroundKey`（且该 key 下有已挂载的
-/// `RepaintBoundary`）才会启动采样 ticker 去逐帧捕获背景。不传就完全不捕获，
-/// 这正是它敢标榜 "optimized for scrollable lists" 的前提——长列表接玻璃不会因此
-/// 变成「每张卡一次 backdrop 截图」。
+/// **档位差异里最容易搞错的是 `blur`，它才是性能开关**（详见 [HikoGlass.blur]）：
+/// 1.99.22 的专辑卡卡顿不是因为「库不行」，而是因为 tile 档沿用了 surface 档的
+/// `blur = 20`，于是每张卡都在**逐帧实时模糊背后内容**。tile 档置 0 后走
+/// `_paintGlassContent` 直画分支，不建合成层、不模糊背景，但程序化的边缘光 /
+/// Fresnel / 立体斜面全部保留 —— 卡片上看得见的那点玻璃感大多来自这些程序化项，
+/// 而卡片顶部本来就被封面盖住，实时模糊掉的可见面积很小。
 ///
-/// 注：在 `flutter_test` 里，Impeller 不可用，两条路径都会自动降级成普通子树
+/// 注 1：**不传 `backgroundKey`**。轻量档的 `backgroundKey` 只控制「采样 ticker」——
+/// 它用于把**静止**背景一次性采样复用，省掉逐帧重采；不传就不会启动该 ticker。
+/// 但这**不等于**不捕获背景：只要 `blur > 0`，`paint()` 仍会对每个实例
+/// `pushLayer(BackdropFilterLayer)` 实时模糊。二者是独立的两件事，
+/// 1.99.22 我把它们混为一谈，才误以为 tile 档接玻璃天然安全。
+///
+/// 注 2：在 `flutter_test` 里，Impeller 不可用，两条路径都会自动降级成普通子树
 /// （`LiquidGlassBlendGroup` 在 `!ImageFilter.isShaderFilterSupported` 时直接透传），
-/// 因此玻璃控件放进被测试覆盖的界面不会打穿测试基线。
+/// 因此玻璃控件放进被测试覆盖的界面不会打穿测试基线 —— 代价是**档位参数搞错在
+/// 测试里完全看不出来**，所以映射关系一律抽成公开纯函数单独锁（见 [hikoGlassBlur]）。
 class HikoGlass extends StatelessWidget {
   const HikoGlass({
     super.key,
@@ -94,7 +117,7 @@ class HikoGlass extends StatelessWidget {
     this.margin,
     this.width,
     this.height,
-    this.blur = 20,
+    this.blur,
     this.thickness = 28,
     this.tint,
     this.borderColor,
@@ -117,9 +140,19 @@ class HikoGlass extends StatelessWidget {
   final double? width;
   final double? height;
 
-  /// 玻璃厚度与模糊强度，透传给着色器。
-  final double blur;
+  /// 玻璃厚度，透传给着色器。
   final double thickness;
+
+  /// 模糊强度。为 null 时按 [tier] 取 [hikoGlassBlur] 的默认值。
+  ///
+  /// **这是本门面最贵的一个参数**：只要 `> 0`，`LightweightLiquidGlass` 就会为
+  /// **每一个实例** `pushLayer(BackdropFilterLayer)`，逐帧实时模糊它背后的内容
+  /// 并叠加饱和增强矩阵，同时强制该控件成为独立合成层。放进滚动网格里就是
+  /// 「每张卡一次 sigma20 高斯模糊」——1.99.22 专辑卡卡顿的根因。
+  ///
+  /// 置 `0` 时走 `_paintGlassContent` 直画分支：不建合成层、不模糊背景，
+  /// 但程序化的边缘光 / Fresnel / 立体斜面**全部保留**。
+  final double? blur;
 
   /// 覆盖玻璃基色。为 null 时按 [tier] + 亮暗取 [HikoColors] 的玻璃 token。
   final Color? tint;
@@ -150,7 +183,7 @@ class HikoGlass extends StatelessWidget {
   /// 这种退化（它只涉及动画轮询参数）。
   ///
   /// 代价：补间期间每帧重建一次着色器参数，仅发生在选中/取消选中那几百毫秒内。
-  /// 阴影**不参与**补间，仍由外层 `AnimatedContainer` 负责。
+  /// 阴影也参与补间（选中是彩色外发光、常态是黑色投影，两者互斥）。
   final Duration? animationDuration;
   final Curve animationCurve;
 
@@ -215,7 +248,7 @@ class HikoGlass extends StatelessWidget {
             ),
             settings: lg.LiquidGlassSettings(
               glassColor: tintColor,
-              blur: blur,
+              blur: blur ?? hikoGlassBlur(tier),
               thickness: thickness,
             ),
             quality: hikoGlassQuality(tier),

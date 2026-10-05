@@ -3482,9 +3482,16 @@ Q1 = 要**材质质感**（不要 iOS 26 的 chrome 骨架、不要 jelly 形变
 - premium 档若无 `LiquidGlassLayer` 祖先且 `useOwnLayer: false` → **debug 断言**；
   包自己给的解法就是 `useOwnLayer: true`；release 下 `if (renderLink == null) return child!` 优雅降级。
 - 因此门面的第一性规则：**浮层/栏一律 `useOwnLayer: true`**。
-- `LightweightLiquidGlass` 的 `backgroundKey` 是**可选**的，`_updateTicker()` 只在 key 下有已挂载
+- ~~`LightweightLiquidGlass` 的 `backgroundKey` 是**可选**的，`_updateTicker()` 只在 key 下有已挂载
   `RepaintBoundary` 时才启动 → **不传就完全不逐卡捕获背景**，这才是它敢写
-  "optimized for scrollable lists" 的前提。
+  "optimized for scrollable lists" 的前提。~~
+  **⚠️ 本条 2026-10-05 当天即被源码推翻，是 1.99.22 专辑卡卡顿的直接成因。** 真实规则：
+  `backgroundKey` 只控制**采样 ticker**（把**静止**背景一次性采样后复用，省掉逐帧重采）；
+  不传只是不启动该 ticker，**不等于不捕获背景**。看 `LightweightLiquidGlass.paint()`：
+  `alwaysNeedsCompositing => _shader != null && !_skipBlur && _settings.effectiveBlur > 0`，
+  且 `blurSigma > 0` 时无条件 `context.pushLayer(BackdropFilterLayer(blur(sigma)+saturate))`。
+  → **真正的性能开关是 `blur`，不是 `backgroundKey`**。tile 档沿用 surface 档的 `blur = 20`
+  就等于每张卡一次 sigma20 实时高斯 + 强制独立合成层。修法见 1.99.23（tile 档 `blur` 固定为 0）。
 - **实测探针**（写 3 条临时测试后即删）：`GlassContainer(useOwnLayer: true)`、
   `GlassCard(useOwnLayer: true)`、以及 grouped 无祖先，在 `flutter_test` 里**三条全过**、
   `takeException()` 全为 null（`!ImageFilter.isShaderFilterSupported` 时直接透传）。
@@ -3535,3 +3542,65 @@ Q1 = 要**材质质感**（不要 iOS 26 的 chrome 骨架、不要 jelly 形变
 - 本版无新增待裁决。**待用户实机验收**：5 处浮层/栏的玻璃观感、静态胶囊（尤其小尺寸的标签/多选/排序）
   上满血档是否显得糊或拥挤、专辑卡在长网格滚动时的帧率（tile 档是本版唯一有性能风险的一处）、
   以及 Windows 端因 `GlassAdaptiveScope` 静态封顶 standard 档而与双端观感不一致。
+
+## 1.99.23（2026-10-05）：修移动端专辑卡滑动卡顿 + 在线卡补玻璃（tile 档 blur 归零）
+
+### 触发：用户在实机上提的两条移动端反馈
+> 以下仅限于移动端，mac 端未测：1. 本地音声的专辑卡目前滑动确实有一些卡顿；
+> 2. 「在线」的专辑卡似乎没有同步玻璃观感。
+
+### 1.99.22 那条性能结论是错的说清楚了
+1.99.22 我在本文件与 memory 里写下「不传 `backgroundKey` 就完全不逐卡捕获背景」，
+**这是错的**，也是本版卡顿的直接成因。读源码（`lightweight_liquid_glass.dart`）后的真实规则：
+
+- `backgroundKey` 只管**采样 ticker**（`_updateTicker()` 仅在 key 下有已挂载 `RepaintBoundary` 时启动），
+  用途是把**静止**背景一次性采样后复用、省掉逐帧重采。
+- **不传 ≠ 不捕获背景。** `paint()` 里 `alwaysNeedsCompositing =>
+  _shader != null && !_skipBlur && _settings.effectiveBlur > 0`，且 `blurSigma > 0` 时无条件
+  `context.pushLayer(BackdropFilterLayer(filter))`，`filter = compose(外:饱和矩阵, 内:blur(sigma))`。
+  即**每个实例**都在逐帧实时模糊背后内容并强制成为独立合成层。
+- → **真正的性能开关是 `blur`，不是 `backgroundKey`。** 1.99.22 的 tile 档没设 blur，
+  吃到了 `LiquidGlassSettings.blur` 的默认值 20 —— 主网格里就是「每张卡一次 sigma20 高斯模糊」。
+- 为什么要用实时模糊：轻量着色器**没有**背景纹理（源码注释明写 "has no backdrop texture"），
+  模糊只能在它下面垫一层 `BackdropFilterLayer`，这也是它唯一贵的地方。
+
+### 修法（grilling 定案：`tile 档 blur = 0`；`两端一致`）
+- 先给用户看了「仿玻璃 / 真玻璃 blur=0 / 真玻璃 blur=20」三路对比，说明差别：
+  **大块静止浮层上看得见，卡片上很小**（卡顶被封面盖住，能看见玻璃的面积本来就少）。
+  用户裁决 tile 档 `blur` 设为 0。
+- `blur` 置 0 走 `_paintGlassContent` 直画分支：不 push 合成层、不模糊背景，
+  但**程序化边缘光 / Fresnel / 立体斜面全部保留**——卡片上看得见的那点玻璃感主要来自这些。
+- 门面改动（`lib/ui/widgets/hiko_glass.dart`）：
+  - `blur` 参数 `double blur = 20` → `final double? blur`，取值为 `blur ?? hikoGlassBlur(tier)`。
+  - 新增公开纯函数 `hikoGlassBlur(tier) => surface ? 20 : 0`（公开的理由同 1.99.22：
+    这种退化在 `flutter_test` 里渲染结果完全一样，只能锁映射本身）。
+  - 类文档里那条错的 `backgroundKey` 说明改成「它只管采样 ticker，`blur` 才是开关」，
+    并显式写出「1.99.22 我把两者混为一谈」。档位表补 `blur` 一行。
+  - `animationDuration` 的文档里「阴影不参与补间、仍由外层 `AnimatedContainer` 负责」是 1.99.22 的残留说明，
+    实际 1.99.22 起阴影已随 `_ShadowListTween` 参与补间，一并改掉。
+- 在线卡补玻璃（`lib/ui/screens/online_screen.dart` 的 `OnlineWorkCard`）：
+  原为**纯透明 `Container`**（只有选中态一条描边），换成
+  `HikoGlass(tier: tile, borderRadius: 12, padding: EdgeInsets.all(kOnlineCardPadding),
+  animationDuration: 300ms, tint: *GlassCard, borderColor: selected ? primary : *GlassBorderSubtle,
+  borderWidth: selected ? 1.5 : 0.8, boxShadow: [柔和黑投影])`，与本地专辑卡对齐。
+  顺带把 `InkWell.borderRadius` 从 10 改 12（与卡面圆角一致，原先水波纹比卡面小一圈露边角）。
+  选中态**只加粗描边 + 换主色、不加发光**，与专辑卡的 `selected` 语义保持一致
+  （专辑卡只有 `highlighted`（定位播放）才发光）。
+
+### 测试与验证
+- `test/ui/hiko_glass_test.dart` 10 → **15 条**。新增 5 条里，**两条直接断言渲染出来的
+  `LiquidGlassSettings.blur`**（tile = 0 / surface > 0）——这正是 1.99.22 缺的那条：
+  当时只锁了质量与图层映射，没锁 blur，于是「漏喂档位默认值」在测试里毫无症状。
+  另加「显式 `blur:` 压过档位默认值」（首页静态胶囊仍需按调用点微调），
+  并把 blur 也并入原有的「两档取值互不相同」。
+- `test/ui/online_work_card_test.dart` 新增 2 条：卡面必须有一层 tile 档玻璃（且不能退回纯透明
+  `Container`）、选中态描边要比常态粗且换色。
+- 反向验证（三处扰动，全部还原并 `grep PERTURB` 确认 0 残留）：
+  `hikoGlassBlur(tile) → 20`（复现 1.99.22 的 bug）⇒ 3 条红；
+  在线卡 `tier → surface` ⇒ 1 条红；在线卡 `borderWidth` 扁平化 ⇒ 1 条红。
+- `flutter test` **666 passed / 2 skipped**（基线 659，净 +7 全为新锁）；
+  `flutter analyze` **42 条**，0 新增（与基线持平）。
+- 版本 `1.99.23+136`；Release：`hiko-v1.99.23-android.apk` + `hiko-v1.99.23-macos.zip`。
+- 本版无新增待裁决。**待用户实机验收**：专辑卡与在线卡在移动端长网格滚动是否已顺滑；
+  两处卡面玻璃与其余 5 处浮层/栏是否观感统一；tile 档去掉实时模糊后卡片玻璃感是否仍够
+  （大块浮层不受影响，仍走 `blur = 20`）。

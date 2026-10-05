@@ -12,16 +12,18 @@ import 'package:hiko/data/settings_store.dart';
 import 'package:hiko/ui/screens/online_screen.dart';
 import 'package:hiko/ui/theme.dart';
 import 'package:hiko/ui/widgets/detail_kit.dart';
+import 'package:hiko/ui/widgets/hiko_glass.dart';
 import 'package:hiko/ui/widgets/online_card_kit.dart';
 import 'package:hiko/ui/widgets/online_cover.dart';
 import 'package:hiko/ui/widgets/online_work_grid.dart';
 
-/// 在线列表卡片的回归锁，分四块：
+/// 在线列表卡片的回归锁，分五块：
 /// ① 封面必须取**原图**（主界面封面模糊的全部原因就是这里拿了 240×180 缩略图，
 ///    卡片在 Retina 上需要 400–520 物理像素，等于放大 2.4–2.9 倍）；
 /// ② 收藏角标跟着歌单索引走；
 /// ③ 1.99.21 胶囊化改版（元数据胶囊的内容 / 类别 / 配色）；
-/// ④ 1.99.21 瀑布流（卡片高矮由内容决定、列数解析）。
+/// ④ 1.99.21 瀑布流（卡片高矮由内容决定、列数解析）；
+/// ⑤ 1.99.23 卡面玻璃（必须与本地专辑卡同为 tile 档，否则两种卡片材质不一致）。
 void main() {
   // 拦下所有封面请求：单测不该联网，也不该留下待处理的连接定时器
   late List<Uri> requested;
@@ -141,6 +143,58 @@ void main() {
       // 封面是 `AspectRatio(1)`，可以直接钉住它本身是正方形。
       final cover = tester.getSize(find.byType(OnlineCover));
       expect(cover.height, closeTo(cover.width, 0.001));
+    });
+  });
+
+  group('卡面玻璃（1.99.23 与本地专辑卡对齐）', () {
+    testWidgets('卡面有一层 tile 档玻璃（不能退回纯透明 Container）', (tester) async {
+      await tester.pumpWidget(
+        host(OnlineWorkCard(work: work(), onTap: () {})),
+      );
+      await tester.pump();
+
+      final glass = tester.widgetList<HikoGlass>(find.byType(HikoGlass));
+      expect(
+        glass,
+        isNotEmpty,
+        reason: '在线卡摆在本专辑卡旁边必须是同一种材质，'
+            '之前它是纯透明 Container（只有选中态一条描边）',
+      );
+      for (final g in glass) {
+        expect(
+          g.tier,
+          HikoGlassTier.tile,
+          reason: '在线卡片同样在主滚动网格里，必须是 standard 轻量档；'
+              '写成 surface 档会逐卡自建渲染图层',
+        );
+        expect(
+          g.animationDuration,
+          isNotNull,
+          reason: '选中态的颜色/描边过渡不能丢',
+        );
+      }
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('选中态加粗描边并换成主色，未选中回到微光边', (tester) async {
+      Widget card(bool selected) => host(
+        OnlineWorkCard(work: work(), onTap: () {}, selected: selected),
+      );
+
+      await tester.pumpWidget(card(false));
+      await tester.pump();
+      final resting = tester.widget<HikoGlass>(find.byType(HikoGlass));
+      expect(resting.borderWidth, lessThan(1.0), reason: '常态是微光边，不该抢眼');
+
+      await tester.pumpWidget(card(true));
+      await tester.pump(const Duration(milliseconds: 400));
+      final active = tester.widget<HikoGlass>(find.byType(HikoGlass));
+      expect(
+        active.borderWidth,
+        greaterThan(resting.borderWidth),
+        reason: '选中态必须比常态更粗，否则「已选中」在网格里读不出来',
+      );
+      expect(active.borderColor, isNot(resting.borderColor));
     });
   });
 

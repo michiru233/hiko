@@ -13,6 +13,7 @@ import '../../utils/time.dart';
 import '../detail_jump_requests.dart';
 import '../theme.dart';
 import '../widgets/detail_kit.dart';
+import '../widgets/hiko_glass.dart';
 import '../widgets/online_account_dialogs.dart';
 import '../widgets/online_appearance.dart';
 import '../widgets/online_card_kit.dart';
@@ -1152,6 +1153,14 @@ class OnlineWorkCard extends ConsumerWidget {
         ),
     ];
 
+    final isDark = theme.brightness == Brightness.dark;
+    // 玻璃面与本地专辑卡同款（1.99.23）：两处卡片都是瀑布流里的一对兄弟，
+    // 之前在线卡是纯透明的（只有选中态一条描边），摆在专辑卡旁边明显是两种材质。
+    final cardBg = isDark ? HikoColors.darkGlassCard : HikoColors.lightGlassCard;
+    final cardBorder = isDark
+        ? HikoColors.darkGlassBorderSubtle
+        : HikoColors.lightGlassBorderSubtle;
+
     return InkWell(
       onTap: onTap,
       onSecondaryTapDown: onContextMenu == null
@@ -1167,18 +1176,23 @@ class OnlineWorkCard extends ConsumerWidget {
                   : box.localToGlobal(box.size.center(Offset.zero));
               onContextMenu!(origin);
             },
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
+      // 与卡面圆角对齐（原为 10；卡面用 12，水波纹比卡面小一圈会露出边角）
+      borderRadius: BorderRadius.circular(12),
+      child: HikoGlass(
+        tier: HikoGlassTier.tile,
+        borderRadius: 12,
         padding: const EdgeInsets.all(kOnlineCardPadding),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected
-                ? theme.colorScheme.primary
-                : Colors.transparent,
-            width: 1.2,
+        animationDuration: const Duration(milliseconds: 300),
+        tint: cardBg,
+        borderColor: selected ? theme.colorScheme.primary : cardBorder,
+        borderWidth: selected ? 1.5 : 0.8,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 14,
+            offset: const Offset(0, 6),
           ),
-        ),
+        ],
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

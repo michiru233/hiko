@@ -154,42 +154,51 @@
   （flutter_test 里所有 HTTP 都 400，未捕获的 `KikoeruException` 会让用例失败）。
 - **回归锁必须摘掉修复验证会红**（改动落栈/筛选这类语义时逐条验一遍）。
 
-## 玻璃材质门面（1.99.22：liquid_glass_widgets）
+## 玻璃材质门面（1.99.22 接入：liquid_glass_widgets；1.99.23 修移动端卡顿）
 
 - 依赖 `liquid_glass_widgets: ^1.9.0`：零三方运行时依赖，自带 5 个 `.frag`，**无需任何
   Xcode / Gradle / CocoaPods 改动**，会自动打进双端产物到
   `flutter_assets/packages/liquid_glass_widgets/shaders/`（已核验 macOS 与 APK 均在）。
 - **业务代码只 import `lib/ui/widgets/hiko_glass.dart`**，不要直接依赖库 API（该库 1.0.0→1.9.0
   发了 21 版，breaking change 集中在早期；门面就是为了把升级/换库收敛在一个文件）。
-- **两档契约**（`HikoGlassTier`，由公开纯函数 `hikoGlassQuality` / `hikoGlassUseOwnLayer` 决定）：
+- **两档契约**（`HikoGlassTier`，由公开纯函数 `hikoGlassQuality` / `hikoGlassUseOwnLayer` /
+  **`hikoGlassBlur`** 决定）：
 
   | | `surface` | `tile` |
   |---|---|---|
   | 质量 | `premium` | `standard` |
   | 图层 | `useOwnLayer: true` | `false` |
+  | **`blur`** | **20** | **0** |
   | 用在哪 | 静止浮层 / 栏 | 滚动长列表 |
 
 - 浮层**必须** `useOwnLayer: true`：premium 档若既不自建图层、又无 `LiquidGlassLayer` 祖先，
   调试构建会命中 `LiquidGlassBlendGroup` 的断言。项目**不需要** `LiquidGlassWidgets.wrap()`
   （源码注释明写 optional，只在用 `theme:` / `adaptiveQuality:` 时才需要），也不需要改 app root；
   `initialize()` 只是预热 shader。
-- tile **必须** `useOwnLayer: false` **且不传 `backgroundKey`**：逐卡自建图层吃显存；
-  传 `backgroundKey` 会启动采样 ticker 逐帧捕获背景（`_updateTicker` 只在 key 下有已挂载
-  `RepaintBoundary` 时才启动）。不传 = 纯单 pass 片元着色器，官方标注给「可滚动列表」的那一档。
+- tile **必须** `useOwnLayer: false` **且 `blur = 0`**：逐卡自建图层吃显存；
+  **而 `blur > 0` 才是真正的性能杀手** —— `LightweightLiquidGlass.paint()` 在
+  `blurSigma > 0` 时无条件 `pushLayer(BackdropFilterLayer)`（sigma 高斯 + 饱和矩阵），
+  且 `alwaysNeedsCompositing` 随之变 true，**每个实例**都是一次逐帧实时背景模糊 + 独立合成层。
+  置 0 走 `_paintGlassContent` 直画分支：不建层、不模糊，但程序化边缘光 / Fresnel / 立体斜面全保留。
+- ⚠️ **`backgroundKey` ≠ 性能开关（1.99.22 我记错了，是当天卡顿的成因）**：它只管「采样 ticker」，
+  用于把**静止**背景采样一次复用；不传只是不启动该 ticker，**不等于不捕获背景**。真正的开关是 `blur`。
+  修法：tile 档沿用 surface 档的 `blur = 20` = 每张卡一次 sigma20 实时模糊，必须按档位取值
+  （门面里是 `blur ?? hikoGlassBlur(tier)`，显式传 `blur:` 仍可覆盖，给静态胶囊微调用）。
 - `animationDuration` 对 tint / 描边色 / 描边宽 / **阴影列表**做隐式补间
-  （`_ShadowListTween` + `BoxShadow.lerpList`，后者已处理项数不一致）。专辑卡靠它保住 300ms
-  选中过渡——**门面是无状态的，忘传就静默退化成瞬变**。
+  （`_ShadowListTween` + `BoxShadow.lerpList`，后者已处理项数不一致）。专辑卡与在线卡都靠它保住
+  300ms 选中过渡——**门面是无状态的，忘传就静默退化成瞬变**。
 - `solid: true` = 实心圆角矩形、不跑着色器，给「常态玻璃 / 激活实心主色」的双态控件
   （首页标签 chip、多选按钮）。激活态本该实心，做成玻璃反而透背景、削弱选中力度。
 - **在 `flutter_test` 里玻璃会自动降级成普通子树**（非 Impeller 时 `LiquidGlassBlendGroup` 直接透传，
   `GlassContainer` 走 `LightweightLiquidGlass`），所以玻璃放进被测试覆盖的播放栏/底栏**不会打穿基线**
   ——已用临时探针实测（三条全过、`takeException()` 全 null）后才敢替换。
-  反过来说：**两档搞混、补间失效，在测试里渲染结果完全一样、看不出来**，
-  只能靠 `test/ui/hiko_glass_test.dart` 的纯函数 / 参数锁。
+  反过来说：**两档搞混、补间失效、blur 漏喂默认值，在测试里渲染结果完全一样、看不出来**，
+  只能靠 `test/ui/hiko_glass_test.dart` 的纯函数 / 参数锁（1.99.23 补了 blur 那三条，
+  其中两条直接断言渲染出来的 `LiquidGlassSettings.blur`）。
 - 全项目真 `BackdropFilter` 玻璃只有 5 处：播放栏、移动端底栏、右键菜单、在线详情关闭钮、
-  详情抽屉关闭钮。**在线卡没有玻璃**（1.99.21 后只有胶囊配色）；首页那几处 `*GlassCard` token
-  是筛选组 / 标签 chip / 多选 / 排序的**静态工具栏胶囊**，不是列表卡；
-  **滚动列表里唯一的玻璃卡是专辑卡**。
+  详情抽屉关闭钮。**1.99.23 起滚动列表里的玻璃卡有两处：本地专辑卡 + 在线卡**（之前在线卡是
+  纯透明 `Container`，只有选中态一条描边，摆在专辑卡旁边明显是两种材质，用户实机指出）；
+  首页那几处 `*GlassCard` token 是筛选组 / 标签 chip / 多选 / 排序的**静态工具栏胶囊**，不是列表卡。
 - `GlassAdaptiveScope` 把 **Windows / Linux / Web 静态封顶在 `standard` 档**，只有
   Metal(macOS/iOS) 与 Vulkan(Android) 走满血多 pass 管线 → 三端观感不均，Windows 会明显弱一档。
 - 旧的 `lib/ui/widgets/glass_container.dart` 已删（换完后 lib+test 零引用）。

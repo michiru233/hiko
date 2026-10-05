@@ -12,12 +12,15 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart' as lg;
 ///
 /// 这里锁的全是**在 flutter_test 里看不出来、也不会有别的测试拦住**的退化：
 /// - 两档的质量 / 图层映射被调换 → 浮层失去质感，或长列表逐卡自建图层掉帧；
+/// - **tile 档的 blur 被写成非 0** → 每张卡逐帧实时模糊背景（1.99.23 修的移动端卡顿）；
 /// - 专辑卡被从 tile 档改成 surface 档 → 主网格静默性能回退；
 /// - animationDuration 失效 → 选中反馈静默退化成瞬变（album_card_test 不覆盖）；
 /// - solid 模式漏回着色器路径 → 双态胶囊的激活态又变成半透明玻璃。
 ///
 /// 之所以用纯函数 + 公开字段来断言，是因为上述退化**在测试环境里渲染结果完全
 /// 一样**（Impeller 不可用，两条路径都降级成普通子树），只能锁参数本身。
+/// 1.99.23 的卡顿就是这么漏出去的：1.99.22 只锁了质量与图层，没锁 blur，
+/// 而 blur 才是真正的性能开关。
 
 Album _album(String id) => Album(
   id: id,
@@ -35,6 +38,18 @@ Color _shaderTint(WidgetTester tester) {
   return container.settings!.glassColor;
 }
 
+/// 取出树里第一个 [HikoGlass] 外层的实际模糊强度。
+///
+/// 这是 1.99.23 补上的那条锁：`LiquidGlassSettings.blur` 默认是 5，
+/// 一旦门面没把档位默认值喂进来（`blur: blur` 而不是 `blur: blur ?? hikoGlassBlur(tier)`），
+/// 测试里所有断言照样全绿，真机上就是逐卡实时模糊。
+double _shaderBlur(WidgetTester tester) {
+  final container = tester.widget<lg.GlassContainer>(
+    find.byType(lg.GlassContainer),
+  );
+  return container.settings!.blur;
+}
+
 void main() {
   group('档位 → 渲染参数映射（性能契约）', () {
     test('surface 档 = premium + 自建图层', () {
@@ -47,6 +62,19 @@ void main() {
       expect(hikoGlassUseOwnLayer(HikoGlassTier.tile), isFalse);
     });
 
+    test('tile 档 blur 必须是 0（>0 就是逐卡 BackdropFilterLayer 实时模糊）', () {
+      expect(
+        hikoGlassBlur(HikoGlassTier.tile),
+        0,
+        reason: '卡上能看见玻璃的面积很小（顶部被封面盖住），'
+            '为看不出来的实时模糊付最高代价就是移动端滑动卡顿的来源',
+      );
+    });
+
+    test('surface 档 blur 大于 0（静止浮层的实时模糊是它的核心观感）', () {
+      expect(hikoGlassBlur(HikoGlassTier.surface), greaterThan(0));
+    });
+
     test('两档的取值互不相同，没有被写成同一个', () {
       expect(
         hikoGlassQuality(HikoGlassTier.surface),
@@ -55,6 +83,10 @@ void main() {
       expect(
         hikoGlassUseOwnLayer(HikoGlassTier.surface),
         isNot(hikoGlassUseOwnLayer(HikoGlassTier.tile)),
+      );
+      expect(
+        hikoGlassBlur(HikoGlassTier.surface),
+        isNot(hikoGlassBlur(HikoGlassTier.tile)),
       );
     });
   });
@@ -172,6 +204,62 @@ void main() {
       await tester.pump();
       await tester.pumpWidget(host(to));
       expect(_shaderTint(tester), to);
+    });
+  });
+
+  group('档位默认值真的喂进了着色器（1.99.23：blur 是真正的性能开关）', () {
+    Future<void> pumpTier(WidgetTester tester, HikoGlassTier tier) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: HikoGlass(
+                tier: tier,
+                child: const SizedBox(width: 60, height: 40),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    testWidgets('tile 档渲染出的 blur 是 0', (tester) async {
+      await pumpTier(tester, HikoGlassTier.tile);
+      expect(
+        _shaderBlur(tester),
+        0,
+        reason: '门面若把 blur 直接透传（漏掉 ?? hikoGlassBlur(tier)），'
+            '这里会拿到 LiquidGlassSettings 的默认值 5 —— '
+            '测试里毫无症状，真机上就是逐卡实时模糊',
+      );
+    });
+
+    testWidgets('surface 档渲染出的 blur 大于 0', (tester) async {
+      await pumpTier(tester, HikoGlassTier.surface);
+      expect(_shaderBlur(tester), greaterThan(0));
+    });
+
+    testWidgets('显式传 blur 时压过档位默认值', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: HikoGlass(
+                blur: 12,
+                child: SizedBox(width: 60, height: 40),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(
+        _shaderBlur(tester),
+        12,
+        reason: '首页工具栏那种静态胶囊仍需要按调用点微调；'
+            '档位默认值必须让位于显式值',
+      );
     });
   });
 
