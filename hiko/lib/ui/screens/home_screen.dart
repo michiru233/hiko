@@ -1344,7 +1344,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // 桌面端宽度富裕，顶栏原样保留。
     if (isMobile && _isOnlineView) return const SizedBox.shrink();
     final iconSize = isMobile ? 24.0 : 18.0;
-    return Padding(
+    final bar = Padding(
       padding: EdgeInsets.symmetric(
         horizontal: isMobile ? 16 : 48,
         vertical: 14,
@@ -1432,6 +1432,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ],
       ),
     );
+
+    // 1.99.24：移动端顶栏要垫上与下方内容一致的不透明底色。
+    // 背景（用户实机反馈「深色下最上面一层有色差」）：本页 Stack 首子项是
+    // 「正在播放封面环境光晕」（σ80，深色不透明度 0.15，见本文件 Stack），
+    // 而移动端本地视图的头部从 1.99.9 起就垫了页面底色（_buildLocalScrollable
+    // 里那个 ColoredBox），顶栏却没有 —— 于是整页只有顶栏这一条能把光晕透出来，
+    // 实测顶栏 (53,50,59) 而其余全屏 (30,31,36)，横向还有一条左亮右暗的渐变。
+    //
+    // 用 scaffoldBackgroundColor 而不是写死主题底色：设了背景图时它是 transparent，
+    // 那时头部同样是透明的，两边自然一致（光晕整页透出，也是 1.55 的原始意图）。
+    //
+    // 桌面端**不垫**：桌面主列整列都没有不透明底、侧栏是不透明的 Sidebar，
+    // 光晕本来就该在顶栏一带透出来，加一层底色反而会在桌面凭空造出一条横向接缝。
+    if (!isMobile) return bar;
+    return ColoredBox(color: theme.scaffoldBackgroundColor, child: bar);
   }
 
   Widget _buildHero(ThemeData theme, int resultCount, bool isMobile) {

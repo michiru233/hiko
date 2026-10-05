@@ -27,7 +27,14 @@ class HikoColors {
   // 玻璃拟态专属色彩规范 (Glassmorphism Tokens)
   // 深色玻璃表面
   static const darkGlassSurface = Color(0xB81D1F24); // 72% 不透明度
-  static const darkGlassCard = Color(0x9923252C);    // 60% 不透明度
+  // 1.99.24：卡片底色从 0x9923252C 提亮到 0x992A2C31。
+  // 原因是深色卡原来只比页面底（darkBg 0x1D1F24）亮 2 —— 卡片几乎完全靠边缘
+  // 定义自己，于是把着色器那圈白边放大成了「唯一可见的卡面特征」（1.99.24 深色卡
+  // 改走无着色器面之后尤其明显：没有边缘就没卡片了）。
+  // 现在的合成结果 ≈ (37,39,44)，比页面底亮 8，与浅色卡「比底亮 4~7」同量级。
+  // 不再往上加：深色里再亮就变成灰块了。alpha 仍保持 60%，保留玻璃半透的底色语义
+  // （本 token 也被首页静态胶囊 / 在线卡复用，一起统一）。
+  static const darkGlassCard = Color(0x992A2C31);    // 60% 不透明度
   static const darkGlassBorder = Color(0x2EFFFFFF);  // 18% 白色高光边缘
   static const darkGlassBorderSubtle = Color(0x14FFFFFF); // 8% 白色微光边缘
   static const darkGlassHighlight = Color(0x1AFFFFFF); // 10% 顶边内高光

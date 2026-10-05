@@ -50,6 +50,30 @@ bool hikoGlassUseOwnLayer(HikoGlassTier tier) => tier == HikoGlassTier.surface;
 double hikoGlassBlur(HikoGlassTier tier) =>
     tier == HikoGlassTier.surface ? 20 : 0;
 
+/// 档位 + 亮暗 → 该不该走着色器。
+///
+/// 纯函数，公开给回归锁直接断言。**1.99.24 的深色卡亮边就是这条决定的**：
+///
+/// 轻量着色器里有一圈**写死的结构白边**，不是我们设的描边：
+/// ```glsl
+/// float rimFade = 1.0 - smoothstep(0.3, 0.5, uBackdropLuma) * 0.92;
+/// float rimAlphaBase = kRimAlphaBase(0.65) * rimFade * uRefractiveIndex(1.2);
+/// finalColor = bodyColor * (1 - rimAlphaBase) + adaptiveRimColor * rimAlphaBase;
+/// ```
+/// 它的开关 `uBackdropLuma` 在库里是**硬编码常量** `isDark ? 0.15 : 0.85`
+/// （`lightweight_liquid_glass.dart` 的 `_LightweightGlassEffectState.build`）——
+/// 深色 0.15 → `rimFade = 1.0`（满血白边）、浅色 0.85 → `0.08`（几乎不可见）。
+/// `LiquidGlassSettings` 完全够不到这个常量（`fresnelStrength` 只缩放另一项较小的
+/// 加法项），所以**深色卡想去掉那圈亮边就只能不走着色器**：
+/// 实测深色卡描边峰值 168（卡内底色才 31），而同一套 token 在浅色下毫无亮峰。
+///
+/// 浅色**必须**继续走着色器：那边 `rimFade ≈ 0.08`，白边被近白卡底吃掉，
+/// 观感已经满意，不要动它（换成实心面会让浅色卡失去玻璃质感）。
+bool hikoGlassUsesShader(HikoGlassTier tier, {required bool isDark}) =>
+    tier == HikoGlassTier.surface || !isDark;
+
+
+
 /// 档位 → 玻璃基色。沿用 [HikoColors] 既有的玻璃 token，不另起一套配色。
 Color hikoGlassTint(HikoGlassTier tier, {required bool isDark}) {
   final surface = tier == HikoGlassTier.surface;
@@ -88,14 +112,18 @@ Color hikoGlassBorder(HikoGlassTier tier, {required bool isDark}) {
 /// | 质量 | premium（满血多 pass） | standard（单 pass 轻量表） |
 /// | 渲染图层 | 自建（`useOwnLayer: true`） | 共享（不建图层） |
 /// | 模糊 `blur` | 20 | **0** |
+/// | 走着色器 | 恒是（浅深都走） | 浅色走 / **深色不走**（见 [hikoGlassUsesShader]） |
 /// | 适用 | 静止浮层/栏 | 滚动中的长列表 |
 ///
 /// **档位差异里最容易搞错的是 `blur`，它才是性能开关**（详见 [HikoGlass.blur]）：
 /// 1.99.22 的专辑卡卡顿不是因为「库不行」，而是因为 tile 档沿用了 surface 档的
 /// `blur = 20`，于是每张卡都在**逐帧实时模糊背后内容**。tile 档置 0 后走
-/// `_paintGlassContent` 直画分支，不建合成层、不模糊背景，但程序化的边缘光 /
-/// Fresnel / 立体斜面全部保留 —— 卡片上看得见的那点玻璃感大多来自这些程序化项，
-/// 而卡片顶部本来就被封面盖住，实时模糊掉的可见面积很小。
+/// `_paintGlassContent` 直画分支，不建合成层、不模糊背景。
+///
+/// **第二个坑是深色下的着色器白边**（1.99.24，详见 [hikoGlassUsesShader]）：
+/// 浅色下几乎不可见，深色下却是刺眼的整圈亮环（实测峰值 168，而卡内底色才 31）。
+/// 深色 tile 档因此改走「我们自己的实心面 + token 描边 + 阴影」，
+/// 边缘观感与浅色对齐（浅色本来也只是被近白底吃掉了那条白边）。
 ///
 /// 注 1：**不传 `backgroundKey`**。轻量档的 `backgroundKey` 只控制「采样 ticker」——
 /// 它用于把**静止**背景一次性采样复用，省掉逐帧重采；不传就不会启动该 ticker。
@@ -106,7 +134,10 @@ Color hikoGlassBorder(HikoGlassTier tier, {required bool isDark}) {
 /// 注 2：在 `flutter_test` 里，Impeller 不可用，两条路径都会自动降级成普通子树
 /// （`LiquidGlassBlendGroup` 在 `!ImageFilter.isShaderFilterSupported` 时直接透传），
 /// 因此玻璃控件放进被测试覆盖的界面不会打穿测试基线 —— 代价是**档位参数搞错在
-/// 测试里完全看不出来**，所以映射关系一律抽成公开纯函数单独锁（见 [hikoGlassBlur]）。
+/// 测试里完全看不出来**，所以映射关系一律抽成公开纯函数单独锁
+/// （见 [hikoGlassBlur] 与 [hikoGlassUsesShader]）。
+/// 唯一能**直接观测**的差别就是「树里到底有没有 `lg.GlassContainer`」，
+/// 所以「深色 tile 档不走着色器」这条可以端到端断言。
 class HikoGlass extends StatelessWidget {
   const HikoGlass({
     super.key,
@@ -193,9 +224,26 @@ class HikoGlass extends StatelessWidget {
     final effectiveTint = tint ?? hikoGlassTint(tier, isDark: isDark);
     final effectiveBorder = borderColor ?? hikoGlassBorder(tier, isDark: isDark);
 
+    // 非补间参数（主题不会在一次补间中途翻转），用闭包捕获后传给 builder，
+    // 这样 `_AnimatedGlass` 的 4 参 builder 签名不用动。
+    final useShader = !solid && hikoGlassUsesShader(tier, isDark: isDark);
+    Widget buildGlass(
+      Color tintColor,
+      Color borderColor,
+      double borderWidth,
+      List<BoxShadow> shadows,
+    ) =>
+        _buildGlass(
+          tintColor,
+          borderColor,
+          borderWidth,
+          shadows,
+          useShader: useShader,
+        );
+
     final duration = animationDuration;
     final glass = duration == null
-        ? _buildGlass(
+        ? buildGlass(
             effectiveTint,
             effectiveBorder,
             borderWidth,
@@ -208,7 +256,7 @@ class HikoGlass extends StatelessWidget {
             borderColor: effectiveBorder,
             borderWidth: borderWidth,
             shadows: boxShadow ?? const <BoxShadow>[],
-            builder: _buildGlass,
+            builder: buildGlass,
           );
 
     return _wrapMargin(glass);
@@ -223,21 +271,12 @@ class HikoGlass extends StatelessWidget {
     Color tintColor,
     Color borderColor,
     double borderWidth,
-    List<BoxShadow> shadows,
-  ) {
-    final Widget glass = solid
-        ? Container(
-            width: width,
-            height: height,
-            padding: padding,
-            decoration: BoxDecoration(
-              color: tintColor,
-              borderRadius: BorderRadius.circular(borderRadius),
-              border: Border.all(color: borderColor, width: borderWidth),
-            ),
-            child: child,
-          )
-        : lg.GlassContainer(
+    List<BoxShadow> shadows, {
+    required bool useShader,
+  }) {
+    // 不走着色器（solid，或深色下的 tile 档）→ 只画实心圆角矩形 + 我们的描边。
+    final Widget glass = useShader
+        ? lg.GlassContainer(
             width: width,
             height: height,
             padding: padding,
@@ -253,6 +292,17 @@ class HikoGlass extends StatelessWidget {
             ),
             quality: hikoGlassQuality(tier),
             useOwnLayer: hikoGlassUseOwnLayer(tier),
+            child: child,
+          )
+        : Container(
+            width: width,
+            height: height,
+            padding: padding,
+            decoration: BoxDecoration(
+              color: tintColor,
+              borderRadius: BorderRadius.circular(borderRadius),
+              border: Border.all(color: borderColor, width: borderWidth),
+            ),
             child: child,
           );
 
