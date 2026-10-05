@@ -9,6 +9,8 @@ import '../../data/online/online_favorites.dart';
 import '../../data/online/online_models.dart';
 import '../../data/online/online_provider.dart';
 import '../../data/settings_store.dart';
+import '../detail_jump_requests.dart';
+import '../theme.dart';
 import '../widgets/detail_kit.dart';
 import '../widgets/online_account_dialogs.dart';
 import '../widgets/online_appearance.dart';
@@ -83,18 +85,44 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
   static const _searchHistoryLimit = 10;
   List<String> _searchHistory = const [];
 
+  /// 搜索框是否聚焦（1.99.17）：聚焦时把历史从 chips 行展开成历史面板。
+  /// FocusNode 是 app 级单例（Cmd+F 快捷键也聚焦它），监听挂在 State 上，
+  /// dispose 时必须摘掉。
+  bool _searchFocused = false;
+  FocusNode? _searchNode;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _ensureLoaded());
+    // 1.99.17 播放页「跳详情」：本页常因 home 刚切视图而**晚于**请求发出挂载，
+    // build 里的 ref.listen 错过变更，初始化时读一次兜底（读后自行清空）
+    WidgetsBinding.instance.addPostFrameCallback((_) =>
+        _consumeDetailJumpRequest());
     unawaited(_loadSearchHistory());
+    _searchNode = ref.read(onlineSearchFocusProvider);
+    _searchNode!.addListener(_onSearchFocusChanged);
   }
 
   @override
   void dispose() {
+    _searchNode?.removeListener(_onSearchFocusChanged);
     _searchController.dispose();
     _mobileScroll.dispose();
     super.dispose();
+  }
+
+  void _onSearchFocusChanged() {
+    if (!mounted) return;
+    final focused = _searchNode?.hasFocus ?? false;
+    if (focused != _searchFocused) setState(() => _searchFocused = focused);
+  }
+
+  void _consumeDetailJumpRequest() {
+    final workId = ref.read(onlineDetailRequestProvider);
+    if (workId == null) return;
+    ref.read(onlineDetailRequestProvider.notifier).state = null;
+    _openDetail(workId);
   }
 
   Future<void> _loadSearchHistory() async {
@@ -244,6 +272,14 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     final theme = Theme.of(context);
     final showPanel = !widget.isMobile && _detailWorkId != null;
 
+    // 1.99.17 播放页「跳详情」：本页在场时直接消费请求（读后清空，
+    // 避免下次挂载把旧请求再开一遍）
+    ref.listen<int?>(onlineDetailRequestProvider, (prev, next) {
+      if (next == null) return;
+      ref.read(onlineDetailRequestProvider.notifier).state = null;
+      _openDetail(next);
+    });
+
     // 1.99.7 移动端：结果集一换（翻页/换标签/新搜索）就跳回顶部，
     // 否则新内容会从旧滚动深度中间开始看
     if (widget.isMobile) {
@@ -327,14 +363,105 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
               ),
             ],
           ),
-          // 搜索历史（1.99.3）：只在搜索框为空时出现，点了重搜
-          if (_searchController.text.isEmpty && _searchHistory.isNotEmpty) ...[
+          // 搜索历史（1.99.3）：搜索框为空时显示 chips 行，点了重搜。
+          // 1.99.17 起聚焦时展开成历史面板（不限输入是否为空），失焦回退 chips 行
+          if (_searchFocused && _searchHistory.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            _buildSearchHistoryPanel(theme),
+          ] else if (_searchController.text.isEmpty &&
+              _searchHistory.isNotEmpty) ...[
             const SizedBox(height: 6),
             _buildSearchHistoryRow(theme),
           ],
           const SizedBox(height: 8),
           _buildFilterLine(state, theme),
         ],
+      ),
+    );
+  }
+
+  /// 聚焦搜索框时的历史面板（1.99.17）。
+  ///
+  /// 做成头部流内的一块卡片而不是 OverlayEntry 下拉：搜索框的 FocusNode 是
+  /// app 级单例，移动端头部还有一份离屏测量副本共用它，Overlay 的锚点与
+  /// 生命周期都会被这层共用搅浑；流内展开没有这些坑，代价只是把下方内容推下去。
+  ///
+  /// 条目与「清空」的动作挂在 onTapDown：点击面板必然先让搜索框失焦
+  /// （TapRegion 在 down 即触发），面板随失焦整块销毁，等 onTap 命中测试时
+  /// 面板已经不在了 —— 只有抢在 down 阶段动作才稳。
+  Widget _buildSearchHistoryPanel(ThemeData theme) {
+    final isDark = theme.brightness == Brightness.dark;
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? HikoColors.darkCard : HikoColors.lightCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.4)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.12),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 280),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
+              child: Row(
+                children: [
+                  Text(
+                    '搜索历史',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: theme.hintColor,
+                    ),
+                  ),
+                  const Spacer(),
+                  GestureDetector(
+                    onTapDown: (_) => unawaited(_clearSearchHistory()),
+                    child: Text('清空', style: TextStyle(
+                        fontSize: 11, color: theme.colorScheme.primary)),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: theme.dividerColor.withValues(alpha: 0.4)),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                children: [
+                  for (final term in _searchHistory)
+                    InkWell(
+                      onTapDown: (_) {
+                        _searchController.text = term;
+                        unawaited(_submitSearch(term));
+                        setState(() {});
+                      },
+                      child: ListTile(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        minLeadingWidth: 24,
+                        leading: Icon(Icons.history_rounded,
+                            size: 15, color: theme.hintColor),
+                        title: Text(
+                          term,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

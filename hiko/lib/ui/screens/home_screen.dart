@@ -38,6 +38,7 @@ import '../widgets/detail_drawer.dart';
 import '../widgets/mobile_bottom_nav.dart';
 import '../widgets/toast.dart';
 import '../widgets/player_bar.dart';
+import '../detail_jump_requests.dart';
 import '../widgets/rating_dialog.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/stats_view.dart';
@@ -488,6 +489,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (prev == false && next == true && _playerBarDismissed) {
         setState(() => _playerBarDismissed = false);
       }
+    });
+
+    // 1.99.17 播放页「跳详情」指令：本地请求 = 打开详情抽屉（从全库找，
+    // 不受当前视图筛选影响）；在线请求只负责切到在线视图 —— 消费与清空由
+    // OnlineScreen 负责，两处都清会出现「消费方还没挂载、请求就被抹掉」的时序坑
+    ref.listen<String?>(localDetailRequestProvider, (prev, next) {
+      if (next == null) return;
+      ref.read(localDetailRequestProvider.notifier).state = null;
+      for (final a in ref.read(libraryProvider)) {
+        if (a.id == next) {
+          setState(() => _detailAlbum = a);
+          break;
+        }
+      }
+    });
+    ref.listen<int?>(onlineDetailRequestProvider, (prev, next) {
+      if (next == null || _view == '在线') return;
+      setState(() => _view = '在线');
     });
 
     // 播放栏当前是否可见：桌面恒定显示；移动端要求「有正在播放的专辑」且

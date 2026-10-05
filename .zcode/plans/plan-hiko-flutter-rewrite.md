@@ -3298,3 +3298,33 @@ Release: https://github.com/michiru233/hiko/releases/tag/v1.99.5
 - 已知边界：离线模式点卡片直接播放不进详情（详情需网络拉取）；LRU 豁免在 UI 上不可见（缓存统计含离线文件，属预期——它确实占磁盘）。
 
 **版本**：`1.99.16+129`；Release：`hiko-v1.99.16-android.apk`（70.8MB）+ `hiko-v1.99.16-macos.zip`（34.3MB）。本版无新增待裁决。**批次计划书 4 版全部收官。**
+
+---
+
+## 1.99.17（2026-10-05）：播放页跳详情/在线收藏 + 在线搜索历史面板
+
+用户提出三需求 + 一个架构拷问（grill-me 五问全部按推荐锁定）：**在线播放页与本地播放页本就是同一套** `FullscreenPlayerScreen`（无参构造，只读 `playbackProvider`，靠 `Album.isOnline` 做行为降级），本版只加条件入口，不产生第二套播放页。
+
+### ① 跳详情按钮（在线/本地通用）
+
+- 播放页 AppBar 加 `info_outline` 图标（tooltip 在线「作品详情」/本地「专辑详情」），点击关播放页开详情，**播放不中断**。
+- 移动端（Android ≤1000px）：详情是整页路由，直接 `pushReplacement`（在线 `OnlineDetailScreen` / 本地 `AlbumDetailScreen`）顶掉播放页。
+- 桌面端详情长在 home 内部状态里（本地抽屉 / 在线页侧栏面板），播放页拿不到 setState → 新建指令通道 `lib/ui/detail_jump_requests.dart`（`localDetailRequestProvider` / `onlineDetailRequestProvider`）。**消费纪律**：本地通道由 HomeScreen 读后清空；在线通道**只由 OnlineScreen 消费清空**，HomeScreen 只借它切视图——两处都清会出现「消费方还没挂载、请求就被抹掉」的时序坑（HomeScreen 监听先注册先触发）。
+- OnlineScreen 挂载晚于请求（home 刚切视图）时 build 的 ref.listen 错过变更 → initState postFrame 读一次兜底。
+- `OnlineWork.workIdFromAlbumId`（`online-<workId>` 反解，与 `albumIdFor` 对偶）。
+
+### ② 在线搜索历史面板
+
+- 聚焦搜索框时历史从 chips 行**展开成面板**（不限输入是否为空、不做输入过滤联想——不接服务端 suggest），失焦回退原 chips 行；存储沿用 1.99.3 的 SharedPreferences（10 条、去重置顶）。
+- 做成头部流内卡片而非 OverlayEntry 下拉：FocusNode 是 app 级单例且移动端头部有离屏测量副本共用它，Overlay 锚点/生命周期会被共用搅浑；流内展开代价只是推下方内容。
+- **onTapDown 坑**：点面板条目必然先令搜索框失焦（TapRegion down 即触发），面板随失焦销毁、onTap 命中测试已落空 → 条目与「清空」动作挂 onTapDown 抢在 down 阶段执行。
+
+### ③ 播放页在线收藏
+
+- AppBar 加书签按钮（仅在线专辑显示，点亮状态读本地收藏索引 `playlistsOf(workId)`，不为图标单独发请求），点按弹现有 `showPlaylistPicker` 歌单多选弹窗；未登录走登录引导、恢复期禁用（与详情页收藏按钮同语义）。
+- 播放态无 `OnlineWork` 实体：**不改 picker 签名**，直接传最小 `OnlineWork(id, title)`——弹窗链路只消费 id/title，`applyLocal` 落索引后本就有后台刷新补全。
+
+### 测试与验证
+
+- 新建 `test/ui/player_detail_jump_test.dart` 3 条：在线专辑点详情写 workId 进指令通道 + 收藏按钮存在、本地专辑无收藏按钮 + 点详情写 album.id、workId 反解 roundtrip/非法形态。`flutter test` **631 passed / 2 skipped**（基线 628）；analyze 基线持平（45 条全为存量 info/warning，改动文件无新增）。
+- 版本 `1.99.17+130`；Release：`hiko-v1.99.17-android.apk`（68MB）+ `hiko-v1.99.17-macos.zip`（33MB）。本版无新增待裁决。

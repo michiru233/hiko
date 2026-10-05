@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:io' show Platform;
 import 'dart:math' as math;
 import 'dart:ui';
@@ -6,6 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/online/online_account.dart';
+import '../../data/online/online_favorites.dart';
+import '../../data/online/online_models.dart';
 import '../../data/settings_store.dart';
 import '../../lyrics/lyrics_controller.dart';
 import '../../models/album.dart';
@@ -15,9 +19,14 @@ import '../../playback/playback_rules.dart';
 import '../../playback/sleep_timer.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
+import '../detail_jump_requests.dart';
 import '../lyrics/lyrics_auto_scroll.dart';
 import '../theme.dart';
+import '../widgets/detail_kit.dart' show hikoFavoriteColor;
+import '../widgets/online_account_dialogs.dart';
+import '../widgets/online_detail_panel.dart';
 import '../widgets/toast.dart';
+import 'album_detail_screen.dart';
 
 /// 全屏播放页（1.57）：仿网易云双层设计
 /// - 封面层（1.100.0 两套可选，AppBar 切换 + 设置持久化）：
@@ -181,6 +190,22 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
+          // 收藏（1.99.17，仅在线专辑）：复用在线「我的歌单」收藏体系
+          if (album.isOnline &&
+              OnlineWork.workIdFromAlbumId(album.id) != null)
+            _PlayerFavoriteButton(
+              workId: OnlineWork.workIdFromAlbumId(album.id)!,
+              workTitle: album.title,
+            ),
+          // 跳详情（1.99.17，在线/本地通用）：关播放页开详情，播放不中断
+          IconButton(
+            icon: Icon(
+              Icons.info_outline_rounded,
+              color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+            ),
+            tooltip: album.isOnline ? '作品详情' : '专辑详情',
+            onPressed: () => _openAlbumDetail(album),
+          ),
           // 歌词/封面切换按钮（仅窄窗切换式需要；宽屏并排两块同屏无切换概念）
           if (!wide)
             IconButton(
@@ -1412,6 +1437,44 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     );
   }
 
+  /// 1.99.17「跳详情」：关掉播放页并打开当前专辑/作品的详情，播放不中断。
+  ///
+  /// 桌面端的详情长在 home 里（本地详情抽屉 / 在线页侧栏面板），播放页拿不到
+  /// 那两处内部状态，走 [detail_jump_requests] 的指令通道；移动端详情是独立
+  /// 整页路由，直接 pushReplacement 顶掉播放页。桌面在线请求只负责切视图 ——
+  /// 请求的消费与清空由 OnlineScreen 负责（两处都清会有「消费方还没挂载、
+  /// 请求就被抹掉」的时序坑）。
+  void _openAlbumDetail(Album album) {
+    final nav = Navigator.of(context);
+    final isMobile =
+        Platform.isAndroid && MediaQuery.sizeOf(context).width <= 1000;
+    if (album.isOnline) {
+      final workId = OnlineWork.workIdFromAlbumId(album.id);
+      if (workId == null) return;
+      if (isMobile) {
+        nav.pushReplacement(
+          MaterialPageRoute<void>(
+            builder: (_) => OnlineDetailScreen(workId: workId),
+          ),
+        );
+      } else {
+        ref.read(onlineDetailRequestProvider.notifier).state = workId;
+        nav.pop();
+      }
+      return;
+    }
+    if (isMobile) {
+      nav.pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => AlbumDetailScreen(albumId: album.id),
+        ),
+      );
+    } else {
+      ref.read(localDetailRequestProvider.notifier).state = album.id;
+      nav.pop();
+    }
+  }
+
   /// 音轨列表底部弹窗
   Future<void> _showTrackListSheet(Album? album, int currentIndex) async {
     if (album == null) return;
@@ -1556,6 +1619,54 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
           },
         );
       },
+    );
+  }
+}
+
+/// 播放页的收藏按钮（1.99.17，仅在线专辑显示）。
+///
+/// 复用在线「我的歌单」收藏体系：点按弹多选歌单弹窗（与详情页同一流程）。
+/// 点亮状态直接读本地收藏索引（登录恢复时已拉过），不为一个图标单独发请求；
+/// 未登录点按走登录引导，登录态恢复期间禁用（与详情页收藏按钮同语义）。
+class _PlayerFavoriteButton extends ConsumerWidget {
+  const _PlayerFavoriteButton({required this.workId, required this.workTitle});
+
+  final int workId;
+  final String workTitle;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final account = ref.watch(onlineAccountProvider);
+    final collected = ref
+        .watch(onlineFavoritesProvider
+            .select((s) => s.index.playlistsOf(workId)))
+        .isNotEmpty;
+
+    final onPressed = !account.loggedIn
+        ? (account.settled
+            ? () => unawaited(
+                  showLoginRequiredDialog(context, action: '收藏作品'),
+                )
+            : null)
+        : () => unawaited(showPlaylistPicker(
+              context,
+              // 播放态里没有 OnlineWork 实体：弹窗链路只消费 id / title
+              //（applyLocal 落索引后本就有一次后台刷新补全其余字段）
+              work: OnlineWork(id: workId, title: workTitle),
+            ));
+
+    return IconButton(
+      onPressed: onPressed,
+      tooltip: collected ? '已收藏 · 编辑歌单' : '收藏',
+      icon: Icon(
+        collected ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+        size: 20,
+        color: collected
+            ? hikoFavoriteColor
+            : (isDark ? HikoColors.darkMuted : HikoColors.lightMuted),
+      ),
     );
   }
 }

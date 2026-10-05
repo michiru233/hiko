@@ -72,6 +72,11 @@ class OnlineWork {
   /// 也用于让播放控制器判断「当前队列是本地库还是在线列表」。
   static String albumIdFor(int workId) => 'online-$workId';
 
+  /// [albumIdFor] 的反解：`online-<workId>` → workId。非在线 id / 非数字返回 null。
+  static int? workIdFromAlbumId(String albumId) => albumId.startsWith('online-')
+      ? int.tryParse(albumId.substring('online-'.length))
+      : null;
+
   /// 在线来源的 sourcePath 约定（不可解析为真实路径，仅供来源判定与展示）
   static String sourcePathFor(int workId) => 'online://$workId';
 
