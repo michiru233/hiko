@@ -34,6 +34,7 @@ import '../widgets/category_dialog.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/context_menu.dart';
 import '../widgets/detail_drawer.dart';
+import '../widgets/hiko_glass.dart';
 import '../widgets/mobile_bottom_nav.dart';
 import '../widgets/online_appearance.dart';
 import '../widgets/toast.dart';
@@ -800,39 +801,32 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ),
         // 移动端底部导航（玻璃拟态悬浮或半透明背景）
+        // 1.99.22：材质换用 HikoGlass（premium 档 + 自建渲染图层）。
+        // 原实现是顶边单独的 0.8px 分隔线；superellipse 描边是四周等宽，
+        // 而栏是通栏贴边的，左右与下边落在屏幕边缘，视觉上等价。
         bottomNavigationBar: isMobile
-            ? ClipRRect(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: theme.brightness == Brightness.dark
-                          ? HikoColors.darkGlassSurface
-                          : HikoColors.lightGlassSurface,
-                      border: Border(
-                        top: BorderSide(
-                          color: theme.brightness == Brightness.dark
-                              ? HikoColors.darkGlassBorderSubtle
-                              : HikoColors.lightGlassBorderSubtle,
-                          width: 0.8,
-                        ),
-                      ),
-                    ),
-                    child: MobileBottomNav(
-                      views: navViews,
-                      currentIndex: _navIndex(navViews),
-                      onTapView: (i) => setState(() => _view = navViews[i]),
-                      // 1.99.6：固定格「正在播放」→ 全屏播放页。没在播时置灰，
-                      // 但格子留在原位（裁决 Q7=A）
-                      playerEnabled: ref.watch(playbackProvider).album != null,
-                      onOpenPlayer: () {
-                        // 1.99.6（裁决 Q9=A）：进全屏播放页本身**不**还原播放栏，
-                        // 还原只认「暂停 → 播放」的跳变
-                        Navigator.of(context).push(FullscreenPlayerRoute());
-                      },
-                      onOpenSettings: () => _openSettings(context),
-                    ),
-                  ),
+            ? HikoGlass(
+                borderRadius: 0,
+                blur: 16,
+                tint: theme.brightness == Brightness.dark
+                    ? HikoColors.darkGlassSurface
+                    : HikoColors.lightGlassSurface,
+                borderColor: theme.brightness == Brightness.dark
+                    ? HikoColors.darkGlassBorderSubtle
+                    : HikoColors.lightGlassBorderSubtle,
+                child: MobileBottomNav(
+                  views: navViews,
+                  currentIndex: _navIndex(navViews),
+                  onTapView: (i) => setState(() => _view = navViews[i]),
+                  // 1.99.6：固定格「正在播放」→ 全屏播放页。没在播时置灰，
+                  // 但格子留在原位（裁决 Q7=A）
+                  playerEnabled: ref.watch(playbackProvider).album != null,
+                  onOpenPlayer: () {
+                    // 1.99.6（裁决 Q9=A）：进全屏播放页本身**不**还原播放栏，
+                    // 还原只认「暂停 → 播放」的跳变
+                    Navigator.of(context).push(FullscreenPlayerRoute());
+                  },
+                  onOpenSettings: () => _openSettings(context),
                 ),
               )
             : null,
@@ -1533,19 +1527,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               // 筛选组（玻璃胶囊分段）
-              Container(
+              // 1.99.22：玻璃胶囊底换用 HikoGlass（surface 档）。
+              // tint / 圆角 10 / 内边距 / 1px 描边与原先的 Container 逐项一致。
+              HikoGlass(
+                borderRadius: 10,
                 padding: const EdgeInsets.all(3),
-                decoration: BoxDecoration(
-                  color: theme.brightness == Brightness.dark
-                      ? HikoColors.darkGlassCard
-                      : HikoColors.lightGlassCard,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: theme.brightness == Brightness.dark
-                        ? HikoColors.darkGlassBorderSubtle
-                        : HikoColors.lightGlassBorderSubtle,
-                  ),
-                ),
+                borderWidth: 1.0,
+                tint: theme.brightness == Brightness.dark
+                    ? HikoColors.darkGlassCard
+                    : HikoColors.lightGlassCard,
+                borderColor: theme.brightness == Brightness.dark
+                    ? HikoColors.darkGlassBorderSubtle
+                    : HikoColors.lightGlassBorderSubtle,
                 child: Row(
                   children: [
                     for (final (key, label) in [
@@ -1599,28 +1592,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 onTap: _showTagFilterDialog,
                 mouseCursor: SystemMouseCursors.click,
                 borderRadius: BorderRadius.circular(10),
-                child: Container(
+                child: HikoGlass(
+                  // 1.99.22：常态玻璃 / 激活实心（solid 开关）。
+                  // 圆角 10 / 内边距 / 1px 描边 / 两种态各自的取色逐项沿用原 Container。
+                  solid: _tagFilter != null,
+                  borderRadius: 10,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 9,
                   ),
-                  decoration: BoxDecoration(
-                    color: _tagFilter != null
-                        ? (theme.brightness == Brightness.dark
+                  borderWidth: 1.0,
+                  tint: _tagFilter != null
+                      ? (theme.brightness == Brightness.dark
                             ? Colors.white.withValues(alpha: 0.12)
                             : Colors.white)
-                        : (theme.brightness == Brightness.dark
+                      : (theme.brightness == Brightness.dark
                             ? HikoColors.darkGlassCard
                             : HikoColors.lightGlassCard),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: _tagFilter != null
-                          ? theme.colorScheme.primary
-                          : (theme.brightness == Brightness.dark
-                              ? HikoColors.darkGlassBorderSubtle
-                              : HikoColors.lightGlassBorderSubtle),
-                    ),
-                  ),
+                  borderColor: _tagFilter != null
+                      ? theme.colorScheme.primary
+                      : (theme.brightness == Brightness.dark
+                            ? HikoColors.darkGlassBorderSubtle
+                            : HikoColors.lightGlassBorderSubtle),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -1665,26 +1658,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 },
                 mouseCursor: SystemMouseCursors.click,
                 borderRadius: BorderRadius.circular(10),
-                child: Container(
+                child: HikoGlass(
+                  // 1.99.22：常态玻璃 / 激活实心（solid 开关），几何沿用原 Container。
+                  solid: _multiMode,
+                  borderRadius: 10,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 12,
                     vertical: 9,
                   ),
-                  decoration: BoxDecoration(
-                    color: _multiMode
-                        ? theme.colorScheme.primary
-                        : (theme.brightness == Brightness.dark
-                              ? HikoColors.darkGlassCard
-                              : HikoColors.lightGlassCard),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: _multiMode
-                          ? theme.colorScheme.primary
-                          : (theme.brightness == Brightness.dark
-                                ? HikoColors.darkGlassBorderSubtle
-                                : HikoColors.lightGlassBorderSubtle),
-                    ),
-                  ),
+                  borderWidth: 1.0,
+                  tint: _multiMode
+                      ? theme.colorScheme.primary
+                      : (theme.brightness == Brightness.dark
+                            ? HikoColors.darkGlassCard
+                            : HikoColors.lightGlassCard),
+                  borderColor: _multiMode
+                      ? theme.colorScheme.primary
+                      : (theme.brightness == Brightness.dark
+                            ? HikoColors.darkGlassBorderSubtle
+                            : HikoColors.lightGlassBorderSubtle),
                   child: Text(
                     _multiMode ? '退出多选' : '多选',
                     style: TextStyle(
@@ -2460,20 +2452,18 @@ class _SortSelector extends StatelessWidget {
       onTap: () => _openSortMenu(context),
       mouseCursor: SystemMouseCursors.click,
       borderRadius: BorderRadius.circular(10),
-      child: Container(
+      child: HikoGlass(
         // 与筛选 chips 同款玻璃胶囊底，工具栏三控件视觉统一
+        // 1.99.22：换用 HikoGlass（surface 档），几何与原先的 Container 一致。
+        borderRadius: 10,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: theme.brightness == Brightness.dark
-              ? HikoColors.darkGlassCard
-              : HikoColors.lightGlassCard,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: theme.brightness == Brightness.dark
-                ? HikoColors.darkGlassBorderSubtle
-                : HikoColors.lightGlassBorderSubtle,
-          ),
-        ),
+        borderWidth: 1.0,
+        tint: theme.brightness == Brightness.dark
+            ? HikoColors.darkGlassCard
+            : HikoColors.lightGlassCard,
+        borderColor: theme.brightness == Brightness.dark
+            ? HikoColors.darkGlassBorderSubtle
+            : HikoColors.lightGlassBorderSubtle,
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

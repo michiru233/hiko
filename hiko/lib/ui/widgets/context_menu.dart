@@ -1,5 +1,6 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
+
+import 'hiko_glass.dart';
 
 /// 桌面与移动端通用的轻量、柔和圆角右键/长按上下文菜单项
 class HikoContextMenuItem<T> {
@@ -149,51 +150,46 @@ class _HikoContextMenuOverlay<T> extends StatelessWidget {
                   position.dx > screenSize.width / 2 ? 0.8 : -0.8,
                   position.dy > screenSize.height / 2 ? 0.8 : -0.8,
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                    child: Container(
-                      width: menuWidth,
-                      padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 4),
-                      decoration: BoxDecoration(
-                        color: bgColor,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: borderColor, width: 0.8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: shadowColor,
-                            blurRadius: 18,
-                            offset: const Offset(0, 6),
-                            spreadRadius: 0,
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          for (int i = 0; i < items.length; i++) ...[
-                            _HikoMenuItemWidget<T>(
-                              item: items[i],
-                              onTap: () => Navigator.of(context).pop(items[i].value),
-                            ),
-                            if (i < items.length - 1 &&
-                                items[i + 1].isDestructive &&
-                                !items[i].isDestructive)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 3),
-                                child: Divider(
-                                  height: 1,
-                                  thickness: 0.6,
-                                  color: borderColor,
-                                ),
-                              ),
-                          ],
-                        ],
-                      ),
+                child: HikoGlass(
+                  // 1.99.22：材质换用 HikoGlass（premium 档 + 自建渲染图层）。
+                  // 圆角 / 宽度 / 内边距 / 阴影与原先的 ClipRRect + BackdropFilter 一致。
+                  borderRadius: 12,
+                  blur: 20,
+                  width: menuWidth,
+                  padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 4),
+                  tint: bgColor,
+                  borderColor: borderColor,
+                  boxShadow: [
+                    BoxShadow(
+                      color: shadowColor,
+                      blurRadius: 18,
+                      offset: const Offset(0, 6),
+                      spreadRadius: 0,
                     ),
+                  ],
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (int i = 0; i < items.length; i++) ...[
+                        _HikoMenuItemWidget<T>(
+                          item: items[i],
+                          onTap: () => Navigator.of(context).pop(items[i].value),
+                        ),
+                        if (i < items.length - 1 &&
+                            items[i + 1].isDestructive &&
+                            !items[i].isDestructive)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            child: Divider(
+                              height: 1,
+                              thickness: 0.6,
+                              color: borderColor,
+                            ),
+                          ),
+                      ],
+                    ],
                   ),
                 ),
               ),

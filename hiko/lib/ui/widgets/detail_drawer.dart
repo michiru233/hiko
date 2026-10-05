@@ -17,6 +17,7 @@ import '../transitions/fullscreen_player_route.dart';
 import '../theme.dart';
 import 'category_dialog.dart';
 import 'detail_kit.dart';
+import 'hiko_glass.dart';
 import 'rating_dialog.dart';
 import 'toast.dart';
 
@@ -360,22 +361,20 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
             ),
           ),
           // 关闭按钮（玻璃悬浮微圆角）
+          // 1.99.22：材质换用 HikoGlass（premium 档 + 自建渲染图层）。
+          // 圆形半径 999 / 模糊 10 / 底色与原 IconButton 背景色逐项一致。
           Positioned(
             right: 14,
             top: 14,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                child: IconButton(
-                  onPressed: widget.onClose,
-                  icon: const Icon(Icons.close_rounded, size: 16),
-                  style: IconButton.styleFrom(
-                    backgroundColor: isDark
-                        ? Colors.white.withValues(alpha: 0.12)
-                        : Colors.black.withValues(alpha: 0.06),
-                  ),
-                ),
+            child: HikoGlass(
+              borderRadius: 999,
+              blur: 10,
+              tint: isDark
+                  ? Colors.white.withValues(alpha: 0.12)
+                  : Colors.black.withValues(alpha: 0.06),
+              child: IconButton(
+                onPressed: widget.onClose,
+                icon: const Icon(Icons.close_rounded, size: 16),
               ),
             ),
           ),

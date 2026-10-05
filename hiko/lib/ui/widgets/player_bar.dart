@@ -14,7 +14,7 @@ import '../../playback/sleep_timer.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
 import '../theme.dart';
-import 'glass_container.dart';
+import 'hiko_glass.dart';
 import 'toast.dart';
 
 /// 底部播放条：玻璃拟态悬浮胶囊设计（毛玻璃模糊背景 + 双层边框 + 环境反光）
@@ -123,7 +123,9 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
           );
 
     final content = RepaintBoundary(
-      child: GlassContainer(
+      // 1.99.22：材质换用 HikoGlass（premium 档 + 自建渲染图层）。
+      // 几何参数（圆角 / 内外边距 / 阴影）逐项保持不变，只换了玻璃材质。
+      child: HikoGlass(
         blur: 20,
         borderRadius: widget.compact ? 20 : 0,
         margin: widget.compact
@@ -135,7 +137,7 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
         ),
         borderColor: isDark ? HikoColors.darkGlassBorder : HikoColors.lightGlassBorder,
         borderWidth: 1.0,
-        backgroundColor: isDark ? HikoColors.darkGlassSurface : HikoColors.lightGlassSurface,
+        tint: isDark ? HikoColors.darkGlassSurface : HikoColors.lightGlassSurface,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),

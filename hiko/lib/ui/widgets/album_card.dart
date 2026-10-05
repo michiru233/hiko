@@ -8,8 +8,9 @@ import '../../utils/time.dart';
 import '../covers/cover_art.dart';
 import '../theme.dart';
 import 'detail_kit.dart';
+import 'hiko_glass.dart';
 
-/// 专辑卡片：玻璃拟态质感卡片（双层微反光边缘 + 柔和投光 + 胶囊标签）
+/// 专辑卡片：玻璃拟态质感卡片（玻璃底 + 柔和投光 + 胶囊标签）
 class AlbumCard extends ConsumerWidget {
   const AlbumCard({
     super.key,
@@ -57,33 +58,34 @@ class AlbumCard extends ConsumerWidget {
                 ? null
                 : () => onContextMenu!(pointerPosition ?? Offset.zero),
             borderRadius: BorderRadius.circular(16),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
+            child: HikoGlass(
+              // 1.99.22：整体取代原先的 AnimatedContainer——底色、描边、阴影
+              // 全部交给 HikoGlass，并统一走 300ms 补间，选中反馈与旧版一致。
+              // tile 档 = standard 轻量着色器：单 pass、不自建渲染图层、
+              // 不逐卡捕获背景，正是该库标注给「可滚动列表」的那一档。
+              tier: HikoGlassTier.tile,
+              borderRadius: 16,
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(16),
-                border: highlighted || selected
-                    ? Border.all(
-                        color: theme.colorScheme.primary,
-                        width: 1.5,
-                      )
-                    : null,
-                boxShadow: [
-                  if (highlighted)
-                    BoxShadow(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.4),
-                      blurRadius: 18,
-                      spreadRadius: 2,
-                    )
-                  else
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
-                      blurRadius: 14,
-                      offset: const Offset(0, 6),
-                    ),
-                ],
-              ),
+              animationDuration: const Duration(milliseconds: 300),
+              tint: cardBg,
+              borderColor: highlighted || selected
+                  ? theme.colorScheme.primary
+                  : cardBorder,
+              borderWidth: highlighted || selected ? 1.5 : 0.8,
+              boxShadow: [
+                if (highlighted)
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.4),
+                    blurRadius: 18,
+                    spreadRadius: 2,
+                  )
+                else
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+              ],
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

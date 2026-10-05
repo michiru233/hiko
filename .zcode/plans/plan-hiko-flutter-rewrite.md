@@ -3463,3 +3463,75 @@ Q5=**A**（标签仍写「Aa」，不换图标）。
 - `flutter test` **649 passed / 2 skipped**（基线 648，净 +1）；`flutter analyze` **43 条基线持平**，0 新增。
 - 版本 `1.99.21+134`；Release：`hiko-v1.99.21-android.apk` + `hiko-v1.99.21-macos.zip`。
   本版无新增待裁决（**胶囊配色的实机观感、瀑布流长列表的滚动性能、窄屏四组胶囊的换行密度**待实机复验）。
+
+---
+
+## 1.99.22（2026-10-05）：接入 liquid_glass_widgets，玻璃材质统一到门面
+
+### 缘起与范围裁决
+用户拿来 `liquid_glass_widgets`（pub.dev，1.9.0，MIT）问「有没有哪些能用」。四问定范围：
+Q1 = 要**材质质感**（不要 iOS 26 的 chrome 骨架、不要 jelly 形变动画）；Q2 = 可以动 app 根，
+不改导航骨架（**后续用户放开：播放栏与移动端底栏也做**）；Q3 = 立刻开工；Q4 = 观感由用户实机验收，
+但 **test/analyze 基线不许动**。第三问（要不要包门面）用户答「按你做」→ 做门面。
+
+### 先查清的关键事实（决定方案可行性）
+- `LiquidGlassWidgets.wrap()` 源码注释明写 **Optional**（`only required if you use theme: or
+  adaptiveQuality:`）→ **不需要动 `main.dart` 的 app root**，比 Q2 允许的范围还收敛。
+- `initialize()` 只预热 shader（`GlassWarmUpMode.never` = 按需加载），非必需。
+- 包内零 `flutter/material.dart` 依赖，不需要 Material 祖先。
+- premium 档若无 `LiquidGlassLayer` 祖先且 `useOwnLayer: false` → **debug 断言**；
+  包自己给的解法就是 `useOwnLayer: true`；release 下 `if (renderLink == null) return child!` 优雅降级。
+- 因此门面的第一性规则：**浮层/栏一律 `useOwnLayer: true`**。
+- `LightweightLiquidGlass` 的 `backgroundKey` 是**可选**的，`_updateTicker()` 只在 key 下有已挂载
+  `RepaintBoundary` 时才启动 → **不传就完全不逐卡捕获背景**，这才是它敢写
+  "optimized for scrollable lists" 的前提。
+- **实测探针**（写 3 条临时测试后即删）：`GlassContainer(useOwnLayer: true)`、
+  `GlassCard(useOwnLayer: true)`、以及 grouped 无祖先，在 `flutter_test` 里**三条全过**、
+  `takeException()` 全为 null（`!ImageFilter.isShaderFilterSupported` 时直接透传）。
+  → 结论前置：玻璃控件放进被测试覆盖的播放栏/底栏**不会打穿基线**，才有后续大胆替换。
+
+### 面分布盘点（纠正了先前两次错误判断）
+- 全项目真 `BackdropFilter` 玻璃仅 **5 处**：播放栏、移动端底栏、右键菜单、在线详情面板关闭按钮、
+  详情抽屉关闭按钮。
+- **在线卡根本没有玻璃**（1.99.21 重写后只有胶囊配色）；首页那几处 `*GlassCard` token 也**不是列表卡**，
+  而是筛选组 / 标签 chip / 多选按钮 / 排序控件的**静态胶囊**。
+- 真正在滚动列表里的玻璃卡**只有专辑卡一个**。（此条纠正了 1.99.21 plan 里把 `*GlassCard` 当列表卡的描述。）
+
+### 改动
+- 新增 `lib/ui/widgets/hiko_glass.dart`：把第三方库挡在门面后，业务只 import 本文件。
+  - `HikoGlassTier { surface, tile }` + 公开纯函数 `hikoGlassQuality` / `hikoGlassUseOwnLayer` /
+    `hikoGlassTint` / `hikoGlassBorder`（抽成纯函数是为了让映射**可被锁**——两档搞混在测试里完全看不出来）。
+  - surface = premium + 自建图层（静止浮层/栏）；tile = standard + 不建图层（滚动长列表）。
+  - `animationDuration`：对 tint / 描边色 / 描边宽 / **阴影列表**做隐式补间。
+  - `solid`：走实心圆角矩形、不跑着色器，给「常态玻璃 / 激活实心」的双态控件用。
+  - **不传 `backgroundKey`**（理由见上）。
+- 5 处浮层/栏换门面（几何逐项不变，只换材质）：`player_bar.dart`、`context_menu.dart`、
+  `online_detail_panel.dart`、`detail_drawer.dart`、`home_screen.dart` 移动端底栏。
+  底栏原为「顶边单线 0.8px」，superellipse 描边四周等宽，栏是通栏贴边的 → 视觉等价。
+- 删除 `lib/ui/widgets/glass_container.dart`（换完后全项目零引用，`glass_container`/`GlassContainer`
+  两个检索词在 lib+test 下只剩门面内部对第三方同名类的调用）。
+- 专辑卡换 `HikoGlass(tier: tile, animationDuration: 300ms)`：**整体取代外层 `AnimatedContainer`**
+  （底色 / 描边 / 阴影一并接管），所以嵌套层级与缩进都没变、只需加一个 import。
+  顺带让原本死掉的 `cardBorder` 变量变成活的（描边默认色）。
+- 4 处静态胶囊换 `HikoGlass(surface, borderWidth: 1.0)`（原 `Border.all` 默认宽 1.0，
+  门面默认 0.8，必须显式补）。其中标签 chip 与多选按钮用 `solid: <激活态>` 保留
+  「常态玻璃 / 激活实心主色」语义。
+
+### 测试与验证
+- 新增 `test/ui/hiko_glass_test.dart`（10 条）：档位→质量/图层映射、两档取值互不相同、
+  档位→取色（浅深各一遍、同档浅深不同）、默认走玻璃路径、`solid` 不建着色器容器、
+  `animationDuration` 真的走补间（补间中既非起点也非终点色）、不传则该直给、
+  以及**专辑卡必须是 tile 档 + 必须带 animationDuration**。
+- **迁移了一条被换材质打红的旧锁**：`test/ui/locate_playing_test.dart` 的 `glowCard` 原靠
+  `AnimatedContainer.decoration.border != null` 定位，描边搬到 `HikoGlass` 后失效。
+  改为 `w is HikoGlass && w.borderWidth == 1.5 && boxShadow 里有 spreadRadius == 2`
+  —— **比原来更严**（双因子），并验过「去掉高亮描边会红」。
+- 反向验证（四处扰动，全部还原并 `grep PERTURB` 确认无残留）：
+  `hikoGlassUseOwnLayer` → `true` ⇒ 映射那 2 条红；专辑卡 tier 改 surface ⇒ 专辑卡那条红；
+  `_AnimatedGlassState.build` 直给目标值 ⇒ 补间那条红；专辑卡去掉高亮描边 ⇒ `locate_playing` 2 条红。
+- `flutter test` **659 passed / 2 skipped**（基线 649，净 +10 全为新锁）；
+  `flutter analyze` **42 条**（基线 43，**少 1** —— 专辑卡 `cardBorder` 由死变量转活），0 新增。
+- 版本 `1.99.22+135`；Release：`hiko-v1.99.22-android.apk` + `hiko-v1.99.22-macos.zip`。
+- 本版无新增待裁决。**待用户实机验收**：5 处浮层/栏的玻璃观感、静态胶囊（尤其小尺寸的标签/多选/排序）
+  上满血档是否显得糊或拥挤、专辑卡在长网格滚动时的帧率（tile 档是本版唯一有性能风险的一处）、
+  以及 Windows 端因 `GlassAdaptiveScope` 静态封顶 standard 档而与双端观感不一致。

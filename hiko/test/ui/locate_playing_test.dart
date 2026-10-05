@@ -8,6 +8,7 @@ import 'package:hiko/models/track.dart';
 import 'package:hiko/playback/playback_controller.dart';
 import 'package:hiko/ui/screens/home_screen.dart';
 import 'package:hiko/ui/widgets/album_card.dart';
+import 'package:hiko/ui/widgets/hiko_glass.dart';
 
 /// 1.49「定位当前播放」：按钮置灰/可点、点击后网格定位+高亮、卡片高亮参数。
 /// 播放状态用真实 PlaybackController 直接置 state（构造无副作用，实测可跑），
@@ -35,11 +36,16 @@ final Finder locateButton = find.ancestor(
   matching: find.byType(IconButton),
 );
 
+// 1.99.22：卡片底色/描边改由 HikoGlass 承载（原 AnimatedContainer 的 BoxDecoration
+// 只剩阴影），所以高亮改为在 HikoGlass 上判定，并顺便**收紧**成双因子：
+//   ① 描边宽度 1.5（常态是 0.8，选中/高亮才会加粗）
+//   ② 高亮专属的发光阴影 spreadRadius == 2（常态阴影没有 spread）
+// 只看「border 非空」的旧写法在换材质后已经失效，这里比原来更严，不会放宽锁。
 final Finder glowCard = find.byWidgetPredicate(
   (w) =>
-      w is AnimatedContainer &&
-      w.decoration is BoxDecoration &&
-      (w.decoration as BoxDecoration).border != null,
+      w is HikoGlass &&
+      w.borderWidth == 1.5 &&
+      (w.boxShadow?.any((s) => s.spreadRadius == 2) ?? false),
 );
 
 void main() {
