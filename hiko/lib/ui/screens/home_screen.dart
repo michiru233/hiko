@@ -19,7 +19,6 @@ import '../../data/online/online_provider.dart';
 import '../../data/settings_store.dart';
 import '../../data/stats.dart';
 import '../../data/update_checker.dart';
-import '../../lyrics/desktop_lyrics_service.dart';
 import '../../models/album.dart';
 import '../../playback/playback_controller.dart';
 import '../../playback/playback_rules.dart';
@@ -36,6 +35,7 @@ import '../widgets/confirm_dialog.dart';
 import '../widgets/context_menu.dart';
 import '../widgets/detail_drawer.dart';
 import '../widgets/mobile_bottom_nav.dart';
+import '../widgets/online_appearance.dart';
 import '../widgets/toast.dart';
 import '../widgets/player_bar.dart';
 import '../detail_jump_requests.dart';
@@ -212,14 +212,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   /// 防社死隐私模糊开关（1.52）：顶栏按钮与 Cmd/Ctrl+Shift+H 共用。
-  /// 开启时顺带隐藏 macOS 桌面歌词（浮动歌词裸奔曲名/台词，等于没防）；
-  /// 解除模糊后不自动恢复歌词，由用户自行再开。
-  void _togglePrivacyBlur() {
-    privacyBlur.value = !privacyBlur.value;
-    if (privacyBlur.value && ref.read(desktopLyricsProvider).isShowing) {
-      ref.read(desktopLyricsProvider.notifier).hide();
-    }
-  }
+  ///
+  /// 1.99.20 起实现提到 [togglePrivacyBlur]（`online_appearance.dart`）——
+  /// Aa 菜单是第三个调用点，那段副作用（隐藏桌面歌词）不能有两份实现。
+  void _togglePrivacyBlur() => togglePrivacyBlur(ref);
 
   Future<void> _importFolder() async {
     if (_importing || activityOverlayController.isActive) return;
@@ -1345,6 +1341,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildTopbar(ThemeData theme, bool isMobile) {
+    // 1.99.20（裁决「两个在线视图都收起」）：移动端在线视图（在线 / 在线收藏）
+    // 顶栏整行收起 —— 那一排在移动端本来就只剩 4 个图标按钮，却是整屏最高处
+    // 最占地的一行。其中「定位当前播放」「随机播放」都只作用于**本地库**
+    // （随机播放是盲选一张本地专辑），在在线页毫无意义却各占一格；
+    // 「切换主题」「防社死」有用，已并进 Aa 菜单（见 OnlineAaMenu）。
+    // 整行返回零高度、不占空间（裁决：彻底不占高度）。
+    // 桌面端宽度富裕，顶栏原样保留。
+    if (isMobile && _isOnlineView) return const SizedBox.shrink();
     final iconSize = isMobile ? 24.0 : 18.0;
     return Padding(
       padding: EdgeInsets.symmetric(

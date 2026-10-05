@@ -58,6 +58,23 @@
 - **在线返回键（1.99.5 裁决 Q2=B）**：`home_screen.dart` 的 `_handleOnlineBack({allowExit})` ——
   安卓返回键 true / 桌面 Esc `isMobile`。`在线` 视图只清筛选回最新榜（干净态且 allowExit 才 `SystemNavigator.pop`），
   `在线收藏` 退回 `在线`，其它视图返回 false 交回旧兜底。判定用 `hasActiveFilter` / `isAtOnlineHome`。
+- **「Aa」三合一菜单（1.99.20 裁决 Q1=B/Q2=A/Q3=A/Q4=A/Q5=A）**：
+  - **移动端在线视图（`在线` / `在线收藏`）顶栏整行收起**：`home_screen.dart` 的 `_buildTopbar` 开头
+    `if (isMobile && _isOnlineView) return const SizedBox.shrink();` —— 那一排在移动端只有 4 个图标按钮
+    （定位当前播放 / 切换主题 / 隐私模糊 / 随机播放），其中**「定位当前播放」与「随机播放」都只作用于本地库**
+    （随机播放 = 盲选一张本地专辑），在线页毫无意义却各占一格。桌面端宽度富裕，顶栏原样保留。
+  - `OnlineAaMenu`（`online_appearance.dart`）三项 = **在线外观**（落回原 `showOnlineAppearanceDialog`）+
+    分隔线 + **防社死** + **外观切换**。两端统一 `PopupMenu` 下拉；标签仍写「Aa」（不换图标）。
+    两个开关是**开关式**：`_AaMenuToggleItem` 覆写 `handleTap` **不 `Navigator.pop`**、条目右侧显示当前状态
+    （已开启/已关闭、深色/浅色），能连着把两个都调完（同 `online_sort_menu.dart` 的 `_AgeFilterItem` 手法）。
+  - **⚠️ 「在线收藏」页原先没有任何外观入口，`Aa` 只长在 `OnlineScreen` 里** —— 顶栏一收，
+    手机上**防社死在该页就彻底够不着**（它只有顶栏按钮这一个入口：⌘⇧H 手机按不出来、设置页里也没有）；
+    所以 1.99.20 顺带在 `OnlineFavoritesScreen._buildHeader` 的状态行右侧补了一个 `OnlineAaMenu`。
+    **未登录且非离线分区时收藏页只有登录引导、不走 `_buildHeader`**，也就没有 Aa（那一屏没有封面墙，防社死无对象）；
+    测试要造「已登录」假账号才会渲染出头部（见 `test/ui/online_aa_menu_test.dart` 的 `_LoggedInAccount`）。
+  - **⚠️ 防社死的开关逻辑只有一份实现**：`online_appearance.dart` 的 `togglePrivacyBlur(WidgetRef)`，
+    顶栏按钮 / ⌘⇧H / Aa 菜单三处共用。**副作用「开启时隐藏桌面歌词」不能漏** —— 漏了就等于把防社死
+    开了个口子（浮动歌词裸奔曲名/台词）。
 - **播放页「跳详情」的落栈（1.99.19 裁决 Q2=A）**：移动端跳过去的那一次必须要求「列表以上不留历史」——
   `detail_jump_requests.dart` 的 `pushDetailAboveList(nav, route)`（= `pushAndRemoveUntil(r.isFirst)`），
   否则详情页叠详情页、一次返回退不到列表。**播放页仍由 `_openAlbumDetail` 自己 pop**（先 pop 再发请求）：
@@ -120,6 +137,7 @@
 1.42 tag 颜色对比度；1.53 Android 整理入口语义/TALB 分组；1.54 右滑手势排除区/原位替换不重扫；
 1.87 U+30FB 拆名误伤（已接受）；1.91–1.99 多项 Android 未实机验证（曲目行点击行为、hover 缺失、
 分页条/菜单/对话框窄屏、滑杆手感、creator 菜单触屏、分页条精简后观感、8 列观感、
-**1.99.5 的 36px 热区手感 / 分级复选框点选 / 移动端 4 标记 Wrap 排布**、**1.99.19 的跳详情落栈实机验证**）；
+**1.99.5 的 36px 热区手感 / 分级复选框点选 / 移动端 4 标记 Wrap 排布**、**1.99.19 的跳详情落栈实机验证**、
+**1.99.20 的移动端顶栏收起后观感 / Aa 菜单触屏手感 / 收藏页 Aa 位置**）；
 1.96 卡面单行标题封面偏高是否统一（未裁决）。1.95 明确不做：黑名单总开关/手动输入/按社团声优屏蔽。
 （`hiko/hiko-v1.100.0-*` 遗留副本已不存在；2026-10-05 复查 `hiko/` 已无本地封包副本，1.99.17–1.99.19 均已核对远端资产后清理。）

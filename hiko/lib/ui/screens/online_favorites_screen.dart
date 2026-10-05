@@ -12,6 +12,7 @@ import '../../data/settings_store.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/context_menu.dart';
 import '../widgets/online_account_dialogs.dart';
+import '../widgets/online_appearance.dart';
 import '../widgets/online_detail_panel.dart';
 import '../widgets/online_tag_menu.dart';
 import '../widgets/online_work_grid.dart';
@@ -379,11 +380,22 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
             ],
           ),
           const SizedBox(height: 4),
-          Text(
-            _statusLine(index, favorites, selected),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 11, color: theme.hintColor),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _statusLine(index, favorites, selected),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: theme.hintColor),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // 1.99.20（裁决 Q1=B）：收藏页也补一个 Aa。移动端在线视图的顶栏
+              // 那排图标（含「防社死」）已收起，而本页原先**没有任何外观入口** ——
+              // 不补的话防社死在这一页就彻底够不着了（手机上它没别的入口）。
+              const OnlineAaMenu(),
+            ],
           ),
         ],
       ),

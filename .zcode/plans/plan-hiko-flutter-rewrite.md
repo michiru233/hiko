@@ -3378,3 +3378,37 @@ Release: https://github.com/michiru233/hiko/releases/tag/v1.99.5
 - 扩展 `test/ui/player_detail_jump_test.dart` +2 条整页移动测试（`HomeScreen(debugMobileLayout: true)` 900×1400 画布 + `_SeededLibrary` + `onlineDetailProvider(4567).overrideWith(...)` 挡网络；有界 `_pumpFrames` 规避加载圈无限动画；返回用 `tester.binding.handlePopRoute()`）。两条锁都验过「还原成 `nav.push` 会红」。本地路径同步断言「一次返回后 `AlbumDetailScreen` 已不在」。
 - `flutter test` **642 passed / 2 skipped**（基线 635）；`flutter analyze` 43 条基线持平，0 新增 error。
 - 版本 `1.99.19+132`；Release：`hiko-v1.99.19-android.apk` + `hiko-v1.99.19-macos.zip`。本版无新增待裁决（跳详情落栈待实机复验）。
+
+---
+
+## 1.99.20（2026-10-05）：移动端在线页顶栏图标收敛 + 「Aa」三合一菜单
+
+用户实机反馈：移动端「在线」页最上方那排 4 个图标按钮（定位当前播放 / 切换主题 / 隐私模糊 / 随机播放）占掉整屏最高处最宽的一行；其中「定位播放」没用、「随机播放」随机的是**本地音声**（在线页里没意义），「防社死」「外观切换」有用。要求把有用的两个并进「Aa」，Aa 变成三个二级选项。第一轮先出对照示意图给用户审阅，第二轮 grill-me 五问定案。
+
+### 事实（改动前核过）
+- `_buildTopbar` 是**所有视图共用**的（在线 / 在线收藏 / 本地网格 / 统计 / 桌面）；移动端那一行本来就只剩 4 个图标按钮（无面包屑、无侧栏开关）。
+- **「在线收藏」页原先没有任何外观入口** —— Aa 只长在 `OnlineScreen._buildFilterLine` 里；`OnlineFavoritesScreen` 只有账号/歌单控件。
+- **防社死在移动端只有顶栏按钮一个入口**（⌘⇧H 手机上按不出来，设置页里也没有它）；主题另有 设置→外观 兜底。
+
+### 裁决
+Q1=**B**（在线 / 在线收藏都收起顶栏图标，**并给收藏页补一个 Aa** —— 否则防社死在那里彻底够不着）；
+Q2=**A**（两端统一 `PopupMenu` 下拉，与排序菜单同款）；
+Q3=**A**（防社死 / 外观切换为**开关式**：点一下就地切换、**不关菜单**、条目带当前状态）；
+Q4=**A**（桌面顶栏图标保留，Aa 菜单两端一致 → 桌面这两项有两个入口，接受）；
+Q5=**A**（标签仍写「Aa」，不换图标）。
+
+### 改动
+- `lib/ui/widgets/online_appearance.dart`：
+  - 新增 `togglePrivacyBlur(WidgetRef)` —— 把 `home_screen` 里原先私有的防社死开关逻辑提出来（**副作用「隐藏桌面歌词」不能有两份实现**，漏了就等于把防社死开了个口子）。Aa 菜单是第三个调用点。
+  - 新增 `OnlineAaMenu`（`ConsumerWidget`）：`PopupMenuButton<Object>`，三项 = 在线外观（`value: 'appearance'`，落回原 `showOnlineAppearanceDialog`）+ 分隔线 + 防社死 + 外观切换。菜单宽 200–300、高 `min(320, 屏高×0.45)`。
+  - 新增 `_AaMenuToggleItem` / `_AaMenuToggleItemState`：`PopupMenuItem` 子类**只覆写 `handleTap`、不 `Navigator.pop`**（与 `online_sort_menu.dart` 的 `_AgeFilterItem` 同源做法；不用 `PopupMenuItem(enabled: false)` 是因为 M3 下会把文字压灰 + 套 `Semantics(enabled: false)`）。内容由 `content` 回调提供，里面各挂 `ValueListenableBuilder`（防社死）/ `Consumer`（主题），**菜单开着的时候切换能立刻刷新状态**。
+  - 新增 `_AaRow`：图标 + 名称 + 右侧当前状态文案（「已开启/已关闭」「深色/浅色」），状态文字兼作开关指示；`on` 决定用 primary 还是 hint 色。
+- `lib/ui/screens/online_screen.dart`：第二行的 `ActionChip('Aa')` → `const OnlineAaMenu()`。
+- `lib/ui/screens/online_favorites_screen.dart`：`_buildHeader` 的状态行由裸 `Text` 改为 `Row`（`Expanded(状态文案)` + `OnlineAaMenu`），补上收藏页的外观入口（裁决 Q1=B）。
+- `lib/ui/screens/home_screen.dart`：`_buildTopbar` 开头加 `if (isMobile && _isOnlineView) return const SizedBox.shrink();`（在线 / 在线收藏整行**零高度**，桌面不受影响）；`_togglePrivacyBlur()` 改为转调共享实现；移除随之变成未使用的 `desktop_lyrics_service.dart` import。
+
+### 测试与验证
+- 新建 `test/ui/online_aa_menu_test.dart` 6 条：菜单三条目齐全、防社死开关式（切换 + 状态刷新 + **菜单不关**）、外观切换开关式（主题真变 + 菜单不关）、在线外观落到原对话框、移动端在线视图顶栏整行收起且切回本地视图恢复、收藏页有 Aa（用 `_LoggedInAccount` 假账号 —— 收藏页只有登录后才走 `_buildHeader`）。
+- **三条锁都验过「摘掉修复会红」**：`handleTap` 加回 `Navigator.pop` → 防社死/外观切换两条红（找不到「已关闭」/「深色」）；顶栏早退短路 → 顶栏锁红（仍找到「随机播放」）。
+- `flutter test` **648 passed / 2 skipped**（基线 642，+6）；`flutter analyze` **43 条基线持平**，0 新增。
+- 版本 `1.99.20+133`；Release：`hiko-v1.99.20-android.apk` + `hiko-v1.99.20-macos.zip`。本版无新增待裁决（**移动端顶栏收起后的观感、Aa 菜单在安卓实机的手感、收藏页 Aa 位置**待实机复验）。

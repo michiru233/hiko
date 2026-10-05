@@ -639,18 +639,12 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                   .toggleAgeCategory(category),
             ),
             const SizedBox(width: 8),
-            // 「Aa」：就地调在线外观（1.96.0 裁决 Q5=甲）。放排序 chip 右边是因为
-            // 想改字号多半就发生在「正看着这个列表、觉得字小了」的那一刻 ——
-            // 要绕回设置页翻两层的话，这个念头多半就过去了
-            ActionChip(
-              label: const Text(
-                'Aa',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-              ),
-              tooltip: '在线外观：字号 · 每行卡片数',
-              visualDensity: VisualDensity.compact,
-              onPressed: () => unawaited(showOnlineAppearanceDialog(context)),
-            ),
+            // 「Aa」：1.96.0 起是就地调在线外观的入口（裁决 Q5=甲）——
+            // 想改字号多半就发生在「正看着这个列表、觉得字小了」的那一刻，
+            // 绕回设置页翻两层的话这个念头多半就过去了。
+            // 1.99.20 升级为三合一下拉（在线外观 / 外观切换 / 防社死）：
+            // 移动端在线视图顶栏那排图标已收起，两个有用的并到了这里。
+            const OnlineAaMenu(),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.only(left: 16),
