@@ -311,8 +311,19 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
   static const pageSizeOptions = <int>[20, 60, 100];
 
   /// 预设入口：热门 / 最新。只切排序，不换数据来源（裁决 Q4=A）。
+  ///
+  /// 「已停在这个榜上就不白刷」的早退**必须把本方法会清掉的东西算进来**
+  /// （1.99.19）：`selectCreator` 刻意不改 source/sort（见它自己的注释），
+  /// 于是「最新榜 + 社团筛选」正好命中旧判断的三条 —— 取消社团筛选
+  /// （标记上的 ✕ / 再点同一颗胶囊）与点「最新」chip 都被这里静默吞掉，
+  /// 观感就是「✕ 点不了」（实机反馈）。何况「清掉筛选」本身就是一次
+  /// 必须发出的请求，判断里不能只看 works 有没有数据。
   Future<void> applyPreset(OnlineSort preset) async {
-    if (state.source == OnlineSource.browse &&
+    final hasSomethingToClear = state.tag != null ||
+        state.creator != null ||
+        state.keyword.isNotEmpty;
+    if (!hasSomethingToClear &&
+        state.source == OnlineSource.browse &&
         state.sort == preset &&
         state.works.isNotEmpty) {
       return; // 已经停在这个榜上且页面上有数据，点它不该白刷一次
@@ -381,7 +392,8 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
   /// 与标签筛选同语义的「覆盖式进入」：回第 1 页、清标签；**保留**当前的
   /// 来源与搜索词 —— 从搜索结果里点开详情再点声优，得到的是「这批关键词 ∩
   /// 这个声优」，而不是突然把用户扔回全站。取消（再点同一个 / 关闭标记）
-  /// 由 UI 层走 `applyPreset(latestPreset)`，对齐标签的「取消回最新榜」。
+  /// 由 [clearCreator] 承担 —— 1.99.19 裁决 Q4=A 推翻旧做法
+  /// （旧做法走 `applyPreset(latestPreset)`，会把来源与搜索词一起吃掉）。
   /// 翻页、改排序、刷新都保留本筛选。
   Future<void> selectCreator(OnlineCreatorFilter filter) async {
     if (state.creator == filter) return;
@@ -394,6 +406,28 @@ class OnlineBrowseNotifier extends StateNotifier<OnlineBrowseState> {
       clearError: true,
     );
     // 字幕 / 分级同样保留（1.99.5 裁决 Q3=B / Q4=B）
+    await _fetch(1);
+  }
+
+  /// 取消声优 / 社团筛选（标记上的 ✕、详情页再点同一颗胶囊）。
+  ///
+  /// **只摘掉这一维** —— 来源、搜索词、排序、标签、字幕、分级全部原样保留，
+  /// 回到「筛之前」的上下文（1.99.19 裁决 Q4=A）。理由：[selectCreator] 当初
+  /// 就是「保留来源与搜索词」的叠加式筛选，取消时把这些一起吃掉会让人莫名
+  /// 其妙（搜了「おねえさん」再筛声优，✕ 之后搜索词不该消失）。
+  ///
+  /// 与标签标记的 ✕ 刻意不对称：标签是**来源**（换掉来源就是换一批数据，
+  /// 取消自然回榜单），声优/社团是叠在来源之上的一层，所以只摘掉自己。
+  Future<void> clearCreator() async {
+    if (state.creator == null) return;
+    state = state.copyWith(
+      clearCreator: true,
+      works: const [],
+      page: 1,
+      totalCount: 0,
+      loading: true,
+      clearError: true,
+    );
     await _fetch(1);
   }
 

@@ -502,7 +502,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       for (final a in ref.read(libraryProvider)) {
         if (a.id == next) {
           if (isMobile) {
-            unawaited(_openMobileDetail(a.id));
+            // resetStack：播放页那条路要清掉列表以上的历史（1.99.19 裁决 Q2=A），
+            // 否则「!」跳过来的详情页会压在旧详情页上，退一次只回到旧详情页
+            unawaited(_openMobileDetail(a.id, resetStack: true));
           } else {
             setState(() => _detailAlbum = a);
           }
@@ -914,13 +916,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return false;
   }
 
-  /// 移动端打开全屏详情页；详情页胶囊点选时回传 ('circle'|'voice', 名字) 应用为列表筛选
-  Future<void> _openMobileDetail(String albumId) async {
-    final picked = await Navigator.of(context).push<(String, String)>(
-      MaterialPageRoute(
-        builder: (context) => AlbumDetailScreen(albumId: albumId),
-      ),
+  /// 移动端打开全屏详情页；详情页胶囊点选时回传 ('circle'|'voice', 名字) 应用为列表筛选。
+  ///
+  /// [resetStack] 只在「播放页跳详情」那一次为真（1.99.19 裁决 Q2=A）：
+  /// 那次要求列表以上不留历史，一次返回回到列表；本地网格点卡片保持普通压栈。
+  Future<void> _openMobileDetail(String albumId, {bool resetStack = false}) async {
+    final navigator = Navigator.of(context);
+    final route = MaterialPageRoute<(String, String)>(
+      builder: (context) => AlbumDetailScreen(albumId: albumId),
     );
+    final picked = await (resetStack
+        ? pushDetailAboveList<(String, String)>(navigator, route)
+        : navigator.push(route));
     if (picked != null && mounted) {
       setState(() {
         _personFilterKind = picked.$1;

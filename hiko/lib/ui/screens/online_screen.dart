@@ -122,7 +122,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     final workId = ref.read(onlineDetailRequestProvider);
     if (workId == null) return;
     ref.read(onlineDetailRequestProvider.notifier).state = null;
-    _openDetail(workId);
+    _openDetail(workId, resetStack: true);
   }
 
   Future<void> _loadSearchHistory() async {
@@ -220,10 +220,21 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
 
   /// 点声优 / 社团胶囊 → 按其筛选（1.97.0）。
   ///
-  /// 与 [_applyTag] 同一套收尾：清搜索框文本、收起详情面板；**再点同一个**
-  /// （或点标记上的 ✕）= 取消，回最新榜。不涉及黑名单确认 —— 黑名单只管标签。
+  /// 与 [_applyTag] 同一套收尾（清搜索框文本、收起详情面板）；**再点同一个**
+  /// （或点标记上的 ✕）是取消。取消的语义 1.99.19 起改为「只摘掉这一维、
+  /// 回到筛之前的来源与搜索词」（裁决 Q4=A），所以取消分支必须**抢在清搜索框
+  /// 之前**返回：那一句是为「新筛进来」准备的（换筛选 = 换语境），
+  /// 而取消恰恰要把旧语境还回去。不涉及黑名单确认 —— 黑名单只管标签。
   Future<void> _applyCreator(OnlineCreatorFilter filter) async {
-    final cancelling = ref.read(onlineBrowseProvider).creator == filter;
+    final notifier = ref.read(onlineBrowseProvider.notifier);
+
+    if (ref.read(onlineBrowseProvider).creator == filter) {
+      if (_detailWorkId != null && mounted) {
+        setState(() => _detailWorkId = null);
+      }
+      await notifier.clearCreator();
+      return;
+    }
 
     if (_searchController.text.isNotEmpty) {
       _searchController.clear();
@@ -233,34 +244,38 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
       setState(() => _detailWorkId = null);
     }
 
-    final notifier = ref.read(onlineBrowseProvider.notifier);
-    if (cancelling) {
-      await notifier.applyPreset(OnlineSort.latestPreset);
-      return;
-    }
     await notifier.selectCreator(filter);
   }
 
-  void _openDetail(int workId) {
+  /// 打开作品详情。
+  ///
+  /// [resetStack] 只在「播放页跳详情」那一次为真（1.99.19 裁决 Q2=A）：
+  /// 那次要求**列表以上不留历史** —— 一次返回回到列表；列表点卡片、
+  /// 详情页之间跳语言版本都保持普通压栈。落栈细节见 [pushDetailAboveList]。
+  void _openDetail(int workId, {bool resetStack = false}) {
     if (widget.isMobile) {
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => OnlineDetailScreen(
-            workId: workId,
-            // 移动端的详情是整页盖在列表上，点完筛选要把这页收起来才看得到结果
-            onSelectTag: (tag) {
-              unawaited(_applyTag(tag));
-              Navigator.of(context).maybePop();
-            },
-            onSelectCreator: (filter) {
-              unawaited(_applyCreator(filter));
-              Navigator.of(context).maybePop();
-            },
-            // 语言版本跳转（1.99.2）：压一层新详情页，返回键回原作品
-            onOpenWork: _openDetail,
-          ),
+      final nav = Navigator.of(context);
+      final route = MaterialPageRoute<void>(
+        builder: (_) => OnlineDetailScreen(
+          workId: workId,
+          // 移动端的详情是整页盖在列表上，点完筛选要把这页收起来才看得到结果
+          onSelectTag: (tag) {
+            unawaited(_applyTag(tag));
+            Navigator.of(context).maybePop();
+          },
+          onSelectCreator: (filter) {
+            unawaited(_applyCreator(filter));
+            Navigator.of(context).maybePop();
+          },
+          // 语言版本跳转（1.99.2）：压一层新详情页，返回键回原作品
+          onOpenWork: _openDetail,
         ),
       );
+      if (resetStack) {
+        pushDetailAboveList(nav, route);
+      } else {
+        nav.push(route);
+      }
       return;
     }
     setState(() => _detailWorkId = workId);
@@ -273,11 +288,12 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     final showPanel = !widget.isMobile && _detailWorkId != null;
 
     // 1.99.17 播放页「跳详情」：本页在场时直接消费请求（读后清空，
-    // 避免下次挂载把旧请求再开一遍）
+    // 避免下次挂载把旧请求再开一遍）。1.99.19：这一次要**清掉列表以上的历史**
+    // —— 一次返回回到列表，而不是退到旧详情页（裁决 Q2=A）
     ref.listen<int?>(onlineDetailRequestProvider, (prev, next) {
       if (next == null) return;
       ref.read(onlineDetailRequestProvider.notifier).state = null;
-      _openDetail(next);
+      _openDetail(next, resetStack: true);
     });
 
     // 1.99.7 移动端：结果集一换（翻页/换标签/新搜索）就跳回顶部，

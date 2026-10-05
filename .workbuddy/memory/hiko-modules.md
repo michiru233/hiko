@@ -1,0 +1,126 @@
+# Hiko 模块契约与踩坑明细
+
+> 2026-10-05 从 `MEMORY.md` 拆出（原文件超注入上限被截断）。
+> 规则/发版流程见 `hiko-rules.md`；**本文只记「实测过的契约」与「已经踩过的坑」**。
+
+## 在线模块（asmr.one / Kikoeru）契约（实测别猜）
+- 排序白名单：create_date/release/dl_count/price/rate_average_2dp/review_count/id/rating，白名单外 400；order=id≈RJ 号。
+- 列表项自带 tags `{id,name(zh-cn),i18n}` 与 vas `{id,name}`；**vas 的 id 当前被丢弃（List<String>），
+  circle 是 circleId+circleName**。
+- 标签筛选走 `/api/tags/{id}/works`（不换搜索端点，测试钉死）；取消回最新榜。
+- **服务端无排除参数，黑名单/排除只能编进关键词**：`$-tag:名$`、`$tag:名$`、`$circle:名$`、`$va:名$` 等，
+  拼错静默不筛。黑名单空时逐字节回退原请求。端点映射：浏览→/api/works、搜索→/api/search/{kw}、
+  标签→/api/tags/{id}/works；有排除时全部改走 search。
+- **pageSize 两套校验**：/api/works 系可到 500；playlist 三端点共用校验上限 100（`clampPlaylistPageSize`）。
+- 封面唯一出口 `coverMainUrl(workId)`：type 白名单 240x240/main/sam，main=560×420。
+- api.asmr.one/works/{id}=404，网页在 www.asmr.one。
+- 黑名单：存 `AppSettings.blockedTags`（单键 JSON，按 id 判定）；长按菜单在标签胶囊上；屏蔽后立即重拉+回第 1 页
+  （`reloadAfterBlock`）；自筛自屏要退出筛选。可点胶囊 hover 用 `HikoPillInteraction`（InkWell 墨迹被不透明底盖住）。
+- TextPainter 预量必须传 `MediaQuery.textScalerOf(context)`。
+- **胶囊标记布局不变量（1.97.1/1.97.2/1.99.5）**：筛选标记（标签/creator/黑名单/字幕/分级，
+  `online_filter_marker.dart`）内部「文字 + ✕」的 Row，**文字必须 Flexible**（外层被 flex 挤压时非 flex 文字
+  会让 ✕ 溢出屏幕）；**外层使用处也必须再包 Flexible**（1.97.1 重构丢过一次）。
+  **✕ 热区 `_MarkerCloseButton.hitSize = 36`**（1.99.5 裁决 Q1=A）：旧热区仅 19×19，指尖偏 14px 就落空；
+  承载热区的盒子必须同步变高（hit test 不命中父级尺寸之外），所以标记 Container 上下内边距为 0、
+  左右统一 `left:4/right:0`。**移动端激活的筛选标记独占一行**（第二行下方），1.99.5 起由 `Row` 改 **`Wrap`**，
+  maxTextWidth 由屏宽推导 `(屏宽−140).clamp(96,320)`；桌面保持内联。回归锁 `test/ui/online_filter_marker_test.dart`。
+- 账号：JWT 存 `hiko-online-token`，不进 AppSettings；令牌失效仍 200 只看字段；写操作先本地后校准；
+  收藏差分 `planPlaylistDiff`；自测只在临时歌单。
+- 在线外观：常量单一来源 `settings_store` 范围常量（tagFontSize 8–18 默认 11 全局、card/detail 倍率 0.75–1.60、
+  trackTitleFontSize 10–20 默认 12 绝对值不乘详情倍率）+ 列数 0/3–8 档位；设置页「在线外观」与在线页 Aa chip
+  两入口共用 `OnlineFontSliderRow`（带重置）；**白名单归一化已改 clamp**。卡面高度预算 =
+  `onlineCardTextBlockHeight`/`onlineCardTagRowHeight` 纯函数，行高写死 1.3/1.2。详情面板 `HikoDetailTextScale`
+  （专辑标题 22、副标题 12）；曲目标题走独立旋钮（`HikoTrackRow.titleFontSize` 可空，本地传 null 保持 12×scale）。
+  每页条数落盘 `hiko-online-page-size`（20/60/100），移动端分页条隐藏该 chip、页码半径 ±1。
+- **声优/社团筛选（1.97.0；取消语义 1.99.19 改）**：`OnlineCreatorFilter{va|circle,name}`，机制 =
+  `$va:名$`/`$circle:名$` 关键词（`online_blacklist.dart` 的 `vaIncludeTerm`/`circleIncludeTerm`）；
+  入口 = 详情页胶囊菜单（浏览页+收藏页）；**`selectCreator` 刻意保留来源与搜索词**（= 这批关键词 ∩ 这位），
+  creator 正交保留于翻页/排序/刷新，`applyPreset`/`search`/`selectTag` 清除。
+  **取消走 `clearCreator()`**（2026-10-05 裁决 Q4=A）：只摘掉这一维、来源/搜索词/排序/标签原样保留；
+  不再走 `applyPreset(latestPreset)`（那会把来源与搜索词一起吃掉）。
+- **⚠️ `applyPreset` 的早退必须算上「它会清掉的东西」（1.99.19）**：`selectCreator` 不改 source/sort，
+  于是「最新榜 + 社团筛选」正好命中 `source==browse && sort==preset && works.isNotEmpty` 三条 ——
+  旧判断会把「取消筛选」与「点预设 chip」静默吞掉（实机症状：✕ 点不了）。
+  回归锁 `test/data/online_creator_cancel_test.dart`（**必须让 works 非空**：旧 harness 里 HTTP 必失败、
+  works 恒空，这颗雷一直没被测到）。
+- **字幕筛选（1.99.5 裁决 Q3=B）**：`subtitle=1` 是**查询参数**，实测在 `/api/works`、`/api/tags/{id}/works`、
+  `/api/search/{kw}` 三处都生效。任何来源都可用且**正交保留**，必须有可关闭标记兜底（不许看不见的筛选）。
+- **分级筛选（1.99.5 裁决 Q4=B）**：`OnlineAgeCategory{adult'R18', r15'R15', general'全年龄'}`，
+  `age_category_string` 取值完备。UI = 三个复选框放进排序下拉（`online_sort_menu.dart`）；
+  勾 1 个 → `$age:key$`，勾 2 个 → **`$-age:未勾的那个$`**，全勾/全不勾 = 不筛。
+  **⚠️ `$age:A$ $age:B$` 之间是 AND 不是 OR**。「显示两个」只能用排除式。
+  词形 `ageIncludeTerm`/`ageExclusionTerm`。分级词与 creator 词合流成 `filterTerms`，任一非空即全部改走 search 端点。
+- **⚠️ 排序下拉不要用 `PopupMenuItem(enabled: false)` 来「留住菜单」**：M3 下会把 DefaultTextStyle 换成
+  onSurface@38% 灰 + `Semantics(enabled: false)`。正确做法见 `_AgeFilterItem`：继承 `PopupMenuItemState`
+  只覆写 `handleTap`（不 `Navigator.pop`）；复选框用 `IgnorePointer` 包住当纯指示器，整行由父类 InkWell 接住。
+  菜单绝对上限 400。**`PopupMenuItem.child` 是必填**；`createState` 的返回类型是
+  `PopupMenuItemState<T, PopupMenuItem<T>>`。
+- **在线返回键（1.99.5 裁决 Q2=B）**：`home_screen.dart` 的 `_handleOnlineBack({allowExit})` ——
+  安卓返回键 true / 桌面 Esc `isMobile`。`在线` 视图只清筛选回最新榜（干净态且 allowExit 才 `SystemNavigator.pop`），
+  `在线收藏` 退回 `在线`，其它视图返回 false 交回旧兜底。判定用 `hasActiveFilter` / `isAtOnlineHome`。
+- **播放页「跳详情」的落栈（1.99.19 裁决 Q2=A）**：移动端跳过去的那一次必须要求「列表以上不留历史」——
+  `detail_jump_requests.dart` 的 `pushDetailAboveList(nav, route)`（= `pushAndRemoveUntil(r.isFirst)`），
+  否则详情页叠详情页、一次返回退不到列表。**播放页仍由 `_openAlbumDetail` 自己 pop**（先 pop 再发请求）：
+  它的退场动画照常播（`pushAndRemoveUntil` 会跳过正在 popping 的条目），桌面路径零改动。
+  列表点卡片、详情页之间跳语言版本（1.99.2 要「返回回原作品」）都保持普通压栈。
+
+## 导航栏可见配置（1.99.4 / 1.99.6）
+- 一级导航（桌面侧栏 + 安卓底栏）**两端共用一份** `AppSettings.navViews`（有序可见列表，单键 JSON `hiko-nav-views`）。
+  列表内 = 显示且按此排序，不在列表 = 隐藏。
+- 全集 `AppSettings.navViewsAll`（**7 项**）= 本地音声 / 最近添加 / 最近播放 / 收藏夹 / 在线 / 在线收藏 / 统计；
+  `navViewHome = '本地音声'` 为根视图**永久显示**。空/坏数据回退全集（老用户无此键 = 全显示）。
+  **`'正在播放'` 已于 1.99.6 移出白名单**（改由安卓底栏固定格承载），存量配置里带着它会被白名单过滤**静默丢弃 = 自动迁移**。
+- 移动端底栏**不用 `BottomNavigationBar`**（>5 项必挤压溢出），是 `lib/ui/widgets/mobile_bottom_nav.dart` 的公开
+  `MobileBottomNav`：`(项数+2)×76 ≤ 可用宽度` 则均分，否则整行横向滚动；**末尾固定两格「正在播放」「设置」**，
+  不占 navViews 表、用户关不掉。**label 直接用视图名**（'本地音声' / '在线' …），不是短名。
+- 当前视图被隐藏 → build 开头立即回退 `navViews.first`（只对 7 个内置视图名生效）。
+- 设置页「导航栏」二级页：`ReorderableListView` + **`onReorderItem`**（v3.41 起 `onReorder` 已废弃，用旧的会新增 lint）
+  + 开关 + 下方「已隐藏」区恢复。
+- **「全部音声」已改名「本地音声」**：它是视图 key 与显示文案同一字符串，改名必须 lib/test/README 一起替换。
+
+## 安卓播放栏手势与底栏固定格（1.99.6）
+- **从左往右划掉播放栏 = 收起 + 暂停**（只做移动端）。`player_bar.dart` 的 `onDismiss` 为 null 时**不套** `Dismissible`
+  （桌面路径逐字节不变）；套上时 `direction: startToEnd` + `dismissThresholds: {startToEnd: 0.35}` +
+  **`resizeDuration: null`**（源码 `_startResizeAnimation` 只在 `== null` 时立即回调 `onDismissed`；走 zero 仍要开控制器，
+  且 build 会进 `_resizeAnimation != null` 分支断言「dismissed but still in the tree」）。
+- **栏内三个 Slider（进度/增益/倍速）天然排除**：手势竞技场最内层优先，滑杆赢；**不要**设 `eagerGestureRecognizer`。
+  已用测试钉死（同时断言 `seekCalls > 0`，否则用例是空过的）。
+- **还原判据 = 任何一次「暂停 → 播放」跳变**（点歌/播放键/系统媒体键/通知栏/耳机线控）。实现是
+  `ref.listen<bool>(playbackProvider.select((s) => s.playing), (prev, next) ...)` —— **必须用 listen 的 prev/next**，
+  `ref.watch` 只给当前值。进全屏播放页本身**不**还原。
+- `playerBarVisible = !isMobile || (album != null && !_playerBarDismissed)` 是**唯一判据**：播放栏的 `if` 与
+  详情抽屉底部留白（`118 : 60`）都必须用它（否则划掉后抽屉下留 58px 空洞）。
+- **`_isInPlayerBar(globalPos)` 必须显式让位**：包裹整页的 1.54 左边缘呼出抽屉 `Listener` 是播放栏的**祖先**，
+  raw pointer 不进手势竞技场、**永远**会送到它那儿。用 `GlobalKey` + `renderBox.localToGlobal(Offset.zero) & size` 判矩形。
+- 底栏固定格「正在播放」→ 全屏播放页；`playerEnabled = album != null` 控制置灰，**禁用格照旧占位**（不跳位）。
+- **`HomeScreen(debugMobileLayout)`**：`@visibleForTesting` 可选参数，唯一用途是在 macOS 宿主上打开移动布局。
+  **生产代码永不传它**；配它做整页移动测试时画布要给到 900 宽（宿主是 macOS，播放栏会多一个桌面歌词按钮，真机宽度会溢出）。
+
+## 测试坑（踩过的）
+- 同一 testWidgets 两次 pumpWidget 换 overrides 第二次不生效；ticker 首帧 elapsed=0，ensureVisible 后 pump 两次。
+- **widget 测试里凡是会写到设置的交互必须 `SharedPreferences.setMockInitialValues({})`**，
+  否则 `getInstance()` 永不返回、测试**挂死**（不是失败）。
+- 设置对话框新增分类会改变既有分类可见性 → 按文案点设置项的测试要 `ensureVisible` 后再 tap。
+- **测弹出菜单要调 `tester.view.physicalSize`**：默认 600px 高 → 菜单 `maxHeight=45%×600=270`，
+  折线以下的条目 `tap()` 会**落在 ModalBarrier 上把菜单关掉**，报错却像「找不到控件」。
+- **`tap(find.byType(Checkbox))` 被 `IgnorePointer` 包着时必报 hit-test warning**，加 `warnIfMissed: false`。
+- **`pumpAndSettle` 撞上无限动画会超时**（全屏播放页播放中的唱片、在线详情页拉不到数据时的加载圈）。
+  点过它之后只能用有界 pump（3×300ms / 8×120ms）；`playing: false` 时唱片不转，可放心 settle。
+- **假控制器子类化 `PlaybackController` 只能写 `_Fake(super._ref)`**（基类构造参数名私有）；
+  `container.read(playbackProvider.notifier)` 的静态类型是基类，要 `as _Fake`。
+- **`tester.pageBack()` 依赖 tooltip 'Back'**：AppBar 的前导若不是标准 `BackButton` 就找不到；
+  模拟系统返回用 `await tester.binding.handlePopRoute()`（贴近安卓返回键/边缘手势）。
+- **被不透明路由完全覆盖的页面不在 finder 里**（`find.byType` 默认 `skipOffstage: true`）——
+  判「栈里还有没有某页」要在 pop 之后断言。
+- 在线详情页的测试：`onlineDetailProvider(workId).overrideWith(...)` 挡掉网络
+  （flutter_test 里所有 HTTP 都 400，未捕获的 `KikoeruException` 会让用例失败）。
+- **回归锁必须摘掉修复验证会红**（改动落栈/筛选这类语义时逐条验一遍）。
+
+## 遗留待裁决（摘要）
+1.42 tag 颜色对比度；1.53 Android 整理入口语义/TALB 分组；1.54 右滑手势排除区/原位替换不重扫；
+1.87 U+30FB 拆名误伤（已接受）；1.91–1.99 多项 Android 未实机验证（曲目行点击行为、hover 缺失、
+分页条/菜单/对话框窄屏、滑杆手感、creator 菜单触屏、分页条精简后观感、8 列观感、
+**1.99.5 的 36px 热区手感 / 分级复选框点选 / 移动端 4 标记 Wrap 排布**、**1.99.19 的跳详情落栈实机验证**）；
+1.96 卡面单行标题封面偏高是否统一（未裁决）。1.95 明确不做：黑名单总开关/手动输入/按社团声优屏蔽。
+**遗留文件**：`hiko/hiko-v1.100.0-{macos.zip,android.apk}` 本地唯一副本（GitHub 无该 Release），
+待用户裁决补发还是丢弃。

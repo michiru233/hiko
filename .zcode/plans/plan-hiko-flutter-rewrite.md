@@ -3351,3 +3351,30 @@ Release: https://github.com/michiru233/hiko/releases/tag/v1.99.5
 
 - 新建 `test/ui/online_file_rows_test.dart` 4 条：模型判别/fileCount 聚合（纯图片目录 audioCount=0 但 fileCount=1）、非音频行直显+体积+目录计数、图片行点击开预览、文本行点击（测试环境 HTTP 全 400 → 错误提示路径）。`online_client_test` 两条 folderKeysIn 断言按新口径更新（旧断言锁的就是被推翻的语义）。`flutter test` **635 passed / 2 skipped**（基线 631）；analyze 基线持平（43 条全为存量）。
 - 版本 `1.99.18+131`；Release：`hiko-v1.99.18-android.apk`（68MB）+ `hiko-v1.99.18-macos.zip`（33MB）。本版无新增待裁决。
+
+---
+
+## 1.99.19（2026-10-05）：修复「只有社团筛选时 ✕ 点不了」+ 播放页跳详情落栈
+
+用户两条实机反馈（grill-me 五问：Q1 描述现象、Q2=A 一次返回应回在线列表、Q3 本地/在线都修、Q4=A ✕ 只清 creator 维、Q5 修根因而非特例）。
+
+### ① 只有社团筛选时 ✕ 点不了（根因 = applyPreset 早退）
+
+- **症状**：仅激活一个社团（creator）筛选时，标记上的 ✕ 点了没反应。
+- **根因**：`online_provider.dart` 的 `applyPreset` 早退条件 `!hasSomethingToClear && source==browse && sort==preset && works.isNotEmpty`。`selectCreator` 不改 source/sort，于是「最新榜 + 社团筛选」正好命中三条 → 早退直接把取消动作吞掉。连带第二个潜伏症状：creator 激活时点任何预设 chip 也是 no-op。
+- **修法**：`hasSomethingToClear` 补上 `state.creator != null`（早退只在该清的都空时才允许）；新增 `clearCreator()`——只摘 creator 一维，source/搜索词/排序/标签/页码原样保留并重拉。
+- **取消语义（Q4=A）**：✕ 只清社团/声优维度，保留搜索词与筛选来源。`online_screen.dart` 的 `_applyCreator` 取消分支改为 `clearCreator()` 并**在清搜索框之前 return**（旧代码会把搜索词一起清掉）。
+- **回归锁** `test/data/online_creator_cancel_test.dart` 5 条：`_FakeClient extends KikoeruClient` 返回真实 `OnlineWorkPage`，**保证 `state.works` 非空**（旧 harness 里 HTTP 恒失败、works 恒空，正好绕过早退这颗雷，所以一直没被测到）。锁点：✕ 真清 + 重拉、搜索词/来源保留、幂等、creator 激活时预设 chip 生效、字幕/分级 no-op。
+
+### ② 播放页跳详情后一次返回退不到在线列表（落栈）
+
+- **症状**：全屏播放页点感叹号跳详情 → 右滑返回，先回播放页、再回旧的详情页，第三次才到列表（Q1 实录）。
+- **根因**：跳详情是「在旧详情页之上再 push 一层新详情」，播放页那次 pop 之后旧详情仍在栈里。
+- **修法（Q2=A）**：新增 `detail_jump_requests.dart` 的 `pushDetailAboveList(nav, route)` = `nav.pushAndRemoveUntil(route, (r) => r.isFirst)`——跳过去的那一次要求「列表以上不留历史」，一次返回直接回列表（筛选/页码/滚动位置都在 OnlineScreen 状态里，天然保留）。本地 `_openMobileDetail` 与在线 `_openDetail` 同走此路。
+- **顺序**：播放页仍**先 pop 再发请求**（1.99.18 教训）；`pushAndRemoveUntil` 会跳过正在 popping 的播放页条目 → 它的退场交叉淡入照常播，桌面路径零改动。列表点卡片、详情页间跳语言版本保持普通压栈（1.99.2「返回回原作品」语义不变）。
+
+### 测试与验证
+
+- 扩展 `test/ui/player_detail_jump_test.dart` +2 条整页移动测试（`HomeScreen(debugMobileLayout: true)` 900×1400 画布 + `_SeededLibrary` + `onlineDetailProvider(4567).overrideWith(...)` 挡网络；有界 `_pumpFrames` 规避加载圈无限动画；返回用 `tester.binding.handlePopRoute()`）。两条锁都验过「还原成 `nav.push` 会红」。本地路径同步断言「一次返回后 `AlbumDetailScreen` 已不在」。
+- `flutter test` **642 passed / 2 skipped**（基线 635）；`flutter analyze` 43 条基线持平，0 新增 error。
+- 版本 `1.99.19+132`；Release：`hiko-v1.99.19-android.apk` + `hiko-v1.99.19-macos.zip`。本版无新增待裁决（跳详情落栈待实机复验）。
