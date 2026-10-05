@@ -612,6 +612,8 @@ class OnlineTrack {
 
   bool get isAudio => type == 'audio';
   bool get isText => type == 'text';
+  bool get isImage => type == 'image';
+  bool get isVideo => type == 'video';
 
   /// 是否可作为音频播放：服务端把 mp3/m4b/wav 都标 audio，视频轨也标 audio，
   /// 这里按标题扩展名排除明显不是音频的（.mp4 等由播放器自行处理，不排除）
@@ -638,8 +640,8 @@ sealed class OnlineNode {
   const OnlineNode();
 }
 
-/// 目录节点。[audioCount] / [totalSeconds] 由子节点递归聚合而来——
-/// 服务端 folder 节点只有 `type` + `title`，这两个数是我们自己算的
+/// 目录节点。[audioCount] / [totalSeconds] / [fileCount] 由子节点递归聚合而来——
+/// 服务端 folder 节点只有 `type` + `title`，这几个数是我们自己算的
 /// （asmr.one 前端也是这么显示的：「2 项目, 36min」）。
 final class OnlineFolderNode extends OnlineNode {
   OnlineFolderNode(this.title, this.children)
@@ -657,6 +659,13 @@ final class OnlineFolderNode extends OnlineNode {
               track.playable ? track.duration : 0.0,
             OnlineFolderNode(:final totalSeconds) => totalSeconds,
           },
+        ),
+        fileCount = children.fold(
+          0,
+          (sum, child) => sum + switch (child) {
+            OnlineFileNode() => 1,
+            OnlineFolderNode(:final fileCount) => fileCount,
+          },
         );
 
   final String title;
@@ -667,6 +676,10 @@ final class OnlineFolderNode extends OnlineNode {
 
   /// 递归聚合：该目录下（含子目录）可播放音频的时长合计（秒）
   final double totalSeconds;
+
+  /// 递归聚合：该目录下（含子目录）**全部文件**条数（1.99.18 起详情树
+  /// 对齐 asmr.one 展示图片 / 文本 / 视频，纯图片目录不再整支隐藏）
+  final int fileCount;
 }
 
 /// 文件节点（音频 / 字幕 / 图片 / 视频）
@@ -687,12 +700,12 @@ List<OnlineTrack> playableIn(OnlineNode node) => switch (node) {
 /// 递归收集节点树里所有目录的路径键（与 [OnlineTrack.relativePath] 同一套拼法），
 /// 供「折叠全部 / 展开全部」用。
 ///
-/// 只收**含可播放音频**的目录 —— 详情页只渲染这类目录，把仅存字幕/图片的
-/// 空目录也算进来的话，「全部已折叠」这个状态永远达不到。
+/// 与详情树同一口径（1.99.18 起）：**含任何文件**的目录都算——纯图片目录
+/// 会被渲染，「全部已折叠」的状态才对得上。
 List<String> folderKeysIn(List<OnlineNode> nodes, [String parent = '']) {
   final out = <String>[];
   for (final node in nodes) {
-    if (node is! OnlineFolderNode || node.audioCount == 0) continue;
+    if (node is! OnlineFolderNode || node.fileCount == 0) continue;
     final path = parent.isEmpty ? node.title : '$parent/${node.title}';
     out.add(path);
     out.addAll(folderKeysIn(node.children, path));

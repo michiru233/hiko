@@ -568,12 +568,12 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     required bool isCurrentWork,
     required bool isPlaying,
   }) {
-    if (detail.audioTracks.isEmpty) {
+    if (detail.tracks.isEmpty) {
       return [
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Text(
-            '服务器未返回可播放的音轨',
+            '服务器未返回文件',
             style: TextStyle(
               fontSize: 12 * _textScale,
               color: Theme.of(context).hintColor,
@@ -584,7 +584,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     }
     final out = <Widget>[];
     if (detail.tree.isEmpty) {
-      // 兜底：服务端没给层级时，按 relativePath 分组顺序编号
+      // 兜底：服务端没给层级时，按 relativePath 分组顺序编号（含非音频文件）
       _buildFlat(detail, currentHash, isCurrentWork, isPlaying, out);
     } else {
       _walkNodes(
@@ -603,8 +603,8 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
 
   /// 递归渲染目录树，**不限深度**（裁决 Q3）。
   ///
-  /// - 只渲染可播放音频，以及「子树里含有音频」的目录；仅存字幕/图片的目录整支隐去
-  /// - 序号在**每一层内**独立计数，还原 asmr.one 的分组观感
+  /// - 音频行可播；图片 / 文本 / 视频行按类型分流查看（1.99.18，对齐 asmr.one）
+  /// - 只隐藏「完全没有任何文件」的目录；纯图片目录照常显示
   void _walkNodes(
     OnlineDetail detail,
     List<OnlineNode> nodes, {
@@ -618,13 +618,14 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     var seq = 0;
     for (final node in nodes) {
       if (node is OnlineFolderNode) {
-        if (node.audioCount == 0) continue;
+        if (node.fileCount == 0) continue;
         final path =
             parentPath.isEmpty ? node.title : '$parentPath/${node.title}';
         final collapsed = !_expanded.contains(path);
+        final playable = playableIn(node);
         out.add(_FolderRow(
           title: node.title,
-          audioCount: node.audioCount,
+          itemCount: node.fileCount,
           totalSeconds: node.totalSeconds,
           depth: depth,
           collapsed: collapsed,
@@ -632,9 +633,11 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
             // 与 1.91.0 同样的「先试着删，删不掉就加」写法，只是集合反了过来
             if (!_expanded.remove(path)) _expanded.add(path);
           }),
-          onPlay: () => unawaited(
-            _playFrom(detail: detail, queue: playableIn(node)),
-          ),
+          onPlay: playable.isEmpty
+              ? null
+              : () => unawaited(
+                    _playFrom(detail: detail, queue: playable),
+                  ),
         ));
         if (!collapsed) {
           _walkNodes(
@@ -652,22 +655,25 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
       }
       if (node is OnlineFileNode) {
         final track = node.track;
-        if (!track.playable) continue;
-        seq++;
-        out.add(_trackRow(
-          detail,
-          track,
-          index: seq,
-          depth: depth,
-          currentHash: currentHash,
-          isCurrentWork: isCurrentWork,
-          isPlaying: isPlaying,
-        ));
+        if (track.playable) {
+          seq++;
+          out.add(_trackRow(
+            detail,
+            track,
+            index: seq,
+            depth: depth,
+            currentHash: currentHash,
+            isCurrentWork: isCurrentWork,
+            isPlaying: isPlaying,
+          ));
+        } else {
+          out.add(_fileRow(track, depth: depth));
+        }
       }
     }
   }
 
-  /// 无层级数据时的兜底：按 `relativePath` 顺序编号
+  /// 无层级数据时的兜底：按 `relativePath` 顺序编号（含非音频文件，1.99.18）
   void _buildFlat(
     OnlineDetail detail,
     String? currentHash,
@@ -677,21 +683,25 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
   ) {
     var seq = 0;
     var lastPath = '';
-    for (final track in detail.audioTracks) {
+    for (final track in detail.tracks) {
       if (track.relativePath != lastPath) {
         lastPath = track.relativePath;
         seq = 0;
       }
-      seq++;
-      out.add(_trackRow(
-        detail,
-        track,
-        index: seq,
-        depth: 0,
-        currentHash: currentHash,
-        isCurrentWork: isCurrentWork,
-        isPlaying: isPlaying,
-      ));
+      if (track.playable) {
+        seq++;
+        out.add(_trackRow(
+          detail,
+          track,
+          index: seq,
+          depth: 0,
+          currentHash: currentHash,
+          isCurrentWork: isCurrentWork,
+          isPlaying: isPlaying,
+        ));
+      } else {
+        out.add(_fileRow(track, depth: 0));
+      }
     }
   }
 
@@ -734,6 +744,102 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
         isPlaying: isPlaying,
       ),
     );
+  }
+
+  // ---------------------------------------------------------------- 非音频文件行
+
+  /// 图片 / 文本 / 视频行（1.99.18，对齐 asmr.one 的文件树）。
+  /// 点击按类型分流：图片 → 应用内预览；文本 → 查看对话框；视频 → 跳浏览器。
+  Widget _fileRow(OnlineTrack track, {required int depth}) {
+    return _FileRow(
+      track: track,
+      depth: depth,
+      onTap: () {
+        if (track.isImage) {
+          unawaited(_showImageViewer(track));
+        } else if (track.isText) {
+          unawaited(_showTextDialog(track));
+        } else {
+          unawaited(_openExternally(track));
+        }
+      },
+    );
+  }
+
+  /// 图片全屏预览：InteractiveViewer 捏合/双击缩放；封面缓存管线复用
+  /// （`streamUrl(hash)` 与字幕同一套媒体流端点，带服务端时效签名）。
+  Future<void> _showImageViewer(OnlineTrack track) async {
+    final url = ref.read(onlineClientProvider).streamUrl(track.hash);
+    await showDialog<void>(
+      context: context,
+      useSafeArea: false,
+      barrierColor: Colors.black,
+      builder: (ctx) => Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          foregroundColor: Colors.white,
+          title: Text(
+            onlineTrackDisplayName(track.title),
+            style: const TextStyle(fontSize: 14),
+          ),
+        ),
+        body: InteractiveViewer(
+          maxScale: 8,
+          child: Center(child: OnlineCover(url: url, fit: BoxFit.contain)),
+        ),
+      ),
+    );
+  }
+
+  /// 文本文件轻量查看（未配对成字幕的散件：说明 txt、汉化对照等）
+  Future<void> _showTextDialog(OnlineTrack track) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final text = await ref.read(onlineClientProvider).fetchText(track.hash);
+    if (!mounted) return;
+    if (text == null) {
+      messenger?.showSnackBar(const SnackBar(content: Text('无法加载文件内容')));
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          onlineTrackDisplayName(track.title),
+          style: const TextStyle(fontSize: 14),
+        ),
+        content: SizedBox(
+          width: 420,
+          height: 360,
+          child: SingleChildScrollView(
+            child: SelectableText(text, style: const TextStyle(fontSize: 12)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 视频等其余类型：应用内是音频引擎，交给系统浏览器/播放器
+  Future<void> _openExternally(OnlineTrack track) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final url = ref.read(onlineClientProvider).streamUrl(track.hash);
+    try {
+      final ok = await launchUrl(
+        Uri.parse(url),
+        mode: LaunchMode.externalApplication,
+      );
+      if (!ok) {
+        messenger?.showSnackBar(SnackBar(content: Text('无法打开：$url')));
+      }
+    } catch (e) {
+      messenger?.showSnackBar(SnackBar(content: Text('无法打开浏览器：$e')));
+    }
   }
 
   // ---------------------------------------------------------------- 自动展开
@@ -1130,21 +1236,25 @@ class _EditionChip extends StatelessWidget {
 class _FolderRow extends StatefulWidget {
   const _FolderRow({
     required this.title,
-    required this.audioCount,
+    required this.itemCount,
     required this.totalSeconds,
     required this.depth,
     required this.collapsed,
     required this.onToggle,
-    required this.onPlay,
+    this.onPlay,
   });
 
   final String title;
-  final int audioCount;
+
+  /// 全部文件条数（1.99.18 起含图片/文本/视频，对齐 asmr.one）
+  final int itemCount;
   final double totalSeconds;
   final int depth;
   final bool collapsed;
   final VoidCallback onToggle;
-  final VoidCallback onPlay;
+
+  /// 子树内没有可播放音频时为 null（纯图片目录），hover 不出播放键
+  final VoidCallback? onPlay;
 
   @override
   State<_FolderRow> createState() => _FolderRowState();
@@ -1207,7 +1317,7 @@ class _FolderRowState extends State<_FolderRow> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                if (_hovered)
+                if (_hovered && widget.onPlay != null)
                   Tooltip(
                     message: '播放该目录',
                     child: InkWell(
@@ -1226,8 +1336,10 @@ class _FolderRowState extends State<_FolderRow> {
                   )
                 else
                   Text(
-                    '${widget.audioCount} 个项目 · '
-                    '${formatDuration(widget.totalSeconds)}',
+                    '${widget.itemCount} 个项目'
+                    '${widget.totalSeconds > 0
+                        ? ' · ${formatDuration(widget.totalSeconds)}'
+                        : ''}',
                     style: TextStyle(
                       fontSize: 10 * textScale,
                       color: theme.hintColor,
@@ -1236,6 +1348,110 @@ class _FolderRowState extends State<_FolderRow> {
                   ),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 非音频文件行（1.99.18）：图片带缩略图（`streamUrl(hash)` + 封面缓存管线），
+/// 文本 / 视频带类型图标；尾部显示文件体积。缩略图沿用 [OnlineCover] 的
+/// 防社手模糊行为 —— 隐私模式开着时同样糊掉。
+class _FileRow extends ConsumerWidget {
+  const _FileRow({
+    required this.track,
+    required this.depth,
+    required this.onTap,
+  });
+
+  final OnlineTrack track;
+  final int depth;
+  final VoidCallback onTap;
+
+  static String _sizeLabel(int b) {
+    if (b <= 0) return '';
+    if (b >= 1024 * 1024) return '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
+    return '${(b / 1024).toStringAsFixed(0)} KB';
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final textScale = HikoDetailTextScale.of(context);
+    final size = _sizeLabel(track.size);
+
+    final Widget leading = track.isImage
+        ? ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: OnlineCover(
+                url: ref.watch(onlineClientProvider).streamUrl(track.hash),
+              ),
+            ),
+          )
+        : SizedBox(
+            width: 40,
+            height: 40,
+            child: Center(
+              child: Icon(
+                track.isText
+                    ? Icons.description_rounded
+                    : Icons.movie_rounded,
+                size: 20,
+                color: theme.hintColor,
+              ),
+            ),
+          );
+
+    return Padding(
+      padding: EdgeInsets.only(left: depth * 14.0),
+      child: InkWell(
+        onTap: onTap,
+        mouseCursor: SystemMouseCursors.click,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 2),
+          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+          child: Row(
+            children: [
+              leading,
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  onlineTrackDisplayName(track.title),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12 * textScale,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              if (size.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Text(
+                  size,
+                  style: TextStyle(
+                    fontSize: 10 * textScale,
+                    color: theme.hintColor,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+              const SizedBox(width: 4),
+              Icon(
+                track.isImage
+                    ? Icons.image_outlined
+                    : track.isText
+                        ? Icons.notes_rounded
+                        : Icons.open_in_new_rounded,
+                size: 13,
+                color: theme.hintColor,
+              ),
+            ],
           ),
         ),
       ),

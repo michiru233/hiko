@@ -24,9 +24,7 @@ import '../lyrics/lyrics_auto_scroll.dart';
 import '../theme.dart';
 import '../widgets/detail_kit.dart' show hikoFavoriteColor;
 import '../widgets/online_account_dialogs.dart';
-import '../widgets/online_detail_panel.dart';
 import '../widgets/toast.dart';
-import 'album_detail_screen.dart';
 
 /// 全屏播放页（1.57）：仿网易云双层设计
 /// - 封面层（1.100.0 两套可选，AppBar 切换 + 设置持久化）：
@@ -1437,41 +1435,25 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     );
   }
 
-  /// 1.99.17「跳详情」：关掉播放页并打开当前专辑/作品的详情，播放不中断。
+  /// 1.99.17「跳详情」；1.99.18 起**全平台**统一走指令通道（桌面/移动不再分叉）：
+  /// 播放页只发请求 + 关自己，详情由 home（本地抽屉 / 移动整页，在线则切到
+  /// 在线页由 OnlineScreen 打开）打开 —— 那些详情才带着完整的筛选回调，播放页
+  /// 裸 push 的详情页点社团/声优是死的（1.99.18 实测反馈）。播放不中断。
   ///
-  /// 桌面端的详情长在 home 里（本地详情抽屉 / 在线页侧栏面板），播放页拿不到
-  /// 那两处内部状态，走 [detail_jump_requests] 的指令通道；移动端详情是独立
-  /// 整页路由，直接 pushReplacement 顶掉播放页。桌面在线请求只负责切视图 ——
-  /// 请求的消费与清空由 OnlineScreen 负责（两处都清会有「消费方还没挂载、
-  /// 请求就被抹掉」的时序坑）。
+  /// 注意顺序：**先 pop 再发请求**。请求会被宿主的 ref.listen 同步消费，
+  /// 移动端本地路径会在监听里 push 详情页——若先发请求，随后本页的 pop
+  /// 会把刚 push 的详情顶掉。
   void _openAlbumDetail(Album album) {
     final nav = Navigator.of(context);
-    final isMobile =
-        Platform.isAndroid && MediaQuery.sizeOf(context).width <= 1000;
+    final localReq = ref.read(localDetailRequestProvider.notifier);
+    final onlineReq = ref.read(onlineDetailRequestProvider.notifier);
+    nav.pop();
     if (album.isOnline) {
       final workId = OnlineWork.workIdFromAlbumId(album.id);
       if (workId == null) return;
-      if (isMobile) {
-        nav.pushReplacement(
-          MaterialPageRoute<void>(
-            builder: (_) => OnlineDetailScreen(workId: workId),
-          ),
-        );
-      } else {
-        ref.read(onlineDetailRequestProvider.notifier).state = workId;
-        nav.pop();
-      }
-      return;
-    }
-    if (isMobile) {
-      nav.pushReplacement(
-        MaterialPageRoute<void>(
-          builder: (_) => AlbumDetailScreen(albumId: album.id),
-        ),
-      );
+      onlineReq.state = workId;
     } else {
-      ref.read(localDetailRequestProvider.notifier).state = album.id;
-      nav.pop();
+      localReq.state = album.id;
     }
   }
 

@@ -510,15 +510,15 @@ void main() {
       expect(playableIn(l1).map((t) => t.hash), ['1/2']);
     });
 
-    test('folderKeysIn 只收含音频的目录，否则「全部折叠」永远达不到', () {
+    test('folderKeysIn 与详情树同口径：含任何文件的目录都收（1.99.18）', () {
       final nodes = deepNodes();
       final tree = KikoeruClient.parseTrackNodes(
           nodes, KikoeruClient.parseTrackTree(nodes));
 
-      expect(folderKeysIn(tree), ['L1', 'L1/L2', 'L1/L2/L3']);
+      expect(folderKeysIn(tree), ['L1', 'L1/L2', 'L1/L2/L3', '只有字幕']);
     });
 
-    test('目录无音频时其子目录也不收进折叠键', () {
+    test('纯字幕目录也收进折叠键（1.99.18 起文件全貌展示）', () {
       final nodes = [
         {
           'type': 'folder',
@@ -536,7 +536,7 @@ void main() {
       ];
       final tree = KikoeruClient.parseTrackNodes(
           nodes, KikoeruClient.parseTrackTree(nodes));
-      expect(folderKeysIn(tree), isEmpty);
+      expect(folderKeysIn(tree), ['A', 'A/B']);
     });
   });
 

@@ -3328,3 +3328,26 @@ Release: https://github.com/michiru233/hiko/releases/tag/v1.99.5
 
 - 新建 `test/ui/player_detail_jump_test.dart` 3 条：在线专辑点详情写 workId 进指令通道 + 收藏按钮存在、本地专辑无收藏按钮 + 点详情写 album.id、workId 反解 roundtrip/非法形态。`flutter test` **631 passed / 2 skipped**（基线 628）；analyze 基线持平（45 条全为存量 info/warning，改动文件无新增）。
 - 版本 `1.99.17+130`；Release：`hiko-v1.99.17-android.apk`（68MB）+ `hiko-v1.99.17-macos.zip`（33MB）。本版无新增待裁决。
+
+---
+
+## 1.99.18（2026-10-05）：修复播放页跳详情筛选失效 + 在线详情树展示文件全貌
+
+1.99.17 实机反馈两条（grill-me 四问全按推荐锁定）。
+
+### 修复一：播放页跳详情后社团/艺术家胶囊点不动
+
+- **根因**：1.99.17 移动端是裸 push（`OnlineDetailScreen`/`AlbumDetailScreen` 不带筛选回调 / 回传没人收），桌面在线路径本来就经 OnlineScreen 打开、是好的。本地路径还有个隐藏变体：`AlbumDetailScreen` 的胶囊是 pop 时把 ('kind', name) 回传给宿主 `_openMobileDetail` 应用的，播放页 pushReplacement 后回传被丢弃。
+- **修法**：跳详情改为**全平台统一走指令通道**——播放页只发请求 + 关自己；移动端本地由 home 的监听走 `_openMobileDetail`（处理回传），在线切视图后由 OnlineScreen push 带完整回调的详情页。桌面行为不变。
+- **顺序坑**：必须**先 pop 再发请求**——请求被宿主 ref.listen 同步消费，移动端本地路径在监听里 push 详情页，若先发请求，播放页随后的 pop 会把刚 push 的详情顶掉（与 1.99.16 离线弹窗同类的「刚 push 就 pop」陷阱）。notifier 先读再 pop，规避 pop 后 ref 失效。
+
+### 修复二：在线曲目树只显示音频，图片/文本/视频不显示（asmr.one 有）
+
+- **事实**：模型层全量文件早就解析进内存（`OnlineTrack.type` = audio/text/image/video，`OnlineDetail.tracks` 含全部），只是 UI 三处过滤掉：`_walkNodes` 跳过非 playable、目录 `audioCount==0` 整支隐藏、`folderKeysIn` 同口径。
+- **模型**：`OnlineTrack` 加 `isImage`/`isVideo`；`OnlineFolderNode` 加 `fileCount`（递归全部文件）；`folderKeysIn` 与 `_walkNodes` 的目录门控改 `fileCount` 口径——纯图片/纯字幕目录不再整支隐藏，「展开全部」对齐。
+- **UI**（`OnlineDetailBody` 一处改动两端生效）：非音频行走新 `_FileRow`（图片带缩略图，文本/视频带类型图标，尾部文件体积）；点击分流——图片→应用内全屏预览（`InteractiveViewer` 自建，无新依赖，封面复用 `OnlineCover`+`streamUrl(hash)` 媒体流端点），文本→轻量 `SelectableText` 对话框（`fetchText`），视频/其余→`launchUrl` 跳浏览器。纯图片目录无播放键（`_FolderRow.onPlay` 可空）。**播放页「列表」sheet 保持纯音频**（队列语义）。
+
+### 测试与验证
+
+- 新建 `test/ui/online_file_rows_test.dart` 4 条：模型判别/fileCount 聚合（纯图片目录 audioCount=0 但 fileCount=1）、非音频行直显+体积+目录计数、图片行点击开预览、文本行点击（测试环境 HTTP 全 400 → 错误提示路径）。`online_client_test` 两条 folderKeysIn 断言按新口径更新（旧断言锁的就是被推翻的语义）。`flutter test` **635 passed / 2 skipped**（基线 631）；analyze 基线持平（43 条全为存量）。
+- 版本 `1.99.18+131`；Release：`hiko-v1.99.18-android.apk`（68MB）+ `hiko-v1.99.18-macos.zip`（33MB）。本版无新增待裁决。

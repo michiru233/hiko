@@ -491,15 +491,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       }
     });
 
-    // 1.99.17 播放页「跳详情」指令：本地请求 = 打开详情抽屉（从全库找，
-    // 不受当前视图筛选影响）；在线请求只负责切到在线视图 —— 消费与清空由
-    // OnlineScreen 负责，两处都清会出现「消费方还没挂载、请求就被抹掉」的时序坑
+    // 1.99.17 播放页「跳详情」指令；1.99.18 起移动端也走这里（播放页裸 push 的
+    // 详情页没有筛选回调）。本地请求：桌面 = 打开详情抽屉；移动 = 走
+    // [_openMobileDetail]（它负责处理详情页胶囊的筛选回传）。在线请求只负责
+    // 切到在线视图 —— 消费与清空由 OnlineScreen 负责，两处都清会出现
+    // 「消费方还没挂载、请求就被抹掉」的时序坑
     ref.listen<String?>(localDetailRequestProvider, (prev, next) {
       if (next == null) return;
       ref.read(localDetailRequestProvider.notifier).state = null;
       for (final a in ref.read(libraryProvider)) {
         if (a.id == next) {
-          setState(() => _detailAlbum = a);
+          if (isMobile) {
+            unawaited(_openMobileDetail(a.id));
+          } else {
+            setState(() => _detailAlbum = a);
+          }
           break;
         }
       }
