@@ -81,6 +81,27 @@
   它的退场动画照常播（`pushAndRemoveUntil` 会跳过正在 popping 的条目），桌面路径零改动。
   列表点卡片、详情页之间跳语言版本（1.99.2 要「返回回原作品」）都保持普通压栈。
 
+## 在线卡片与网格（1.99.21：胶囊化 + 瀑布流）
+- **卡片结构**（`online_screen.dart` 的 `OnlineWorkCard`）：封面 `AspectRatio(1)`（`Expanded` 已删）→
+  标题 13/w700（`kOnlineCardTitleFontSize`，与本地卡面同款）→ 四组 `Wrap`：
+  ① 艺术家（`work.vas` **逐个一枚**）② 社团（`circleName`）③ 作品号 + 时长 + 下载量 ④ 标签（全部）。
+  取不到的元数据**整枚不出现**，不留占位。（在线数据结构里没有 genre，所以没有「分类」胶囊。）
+- **六类胶囊配色**（`online_card_kit.dart` 的 `onlinePillColors(kind, isDark:, scheme:)`）：
+  艺术家蓝 / 社团琥珀金 / 作品号 `scheme.primary` 实底反白加粗 / 时长中性灰 / 下载量玫红 / 标签青
+  （`HikoTagChip`）。语法统一「浅底 + 同色相深字」，暗色主题降 alpha 不换色相。
+  抽成**公开纯函数**是为了让「颜色必须互相区分」可测（见 `test/ui/online_work_card_test.dart`）。
+- **时长统一 `formatDuration`**（`2小时25分钟`），**不用** `OnlineWork.durationLabel`（`2:25:00` 钟表写法）。
+- **标签全部展示、自然换行**：`+N` 截断、`_CardTagRow`、`_chipWidth`（TextPainter 量宽）已整体删除。
+- **⚠️ 高度预算函数已不存在**：`onlineCardTextBlockHeight` / `onlineCardTagRowHeight` 随 `SliverGrid`
+  一起删了。它们存在的唯一理由是「网格 `mainAxisExtent` 整屏统一」，而「标签只能单行 + `+N`」
+  又是高度固定逼出来的 —— 瀑布流一上，这两套复杂度是同源消失。改卡片内部间距不要再回头找它们。
+- **两种网格都在 `online_work_grid.dart`**：box 形态 `MasonryGridView.count`、sliver 形态
+  `SliverMasonryGrid.count`，共用顶层 `_buildWorkCard`。列数仍走 `_resolveColumns`
+  （自动档 = 桌面「至少 200px 一张」、移动端 2 列；900 宽 = 3 列）——
+  **别换成 `WithMaxCrossAxisExtent`**：它按 `ceil` 算，900 宽会变 4 列，自动档观感当场变。
+- **卡片自己读 `onlineCardTextScale`**（`ref.watch(settingsProvider.select(...))`），网格不再传参 ——
+  网格算卡高这件事已经不存在，留着「读出来传进去」只是多一处能忘传的接口。
+
 ## 导航栏可见配置（1.99.4 / 1.99.6）
 - 一级导航（桌面侧栏 + 安卓底栏）**两端共用一份** `AppSettings.navViews`（有序可见列表，单键 JSON `hiko-nav-views`）。
   列表内 = 显示且按此排序，不在列表 = 隐藏。
@@ -138,6 +159,7 @@
 1.87 U+30FB 拆名误伤（已接受）；1.91–1.99 多项 Android 未实机验证（曲目行点击行为、hover 缺失、
 分页条/菜单/对话框窄屏、滑杆手感、creator 菜单触屏、分页条精简后观感、8 列观感、
 **1.99.5 的 36px 热区手感 / 分级复选框点选 / 移动端 4 标记 Wrap 排布**、**1.99.19 的跳详情落栈实机验证**、
-**1.99.20 的移动端顶栏收起后观感 / Aa 菜单触屏手感 / 收藏页 Aa 位置**）；
+**1.99.20 的移动端顶栏收起后观感 / Aa 菜单触屏手感 / 收藏页 Aa 位置**、
+**1.99.21 的胶囊配色实机观感 / 瀑布流长列表滚动性能 / 窄屏四组胶囊换行密度**）；
 1.96 卡面单行标题封面偏高是否统一（未裁决）。1.95 明确不做：黑名单总开关/手动输入/按社团声优屏蔽。
 （`hiko/hiko-v1.100.0-*` 遗留副本已不存在；2026-10-05 复查 `hiko/` 已无本地封包副本，1.99.17–1.99.19 均已核对远端资产后清理。）
