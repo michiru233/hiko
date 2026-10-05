@@ -9,11 +9,13 @@ import '../../data/online/online_favorites.dart';
 import '../../data/online/online_models.dart';
 import '../../data/online/online_provider.dart';
 import '../../data/settings_store.dart';
+import '../../utils/time.dart';
 import '../detail_jump_requests.dart';
 import '../theme.dart';
 import '../widgets/detail_kit.dart';
 import '../widgets/online_account_dialogs.dart';
 import '../widgets/online_appearance.dart';
+import '../widgets/online_card_kit.dart';
 import '../widgets/online_cover.dart';
 import '../widgets/online_detail_panel.dart';
 import '../widgets/online_filter_marker.dart';
@@ -1071,12 +1073,21 @@ class _OnlineAccountEntry extends ConsumerWidget {
 
 enum _AccountAction { favorites, refresh, logout }
 
-/// 在线作品卡片：封面（原图）+ 标题 + 社团/下载量
+/// 在线作品卡片：封面（原图）+ 标题 + 艺术家/社团/作品号/时长/下载量/标签胶囊。
 ///
-/// 1.92.0 之前列表用 `type=240x240` 缩略图（实测 240×180），卡片在 Retina 上
-/// 需要 400–520 物理像素，`BoxFit.cover` 裁方形后只剩 180×180 → 放大 2.4–2.9 倍，
-/// 于是「主界面封面模糊、详情页正常」。服务端没有中间档，1.93.0 起统一走原图
-/// （裁决 Q4=A：不加清晰度开关）。
+/// **封面必须走原图**（1.93.0 裁决 Q4=A：不加清晰度开关）。1.92.0 之前列表用
+/// `type=240x240` 缩略图（实测 240×180），卡片在 Retina 上需要 400–520 物理像素，
+/// `BoxFit.cover` 裁方形后只剩 180×180 → 放大 2.4–2.9 倍，于是「主界面封面模糊、
+/// 详情页正常」。服务端没有中间档，所以这里统一取主图。
+///
+/// 1.99.21 胶囊化改版的要点：
+/// * 封面从 `Expanded` 改成 `AspectRatio(1)` —— 网格改成瀑布流之后卡片高度由
+///   内容决定，已经没有「一块固定高度」可以给封面瓜分了；
+/// * 原来那行灰色副标题（社团 · 下载量）拆成胶囊，并补上作品号与时长；
+/// * 标签从「单行 + `+N` 截断」改成**全部展示 + 自然换行**（这正是瀑布流换来的）。
+///
+/// 文字倍率由卡片自己读设置（1.99.21）：网格改成瀑布流后不再需要它来算卡高，
+/// 再让网格「读出来传进去」就只是多一处能忘传的接口。
 class OnlineWorkCard extends ConsumerWidget {
   const OnlineWorkCard({
     super.key,
@@ -1085,7 +1096,6 @@ class OnlineWorkCard extends ConsumerWidget {
     this.selected = false,
     this.onContextMenu,
     this.showTags = false,
-    this.textScale = 1.0,
     this.onTagTap,
   });
 
@@ -1096,14 +1106,8 @@ class OnlineWorkCard extends ConsumerWidget {
   /// 右键（桌面）/ 长按（触屏）菜单：在线收藏页用来提供「加入其它歌单 / 移出本歌单」
   final void Function(Offset globalPosition)? onContextMenu;
 
-  /// 是否显示卡面标签行（1.94.0）
+  /// 卡面是否显示标签胶囊（1.94.0；设置项 `showOnlineTags` 控制，默认开）
   final bool showTags;
-
-  /// 卡面文字的相对倍率（1.96.0，来自设置 `onlineCardTextScale`）。
-  ///
-  /// 由 [OnlineWorkGrid] 传入而不是这里自己读 —— 网格算卡片高度用的是**同一个**
-  /// 值（`onlineCardTextBlockHeight`），两处各自去读设置迟早会读到不同的一帧。
-  final double textScale;
 
   /// 点标签 → 按该标签筛选；为 null 时标签只展示
   final ValueChanged<OnlineTag>? onTagTap;
@@ -1119,14 +1123,34 @@ class OnlineWorkCard extends ConsumerWidget {
     // 作品本身还在结果里（服务端已经滤掉该标签的作品了，能出现在这儿说明它
     // 是靠别的标签命中的），所以只把「这一个标签」标出来，不是把卡片灰掉。
     final blockedTagIds = ref.watch(blockedTagIdsProvider);
-    // 高度预算与字号作用域（1.96.0）—— 与 `OnlineWorkGrid` 用同一套函数/来源
-    final scaler = MediaQuery.textScalerOf(context);
-    final tagFontSize = HikoTagFontScope.of(context);
+    final textScale =
+        ref.watch(settingsProvider.select((s) => s.onlineCardTextScale));
 
-    final subtitle = [
-      if (work.circleName.isNotEmpty) work.circleName,
-      if (work.dlCount > 0) '↓${formatOnlineCount(work.dlCount)}',
-    ].join(' · ');
+    // 元数据胶囊里最不可控的一组：作品号 / 时长 / 下载量，取不到的就不出现。
+    //
+    // 时长统一走 `formatDuration` 的「2小时25分钟」（1.99.21）：服务端给的
+    // `durationLabel` 是 `2:25:00` 那种钟表写法，与本地卡面用的不是一套 ——
+    // 「同一个概念在两端两种写法」正是最容易被指着问的那类不一致。
+    final metaPills = <Widget>[
+      if ((work.rjCode ?? '').isNotEmpty)
+        OnlinePill(
+          kind: OnlinePillKind.rj,
+          text: work.rjCode!,
+          scale: textScale,
+        ),
+      if (work.durationSeconds > 0)
+        OnlinePill(
+          kind: OnlinePillKind.duration,
+          text: formatDuration(work.durationSeconds.toDouble()),
+          scale: textScale,
+        ),
+      if (work.dlCount > 0)
+        OnlinePill(
+          kind: OnlinePillKind.download,
+          text: '↓${formatOnlineCount(work.dlCount)}',
+          scale: textScale,
+        ),
+    ];
 
     return InkWell(
       onTap: onTap,
@@ -1158,15 +1182,20 @@ class OnlineWorkCard extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(9),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(9),
+              child: AspectRatio(
+                aspectRatio: 1,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
                     OnlineCover(url: coverUrl),
                     if (work.hasSubtitle)
-                      const Positioned(left: 6, bottom: 6, child: _SubtitleBadge()),
+                      const Positioned(
+                        left: 6,
+                        bottom: 6,
+                        child: _SubtitleBadge(),
+                      ),
                     if (favoritePlaylists.isNotEmpty)
                       Positioned(
                         right: 6,
@@ -1182,54 +1211,78 @@ class OnlineWorkCard extends ConsumerWidget {
               work.title,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              // 行高与字号都从尺寸预算那批常量取 —— 网格按它们算卡片高度，
-              // 这里换一种写法就会「算的」和「画的」脱节
+              // 字号与行高都从尺寸那批常量取 —— 本地卡面用同一套值，
+              // 两种卡片现在都是瀑布流，视觉上应当是一对兄弟
               style: TextStyle(
                 fontSize: kOnlineCardTitleFontSize * textScale,
+                fontWeight: FontWeight.w700,
                 height: kOnlineCardLineHeight,
               ),
             ),
-            const SizedBox(height: kOnlineCardSubtitleGap),
-            Text(
-              subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: kOnlineCardSubtitleFontSize * textScale,
-                height: kOnlineCardLineHeight,
-                color: theme.hintColor,
+            // 元数据分三组，每组自带一行：① 艺术家 ② 社团 ③ 作品号/时长/下载量。
+            // 不挤进同一个 `Wrap` 里 —— 否则一个长社团名就会把作品号顶到下一行，
+            // 「谁演的 / 谁做的 / 作品本身」的层次当场没了。
+            if (work.vas.isNotEmpty) ...[
+              const SizedBox(height: kOnlineCardPillGroupGap),
+              _PillGroup(
+                children: [
+                  for (final va in work.vas)
+                    OnlinePill(
+                      kind: OnlinePillKind.artist,
+                      text: va,
+                      scale: textScale,
+                    ),
+                ],
               ),
-            ),
-            // 标签行：固定高度（网格靠它算卡高），所以即使没有标签也要占位，
-            // 否则同一屏里没标签的卡片会把空高还给封面、显得比别的大。
-            // 用 bottomLeft 对齐，把省下的高度全留在与副标题之间当间距。
-            if (showTags)
-              SizedBox(
-                height: onlineCardTagRowHeight(scaler, tagFontSize),
-                child: work.tags.isEmpty
-                    ? null
-                    : Align(
-                        alignment: Alignment.bottomLeft,
-                        child: _CardTagRow(
-                          tags: work.tags,
-                          blockedIds: blockedTagIds,
-                          onTagTap: onTagTap,
-                          onTagMenu: (tag, position) => unawaited(
-                            showOnlineTagMenu(
-                              context: context,
-                              ref: ref,
-                              tag: tag,
-                              position: position,
-                              onFilter: onTagTap == null
-                                  ? null
-                                  : () => onTagTap!(tag),
-                            ),
-                          ),
-                          // `+N` 与卡片同义：打开详情看全部标签
-                          onMoreTap: onTap,
-                        ),
-                      ),
+            ],
+            if (work.circleName.isNotEmpty) ...[
+              const SizedBox(height: kOnlineCardPillGroupGap),
+              _PillGroup(
+                children: [
+                  OnlinePill(
+                    kind: OnlinePillKind.circle,
+                    text: work.circleName,
+                    scale: textScale,
+                  ),
+                ],
               ),
+            ],
+            if (metaPills.isNotEmpty) ...[
+              const SizedBox(height: kOnlineCardPillGroupGap),
+              _PillGroup(children: metaPills),
+            ],
+            // 标签组：**全部展示**，放不下就换行（1.99.21 裁决）。
+            // 1.94.0–1.99.20 是「单行 + 按像素量宽截断 + `+N`」——
+            // 那套复杂度全部来自固定高度的 `SliverGrid`，瀑布流一上就没必要了。
+            if (showTags && work.tags.isNotEmpty) ...[
+              const SizedBox(height: kOnlineCardPillGroupGap),
+              _PillGroup(
+                children: [
+                  for (final tag in work.tags)
+                    HikoTagChip(
+                      tag: tag.name,
+                      blocked: blockedTagIds.contains(tag.id),
+                      // id <= 0 表示服务端只给了名字，筛不了也屏蔽不了，只能看
+                      onTap: onTagTap == null || tag.id <= 0
+                          ? null
+                          : () => onTagTap!(tag),
+                      // 菜单只在可点时给 —— 不可点的标签给菜单等于给了个死操作
+                      // （`HikoTagChip` 内部还会再判一次 `onTap == null`）
+                      onContextMenu: onTagTap == null
+                          ? null
+                          : (position) => unawaited(
+                                showOnlineTagMenu(
+                                  context: context,
+                                  ref: ref,
+                                  tag: tag,
+                                  position: position,
+                                  onFilter: () => onTagTap!(tag),
+                                ),
+                              ),
+                    ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -1237,119 +1290,18 @@ class OnlineWorkCard extends ConsumerWidget {
   }
 }
 
-/// 卡面标签行：**单行**，能放几个放几个，放不下的收进 `+N`。
-///
-/// 为什么不做换行：在线用的是 `SliverGrid`（固定高度），多行会让同一屏的卡片
-/// 互相打架；本地卡面能换行是因为本地是 masonry 可变高布局。所以这里的策略是
-/// 「按像素实测宽度挑选前缀 + `+N` 永远保留一个位置」。
-///
-/// 宽度是用 [TextPainter] 真量出来的，不是按字数估：标签名长短差异极大
-/// （「ASMR」4 个字符 vs「双声道立体声/人头麦」10 个字符），估算必然翻车。
-/// 量与画都从 [HikoTagChip.textStyleFor] / [HikoTagChip.horizontalPadding] 取，保证一致。
-class _CardTagRow extends StatelessWidget {
-  const _CardTagRow({
-    required this.tags,
-    required this.onMoreTap,
-    this.blockedIds = const {},
-    this.onTagTap,
-    this.onTagMenu,
-  });
+/// 一行胶囊分组（组内自然换行，间距比组间小 —— 否则「分组」在视觉上不存在）
+class _PillGroup extends StatelessWidget {
+  const _PillGroup({required this.children});
 
-  final List<OnlineTag> tags;
-  final VoidCallback onMoreTap;
-  final ValueChanged<OnlineTag>? onTagTap;
-
-  /// 已被加入黑名单的标签 id（1.95.0）。命中的胶囊灰掉 + 删除线
-  final Set<int> blockedIds;
-
-  /// 右键（桌面）/ 长按（触屏）标签 → 弹出标签菜单。回调里给的是**全局**坐标
-  final void Function(OnlineTag tag, Offset globalPosition)? onTagMenu;
-
-  static const _gap = 5.0;
+  final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) {
-    // 宽度预算要带两样东西（1.95.0 起又加了第二样，1.96.0）：
-    //   ① 全局 `fontScale`：它是挂在根层的 `TextScaler`，`HikoTagChip` 画出来的是
-    //      「字号 × scaler」，这里若按不缩放的数值量宽度就是「量少画宽」——
-    //      用户把字号调到大/超大时标签行当场溢出卡片。
-    //   ② 标签自己的字号：1.96.0 起由 `HikoTagFontScope` 提供（默认 11）。
-    // 量与画必须用同一个字号 + 同一个 scaler，少一个都会当场脱节。
-    final scaler = MediaQuery.textScalerOf(context);
-    final fontSize = HikoTagFontScope.of(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final maxWidth = constraints.maxWidth;
-        final widths = [
-          for (final t in tags) _chipWidth(t.name, scaler, fontSize),
-        ];
-        double rowWidth(int count) {
-          if (count <= 0) return 0;
-          var w = 0.0;
-          for (var i = 0; i < count; i++) {
-            w += widths[i];
-          }
-          return w + _gap * (count - 1);
-        }
-
-        // 先按**最长可能**的 `+N` 宽度预留（总标签数）。实际渲染时用的是
-        // 「被藏起来的个数」，位数只会更少，所以预留下来的宽度一定够。
-        final moreWidth = _chipWidth('+${tags.length}', scaler, fontSize);
-
-        var visible = tags.length;
-        var showMore = false;
-        if (rowWidth(tags.length) > maxWidth) {
-          // 放不下全部：从「尽量多」往下退，退到「能塞下 k 个 + +N」为止
-          showMore = true;
-          visible = 0;
-          for (var k = tags.length - 1; k >= 1; k--) {
-            if (rowWidth(k) + _gap + moreWidth <= maxWidth) {
-              visible = k;
-              break;
-            }
-          }
-        }
-
-        return Row(
-          children: [
-            for (final tag in tags.take(visible))
-              Padding(
-                padding: const EdgeInsets.only(right: _gap),
-                child: HikoTagChip(
-                  tag: tag.name,
-                  blocked: blockedIds.contains(tag.id),
-                  // id <= 0 表示服务端只给了名字，筛不了也屏蔽不了，只能看
-                  onTap: onTagTap == null || tag.id <= 0
-                      ? null
-                      : () => onTagTap!(tag),
-                  onContextMenu: onTagMenu == null
-                      ? null
-                      : (position) => onTagMenu!(tag, position),
-                ),
-              ),
-            if (showMore)
-              HikoTagChip(
-                // 与本地卡面同一套约定：`+N` 是**被藏起来的**个数，不是总数
-                tag: '+${tags.length - visible}',
-                onTap: onMoreTap,
-                muted: true,
-              ),
-          ],
-        );
-      },
-    );
-  }
-
-  /// 胶囊宽度 = 文字宽 + 左右内边距 + 1px 余量（四舍五入误差不该让它挤掉下一枚）
-  static double _chipWidth(String text, TextScaler scaler, double fontSize) {
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: HikoTagChip.textStyleFor(fontSize)),
-      textDirection: TextDirection.ltr,
-      textScaler: scaler,
-      maxLines: 1,
-    )..layout();
-    return painter.width + HikoTagChip.horizontalPadding * 2 + 1;
-  }
+  Widget build(BuildContext context) => Wrap(
+        spacing: kOnlineCardPillGap,
+        runSpacing: kOnlineCardPillGap,
+        children: children,
+      );
 }
 
 /// 标签筛选的可关闭标记与黑名单标记已抽到 `online_filter_marker.dart`

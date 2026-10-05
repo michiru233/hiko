@@ -7,16 +7,18 @@ import 'package:hiko/data/settings_store.dart';
 import 'package:hiko/ui/theme.dart';
 import 'package:hiko/ui/widgets/detail_kit.dart';
 import 'package:hiko/ui/widgets/online_appearance.dart';
-import 'package:hiko/ui/widgets/online_work_grid.dart';
 
 /// 1.96.0：可调外观的四组旋钮与两处入口。
 /// 1.97.0：字号三组 + 曲目标题从**离散档位**改成**连续滑杆**（裁决 Q2），
 /// 列数保持档位单选（列数是整数，滑杆没有意义）。
+/// 1.99.21：在线网格改成瀑布流后，下面那组「高度预算」断言（
+/// `onlineCardTextBlockHeight` / `onlineCardTagRowHeight`）连函数一起删了 ——
+/// 它们存在的唯一理由是固定高度的 `SliverGrid`。瀑布流的等价锁搬到了
+/// `online_work_card_test.dart`（卡片高矮由内容决定 + 列数解析）。
 ///
-/// 这一版的关键风险不是「功能没做」，而是**同一件事被写了两遍**：
-/// ① 值域在设置页与 Aa 对话框各写一份 → 两处可调范围不同；
-/// ② 字号在「量高度」和「画出来」两处各算一遍 → 卡片高度对不上。
-/// 所以下面两类断言都是冲着「两处必须一致」去的。
+/// 这一版剩下的关键风险不是「功能没做」，而是**同一件事被写了两遍**：
+/// 值域在设置页与 Aa 对话框各写一份 → 两处可调范围不同。
+/// 所以下面的断言都是冲着「两处必须一致」去的。
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -68,39 +70,6 @@ void main() {
       await notifier.setOnlineTrackTitleFontSize(v);
       expect(notifier.state.onlineTrackTitleFontSize, v);
     }
-  });
-
-  // ------------------------------------------------------------ 高度预算
-
-  test('卡片文字区高度预算随倍率与全局字号一起增长', () {
-    const none = TextScaler.noScaling;
-    final base = onlineCardTextBlockHeight(none, 1.0);
-
-    // 默认值应与 1.95.0 那个硬编码的 62 基本一致 —— 默认外观不该变
-    expect(base, closeTo(62, 1.0), reason: '默认档位下必须复刻 1.95.0 的观感');
-
-    final byScale = onlineCardTextBlockHeight(none, 1.3);
-    final byScaler = onlineCardTextBlockHeight(TextScaler.linear(1.3), 1.0);
-    expect(byScale, greaterThan(base));
-    expect(byScaler, greaterThan(base));
-
-    // 两个旋钮叠加时，必须严格大于各自单独放大 ——
-    // 漏掉任何一个（比如只乘了 scaler 忘了 textScale）这条就不成立
-    final both = onlineCardTextBlockHeight(TextScaler.linear(1.3), 1.3);
-    expect(both, greaterThan(byScale));
-    expect(both, greaterThan(byScaler));
-  });
-
-  test('标签行高度随标签字号增长，且始终装得下胶囊本身', () {
-    const none = TextScaler.noScaling;
-    final h11 = onlineCardTagRowHeight(none, 11);
-    expect(onlineCardTagRowHeight(none, 14), greaterThan(h11));
-    expect(onlineCardTagRowHeight(TextScaler.linear(1.3), 11), greaterThan(h11));
-
-    // 胶囊自身高度必须放得进这块预算，否则会被外层 SizedBox 裁掉半行
-    final chipHeight =
-        HikoTagChip.verticalPadding * 2 + 11 * HikoTagChip.lineHeight;
-    expect(h11, greaterThanOrEqualTo(chipHeight));
   });
 
   // ------------------------------------------------------------ 标签字号作用域

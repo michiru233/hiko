@@ -1,80 +1,53 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 
 import '../../data/online/online_models.dart';
 import '../../data/online/online_provider.dart';
 import '../../data/settings_store.dart';
 import '../screens/online_screen.dart';
-import 'detail_kit.dart';
 
-// ------------------------------------------------------------ 卡面尺寸预算
+// ------------------------------------------------------------ 卡面尺寸常量
 //
-// 全部集中在这里，是因为「量」与「画」必须同源：网格拿这些函数算
-// `mainAxisExtent`，卡片拿同一批常量排版。1.96.0 之前它们是写死的
-// 62 / 24，字号一旦可调就会从「宽度溢出」变成「高度裁切」——
-// 而高度裁切比宽度溢出更难发现（文字被切掉半行，看起来像字体坏了）。
+// 1.99.21 起在线网格是**瀑布流**（`flutter_staggered_grid_view`），卡片高度由内容
+// 决定，所以这里不再有 `onlineCardTextBlockHeight` / `onlineCardTagRowHeight`
+// 那一套「高度预算」—— 它们存在的唯一理由就是固定高度的 `SliverGrid`，
+// 而固定高度又是「标签只能单行 + `+N` 截断」的根源。
+// 剩下的常量只管卡片内部的间距与字号，只在卡片与测试里被取用。
 
 /// 卡片内边距（四边，`OnlineWorkCard` 的 `Container.padding`）
 const double kOnlineCardPadding = 4;
 
-/// 封面↔标题、标题↔副标题之间的间距
+/// 封面↔标题之间的间距
 const double kOnlineCardTitleGap = 6;
-const double kOnlineCardSubtitleGap = 2;
 
-/// 标题 / 副标题的基准字号与行高
-const double kOnlineCardTitleFontSize = 12;
-const double kOnlineCardSubtitleFontSize = 11;
-
-/// 行高系数。**必须显式写死**：不写就由字体 metrics 决定（约 1.15–1.20），
-/// 本函数只能拿一个系数去乘 —— 两者一错位，放大字号时就会裁掉半行字。
+/// 标题基准字号与行高。与本地卡面（`album_card.dart` 的 13 / 1.3）保持一致 ——
+/// 两边现在都是同一套瀑布流，两种卡片看起来该是一对兄弟。
+///
+/// 行高**必须显式写死**：不写就由字体 metrics 决定（约 1.15–1.20），
+/// 多行标题的行位置会随字体漂移。
+const double kOnlineCardTitleFontSize = 13;
 const double kOnlineCardLineHeight = 1.3;
 
-/// 标签胶囊与副标题之间的期望间距。
-/// 实际渲染时标签行是 `Align(bottomLeft)` 贴底的，所以这段间距会落在胶囊**上方**。
-const double kOnlineCardTagGap = 5;
+/// 同一组胶囊的组内纵横间距
+const double kOnlineCardPillGap = 5;
 
-/// 卡面文字区（含卡片内边距）的高度预算。标题按**两行**算（最坏情况）。
-///
-/// [textScale] 是在线卡片文字的相对倍率（`onlineCardTextScale`），
-/// [scaler] 是根层的全局字号缩放 —— 两者都要进预算，缺一个就会裁切：
-/// 前者漏掉是「在线外观」失灵，后者漏掉正是 1.95.0 `_chipWidth` 踩过的坑。
-double onlineCardTextBlockHeight(TextScaler scaler, double textScale) =>
-    kOnlineCardPadding * 2 +
-    kOnlineCardTitleGap +
-    scaler.scale(kOnlineCardTitleFontSize * textScale) *
-        kOnlineCardLineHeight *
-        2 +
-    kOnlineCardSubtitleGap +
-    scaler.scale(kOnlineCardSubtitleFontSize * textScale) *
-        kOnlineCardLineHeight;
+/// 相邻两组胶囊之间的间距。必须**明显大于** [kOnlineCardPillGap]，
+/// 否则「分组」在视觉上不存在（看起来就是一堆挤在一起的胶囊）。
+const double kOnlineCardPillGroupGap = 6;
 
-/// 卡面标签行的整块高度：胶囊高（纵向内边距 + 一行文字）+ 与副标题的间距。
-///
-/// [tagFontSize] 是标签胶囊的**绝对**字号（`HikoTagFontScope`），不是卡片倍率 ——
-/// 标签胶囊走的是那一套，两者是不同的旋钮。
-///
-/// **必须显式预留**：封面是 `Expanded`，标签行会去抢封面的高度 ——
-/// `mainAxisExtent` 不加这一块，正方形封面就被压扁（1.94.0 之前的 `+62`
-/// 是按「没有标签行」算的）。
-///
-/// **作品没有标签时这块空高也要留**：`SliverGrid` 的高度是整屏统一的，
-/// 让没标签的卡片把空高还给封面，会导致同一屏里「有标签的封面小、没标签的封面大」
-/// —— 那比多一行留白难看得多。卡片那边用 `SizedBox(height: …)` 占位。
-double onlineCardTagRowHeight(TextScaler scaler, double tagFontSize) =>
-    HikoTagChip.verticalPadding * 2 +
-    scaler.scale(tagFontSize) * HikoTagChip.lineHeight +
-    kOnlineCardTagGap;
-
+/// 网格的列间距 / 行间距（在线卡片比本地卡片矮，用紧凑一点的 14）
+const double kOnlineGridSpacing = 14;
 
 /// 在线作品网格（在线浏览页与在线收藏页共用，1.93.0 抽出）。
 ///
-/// 抽出来的理由和 `detail_kit.dart` 一样：两处用同一套列宽公式与卡片尺寸，
+/// 抽出来的理由和 `detail_kit.dart` 一样：两处用同一套列宽公式与卡片装配，
 /// 复制一份必然漂移 —— 而「浏览页和收藏页的卡片不一样大」是最扎眼的那种漂移。
 ///
-/// 1.96.0 起自己读两个在线外观设置（`onlineCardTextScale` / `onlineGridColumns`）：
-/// 它们同时决定「卡片怎么画」和「卡片占多高」，放在调用方传参反而会多出
-/// 「调用方记得传」这个失误面 —— 而这里漏传是静默的，只会表现为卡片高度对不上。
+/// 1.96.0 起自己读 `onlineGridColumns`（列数）；1.99.21 改成瀑布流后不再读
+/// `onlineCardTextScale` / 标签字号 —— 那两个旋钮只有「算卡高」时才需要，
+/// 而卡高现在由内容说了算，卡片自己读设置即可。
 class OnlineWorkGrid extends ConsumerWidget {
   const OnlineWorkGrid({
     super.key,
@@ -97,7 +70,7 @@ class OnlineWorkGrid extends ConsumerWidget {
   /// 右键 / 长按菜单（在线收藏页用来提供「移出本歌单 / 加入其它歌单」）
   final void Function(OnlineWork work, Offset globalPosition)? onContextMenu;
 
-  /// 卡面是否显示标签行（1.94.0；设置项 `showOnlineTags` 控制，默认开）
+  /// 卡面是否显示标签胶囊（1.94.0；设置项 `showOnlineTags` 控制，默认开）
   final bool showTags;
 
   /// 点卡面标签 → 按该标签筛选。为 null 时标签只展示不可点
@@ -106,103 +79,42 @@ class OnlineWorkGrid extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final pad = isMobile ? 16.0 : 48.0;
-    const spacing = 14.0;
     return LayoutBuilder(
       builder: (context, constraints) {
         final available = constraints.maxWidth - pad * 2;
         final columns = _resolveColumns(
           isMobile: isMobile,
-          configured: ref.watch(settingsProvider
-              .select((s) => s.onlineGridColumns))
+          configured: ref
+              .watch(settingsProvider.select((s) => s.onlineGridColumns))
               .round(),
           available: available,
         );
-        final cardWidth = (available - spacing * (columns - 1)) / columns;
-        return GridView.builder(
+        return MasonryGridView.count(
           padding: EdgeInsets.fromLTRB(pad, 0, pad, 12),
-          gridDelegate: _gridDelegate(
-            columns: columns,
-            cardWidth: cardWidth,
-            scaler: MediaQuery.textScalerOf(context),
-            cardScale: ref.watch(
-                settingsProvider.select((s) => s.onlineCardTextScale)),
-            showTags: showTags,
-            tagFontSize: HikoTagFontScope.of(context),
-          ),
+          crossAxisCount: columns,
+          mainAxisSpacing: kOnlineGridSpacing,
+          crossAxisSpacing: kOnlineGridSpacing,
           itemCount: works.length,
-          itemBuilder: (context, index) => buildWorkCard(
-            ref,
-            context,
+          itemBuilder: (context, index) => _buildWorkCard(
             works[index],
             selected: selectedId == works[index].id,
+            showTags: showTags,
+            onTagTap: onTagTap,
+            onTap: () => onTap(works[index]),
+            onContextMenu: onContextMenu == null
+                ? null
+                : (position) => onContextMenu!(works[index], position),
           ),
         );
       },
     );
   }
-
-  /// 单张卡片的装配（box 网格与 sliver 网格共用，1.99.7）。
-  Widget buildWorkCard(
-    WidgetRef ref,
-    BuildContext context,
-    OnlineWork work, {
-    required bool selected,
-  }) {
-    return OnlineWorkCard(
-      work: work,
-      selected: selected,
-      showTags: showTags,
-      textScale: ref.watch(
-          settingsProvider.select((s) => s.onlineCardTextScale)),
-      onTagTap: onTagTap,
-      onTap: () => onTap(work),
-      onContextMenu: onContextMenu == null
-          ? null
-          : (position) => onContextMenu!(work, position),
-    );
-  }
-}
-
-/// 列数解析：0 = 自动（桌面按可用宽度塞「至少 200px 一张」，移动端 2 列），
-/// 固定档位（3–8）两端共用（裁决 Q4=甲）。
-int _resolveColumns({
-  required bool isMobile,
-  required int configured,
-  required double available,
-}) {
-  const spacing = 14.0;
-  return configured > 0
-      ? configured
-      : (isMobile
-          ? 2
-          : ((available + spacing) / (200 + spacing)).floor().clamp(3, 8));
-}
-
-/// 网格 delegate（box 与 sliver 共用）：封面正方形 + 两行标题 + 一行副标题
-/// （+ 标签行），高度按当前字号算出来，避免不同标题把网格撑歪。
-SliverGridDelegate _gridDelegate({
-  required int columns,
-  required double cardWidth,
-  required TextScaler scaler,
-  required double cardScale,
-  required bool showTags,
-  required double tagFontSize,
-}) {
-  const spacing = 14.0;
-  return SliverGridDelegateWithFixedCrossAxisCount(
-    crossAxisCount: columns,
-    mainAxisSpacing: spacing,
-    crossAxisSpacing: spacing,
-    mainAxisExtent: cardWidth +
-        onlineCardTextBlockHeight(scaler, cardScale) +
-        (showTags ? onlineCardTagRowHeight(scaler, tagFontSize) : 0),
-  );
 }
 
 /// 在线作品网格的 **sliver 形态**（1.99.7）：给在线浏览页移动端的
-/// `CustomScrollView` 用 —— 头部要做成 floating+snap 的滚动收起，
+/// `CustomScrollView` 用 —— 头部要做成 floating 的滚动收起，
 /// 网格必须以 sliver 身份跟它住在同一个滚动视图里。
-/// 列宽公式与卡片装配与 [OnlineWorkGrid] 同源，不会漂移。
+/// 列宽公式与卡片装配与 [OnlineWorkGrid] 共用同一份实现，不会漂移。
 class OnlineWorkGridSliver extends ConsumerWidget {
   const OnlineWorkGridSliver({
     super.key,
@@ -229,51 +141,74 @@ class OnlineWorkGridSliver extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final pad = isMobile ? 16.0 : 48.0;
-    const spacing = 14.0;
     // sliver 里拿不到 box 约束，移动端视口就是整屏宽（与本组件唯一的使用场景一致）
     final available = MediaQuery.sizeOf(context).width - pad * 2;
     final columns = _resolveColumns(
       isMobile: isMobile,
-      configured: ref.watch(
-          settingsProvider.select((s) => s.onlineGridColumns))
+      configured: ref
+          .watch(settingsProvider.select((s) => s.onlineGridColumns))
           .round(),
       available: available,
     );
-    final cardWidth = (available - spacing * (columns - 1)) / columns;
-    final cardScale = ref.watch(
-        settingsProvider.select((s) => s.onlineCardTextScale));
-    final tagFontSize = HikoTagFontScope.of(context);
     return SliverPadding(
       padding: EdgeInsets.fromLTRB(pad, 0, pad, 12),
-      sliver: SliverGrid(
-        gridDelegate: _gridDelegate(
-          columns: columns,
-          cardWidth: cardWidth,
-          scaler: MediaQuery.textScalerOf(context),
-          cardScale: cardScale,
+      sliver: SliverMasonryGrid.count(
+        crossAxisCount: columns,
+        mainAxisSpacing: kOnlineGridSpacing,
+        crossAxisSpacing: kOnlineGridSpacing,
+        childCount: works.length,
+        itemBuilder: (context, index) => _buildWorkCard(
+          works[index],
+          selected: selectedId == works[index].id,
           showTags: showTags,
-          tagFontSize: tagFontSize,
-        ),
-        delegate: SliverChildBuilderDelegate(
-          childCount: works.length,
-          (context, index) {
-            final work = works[index];
-            return OnlineWorkCard(
-              work: work,
-              selected: selectedId == work.id,
-              showTags: showTags,
-              textScale: cardScale,
-              onTagTap: onTagTap,
-              onTap: () => onTap(work),
-              onContextMenu: onContextMenu == null
-                  ? null
-                  : (position) => onContextMenu!(work, position),
-            );
-          },
+          onTagTap: onTagTap,
+          onTap: () => onTap(works[index]),
+          onContextMenu: onContextMenu == null
+              ? null
+              : (position) => onContextMenu!(works[index], position),
         ),
       ),
     );
   }
+}
+
+/// 单张卡片的装配（两种网格共用，1.99.7）—— 顶层私有函数而不是实例方法：
+/// sliver 形态需要的是同一份装配，挂在 `OnlineWorkGrid` 上就得再抄一遍。
+Widget _buildWorkCard(
+  OnlineWork work, {
+  required bool selected,
+  required bool showTags,
+  required ValueChanged<OnlineTag>? onTagTap,
+  required VoidCallback onTap,
+  required void Function(Offset position)? onContextMenu,
+}) =>
+    OnlineWorkCard(
+      work: work,
+      selected: selected,
+      showTags: showTags,
+      onTagTap: onTagTap,
+      onTap: onTap,
+      onContextMenu: onContextMenu,
+    );
+
+/// 列数解析：0 = 自动（桌面按可用宽度塞「至少 200px 一张」，移动端 2 列），
+/// 固定档位（3–8）两端共用（裁决 Q4=甲）。
+///
+/// 瀑布流用的是 `SliverSimpleGridDelegateWithFixedCrossAxisCount`，
+/// 所以自动档必须在这里就把列数算成整数 —— 交给
+/// `WithMaxCrossAxisExtent` 去算会得到另一个列数（它按 `ceil` 取，
+/// 900 宽下是 4 列而不是 3），「自动档」的既有观感会当场变。
+int _resolveColumns({
+  required bool isMobile,
+  required int configured,
+  required double available,
+}) {
+  const spacing = kOnlineGridSpacing;
+  return configured > 0
+      ? configured
+      : (isMobile
+          ? 2
+          : ((available + spacing) / (200 + spacing)).floor().clamp(3, 8));
 }
 
 /// 在线分页条（浏览页走服务端翻页；收藏页在已拉到的列表上做本地切片）。

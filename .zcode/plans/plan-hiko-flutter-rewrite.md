@@ -3412,3 +3412,54 @@ Q5=**A**（标签仍写「Aa」，不换图标）。
 - **三条锁都验过「摘掉修复会红」**：`handleTap` 加回 `Navigator.pop` → 防社死/外观切换两条红（找不到「已关闭」/「深色」）；顶栏早退短路 → 顶栏锁红（仍找到「随机播放」）。
 - `flutter test` **648 passed / 2 skipped**（基线 642，+6）；`flutter analyze` **43 条基线持平**，0 新增。
 - 版本 `1.99.20+133`；Release：`hiko-v1.99.20-android.apk` + `hiko-v1.99.20-macos.zip`。本版无新增待裁决（**移动端顶栏收起后的观感、Aa 菜单在安卓实机的手感、收藏页 Aa 位置**待实机复验）。
+
+---
+
+## 1.99.21（2026-10-05）：在线卡片胶囊化 + 网格改瀑布流
+
+用户拿 asmr.one 的截图要求把「在线」专辑卡做成那种胶囊样式。三轮示意图审阅 + 一轮 grill-me 定案后开工。
+
+### 需求（用户裁决）
+1. 艺术家有几个就几枚胶囊；标题下方一切都用胶囊表示（含 RJ 号）；
+2. 标签**完全按 asmr.one 显示**，多也尽量显示 → 卡片不等高、瀑布流；
+3. 在线不要「分类」胶囊（在线数据结构里本来也没有 genre 字段）；
+4. 桌面端一起改；
+5. 时长统一成「2小时25分钟」（`formatDuration`），不用服务端的钟表写法；
+6. 胶囊按类目区分颜色（共六类）；
+7. 下载量做胶囊；在线标签开关保留；标签胶囊点按行为保留。
+
+### 为什么「固定高度网格」与「单行 +N 标签」必须一起拆
+`onlineCardTextBlockHeight` / `onlineCardTagRowHeight` 那套高度预算的唯一存在理由是
+`SliverGrid` 的 `mainAxisExtent` 是**整屏统一**的。而「标签只能单行、放不下收进 `+N`」
+又是高度固定逼出来的（多行会让同一屏的卡片互相打架）。所以瀑布流一上，
+这两套复杂度是同源地被删掉，不是顺手清理。
+
+### 改动
+- 新增 `lib/ui/widgets/online_card_kit.dart`：`OnlinePillKind`（artist / circle / rj / duration /
+  download）、`onlinePillColors(kind, isDark, scheme)`、`OnlinePill`。六类胶囊各取一支色相
+  （艺术家蓝 / 社团琥珀金 / 作品号主色实底反白 / 时长中性灰 / 下载量玫红 / 标签青），
+  语法统一为「浅底 + 同色相深字」，暗色主题降 alpha 不换色相。抽成公开件是为了让
+  「颜色必须互相区分」变成**可测的纯函数**，而不是靠肉眼看示意图。
+- `lib/ui/screens/online_screen.dart`：
+  - `OnlineWorkCard` 重写为胶囊布局：封面 `Expanded` → `AspectRatio(1)`；标题 13 / w700（与本地卡面同款）；
+    四组 `Wrap` = 艺术家（每个声优一枚）/ 社团 / 作品号 + 时长 + 下载量 / 标签（全部、自然换行、可点可长按）。
+  - 删掉灰色副标题那行与整个 `_CardTagRow`（连同 `_chipWidth` 的 `TextPainter` 量宽逻辑）。
+  - `textScale` 不再由网格传入，改卡片自己 `ref.watch(settingsProvider)` —— 网格不再需要它算卡高，
+    留着「读出来传进去」只是多一处能忘传的接口。
+- `lib/ui/widgets/online_work_grid.dart`：`OnlineWorkGrid` → `MasonryGridView.count`；
+  `OnlineWorkGridSliver` → `SliverMasonryGrid.count`；删 `_gridDelegate` 与两个高度预算函数；
+  卡片装配收成顶层 `_buildWorkCard`（两种网格真共用一份）。`_resolveColumns` 保留原公式
+  （自动档仍是「至少 200px 一张」，900 宽 = 3 列）—— 交给 `WithMaxCrossAxisExtent` 会得到 4 列，观感会变。
+- `lib/ui/widgets/detail_kit.dart`：三处过时注释（引用已删的 `_CardTagRow` / `onlineCardTagRowHeight`）改写。
+
+### 测试与验证
+- `test/ui/online_work_card_test.dart` 重写为 4 组 28 条：封面（原图 / 唯一地址 / 精确 1:1）、收藏角标、
+  标签组（**全部渲染、不出现 `+N`**、点按只筛、黑名单删除线、右键菜单三项、id=0 不可点不可筛）、
+  元数据胶囊（每声优一枚、`2小时25分钟`、取不到就不出现、倍率由卡片自己读、六类取色互不相同）、
+  瀑布流（高度由内容决定、第 3 张补进更矮那一列、自动档 3 列 / 固定 5 列 / 移动端 2 列）。
+- `test/ui/online_appearance_test.dart` 删掉两条高度预算断言（函数已不存在），等价锁搬进上面那组。
+- **新锁都验过「还原成旧行为会红」**：`MasonryGridView` 换回等高 `GridView` → 瀑布流两条红；
+  时长换回 `work.durationLabel` → 「2小时25分钟」那条红。
+- `flutter test` **649 passed / 2 skipped**（基线 648，净 +1）；`flutter analyze` **43 条基线持平**，0 新增。
+- 版本 `1.99.21+134`；Release：`hiko-v1.99.21-android.apk` + `hiko-v1.99.21-macos.zip`。
+  本版无新增待裁决（**胶囊配色的实机观感、瀑布流长列表的滚动性能、窄屏四组胶囊的换行密度**待实机复验）。

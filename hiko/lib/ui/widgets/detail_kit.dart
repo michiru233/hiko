@@ -66,9 +66,9 @@ ButtonStyle hikoFilledPillStyle() => FilledButton.styleFrom(
 /// 于是墨迹被完全盖住 —— 用户看到的就是「指针碰上去毫无变化，不知道这东西能点」
 /// （1.95.0 用户实测反馈）。所以这里自己管状态，由 [builder] 把反馈画在胶囊自己身上。
 ///
-/// 反馈画在 `foregroundDecoration` 上，**刻意不影响布局尺寸**：卡面标签行的单行截断
-/// 是拿 `TextPainter` 量出胶囊宽度算的（`OnlineWorkCard._CardTagRow`），
-/// 任何会改变胶囊宽度的装饰都必须同步改那个预算，否则「量」与「画」当场脱节。
+/// 反馈画在 `foregroundDecoration` 上，**刻意不影响布局尺寸**：
+/// 在线卡片改成瀑布流后卡高由内容决定，任何会撑大胶囊的装饰都会让
+/// 「同一屏里卡片高矮不一」变成两回事（真高矮不一 vs 装饰撑的）。
 ///
 /// 不可点（[onTap] 为空）时**必须不出现任何反馈** —— 那会让用户以为能点。
 class HikoPillInteraction extends StatefulWidget {
@@ -338,14 +338,14 @@ class HikoTagFontScope extends InheritedWidget {
 
 /// DLsite 标签胶囊（青色小方角）
 ///
-/// 1.94.0 起也用在**在线卡片的标签行**上（裁决 Q4=按推荐：与本地卡面视觉一致）。
-/// 那一处必须做「单行 + 按像素宽度挑前缀 + `+N`」，所以把 [textStyleFor] 与
-/// [horizontalPadding] 提出来当公开常量 —— 量宽度和画出来必须用同一个样式，
-/// 两边各写一份字号/内边距是必然会漂移的那种做法。
+/// 1.94.0 起也用在**在线卡片的标签组**上（裁决 Q4=按推荐：与本地卡面视觉一致）。
+/// 1.99.21 在线网格改成瀑布流后，卡面标签不再截断 —— 全部展示、放不下就换行，
+/// 所以「单行 + 按像素宽度挑前缀 + `+N`」那一套连同 `_chipWidth` 一起删掉了。
+/// [textStyleFor] / [horizontalPadding] 保留为公开常量：多处排版仍要从同一个
+/// 样式取字号与内边距，各写一份必然会漂移。
 ///
 /// 1.96.0：字号改由 [HikoTagFontScope] 提供（默认 11），`textStyle` 常量随之变成
-/// [textStyleFor] 函数 —— **量宽的一方必须从同一个作用域取字号**，
-/// 否则「量」与「画」又会脱节（这正是 1.95.0 `_chipWidth` 漏 `textScaler` 的翻版）。
+/// [textStyleFor] 函数 —— 本地卡面与在线卡面因此共用同一把字号旋钮。
 class HikoTagChip extends StatelessWidget {
   const HikoTagChip({
     super.key,
@@ -364,11 +364,11 @@ class HikoTagChip extends StatelessWidget {
       );
 
   /// 行高。**必须显式写死** —— 不写就由字体 metrics 决定（约 1.15–1.20），
-  /// 而卡面标签行的高度预算是拿一个系数算的（`onlineCardTagRowHeight`），
-  /// 两者一错位，调大字号时胶囊就会被 `SizedBox` 裁掉半行。
+  /// 而标签行的行距是按一个系数排的，两者一错位，多行标签之间就会出现
+  /// 忽宽忽窄的缝（调大字号尤其明显）。
   static const double lineHeight = 1.2;
 
-  /// 纵向内边距（单侧）。卡面高度预算同样要算上
+  /// 纵向内边距（单侧）
   static const double verticalPadding = 4;
 
   /// 左右内边距（单侧）

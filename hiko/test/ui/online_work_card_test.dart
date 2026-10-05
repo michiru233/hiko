@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:hiko/data/online/online_favorites.dart';
 import 'package:hiko/data/online/online_models.dart';
@@ -11,21 +12,22 @@ import 'package:hiko/data/settings_store.dart';
 import 'package:hiko/ui/screens/online_screen.dart';
 import 'package:hiko/ui/theme.dart';
 import 'package:hiko/ui/widgets/detail_kit.dart';
+import 'package:hiko/ui/widgets/online_card_kit.dart';
 import 'package:hiko/ui/widgets/online_cover.dart';
 import 'package:hiko/ui/widgets/online_work_grid.dart';
 
-/// 1.93.0：在线列表卡片的两件事 ——
+/// 在线列表卡片的回归锁，分四块：
 /// ① 封面必须取**原图**（主界面封面模糊的全部原因就是这里拿了 240×180 缩略图，
 ///    卡片在 Retina 上需要 400–520 物理像素，等于放大 2.4–2.9 倍）；
-/// ② 收藏角标跟着歌单索引走。
-///
-/// ①的断言方式是拦下真实的 HTTP 请求看它请求了哪个 URL ——
-/// 「卡片用了什么图」只有这一种不依赖实现细节的验证办法。
+/// ② 收藏角标跟着歌单索引走；
+/// ③ 1.99.21 胶囊化改版（元数据胶囊的内容 / 类别 / 配色）；
+/// ④ 1.99.21 瀑布流（卡片高矮由内容决定、列数解析）。
 void main() {
   // 拦下所有封面请求：单测不该联网，也不该留下待处理的连接定时器
   late List<Uri> requested;
 
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     privacyBlur.value = false; // 关掉隐私模糊，避免测试里多套一层高斯
     requested = [];
     HttpOverrides.global = _RecordingHttpOverrides(requested);
@@ -48,10 +50,20 @@ void main() {
         ],
       );
 
-  /// [height] 默认 = 「封面 + 两行标题 + 一行副标题」（200 + `onlineCardTextBlockHeight`，
-  /// 默认档位下 61.5，这里给 62 留 0.5px 余量）。
-  /// 开了标签行要自己加 `onlineCardTagRowHeight`（默认档位下约 24），否则卡片内部会溢出。
-  Widget host(Widget child, {double width = 200, double height = 262}) =>
+  /// 各条元数据都齐的作品：两个声优 + 社团 + RJ号 + 2小时25分钟 + 1.2万下载
+  OnlineWork fullWork({int id = 1657200}) => OnlineWork(
+        id: id,
+        title: '测试作品',
+        circleName: 'サークル',
+        rjCode: 'RJ01318014',
+        durationSeconds: 145 * 60,
+        dlCount: 12345,
+        vas: const ['声优A', '声优B'],
+      );
+
+  /// 宿主给一个**足够高**的框：卡片高度现在由内容决定（瀑布流），
+  /// 撑不满只是留白，撑过头才会当场 `RenderFlex overflowed`。
+  Widget host(Widget child, {double width = 200, double height = 900}) =>
       ProviderScope(
         child: MaterialApp(
           theme: buildHikoTheme(const AppSettings()),
@@ -74,7 +86,7 @@ void main() {
           home: Scaffold(
             body: Align(
               alignment: Alignment.topLeft,
-              child: SizedBox(width: 200, height: 262, child: child),
+              child: SizedBox(width: 200, height: 900, child: child),
             ),
           ),
         ),
@@ -116,6 +128,19 @@ void main() {
           .toSet();
       expect(unique.length, 1, reason: '同一个作品只该有一个封面地址');
       expect(unique.single, endsWith('/api/cover/1657200.jpg?type=main'));
+    });
+
+    testWidgets('封面是精确的 1:1（1.99.21：不再靠内边距凑那 8px 余量）', (tester) async {
+      await tester.pumpWidget(
+        host(OnlineWorkCard(work: work(), onTap: () {})),
+      );
+      await tester.pump();
+
+      // 固定高度的年代封面是 `Expanded`，只能靠「预算里的 8px 余量」间接控高度，
+      // 所以当时的高度锁看的是「封面高 - 封面宽 == 8」。现在卡片是瀑布流、
+      // 封面是 `AspectRatio(1)`，可以直接钉住它本身是正方形。
+      final cover = tester.getSize(find.byType(OnlineCover));
+      expect(cover.height, closeTo(cover.width, 0.001));
     });
   });
 
@@ -201,18 +226,11 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   });
-  group('卡面标签行（1.94.0）', () {
-    // 200px 宽卡片、开标签行 → 高度按 onlineCardTagRowHeight 多留（默认档位下约 24）
-    Widget tagHost(
-      Widget child, {
-      double width = 200,
-      double height = 286,
-    }) =>
-        host(child, width: width, height: height);
 
+  group('卡面标签组（1.99.21：全部展示，不再截断）', () {
     testWidgets('开关关闭时不渲染任何标签', (tester) async {
       await tester.pumpWidget(
-        tagHost(
+        host(
           OnlineWorkCard(
             work: tagged(['ASMR', '治愈']),
             onTap: () {},
@@ -226,11 +244,19 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('放得下就全显示，不出现 +N', (tester) async {
+    testWidgets('标签**全部**渲染，不再有 +N', (tester) async {
+      const names = [
+        '双声道立体声/人头麦',
+        '亲热/甜蜜',
+        '青梅竹马',
+        '学生',
+        'ASMR',
+        '环绕音',
+      ];
       await tester.pumpWidget(
-        tagHost(
+        host(
           OnlineWorkCard(
-            work: tagged(['ASMR', '治愈']),
+            work: tagged(names),
             onTap: () {},
             showTags: true,
             onTagTap: (_) {},
@@ -238,44 +264,23 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.text('ASMR'), findsOneWidget);
-      expect(find.text('治愈'), findsOneWidget);
-      expect(find.textContaining('+'), findsNothing);
-      expect(tester.takeException(), isNull);
-    });
 
-    testWidgets('放不下时截断并给出 +N，且 +N 显示的是被藏起来的个数', (tester) async {
-      await tester.pumpWidget(
-        tagHost(
-          OnlineWorkCard(
-            work: tagged([
-              '双声道立体声/人头麦',
-              '亲热/甜蜜',
-              '青梅竹马',
-              '学生',
-              'ASMR',
-            ]),
-            onTap: () {},
-            showTags: true,
-            onTagTap: (_) {},
-          ),
-        ),
+      for (final name in names) {
+        expect(find.text(name), findsOneWidget, reason: '标签「$name」必须出现在卡面上');
+      }
+      expect(
+        find.textContaining('+'),
+        findsNothing,
+        reason: '瀑布流换来了「全部展示」，`+N` 这一套复杂度应当已经删干净',
       );
-      await tester.pump();
-      // 至少有一个 `+N`，且不是「+5」这种总数写法
-      expect(find.textContaining('+'), findsOneWidget);
-      final more = tester.widget<Text>(find.textContaining('+')).data!;
-      final hidden = int.parse(more.substring(1));
-      expect(hidden, greaterThan(0));
-      expect(hidden, lessThan(5), reason: '宽卡片至少该放得下 1 个标签');
-      expect(tester.takeException(), isNull, reason: '单行截断不该溢出');
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('点标签只触发筛选，不会连带打开详情', (tester) async {
       OnlineTag? tapped;
       var cardTaps = 0;
       await tester.pumpWidget(
-        tagHost(
+        host(
           OnlineWorkCard(
             work: tagged(['ASMR']),
             onTap: () => cardTaps++,
@@ -294,36 +299,10 @@ void main() {
       expect(cardTaps, 0, reason: '标签必须吃掉自己的点击，卡片不该被连带触发');
     });
 
-    testWidgets('点 +N 等于打开详情看全部标签', (tester) async {
-      var cardTaps = 0;
-      await tester.pumpWidget(
-        tagHost(
-          OnlineWorkCard(
-            // 用长标签名，确保一定放不下、出现 `+N`
-            work: tagged([
-              '双声道立体声/人头麦',
-              '亲热/甜蜜',
-              '青梅竹马',
-              '学生',
-            ]),
-            onTap: () => cardTaps++,
-            showTags: true,
-            onTagTap: (_) {},
-          ),
-        ),
-      );
-      await tester.pump();
-
-      await tester.tap(find.textContaining('+'));
-      await tester.pump();
-
-      expect(cardTaps, 1, reason: '`+N` 与卡片同义：打开详情');
-    });
-
     testWidgets('服务端只给了名字（id=0）的标签只能看，点了不筛选', (tester) async {
       var tagTaps = 0;
       await tester.pumpWidget(
-        tagHost(
+        host(
           OnlineWorkCard(
             work: tagged(['ASMR'], withId: false),
             onTap: () {},
@@ -340,28 +319,31 @@ void main() {
       expect(tagTaps, 0, reason: '没有 id 就没法发 /api/tags/{id}/works');
     });
 
-    testWidgets('窄卡片（移动端 2 列）也保持单行不溢出', (tester) async {
+    testWidgets('窄卡片（移动端 2 列）也全部渲染且不溢出', (tester) async {
+      const names = [
+        '双声道立体声/人头麦',
+        '亲热/甜蜜',
+        '青梅竹马',
+        '学生',
+        '环绕音',
+      ];
       await tester.pumpWidget(
-        tagHost(
+        host(
           OnlineWorkCard(
-            work: tagged([
-              '双声道立体声/人头麦',
-              '亲热/甜蜜',
-              '青梅竹马',
-              '学生',
-              '环绕音',
-            ]),
+            work: tagged(names),
             onTap: () {},
             showTags: true,
             onTagTap: (_) {},
           ),
           width: 150,
-          height: 236,
         ),
       );
       await tester.pump();
-      expect(find.textContaining('+'), findsOneWidget);
-      expect(tester.takeException(), isNull, reason: '窄卡片不能溢出');
+
+      for (final name in names) {
+        expect(find.text(name), findsOneWidget);
+      }
+      expect(tester.takeException(), isNull, reason: '窄卡片上换行，不该溢出');
     });
   });
 
@@ -371,7 +353,6 @@ void main() {
       List<OnlineTag> blocked = const [],
       double scale = 1.0,
       double width = 200,
-      double height = 286,
     }) =>
         ProviderScope(
           overrides: [
@@ -387,20 +368,16 @@ void main() {
             home: Scaffold(
               body: Align(
                 alignment: Alignment.topLeft,
-                child: SizedBox(width: width, height: height, child: card),
+                child: SizedBox(width: width, height: 900, child: card),
               ),
             ),
           ),
         );
 
-    testWidgets('全局字号放大到 1.30 时标签行仍不溢出（1.95.0 修的量宽漏 textScaler）',
-        (tester) async {
+    testWidgets('全局字号放大到 1.30 时标签组仍不溢出', (tester) async {
       await tester.pumpWidget(
         hostWith(
           OnlineWorkCard(
-            // 第二个标签刻意取**窄**的：「第一个放得下、第二个放不下」这种
-            // 临界排布下，量宽的富余最小，漏 scaler 的后果才会真的溢出屏幕
-            // （实测漏掉时溢出 36px；换成更宽的第二个标签就碰巧被富余吃掉）
             work: tagged([
               '双声道立体声/人头麦',
               '学生',
@@ -417,12 +394,10 @@ void main() {
       );
       await tester.pump();
 
-      // 量宽度时若漏掉 `MediaQuery.textScaler`，就是「量 9pt、画 11.7pt」——
-      // 标签行当场溢出卡片。这条锁在 1.95.0 之前是红的（RenderFlex overflowed）。
       expect(
         tester.takeException(),
         isNull,
-        reason: '字号放大后标签行不该溢出：量的和画的必须是同一个 scaler',
+        reason: '字号放大后标签组不该溢出：换行必须是真的换行',
       );
     });
 
@@ -523,63 +498,163 @@ void main() {
     });
   });
 
-  group('卡片尺寸预算（1.96.0）', () {
-    /// 高度预算算对没有，看的是**封面高度与宽度之差**。
-    ///
-    /// 为什么不直接断言「封面是正方形」：**它本来就不是**。卡片 `Container` 的
-    /// 4px 内边距在文字块预算里被当成余量补掉了（1.95.0 的硬编码 62 就是这么来的），
-    /// 所以封面的高度恒定地比宽度多 `kOnlineCardPadding * 2` —— 这是既有观感，
-    /// 1.96.0 不打算顺手改掉它。
-    ///
-    /// 这个差值**与所有字号旋钮无关**，所以它可以当锁：只要高度预算漏算了任何一项
-    /// （在线卡片倍率 / 全局字号 / 标签字号），差值就会变 —— 差值变小 = 封面被压扁。
-    ///
-    /// 为什么不用「有没有 RenderFlex 溢出」当锁：封面外面那层 `Expanded` 会一直
-    /// 吞到 0 高度，它永远不会溢出、永远不报错。
-    ///
-    /// 标题必须**长到占满两行**：一行标题会让 `Expanded` 多拿一行高度，
-    /// 差值随之变大（这是既有的、与字号无关的行为）。
-    const longTitle = '这是一个足够长的在线作品标题，用来确保它在卡片里确实占据两行高度';
-    const overshoot = kOnlineCardPadding * 2;
+  group('元数据胶囊（1.99.21）', () {
+    /// 卡面上每一枚元数据胶囊的「文字 → 类别」映射。
+    /// 按文字取类别而不是按位置取，是因为位置将来会调整，类别不会。
+    Map<String, OnlinePillKind> pillKinds(WidgetTester tester) => {
+          for (final pill
+              in tester.widgetList<OnlinePill>(find.byType(OnlinePill)))
+            pill.text: pill.kind,
+        };
 
-    Widget gridHost({
-      required double cardScale,
-      required double globalScale,
-      double tagFontSize = 11,
-      double gridColumns = 0,
-      bool showTags = true,
-      int count = 3,
-      double width = 900,
-      double height = 700,
-    }) =>
+    testWidgets('每个声优一枚胶囊，社团 / RJ号 / 时长 / 下载量各一枚', (tester) async {
+      await tester.pumpWidget(host(OnlineWorkCard(work: fullWork(), onTap: () {})));
+      await tester.pump();
+
+      final kinds = pillKinds(tester);
+      expect(kinds['声优A'], OnlinePillKind.artist);
+      expect(kinds['声优B'], OnlinePillKind.artist, reason: '多个声优要多个胶囊');
+      expect(kinds['サークル'], OnlinePillKind.circle);
+      expect(kinds['RJ01318014'], OnlinePillKind.rj);
+      expect(kinds['2小时25分钟'], OnlinePillKind.duration);
+      expect(kinds['↓1.2万'], OnlinePillKind.download);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('时长走「2小时25分钟」而不是钟表写法 2:25:00', (tester) async {
+      await tester.pumpWidget(host(OnlineWorkCard(work: fullWork(), onTap: () {})));
+      await tester.pump();
+
+      expect(find.text('2小时25分钟'), findsOneWidget);
+      expect(find.text('2:25:00'), findsNothing,
+          reason: '两端同一个概念必须是同一种写法：本地卡面用的是 formatDuration');
+    });
+
+    testWidgets('取不到的几枚直接不出现（没 RJ号 / 时长为 0 / 下载量为 0）',
+        (tester) async {
+      await tester.pumpWidget(
+        host(
+          OnlineWorkCard(
+            work: const OnlineWork(id: 1, title: '什么元数据都没有'),
+            onTap: () {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(OnlinePill), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('只有时长时只出现时长那一枚', (tester) async {
+      await tester.pumpWidget(
+        host(
+          OnlineWorkCard(
+            work: const OnlineWork(
+              id: 2,
+              title: '只有时长',
+              durationSeconds: 45 * 60,
+            ),
+            onTap: () {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final kinds = pillKinds(tester);
+      expect(kinds, {'45分钟': OnlinePillKind.duration});
+    });
+
+    testWidgets('在线卡片文字倍率由卡片自己读设置（倍率 1.5 → 标题 13×1.5）',
+        (tester) async {
+      const title = '一个标题';
+      await tester.pumpWidget(
         ProviderScope(
           overrides: [
             settingsProvider.overrideWith(
-              (ref) => _StubSettings(
-                const [],
-                cardScale: cardScale,
-                gridColumns: gridColumns,
-              ),
+              (ref) => _StubSettings(const [], cardScale: 1.5),
             ),
           ],
           child: MaterialApp(
             theme: buildHikoTheme(const AppSettings()),
-            builder: (context, inner) => MediaQuery(
-              data: MediaQuery.of(context).copyWith(
-                textScaler: TextScaler.linear(globalScale),
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: 200,
+                  height: 900,
+                  child: OnlineWorkCard(
+                    work: const OnlineWork(id: 3, title: title),
+                    onTap: () {},
+                  ),
+                ),
               ),
-              child: HikoTagFontScope(fontSize: tagFontSize, child: inner!),
             ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        tester.widget<Text>(find.text(title)).style?.fontSize,
+        closeTo(kOnlineCardTitleFontSize * 1.5, 0.001),
+        reason: '网格不再传这个倍率，卡片必须自己从设置里读',
+      );
+    });
+
+    test('六类胶囊（含标签）的取色互不相同，浅色 / 深色各一遍', () {
+      for (final theme in ['light', 'dark']) {
+        final isDark = theme == 'dark';
+        final scheme = buildHikoTheme(AppSettings(theme: theme)).colorScheme;
+        final fgs = <Color>[
+          for (final kind in OnlinePillKind.values)
+            onlinePillColors(kind, isDark: isDark, scheme: scheme).fg,
+          // 第六类：标签胶囊的青色
+          hikoTagFgColorOf(isDark),
+        ];
+        expect(
+          fgs.toSet().length,
+          fgs.length,
+          reason: '$theme 主题下有两类胶囊字色撞了，卡面上就分不出来了',
+        );
+
+        final bgs = <Color>[
+          for (final kind in OnlinePillKind.values)
+            onlinePillColors(kind, isDark: isDark, scheme: scheme).bg,
+        ];
+        expect(
+          bgs.toSet().length,
+          bgs.length,
+          reason: '$theme 主题下有两类胶囊底色撞了',
+        );
+      }
+    });
+  });
+
+  group('瀑布流（1.99.21 取代固定高度的 SliverGrid）', () {
+    Widget gridHost({
+      required List<OnlineWork> works,
+      bool isMobile = false,
+      double gridColumns = 0,
+      bool showTags = false,
+      double width = 900,
+      double height = 1400,
+    }) =>
+        ProviderScope(
+          overrides: [
+            settingsProvider.overrideWith(
+              (ref) => _StubSettings(const [], gridColumns: gridColumns),
+            ),
+          ],
+          child: MaterialApp(
+            theme: buildHikoTheme(const AppSettings()),
             home: Scaffold(
               body: SizedBox(
                 width: width,
                 height: height,
                 child: OnlineWorkGrid(
-                  works: [
-                    for (var i = 0; i < count; i++)
-                      work(id: 1657200 + i, title: longTitle),
-                  ],
-                  isMobile: false,
+                  works: works,
+                  isMobile: isMobile,
                   showTags: showTags,
                   onTap: (_) {},
                 ),
@@ -588,87 +663,116 @@ void main() {
           ),
         );
 
-    double coverOvershoot(WidgetTester tester) {
-      final cover = tester.getSize(find.byType(OnlineCover).first);
-      return cover.height - cover.width;
-    }
+    List<Offset> cardOffsets(WidgetTester tester, int count) => [
+          for (var i = 0; i < count; i++)
+            tester.getTopLeft(find.byType(OnlineWorkCard).at(i)),
+        ];
 
-    testWidgets('默认档位：封面高度与宽度之差就是那 8px 余量', (tester) async {
-      await tester.pumpWidget(gridHost(cardScale: 1.0, globalScale: 1.0));
-      await tester.pump();
-
-      expect(coverOvershoot(tester), closeTo(overshoot, 1.0),
-          reason: '与 1.95.0 的默认观感保持一致：封面比宽度高 8px');
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('卡片文字 1.30× + 全局字号 1.30：差值不变（高度预算必须联动）',
-        (tester) async {
-      await tester.pumpWidget(gridHost(cardScale: 1.3, globalScale: 1.3));
-      await tester.pump();
-
-      expect(coverOvershoot(tester), closeTo(overshoot, 1.0),
-          reason: '两个缩放旋钮都必须进高度预算，只算一个封面就会被压扁');
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('只放大在线卡片文字（全局字号不变）时差值也不变', (tester) async {
-      await tester.pumpWidget(gridHost(cardScale: 1.3, globalScale: 1.0));
-      await tester.pump();
-      expect(coverOvershoot(tester), closeTo(overshoot, 1.0));
-    });
-
-    testWidgets('标签字号 14：标签行高度跟着涨，差值仍不变', (tester) async {
+    testWidgets('卡片高度由内容决定：同一屏里出现不同高度', (tester) async {
       await tester.pumpWidget(
-        gridHost(cardScale: 1.0, globalScale: 1.0, tagFontSize: 14),
+        gridHost(
+          works: [
+            // 长标题 + 一堆标签 = 高
+            OnlineWork(
+              id: 1,
+              title: '这是一个足够长的标题，长到在 300px 宽的卡片里必然占满两行',
+              tags: [
+                for (final name in const ['双声道立体声/人头麦', '亲热/甜蜜', '青梅竹马'])
+                  OnlineTag(id: 200, name: name),
+              ],
+            ),
+            // 短标题、无标签 = 矮
+            const OnlineWork(id: 2, title: '短'),
+          ],
+          gridColumns: 2,
+          showTags: true,
+          width: 600,
+        ),
       );
       await tester.pump();
 
-      expect(coverOvershoot(tester), closeTo(overshoot, 1.0),
-          reason: '标签胶囊走的是绝对字号，它变高时标签行预算必须一起变');
+      final tall = tester.getSize(find.byType(OnlineWorkCard).at(0)).height;
+      final short = tester.getSize(find.byType(OnlineWorkCard).at(1)).height;
+      expect(tall, greaterThan(short + 20),
+          reason: '等高网格会强行把两张卡拉成一样高，那就不是瀑布流了');
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('关掉标签行时不留那块空高', (tester) async {
+    testWidgets('第 3 张落在更矮的那一列下面（不是等高网格）', (tester) async {
       await tester.pumpWidget(
-        gridHost(cardScale: 1.0, globalScale: 1.0, showTags: false),
+        gridHost(
+          works: [
+            OnlineWork(
+              id: 1,
+              title: '这是一个足够长的标题，长到在 300px 宽的卡片里必然占满两行',
+              tags: [
+                for (final name in const [
+                  '双声道立体声/人头麦',
+                  '亲热/甜蜜',
+                  '青梅竹马',
+                  '学生',
+                ])
+                  OnlineTag(id: 200, name: name),
+              ],
+            ),
+            const OnlineWork(id: 2, title: '短'),
+            const OnlineWork(id: 3, title: '第三张'),
+          ],
+          gridColumns: 2,
+          showTags: true,
+          width: 600,
+        ),
       );
       await tester.pump();
 
-      expect(coverOvershoot(tester), closeTo(overshoot, 1.0));
+      final p = cardOffsets(tester, 3);
+      expect(p[2].dx, p[1].dx, reason: '第 1 张更高，第 3 张该补到第 2 列');
+      expect(p[2].dy, greaterThan(p[1].dy));
     });
 
     testWidgets('自动档在 900 宽下是 3 列：第 4 张换行', (tester) async {
       await tester.pumpWidget(
-        gridHost(cardScale: 1.0, globalScale: 1.0, count: 6),
+        gridHost(
+          works: [for (var i = 0; i < 6; i++) work(id: 1657200 + i)],
+        ),
       );
       await tester.pump();
 
-      final positions = [
-        for (var i = 0; i < 6; i++)
-          tester.getTopLeft(find.byType(OnlineWorkCard).at(i)),
-      ];
-      expect(positions[2].dy, positions[0].dy);
-      expect(positions[3].dy, greaterThan(positions[0].dy), reason: '自动档不是 5 列');
+      final p = cardOffsets(tester, 6);
+      expect(p[2].dy, p[0].dy);
+      expect(p[3].dy, greaterThan(p[0].dy), reason: '自动档不是 4 列');
+      expect(p[3].dx, p[0].dx);
     });
 
     testWidgets('每行卡片数固定 5 列时前 5 张同排', (tester) async {
       await tester.pumpWidget(
         gridHost(
-          cardScale: 1.0,
-          globalScale: 1.0,
+          works: [for (var i = 0; i < 6; i++) work(id: 1657200 + i)],
           gridColumns: 5,
-          count: 6,
         ),
       );
       await tester.pump();
 
-      final positions = [
-        for (var i = 0; i < 6; i++)
-          tester.getTopLeft(find.byType(OnlineWorkCard).at(i)),
-      ];
-      expect(positions[4].dy, positions[0].dy, reason: '固定 5 列时前 5 张在同一排');
-      expect(positions[5].dy, greaterThan(positions[0].dy), reason: '第 6 张才换行');
+      final p = cardOffsets(tester, 6);
+      expect(p[4].dy, p[0].dy, reason: '固定 5 列时前 5 张在同一排');
+      expect(p[5].dy, greaterThan(p[0].dy), reason: '第 6 张才换行');
+    });
+
+    testWidgets('移动端 2 列，左右各留 16px', (tester) async {
+      await tester.pumpWidget(
+        gridHost(
+          works: [for (var i = 0; i < 4; i++) work(id: 1657200 + i)],
+          isMobile: true,
+          width: 400,
+        ),
+      );
+      await tester.pump();
+
+      final p = cardOffsets(tester, 4);
+      expect(p[0].dx, 16);
+      expect(p[1].dx, greaterThan(p[0].dx));
+      expect(p[2].dx, p[0].dx, reason: '第 3 张回到第 1 列');
+      expect(p[2].dy, greaterThan(p[0].dy));
     });
   });
 }
