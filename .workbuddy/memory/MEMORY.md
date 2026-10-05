@@ -28,4 +28,5 @@ GitHub: github.com/michiru233/hiko。macOS / Android 发布；Windows 需 Win �
 ## 更新检查契约（1.98.0）
 `update_checker.dart` API 非 200 自动兜底 `github.com/.../releases/latest` 302 重定向；`releaseFromTag` 按命名约定 `hiko-<tag>-android.apk` / `hiko-<tag>-macos.zip` 合成直链；兜底 body 为空。测试断言 pickAsset 必须按宿主 `Platform.operatingSystem` 取。
 
-（其余：环境/sandbox 修复、动效约定 → `hiko-rules.md`；在线契约、导航栏、安卓播放栏、测试坑、遗留待裁决 → `hiko-modules.md`。）
+（其余：环境/sandbox 修复、动效约定 → `hiko-rules.md`；在线契约、导航栏、安卓播放栏、**玻璃材质门面
+（`lib/ui/widgets/hiko_glass.dart`，业务代码只 import 它，不要直接用 `liquid_glass_widgets`）**、测试坑、遗留待裁决 → `hiko-modules.md`。）
