@@ -154,7 +154,7 @@
   （flutter_test 里所有 HTTP 都 400，未捕获的 `KikoeruException` 会让用例失败）。
 - **回归锁必须摘掉修复验证会红**（改动落栈/筛选这类语义时逐条验一遍）。
 
-## 玻璃材质门面（1.99.22 接入：liquid_glass_widgets；1.99.23 修移动端卡顿）
+## 玻璃材质门面（1.99.22 接入：liquid_glass_widgets；1.99.23 修移动端卡顿；1.99.24 深色卡改走无着色器面）
 
 - 依赖 `liquid_glass_widgets: ^1.9.0`：零三方运行时依赖，自带 5 个 `.frag`，**无需任何
   Xcode / Gradle / CocoaPods 改动**，会自动打进双端产物到
@@ -162,13 +162,14 @@
 - **业务代码只 import `lib/ui/widgets/hiko_glass.dart`**，不要直接依赖库 API（该库 1.0.0→1.9.0
   发了 21 版，breaking change 集中在早期；门面就是为了把升级/换库收敛在一个文件）。
 - **两档契约**（`HikoGlassTier`，由公开纯函数 `hikoGlassQuality` / `hikoGlassUseOwnLayer` /
-  **`hikoGlassBlur`** 决定）：
+  **`hikoGlassBlur`** / **`hikoGlassUsesShader`** 决定）：
 
   | | `surface` | `tile` |
   |---|---|---|
   | 质量 | `premium` | `standard` |
   | 图层 | `useOwnLayer: true` | `false` |
   | **`blur`** | **20** | **0** |
+  | **走着色器** | 恒是（浅深都走） | 浅色走 / **深色不走** |
   | 用在哪 | 静止浮层 / 栏 | 滚动长列表 |
 
 - 浮层**必须** `useOwnLayer: true`：premium 档若既不自建图层、又无 `LiquidGlassLayer` 祖先，
@@ -184,6 +185,18 @@
   用于把**静止**背景采样一次复用；不传只是不启动该 ticker，**不等于不捕获背景**。真正的开关是 `blur`。
   修法：tile 档沿用 surface 档的 `blur = 20` = 每张卡一次 sigma20 实时模糊，必须按档位取值
   （门面里是 `blur ?? hikoGlassBlur(tier)`，显式传 `blur:` 仍可覆盖，给静态胶囊微调用）。
+- ⚠️ **深色下轻量着色器有一圈「写死的」结构白边，设置项够不到（1.99.24）**：实测深色卡
+  描边峰值 **168**（卡内底色才 31）、播放栏上边缘 166，而同一套 token 在浅色下毫无亮峰——
+  边缘是 238→253 的单调过渡。原因在 `shaders/lightweight_glass.frag`：
+  `rimFade = 1.0 - smoothstep(0.3, 0.5, uBackdropLuma) * 0.92`，而 **`uBackdropLuma` 是库里
+  硬编码的常量** `isDark ? 0.15 : 0.85`（`lightweight_liquid_glass.dart:454` 与
+  `glass_effect.dart:450`）→ 深色 `rimFade = 1.0`（满血白边）、浅色 0.08（被近白卡底吃掉）。
+  **`LiquidGlassSettings` 完全够不到它**：`fresnelStrength` 只缩放另一项更小的加法项
+  （`(1 - normalZ) * borderMask * 0.10 * …`），置 0 也去不掉那圈环。
+  → 深色 tile 档**只能不走着色器**（2026-10-05 用户裁决 Q1/Q2=A：只改 tile 档，
+  surface 浮层不动——那圈边缘光在浮层上是质感而不是缺陷）。
+  经验：**第三方渲染器的「结构」边缘/光照可能是硬编码常量在控制，改设置项之前先去
+  shader + 填 uniform 的 Dart 里找到它**，否则会浪费一整轮在够不到的参数上。
 - `animationDuration` 对 tint / 描边色 / 描边宽 / **阴影列表**做隐式补间
   （`_ShadowListTween` + `BoxShadow.lerpList`，后者已处理项数不一致）。专辑卡与在线卡都靠它保住
   300ms 选中过渡——**门面是无状态的，忘传就静默退化成瞬变**。
@@ -194,7 +207,25 @@
   ——已用临时探针实测（三条全过、`takeException()` 全 null）后才敢替换。
   反过来说：**两档搞混、补间失效、blur 漏喂默认值，在测试里渲染结果完全一样、看不出来**，
   只能靠 `test/ui/hiko_glass_test.dart` 的纯函数 / 参数锁（1.99.23 补了 blur 那三条，
-  其中两条直接断言渲染出来的 `LiquidGlassSettings.blur`）。
+  其中两条直接断言渲染出来的 `LiquidGlassSettings.blur`；1.99.24 又补了「深色 tile 不走着色器」
+  与「深色卡衬底台阶」两组）。
+  **例外**：「走不走着色器」是唯一能在单测里**端到端观测**的差别——树里有没有
+  `lg.GlassContainer`。所以这条既有纯函数锁又有控件树断言（含专辑卡那条）。
+- **深色卡填充（1.99.24）**：`darkGlassCard` 从 `0x9923252C` 提到 **`0x992A2C31`**。
+  原因：原值合成后只比页面底（`darkBg 0x1D1F24`）亮 **2**，卡片几乎完全靠边缘定义自己——
+  一旦深色卡不再走着色器（那圈白边没了），就会变成「看不见卡片」。现合成 ≈ (37,39,44)，
+  比底亮 8，与浅色卡「比底亮 4~7」同量级。**再往上加会变灰块，且 alpha 保持 60%**
+  （半透语义；本 token 也被首页静态胶囊与在线卡复用，一起统一）。调整只动 RGB，不要动 alpha。
+- **移动端顶栏要垫不透明底（1.99.24）**：`home_screen.dart` 的 `_buildTopbar` 末尾
+  `if (!isMobile) return bar; return ColoredBox(color: theme.scaffoldBackgroundColor, child: bar);`。
+  背景：本页 `Stack` 首子项是「正在播放封面环境光晕」（`ImageFilter.blur(sigma: 80)`，
+  深色不透明度 0.15，1.55.0 `004eef8` 引入、有意为之），而移动端**内容头部**从 1.99.9 `eb07ce2`
+  起就垫了页面底色（`_buildLocalScrollable` 里那个 `ColoredBox`），**顶栏没垫** → 整页只有顶栏
+  一条能把光晕透出来，实测顶栏 (53,50,59) vs 全屏 (30,31,36)，横向还有 (54,48,58)→(39,39,47)
+  的左亮右暗渐变。用 `scaffoldBackgroundColor` 而非写死主题底色：设了背景图时它是 `transparent`，
+  那时头部同样透明，两边自然一致（光晕整页透出，仍是 1.55 的原始意图）。
+  **桌面端不垫**（垫了会在没有任何不透明底的桌面主列上凭空造出一条横向接缝）。
+  锁在 `test/ui/topbar_backdrop_test.dart`（新建，双向断言）。
 - 全项目真 `BackdropFilter` 玻璃只有 5 处：播放栏、移动端底栏、右键菜单、在线详情关闭钮、
   详情抽屉关闭钮。**1.99.23 起滚动列表里的玻璃卡有两处：本地专辑卡 + 在线卡**（之前在线卡是
   纯透明 `Container`，只有选中态一条描边，摆在专辑卡旁边明显是两种材质，用户实机指出）；

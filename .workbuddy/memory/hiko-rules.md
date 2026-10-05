@@ -41,7 +41,7 @@ ui(screens+widgets+theme, covers 三级缓存) / utils(rj、natural_compare、re
    两域写 `IDEPackageSupport{DisableManifestSandbox,DisablePluginExecutionSandbox,DisablePackageSandbox}=-bool YES`。
    **实测 2026-09-29 后台跑 `flutter build macos --release` 38s 成功** —— defaults 写好后「必须前台」已不是硬约束
    （保留这条以防 defaults 被清）。
-9. 验证基线：test **666 passed / 2 skipped**（1.99.23 后）；analyze **42 条** lint 基线，0 新增 error。
+9. 验证基线：test **678 passed / 2 skipped**（1.99.24 后）；analyze **42 条** lint 基线，0 新增 error。
 10. Flutter 3.47.0/Dart 3.13.0（/opt/homebrew/bin/flutter）；AVD `kikoeru_test`；
    SDK /opt/homebrew/share/android-commandlinetools；JDK openjdk@21。
 

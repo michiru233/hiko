@@ -3604,3 +3604,123 @@ Q1 = 要**材质质感**（不要 iOS 26 的 chrome 骨架、不要 jelly 形变
 - 本版无新增待裁决。**待用户实机验收**：专辑卡与在线卡在移动端长网格滚动是否已顺滑；
   两处卡面玻璃与其余 5 处浮层/栏是否观感统一；tile 档去掉实时模糊后卡片玻璃感是否仍够
   （大块浮层不受影响，仍走 `blur = 20`）。
+
+## 1.99.24（2026-10-05）：深色模式的卡边亮环 + 顶栏色差
+
+### 现象（用户实机，移动端为主，mac 端一并考虑）
+> 1. 深色模式的专辑卡边框会显得有些不自然（附图对比浅色）
+> 2. 深色模式下最上面一层有色差
+
+三张 873×1920 截图逐像素量化后定位到两个**完全独立**的成因，都不是「调个 token 能好」的表层问题。
+
+### 成因 1：卡片亮边 = 轻量着色器里写死的结构白边
+PIL 实测：深色卡左边缘峰值 **168**（卡内底色才 31）、右边缘 144、播放栏上边缘 166；
+浅色卡边缘是 238→253 的**单调过渡**，没有任何亮峰。
+
+读 `liquid_glass_widgets/lib/shaders/lightweight_glass.frag` 找到源头：
+
+```glsl
+float rimFade = 1.0 - smoothstep(0.3, 0.5, uBackdropLuma) * 0.92;   // 353
+float rimAlphaBase = kRimAlphaBase * rimFade + 0.15 * directionalInfluence * uLightIntensity; // 354
+rimAlphaBase *= uRefractiveIndex;                                   // 355
+finalColor = bodyColor * (1.0 - rimAlphaBase) + adaptiveRimColor * rimAlphaBase;
+```
+
+关键是 `uBackdropLuma` —— 它在库里是**硬编码常量**：
+
+- `lib/widgets/shared/lightweight_liquid_glass.dart:454`
+- `lib/widgets/shared/glass_effect.dart:450`
+
+```dart
+final backdropLuma = isDark ? 0.15 : 0.85;
+```
+
+→ 深色 `rimFade = 1.0`（满血白边），浅色 `rimFade = 0.08`（被近白卡底吃掉，几乎不可见）。
+同一套 `darkGlassBorderSubtle` token 在浅色下毫无亮峰，就是这个原因。
+
+**`LiquidGlassSettings` 够不到这个常量**：`fresnelStrength` 只缩放另一项更小的加法项
+（`fresnel = (1 - normalZ) * borderMask * 0.10 * ...`，独立于 `rimAlphaBase`），
+置 0 也去不掉那圈环。（我中途一度以为 `fresnelStrength: 0` 能修，读源码后自我更正。）
+路由分支是 `if (uBackgroundSize.x > 1.0)`：没有背景采样纹理时走 PATH B，
+`effectiveRimAlpha = max(rimAlphaBase, borderMask * 0.06 * rimFade)` —— tile 档正是这条。
+
+### 成因 2：顶栏色差 = σ80 封面环境光晕只从顶栏透出来
+`home_screen.dart` 的 `Stack` 首子项是「正在播放封面环境光晕」（`ImageFilter.blur(sigma: 80)`，
+深色不透明度 0.15），`004eef8`（1.55.0 玻璃拟态）引入，是有意为之。
+而 `eb07ce2`（1.99.9 移动端顶栏滚动收起）给移动端**内容头部**垫了页面底色
+（`_buildLocalScrollable` 里那个 `ColoredBox`，注释「半开时内容会从透明头部后穿过」），
+**顶栏本身没垫** → 整页只有顶栏这一条能把光晕透出来。
+实测：顶栏 (53,50,59) vs 其余全屏 (30,31,36)，横向还有一条 (54,48,58)→(39,39,47) 的左亮右暗渐变。
+
+对比：播放栏上边缘也有 166 的亮峰，与卡片同源（同一圈着色器白边）；底栏没有，
+因为 `borderRadius: 0` 命中 `_isFlatEdge`，`_SpecularRimPainter` 被跳过。
+
+### 裁决（grill-me 四问，用户「都按推荐进行」）
+| # | 问题 | 裁决 |
+|---|---|---|
+| Q1 | 深色卡边缘走哪条渲染路径 | **A**：深色 tile 档不再走着色器，复用已有 `solid` 机制，边缘完全由 `darkGlassBorderSubtle` + 阴影定义 |
+| Q2 | 修复范围 | **A**：只改 tile 档；surface 档（播放栏等）不动 —— 亮边同源，但浮层数量少、面积大，那圈边缘光在浮层上是质感而不是缺陷 |
+| Q3 | 深色卡填充对比 | **A**：一起提 `darkGlassCard`，把相对台阶对齐到浅色量级 |
+| Q4 | 顶栏色带 | **A**：移动端顶栏垫上与内容区一致的不透明底色；桌面端不垫 |
+
+Q3 单独解释：深色卡原填充 `0x9923252C` 合成后只比页面底（`darkBg 0x1D1F24`）亮 **2**，
+卡片几乎完全靠边缘定义自己 —— 深色卡改走无着色器面之后，那圈白边消失，卡片就会「没边了」。
+所以 Q1 和 Q3 必须一起做，只做 Q1 会把「刺眼亮环」换成「看不见卡片」。
+
+### 实施
+1. **门面加无着色器路径**（`lib/ui/widgets/hiko_glass.dart`）
+   ```dart
+   bool hikoGlassUsesShader(HikoGlassTier tier, {required bool isDark}) =>
+       tier == HikoGlassTier.surface || !isDark;
+   ```
+   在 `build` 里解析一次并闭包捕获，`_AnimatedGlass` 的 4 参 builder 签名不用动；
+   `_buildGlass` 的分支**反转**成「走着色器 → `lg.GlassContainer`，否则 → `Container`」。
+   `solid` 继续用 `!solid &&` 短路（不再出现在 `_buildGlass` 内）。
+2. **深色卡填充**：`darkGlassCard 0x9923252C → 0x992A2C31`（合成 ≈ (37,39,44)，比底亮 8）。
+   不再往上加：深色里再亮就成灰块。alpha 保持 60%，保留半透语义（本 token 也被
+   首页静态胶囊 / 在线卡复用，一起统一）。
+3. **顶栏垫色**（`lib/ui/screens/home_screen.dart` 的 `_buildTopbar`）：
+   ```dart
+   if (!isMobile) return bar;
+   return ColoredBox(color: theme.scaffoldBackgroundColor, child: bar);
+   ```
+   用 `scaffoldBackgroundColor` 而非写死主题底色：设了背景图时它是 `transparent`，
+   那时头部同样透明，两边自然一致（光晕整页透出，仍是 1.55 的原始意图）。
+   桌面端**不垫**：桌面主列整列都没有不透明底、侧栏是不透明的 `Sidebar`，
+   光晕本来就该在顶栏一带透出来，加一层反而凭空造出一条横向接缝。
+
+**浅色端一行没动**（用户已明确「浅色模式已经让我满意」）：`hikoGlassUsesShader` 对浅色恒 `true`，
+`darkGlassCard` 只在深色分支被读，顶栏垫色走的是同一个 `bar` 只是外面包一层。
+
+### 回归锁
+| 锁 | 位置 | 扰动后红灯数 |
+|---|---|---|
+| 深色 tile 档不走着色器（4 条纯函数 + 3 条控件树 + 专辑卡 1 条） | `test/ui/hiko_glass_test.dart` | `hikoGlassUsesShader → true` ⇒ **4 红** |
+| 浅色两档都走着色器（回归保护） | 同上 | `hikoGlassUsesShader → surface-only` ⇒ **5 红** |
+| 深色卡衬底台阶（lift ∈ [6,14] 且与浅色差 < 10） | 同上 | `darkGlassCard → 0x9923252C` ⇒ **1 红** |
+| 顶栏垫色双断言 | `test/ui/topbar_backdrop_test.dart`（新建） | 桌面垫色 ⇒ **1 红**；移动不垫 ⇒ **1 红** |
+
+「深色 tile 档不走着色器」之所以能**端到端断言**：`flutter_test` 里 Impeller 不可用，
+`LiquidGlassBlendGroup` 在 `!ImageFilter.isShaderFilterSupported` 时直接透传，
+两条路径都降级成普通子树 —— 唯一能直接观测的差别就是树里有没有 `lg.GlassContainer`。
+（其余档位参数搞错在单测里完全看不出来，所以映射关系一律抽成公开纯函数单独锁。）
+
+### 验证
+- `flutter test`：**678 passed / 2 skipped**（1.99.23 为 666，新增 12 项锁）。
+- `flutter analyze`：**42 条**，0 新增 error。
+- 5 条扰动逐一验证变红并恢复（见上表），`grep -rn PERTURB lib/ test/` 为 0。
+- 中途 `flutter analyze` 一度报 98 issues / 7 error，根因是门面文件里文档注释的最后一行
+  与 `class HikoGlass extends StatelessWidget {` 被写进了同一行（整行变成注释，
+  类根本没声明），修正换行后即回到 42。
+
+### 明确未纳入本版（留待用户实机裁决）
+- **桌面端**「模糊封面从窗口标题栏透出（红绿灯上方有一条硬边）」：与成因 2 同一个光晕，
+  但桌面主列整列都没有不透明底，垫色方式与移动端不同（不是一条顶栏，而是整列），
+  属于另一个面，本版按 Q4 的范围只修移动端顶栏。
+- **播放栏上边缘的 166 亮峰**：Q2=A 决定只改 tile 档，播放栏属 surface 档，保持现状。
+
+### 交付
+- 版本 `1.99.24+137`；Release：`hiko-v1.99.24-android.apk` + `hiko-v1.99.24-macos.zip`。
+- 本版无新增待裁决。**待用户实机验收**：深色卡与浅色卡的边缘观感是否对齐；
+  深色顶栏那条色带是否消失；深色卡的衬底台阶是否够用（不够则调 `darkGlassCard` 的 RGB，
+  不要动 alpha）。
