@@ -3724,3 +3724,63 @@ Q3 单独解释：深色卡原填充 `0x9923252C` 合成后只比页面底（`da
 - 本版无新增待裁决。**待用户实机验收**：深色卡与浅色卡的边缘观感是否对齐；
   深色顶栏那条色带是否消失；深色卡的衬底台阶是否够用（不够则调 `darkGlassCard` 的 RGB，
   不要动 alpha）。
+
+## 1.99.25（2026-10-08）：修复深色下滚动时头部玻璃整块消失
+
+### 现象（用户实机 Android 截图，两张内容正好差 62px）
+深色模式下往下划，本地音声页顶部的玻璃**描边 + 填充整块消失**，只剩文字；
+停手也不恢复（不是过渡帧），滚回顶部就正常。
+
+### 根因
+头部是 `SliverAppBar(bottom: PreferredSize(preferredSize: Size.fromHeight(头部真实高度),
+child: 一摞 HikoGlass))`。`pinned: false` 的 SliverAppBar 只要开始滚动就会算
+
+    bottomOpacity = clampDouble(visibleMainHeight / _bottomHeight, 0, 1) < 1
+
+（`app_bar.dart` 的 `_SliverAppBarDelegate.build`），Flutter 随即把整个 `bottom`
+包进 `Opacity` —— 一层离屏 saveLayer。玻璃是 BackdropFilter，进 saveLayer 后采不到
+底景，**描边与填充一起消失**，只剩子内容；文字还会被这层顺带压暗几个 %。
+
+定位过程（三路互证）：
+1. 用户两张截图逐像素对齐（内容偏移 62px，dy 唯一解）→ 破的那张里胶囊描边 (89,92,99)
+   与填充 (34,37,46) 被页面底色 (30,31,36) 整块替代，文字还在、亮度差 ~7%。
+2. macOS 深色 + `debugMobileLayout: true`、离屏副本量高度、锁定滚到 62px 复现；
+   把 `pinned` 临时改 `true`（`bottomOpacity` 恒 1.0）玻璃立刻回来 → 指向 Opacity。
+3. `flutter_test` 探针直接扫祖先 `Opacity`（比截图可靠）：修复前 offset=30 → 头部文字
+   上方 `Opacity(0.949)`，offset=93 → `Opacity(0.127)`；offset=0 → `Opacity(1.000)`
+   （alpha 255，不进层，所以静止态正常）。修复后各档 0 个。
+
+### 改动
+- 新增 `lib/ui/widgets/hiko_floating_header.dart`（三处共用的浮层玻璃头部）：
+  `bottom.preferredSize` 声明 `Size.fromHeight(0)` —— 除数为 0 → 上式恒 1.0
+  → 永不进 Opacity 分支；真实高度改由 `expandedHeight` / `collapsedHeight` 表达。
+  逐值核对 delegate：`minExtent = (collapsedHeight ?? toolbarHeight) + bottomHeight +
+  topPadding`、`maxExtent = topPadding + (expandedHeight ?? toolbarHeight +
+  _bottomHeight)`、`extraToolbarHeight` 三处与改前**完全一致**（换项互相抵消），
+  滚动行为 / reveal 手感不变。
+- 本地音声 / 在线浏览 / 在线收藏三处 `SliverAppBar` 换成该组件（1.99.7~1.99.9 同源
+  铺开的三处，一起修）。
+
+### 三问已提，按推荐落点执行（用户若改判再调整）
+- Q1 落点：**抽公共组件**（而非三处内联）。
+- Q2 是否顺手把头部改成自绘（彻底绕开 SliverAppBar）：**暂不做**，等它第二次咬人。
+- Q3 回归锁形式：**锁症状**（滚动后头部上方不得有 alpha < 1 的 `Opacity`）。
+
+### 回归锁
+| 锁 | 位置 | 扰动后红灯 |
+|---|---|---|
+| 滚到半开位置后头部不被半透明 `Opacity` 包裹 | `test/ui/mobile_header_glass_scroll_test.dart`（新建） | `preferredSize` 改回真实高度 ⇒ **第 1 档（offset=30）即红** |
+
+这个锁能生效的关键：`flutter_test` 里玻璃虽然会降级成普通子树，但这层 `Opacity` 是
+**框架**加的，测试抓得到（与 1.99.24 的「档位搞错单测看不出来」正好相反）。
+
+### 验证
+- `flutter test`：**679 passed / 2 skipped**（1.99.24 为 678，新增 1 项锁）。
+- `flutter analyze`：**42 条**，0 新增 error。
+- macOS 深色实跑：修复前 62px 处玻璃消失；修复后胶囊描边、chip 描边全部回来，
+  且与修复前**同一滚动位置**逐像素比对，文字行位置 dy=0 完全一致 —— 滚动几何零变化。
+- Android 模拟器（`kikoeru_test`）实跑：滚动态玻璃正常（用户报的就是 Android）。
+
+### 交付
+- 版本 `1.99.25+138`；Release：`hiko-v1.99.25-android.apk` + `hiko-v1.99.25-macos.zip`。
+- 本版无新增待裁决。

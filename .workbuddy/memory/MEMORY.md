@@ -22,7 +22,7 @@ GitHub: github.com/michiru233/hiko。macOS / Android 发布；Windows 需 Win �
 6. 发版 zip/apk 只入 Releases 不入 git，**发完即清本地副本**（删前逐字节比对尺寸），trash 分批 ≤10。
 7. 测试内容日文为主，覆盖 UTF-8 与 Shift-JIS。
 8. 跑 test/build/git push/gh 前**摘代理**：`env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy NO_PROXY=localhost,127.0.0.1 <cmd>`。长命令用后台跑（前台会被插话打断成 SIGTERM 137 且日志截断）。
-9. 验证基线（**1.99.19 起**）：test **642 passed / 2 skipped**；analyze **43 条 lint 基线，0 新增 error**。
+9. 验证基线（**1.99.25 起**）：test **679 passed / 2 skipped**；analyze **42 条 lint 基线，0 新增 error**。
 10. 环境：Flutter 3.47.0 / Dart 3.13.0（`/opt/homebrew/bin/flutter`）；AVD `kikoeru_test`；SDK `/opt/homebrew/share/android-commandlinetools`；JDK `openjdk@21`。
 
 ## 更新检查契约（1.98.0）

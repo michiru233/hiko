@@ -154,7 +154,7 @@
   （flutter_test 里所有 HTTP 都 400，未捕获的 `KikoeruException` 会让用例失败）。
 - **回归锁必须摘掉修复验证会红**（改动落栈/筛选这类语义时逐条验一遍）。
 
-## 玻璃材质门面（1.99.22 接入：liquid_glass_widgets；1.99.23 修移动端卡顿；1.99.24 深色卡改走无着色器面）
+## 玻璃材质门面（1.99.22 接入：liquid_glass_widgets；1.99.23 修移动端卡顿；1.99.24 深色卡改走无着色器面；1.99.25 头部浮层抽组件 + 修滚动时玻璃消失）
 
 - 依赖 `liquid_glass_widgets: ^1.9.0`：零三方运行时依赖，自带 5 个 `.frag`，**无需任何
   Xcode / Gradle / CocoaPods 改动**，会自动打进双端产物到
@@ -226,6 +226,27 @@
   那时头部同样透明，两边自然一致（光晕整页透出，仍是 1.55 的原始意图）。
   **桌面端不垫**（垫了会在没有任何不透明底的桌面主列上凭空造出一条横向接缝）。
   锁在 `test/ui/topbar_backdrop_test.dart`（新建，双向断言）。
+- ⚠️⚠️ **`SliverAppBar(pinned: false).bottom` 会随滚动把内容包进 `Opacity`，玻璃整块消失（1.99.25，
+  用户实机 Android 反馈「深色下往下划，上面那圈玻璃边框就没了」）**：`_SliverAppBarDelegate.build`
+  里 `bottomOpacity = clampDouble(visibleMainHeight / _bottomHeight, 0, 1)`，只要开始滚动就 < 1，
+  于是 `AppBar` 走 `widget.bottomOpacity == 1.0 ? bottom : Opacity(...)` 的 else 分支
+  —— **一层离屏 saveLayer**。玻璃是 BackdropFilter，进 saveLayer 就采不到底景 →
+  **描边与填充一起消失**，只剩子内容（文字会被这层顺带压暗几个 %，实测 210→225 亮度，
+  所以肉眼看着「就是玻璃没了」而不是「整块淡了」）。**停手也不恢复**，滚回顶部才正常。
+  修法：`bottom` 声明 `Size.fromHeight(0)`（除数为 0 → 恒 1.0 → 永不进 Opacity 分支），
+  真实高度改由 `expandedHeight` / `collapsedHeight` 表达 —— delegate 的
+  `minExtent = (collapsedHeight ?? toolbarHeight) + bottomHeight + topPadding` /
+  `maxExtent = topPadding + (expandedHeight ?? toolbarHeight + _bottomHeight)` /
+  `extraToolbarHeight` 三处**逐值不变**（换项互相抵消），滚动与 reveal 手感零变化。
+  三处同源（本地音声 / 在线浏览 / 在线收藏）已抽成 **`lib/ui/widgets/hiko_floating_header.dart`
+  的 `HikoFloatingGlassHeader(extent:, child:)`**，理由都写在那个文件里，别再展开回三份。
+  锁在 `test/ui/mobile_header_glass_scroll_test.dart`（滚动三档后断言头部文字上方没有
+  alpha < 1 的 `Opacity`；把 `preferredSize` 改回真实高度 → 第 1 档即红）。
+  **这层 `Opacity` 是框架加的，所以 `flutter_test` 里抓得到** —— 与上面「玻璃参数在测试里看不出来」
+  正好相反，是罕见的「症状可直接端到端锁住」的例子。
+  排查手法（可复用）：① 用户截图逐像素对齐定偏移；② `flutter_test` 里写一次性探针
+  `find.ancestor(of: find.text(…), matching: find.byType(Opacity))` 打印各滚动档的 alpha
+  —— 比截图考古可靠得多；③ 断开处改 `pinned: true`（`bottomOpacity` 恒 1.0）看症状是否消失。
 - 全项目真 `BackdropFilter` 玻璃只有 5 处：播放栏、移动端底栏、右键菜单、在线详情关闭钮、
   详情抽屉关闭钮。**1.99.23 起滚动列表里的玻璃卡有两处：本地专辑卡 + 在线卡**（之前在线卡是
   纯透明 `Container`，只有选中态一条描边，摆在专辑卡旁边明显是两种材质，用户实机指出）；
