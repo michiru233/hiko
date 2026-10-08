@@ -11,6 +11,7 @@ import '../../data/online/online_provider.dart';
 import '../../data/settings_store.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/context_menu.dart';
+import '../widgets/hiko_floating_header.dart';
 import '../widgets/online_account_dialogs.dart';
 import '../widgets/online_appearance.dart';
 import '../widgets/online_detail_panel.dart';
@@ -456,29 +457,15 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                 child: CustomScrollView(
                   controller: _mobileScroll,
                   slivers: [
-                    SliverAppBar(
-                      primary: false,
-                      automaticallyImplyLeading: false,
-                      pinned: false,
-                      floating: true,
-                      snap: false,
-                      toolbarHeight: 0,
-                      backgroundColor: Colors.transparent,
-                      surfaceTintColor: Colors.transparent,
-                      elevation: 0,
-                      scrolledUnderElevation: 0,
-                      bottom: PreferredSize(
-                        preferredSize:
-                            Size.fromHeight(_headerExtent ?? 120),
-                        // 垫页面背景色：半开时内容会从透明头部后穿过
-                        child: ColoredBox(
-                          color: Theme.of(context).scaffoldBackgroundColor,
-                          child: _buildHeader(
-                            theme,
-                            favorites.index,
-                            favorites,
-                          ),
-                        ),
+                    // 1.99.25：走 HikoFloatingGlassHeader（`bottom.preferredSize`
+                    // 必须声明 0，否则滚动时头部被包进 Opacity、玻璃整块消失，
+                    // 理由见该类里的长注释）
+                    HikoFloatingGlassHeader(
+                      extent: _headerExtent ?? 120,
+                      child: _buildHeader(
+                        theme,
+                        favorites.index,
+                        favorites,
                       ),
                     ),
                     if (favorites.loading &&

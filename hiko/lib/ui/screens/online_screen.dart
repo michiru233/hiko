@@ -13,6 +13,7 @@ import '../../utils/time.dart';
 import '../detail_jump_requests.dart';
 import '../theme.dart';
 import '../widgets/detail_kit.dart';
+import '../widgets/hiko_floating_header.dart';
 import '../widgets/hiko_glass.dart';
 import '../widgets/online_account_dialogs.dart';
 import '../widgets/online_appearance.dart';
@@ -777,30 +778,12 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                   slivers: [
                     // snap 是 SliverAppBar 的能力（SliverPersistentHeader 没有），
                     // 用「零高 toolbar + 头部作 bottom」把自定义头部挂进去。
-                    // 注意 snap 必须为 false：snap 的弹回动画以 layoutExtent=0
-                    // 覆盖在内容上（实测模拟器复现：停手即盖住第一行卡片），
-                    // floating 本身就有「上滑跟着手指即时滑回」的 reveal 行为，够用
-                    SliverAppBar(
-                      primary: false,
-                      automaticallyImplyLeading: false,
-                      pinned: false,
-                      floating: true,
-                      snap: false,
-                      toolbarHeight: 0,
-                      backgroundColor: Colors.transparent,
-                      surfaceTintColor: Colors.transparent,
-                      elevation: 0,
-                      scrolledUnderElevation: 0,
-                      bottom: PreferredSize(
-                        preferredSize:
-                            Size.fromHeight(_headerExtent ?? 200),
-                        // 垫页面背景色：floating 头部半开（跟手 reveal 停在中间）
-                        // 时内容会从透明头部后穿过，文字叠文字没法读
-                        child: ColoredBox(
-                          color: Theme.of(context).scaffoldBackgroundColor,
-                          child: _buildHeader(state, theme),
-                        ),
-                      ),
+                    // 1.99.25：改用 HikoFloatingGlassHeader —— `bottom.preferredSize`
+                    // 必须声明 0，否则滚动时头部会被包进 Opacity、玻璃整块消失
+                    // （理由见该类里的长注释）
+                    HikoFloatingGlassHeader(
+                      extent: _headerExtent ?? 200,
+                      child: _buildHeader(state, theme),
                     ),
                     if (state.loading && state.works.isEmpty)
                       const SliverFillRemaining(

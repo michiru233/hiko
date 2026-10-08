@@ -34,6 +34,7 @@ import '../widgets/category_dialog.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/context_menu.dart';
 import '../widgets/detail_drawer.dart';
+import '../widgets/hiko_floating_header.dart';
 import '../widgets/hiko_glass.dart';
 import '../widgets/mobile_bottom_nav.dart';
 import '../widgets/online_appearance.dart';
@@ -1058,26 +1059,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: CustomScrollView(
             controller: _gridScrollController,
             slivers: [
-              SliverAppBar(
-                primary: false,
-                automaticallyImplyLeading: false,
-                pinned: false,
-                floating: true,
-                // snap 会以 layoutExtent=0 覆盖内容（1.99.7 实测踩坑，见在线页记录）
-                snap: false,
-                toolbarHeight: 0,
-                backgroundColor: Colors.transparent,
-                surfaceTintColor: Colors.transparent,
-                elevation: 0,
-                scrolledUnderElevation: 0,
-                bottom: PreferredSize(
-                  preferredSize: Size.fromHeight(_localHeaderExtent ?? 300),
-                  // 垫页面背景色：半开时内容会从透明头部后穿过
-                  child: ColoredBox(
-                    color: Theme.of(context).scaffoldBackgroundColor,
-                    child: headerColumn,
-                  ),
-                ),
+              // 头部挂成浮层玻璃头部（1.99.25：`preferredSize` 必须声明 0 的理由
+              // 见 HikoFloatingGlassHeader 里的长注释，别改回去）
+              HikoFloatingGlassHeader(
+                extent: _localHeaderExtent ?? 300,
+                child: headerColumn,
               ),
               if (filtered.isEmpty)
                 SliverFillRemaining(
