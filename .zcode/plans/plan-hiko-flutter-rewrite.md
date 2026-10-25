@@ -3980,3 +3980,27 @@ child: 一摞 HikoGlass))`。`pinned: false` 的 SliverAppBar 只要开始滚动
 ### 交付
 - 版本 `1.99.32+145`；Release：`hiko-v1.99.32-macos.zip` + `hiko-v1.99.32-android.apk`。
 - M3E 重构全部遗留项清零；仅剩「隐私模糊 σ20 替代方案评估」一项远期提案（未排期）。
+
+## 1.99.33（2026-10-25）：macOS 窗口顶部白条修复（用户截图反馈）
+
+### 问题
+macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深色应用内容割裂，
+顶部一条大白条——内容没有延伸到标题栏之下，且 M3EAppBar 顶部 20dp 圆角
+在窗口底色上还露出两个白角。
+
+### 修复
+- `MainFlutterWindow.swift`：`titlebarAppearsTransparent` + `titleVisibility = .hidden`
+  + `styleMask.insert(.fullSizeContentView)`，窗口底色同深色内容；
+  红绿灯浮在内容上，窗口标题隐藏（应用内 rail 自带品牌区，菜单栏/Dock 仍显示 Hiko）。
+- `lib/platform/desktop_window.dart`（新）：`windowTopInset(context)` —— macOS 让出
+  ~28pt 红绿灯区（尊重系统 MediaQuery 安全区），home/settings 两个 Scaffold body
+  顶层套 Padding；平台判断集中在 platform/（D4 白名单）。
+- `M3EAppBar` 去掉顶部圆角（内容色直接铺满窗口上缘）。
+
+### 验证
+- `flutter test`：781/2 全绿；analyze 44 条 0 error。
+- macOS debug 实跑截图：白条消失、红绿灯浮于深色内容、rail 品牌区让位正常。
+- APK aapt2：146 / 1.99.33，三 ABI。
+
+### 交付
+- 版本 `1.99.33+146`；Release：`hiko-v1.99.33-macos.zip` + `hiko-v1.99.33-android.apk`。
