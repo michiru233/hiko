@@ -3978,8 +3978,35 @@ child: 一摞 HikoGlass))`。`pinned: false` 的 SliverAppBar 只要开始滚动
 - APK aapt2：versionCode 145 / versionName 1.99.32，native-code 三 ABI。
 
 ### 交付
-- 版本 `1.99.32+145`；Release：`hiko-v1.99.32-macos.zip` + `hiko-v1.99.32-android.apk`。
+- 版本 `1.99.34+147`；Release：`hiko-v1.99.34-macos.zip` + `hiko-v1.99.34-android.apk`。
 - M3E 重构全部遗留项清零；仅剩「隐私模糊 σ20 替代方案评估」一项远期提案（未排期）。
+
+## 1.99.35（2026-10-25）：顶条/顶栏/rail 三区底色统一（用户截图反馈）
+
+### 问题
+桌面首页三块相邻区域各用一种深色：窗口顶条+内容区 = 旧主题 `darkBg`(#1D1F24)、
+面包屑顶栏 = M3E `surface`（fromSeed 派生）、左侧 rail = `surfaceContainerLow`
+（27 期故意做的色阶层级，但内容底当时还不是 surface，于是成了三区三色）。
+
+### 修复
+- `buildHikoTheme`：`scaffoldBackgroundColor` 从 `HikoColors.darkBg/lightBg` 改为
+  **`scheme.surface`**（同种子 fromSeed 派生，与 M3E 主题逐字节一致），并把
+  **对比度档（settings.contrast）传入 ColorScheme.fromSeed 的 contrastLevel**——
+  否则高对比档下 scaffold 与 M3EAppBar 又会分叉。
+- `M3ENavRail` 底色 `surfaceContainerLow` → `surface`：rail 与内容同层，
+  层级交给选中态 `secondaryContainer` 色块（比 27 期的色阶分层更贴 M3E rail 规范）。
+- 浅色模式底色同步统一。
+
+### 验证
+- `flutter test`：783/2 全绿；analyze 47 条 0 error（触及文件无告警）。
+- macOS debug 实跑截图：顶条/顶栏/rail/内容区四区同色，卡片以色阶浮起。
+- APK aapt2：148 / 1.99.35，三 ABI。
+
+### 交付
+- 版本 `1.99.35+148`；Release：`hiko-v1.99.35-macos.zip` + `hiko-v1.99.35-android.apk`。
+- ⚠️ 流程坑：本次 `git push` 网络抖动失败但 `gh release create` 先成功了，
+  导致 tag 指向旧提交——push 成功后用 `gh api -X PATCH git/refs/tags/<tag>` 把
+  tag 重指到新提交并核验。**发版顺序应保证 push 成功后再 create release。**
 
 ## 1.99.33（2026-10-25）：macOS 窗口顶部白条修复（用户截图反馈）
 
