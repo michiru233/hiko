@@ -4008,6 +4008,27 @@ child: 一摞 HikoGlass))`。`pinned: false` 的 SliverAppBar 只要开始滚动
   导致 tag 指向旧提交——push 成功后用 `gh api -X PATCH git/refs/tags/<tag>` 把
   tag 重指到新提交并核验。**发版顺序应保证 push 成功后再 create release。**
 
+## 1.99.36（2026-10-25）：卡片声优/社团恢复分色胶囊（用户反馈）
+
+### 问题
+1.99.28 卡片重写时，声优/社团从 1.44 的「各一颗胶囊」退化成两行灰字
+（用户圈图反馈：飴屋ぺろり、御子柴泉 / バイコーンの森 不分开显示）。
+
+### 修复
+`album_card.dart`：`_artistLines` 文本行 → `_PersonPillMini` Wrap——
+声优逐人拆分（`splitVoiceNames`，蓝 `hikoVoiceColor`）+ 社团（紫 `hikoCircleColor`），
+沿用 1.44 去重语义（albumArtist 为空或与 artist 相同时不重复占位）；
+胶囊内 `softWrap` 换行（超长人名不断行不溢出，沿用旧测试「超长元数据胶囊完整换行」）。
+
+### 验证
+- album_card_test 7/7 全绿（含 1.44 时代「各为一颗胶囊」断言，现才真正符合注释）；
+  全量 783/2；analyze 47 条 0 error；APK aapt2 149/1.99.36 三 ABI。
+- 实机视觉核验因用户正使用机器跳过（截图会捕到用户工作画面，已即时删除），
+  以组件测试 + 实机自验为准。
+
+### 交付
+- 版本 `1.99.36+149`；Release：`hiko-v1.99.36-macos.zip` + `hiko-v1.99.36-android.apk`。
+
 ## 1.99.33（2026-10-25）：macOS 窗口顶部白条修复（用户截图反馈）
 
 ### 问题
