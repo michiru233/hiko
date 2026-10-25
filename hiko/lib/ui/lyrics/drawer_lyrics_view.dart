@@ -6,6 +6,7 @@ import '../../lyrics/lyrics_controller.dart';
 import '../../lyrics/models/lyric_line.dart';
 import '../../utils/time.dart';
 import 'lyrics_auto_scroll.dart';
+import '../m3e/m3e.dart';
 
 /// 抽屉歌词视图组件（支持垂直平滑滚动、高亮当前句、悬停显示时间点、点击跳转、角色 Badge）
 class DrawerLyricsView extends ConsumerStatefulWidget {
@@ -58,11 +59,7 @@ class _DrawerLyricsViewState extends ConsumerState<DrawerLyricsView>
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 48),
         child: Center(
-          child: SizedBox(
-            width: 24,
-            height: 24,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
+          child: M3ELoadingIndicator(size: 24)
         ),
       );
     }

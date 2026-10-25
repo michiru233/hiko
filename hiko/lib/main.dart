@@ -134,17 +134,28 @@ class _HikoAppState extends ConsumerState<HikoApp> with WidgetsBindingObserver {
   }
 
   /// 跟随系统：macOS 读当前桌面壁纸文件路径（原生侧 NSWorkspace），
-  /// 复用图片取色管线；其余平台暂无来源（Android 动态取色 1.99.31）。
+  /// Android 读 Material You 的 system_accent1（MainActivity 注册同名通道），
+  /// 两者直接拿结果；其余平台暂无来源返回 null。
   Future<Color?> _systemSeedColor() async {
-    if (!Platform.isMacOS) return null;
     try {
-      final path = await const MethodChannel('hiko/system')
-          .invokeMethod<String>('wallpaperPath');
-      if (path == null || path.isEmpty) return null;
-      return await CoverColor.fromFile(path);
+      if (Platform.isMacOS) {
+        final path = await const MethodChannel('hiko/system')
+            .invokeMethod<String>('wallpaperPath');
+        if (path == null || path.isEmpty) return null;
+        return await CoverColor.fromFile(path);
+      }
+      if (Platform.isAndroid) {
+        final argb =
+            await const MethodChannel('hiko/system').invokeMethod<int>(
+          'accentColor',
+        );
+        if (argb == null) return null;
+        return Color(argb);
+      }
     } catch (_) {
-      return null;
+      // 通道不可用/ROM 未提供调色板：静默回退预设强调色（§11.2 配色种子锁）
     }
+    return null;
   }
 
   M3EThemeData _m3eTheme(AppSettings settings) {

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:flutter/gestures.dart' show PointerScrollEvent;
 import 'package:flutter/material.dart';
@@ -1335,14 +1334,69 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // 桌面端宽度富裕，顶栏原样保留。
     if (isMobile && _isOnlineView) return const SizedBox.shrink();
     final iconSize = isMobile ? 24.0 : 18.0;
-    final bar = Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: isMobile ? 16 : 48,
-        vertical: 14,
+
+    // 1.99.31：动作按钮抽成一份列表，桌面走 M3EAppBar.small（64dp 壳），
+    // 移动保持原 Padding 紧凑行。
+    final actionButtons = <Widget>[
+      IconButton(
+        icon: Icon(Icons.center_focus_strong_rounded, size: iconSize),
+        tooltip: '定位当前播放',
+        onPressed: ref.watch(playbackProvider).album == null
+            ? null
+            : _locatePlayingAlbum,
       ),
-      child: Row(
-        children: [
-          if (!isMobile) ...[
+      if (isMobile) const SizedBox(width: 8),
+      IconButton(
+        icon: Icon(
+          ref.watch(settingsProvider).theme == 'dark'
+              ? Icons.dark_mode_outlined
+              : Icons.light_mode_outlined,
+          size: iconSize,
+        ),
+        tooltip: '切换主题',
+        onPressed: () {
+          final s = ref.read(settingsProvider);
+          ref
+              .read(settingsProvider.notifier)
+              .setTheme(s.theme == 'dark' ? 'light' : 'dark');
+        },
+      ),
+      if (isMobile) const SizedBox(width: 8),
+      ValueListenableBuilder<bool>(
+        valueListenable: privacyBlur,
+        builder: (_, blurred, _) => IconButton(
+          icon: Icon(
+            blurred
+                ? Icons.visibility_off_outlined
+                : Icons.visibility_outlined,
+            size: iconSize,
+          ),
+          tooltip: blurred ? '关闭隐私模糊' : '隐私模糊（⌘⇧H）',
+          onPressed: _togglePrivacyBlur,
+        ),
+      ),
+      if (isMobile) const SizedBox(width: 8),
+      IconButton(
+        icon: Icon(Icons.shuffle_rounded, size: iconSize),
+        tooltip: '随机播放',
+        onPressed: _playRandomAlbum,
+      ),
+      // 桌面端保留原有的导入按钮
+      if (!isMobile) ...[
+        const SizedBox(width: 4),
+        FilledButton.tonalIcon(
+          onPressed: _importFolder,
+          icon: const Icon(Icons.upload, size: 16),
+          label: const Text('导入'),
+        ),
+      ],
+    ];
+
+    if (!isMobile) {
+      // 1.99.31 M3EAppBar.small：64dp，面包屑为中轴标题（plan §8.1）
+      return M3EAppBar.small(
+        title: Row(
+          children: [
             Text('音声库', style: TextStyle(fontSize: 13, color: theme.hintColor)),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1356,80 +1410,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
           ],
-          const Spacer(),
-          // 移动端：4个统一的图标按钮，右对齐紧凑排列
-          IconButton(
-            icon: Icon(Icons.center_focus_strong_rounded, size: iconSize),
-            tooltip: '定位当前播放',
-            onPressed: ref.watch(playbackProvider).album == null
-                ? null
-                : _locatePlayingAlbum,
-          ),
-          if (isMobile) const SizedBox(width: 8),
-          IconButton(
-            icon: Icon(
-              ref.watch(settingsProvider).theme == 'dark'
-                  ? Icons.dark_mode_outlined
-                  : Icons.light_mode_outlined,
-              size: iconSize,
-            ),
-            tooltip: '切换主题',
-            onPressed: () {
-              final s = ref.read(settingsProvider);
-              ref
-                  .read(settingsProvider.notifier)
-                  .setTheme(s.theme == 'dark' ? 'light' : 'dark');
-            },
-          ),
-          if (isMobile) const SizedBox(width: 8),
-          ValueListenableBuilder<bool>(
-            valueListenable: privacyBlur,
-            builder: (_, blurred, _) => IconButton(
-              icon: Icon(
-                blurred
-                    ? Icons.visibility_off_outlined
-                    : Icons.visibility_outlined,
-                size: iconSize,
-              ),
-              tooltip: blurred ? '关闭隐私模糊' : '隐私模糊（⌘⇧H）',
-              onPressed: _togglePrivacyBlur,
-            ),
-          ),
-          if (isMobile) const SizedBox(width: 8),
-          IconButton(
-            icon: Icon(Icons.shuffle_rounded, size: iconSize),
-            tooltip: '随机播放',
-            onPressed: _playRandomAlbum,
-          ),
-          // 桌面端保留原有的导入按钮
-          if (!isMobile) ...[
-            const SizedBox(width: 4),
-            FilledButton.tonalIcon(
-              onPressed: _importFolder,
-              icon: const Icon(Icons.upload, size: 16),
-              label: const Text('导入'),
-            ),
-          ],
-        ],
-      ),
-    );
+        ),
+        actions: actionButtons,
+      );
+    }
 
-    // 1.99.24：移动端顶栏要垫上与下方内容一致的不透明底色。
-    // 背景（用户实机反馈「深色下最上面一层有色差」）：本页 Stack 首子项是
-    // 「正在播放封面环境光晕」（σ80，深色不透明度 0.15，见本文件 Stack），
-    // 而移动端本地视图的头部从 1.99.9 起就垫了页面底色（_buildLocalScrollable
-    // 里那个 ColoredBox），顶栏却没有 —— 于是整页只有顶栏这一条能把光晕透出来，
-    // 实测顶栏 (53,50,59) 而其余全屏 (30,31,36)，横向还有一条左亮右暗的渐变。
-    //
-    // 用 scaffoldBackgroundColor 而不是写死主题底色：设了背景图时它是 transparent，
-    // 那时头部同样是透明的，两边自然一致（光晕整页透出，也是 1.55 的原始意图）。
-    //
-    // 桌面端**不垫**：桌面主列整列都没有不透明底、侧栏是不透明的 Sidebar，
-    // 光晕本来就该在顶栏一带透出来，加一层底色反而会在桌面凭空造出一条横向接缝。
-    if (!isMobile) return bar;
+    // 1.99.24：移动端顶栏要垫上与下方内容一致的不透明底色
+    //（本地视图头部从 1.99.9 起垫了页面底色，顶栏同色才不出现横向色差）。
+    // 用 scaffoldBackgroundColor 而不是写死主题底色：两边自然一致。
+    final bar = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Row(children: actionButtons),
+    );
     return ColoredBox(color: theme.scaffoldBackgroundColor, child: bar);
   }
-
   Widget _buildHero(ThemeData theme, int resultCount, bool isMobile) {
     final m3e = M3ETheme.of(context);
     final favCount = ref.watch(libraryProvider).where((a) => a.favorite).length;

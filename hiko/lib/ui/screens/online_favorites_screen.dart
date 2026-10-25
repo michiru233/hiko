@@ -18,6 +18,7 @@ import '../widgets/online_detail_panel.dart';
 import '../widgets/online_tag_menu.dart';
 import '../widgets/online_work_grid.dart';
 import '../widgets/toast.dart';
+import '../m3e/m3e.dart';
 
 /// 在线收藏（1.93.0，裁决 Q3=A：侧边栏一级项）。
 ///
@@ -81,11 +82,7 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
 
     if (account.restoring) {
       return const Center(
-        child: SizedBox(
-          width: 22,
-          height: 22,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
+        child: M3ELoadingIndicator(size: 24)
       );
     }
     // 离线分区（1.99.16）不依赖登录——下载与播放都不走账号
@@ -473,11 +470,7 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                       const SliverFillRemaining(
                         hasScrollBody: false,
                         child: Center(
-                          child: SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
+                          child: M3ELoadingIndicator(size: 24)
                         ),
                       )
                     else if (favorites.error != null &&
@@ -605,11 +598,7 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
   }) {
     if (favorites.loading && favorites.index.playlists.isEmpty) {
       return const Center(
-        child: SizedBox(
-          width: 22,
-          height: 22,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
+        child: M3ELoadingIndicator(size: 24)
       );
     }
     if (favorites.error != null && favorites.index.playlists.isEmpty) {

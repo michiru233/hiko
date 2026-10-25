@@ -12,7 +12,6 @@ import '../../data/settings_store.dart';
 import '../../utils/time.dart';
 import '../detail_jump_requests.dart';
 import '../m3e/m3e.dart';
-import '../theme.dart';
 import '../widgets/detail_kit.dart';
 import '../widgets/hiko_floating_header.dart';
 import '../widgets/online_account_dialogs.dart';
@@ -410,19 +409,15 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
   /// （TapRegion 在 down 即触发），面板随失焦整块销毁，等 onTap 命中测试时
   /// 面板已经不在了 —— 只有抢在 down 阶段动作才稳。
   Widget _buildSearchHistoryPanel(ThemeData theme) {
-    final isDark = theme.brightness == Brightness.dark;
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? HikoColors.darkCard : HikoColors.lightCard,
+        // 1.99.31 M3E：surfaceContainerHigh + 海拔 3（§8.8 Menu 同层）
+        color: M3ETheme.of(context).colors.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.dividerColor.withValues(alpha: 0.4)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.12),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
+        boxShadow: M3EElevation.shadow(
+          M3EElevation.level3,
+          M3ETheme.of(context).colors.shadow,
+        ),
       ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxHeight: 280),
@@ -789,11 +784,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                       const SliverFillRemaining(
                         hasScrollBody: false,
                         child: Center(
-                          child: SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
+                          child: M3ELoadingIndicator(size: 24)
                         ),
                       )
                     else if (state.error != null && state.works.isEmpty)
@@ -849,11 +840,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
   Widget _buildResults(OnlineBrowseState state, ThemeData theme) {
     if (state.loading && state.works.isEmpty) {
       return const Center(
-        child: SizedBox(
-          width: 22,
-          height: 22,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
+        child: M3ELoadingIndicator(size: 24)
       );
     }
     if (state.error != null && state.works.isEmpty) {

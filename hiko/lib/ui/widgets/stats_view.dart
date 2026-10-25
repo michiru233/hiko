@@ -4,6 +4,7 @@ import '../../data/stats.dart';
 import '../../models/album.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
+import '../m3e/m3e.dart';
 
 String _two(int n) => n.toString().padLeft(2, '0');
 
@@ -24,7 +25,7 @@ class StatsView extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(48, 20, 48, 32),
       children: [
-        Text('统计', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: theme.colorScheme.onSurface)),
+        Text('统计', style: M3ETheme.of(context).type.headlineSmall.copyWith(color: theme.colorScheme.onSurface)),
         const SizedBox(height: 16),
         Row(
           children: [
@@ -84,12 +85,9 @@ class StatsView extends StatelessWidget {
     required IconData icon,
   }) {
     return Expanded(
-      child: Container(
+      child: M3ECard(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
-          borderRadius: BorderRadius.circular(10),
-        ),
+        radius: 16,
         child: Row(
           children: [
             Icon(icon, size: 20, color: theme.colorScheme.primary),
