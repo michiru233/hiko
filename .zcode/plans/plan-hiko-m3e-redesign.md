@@ -891,6 +891,42 @@ gh release create …
 
 ---
 
+### 1.99.31 打磨（2026-10-25，M3E 重构收官）
+
+**用户裁决（grill 记录）**：`material_new_shapes` **引入**（M3ELoadingIndicator 的形状来源）；
+`material_symbols_icons` **不引入**（现有图标残留不足以撑起新依赖，1.99.31 跳过）。
+
+**落地**
+- `M3ELoadingIndicator`（`components/progress/`，38dp 默认）：circle → pill → sunny 三形状
+  morph 循环（900ms/段 easeInOut + 线性循环，**不用弹簧**——§7.2 连续动画豁免项）；
+  动效三档门控（off 静态不建控制器 / reduced 时长 ×2）。接线：drawer 歌词加载、
+  在线两页 5 处 22px 加载点（13px 内联小点保留原样）。
+- `M3EAppBar`（`navigation/`）：small 64dp / large 152dp **静态两档**（title/leading/actions）。
+  桌面顶栏接线 `.small`（面包屑为中轴标题，动作按钮抽成共享列表）；
+  移动端 large 的滚动折叠仍由 1.99.9 自定义 sliver 承担（组件不强制替换，偏差已记录）。
+- **Android 动态取色**：MainActivity 注册 `hiko/system` 通道 `accentColor`，
+  getIdentifier 读 `system_accent1_600（浅）/ _300（深）`（Android 12+，中间调避开厂商覆盖档），
+  Dart 侧 `_systemSeedColor` 三平台分发（macOS 壁纸 / Android accent / 其余 null）。
+  未用 dynamic_color 包（依赖 material_ui，§9 禁）。
+- 收尾：统计卡 → M3ECard、统计标题 → headlineSmall、搜索历史面板 → surfaceContainerHigh
+  + 海拔 3；`--analyze-size` 记录：arm64 单 ABI APK 24MB（Dart AOT 11MB）。
+
+**实施坑（教训）**
+- `flutter build apk --release --analyze-size` 会把 `app-release.apk` **覆盖成单 ABI 包**
+  （25MB vs fat 71MB）——发布封包必须在 analyze-size 之后重跑普通 build，
+  否则三架构设备装不上。本版靠封包后核验 `native-code` 行兜住。
+- 批量字符串替换要防变量串写（一次 `s2=s.replace(...)` 用错源串把 stats_view
+  覆盖成 online_screen 内容，git checkout 恢复后重做）。
+
+**验证**
+- `flutter test`：**778 passed / 2 skipped**（30 为 778/2，本版零测试变动）。
+- `flutter analyze`：**44 条**（基线 40，0 error）。
+- macOS 实跑（Release）：M3EAppBar.small 顶栏（面包屑/动作区/64dp）目验通过。
+- APK aapt2：versionCode 144 / versionName 1.99.31；`native-code: arm64-v8a armeabi-v7a x86_64`。
+- M3E 重构（1.99.26→31 六版）全部收官；剩余后续项见 flutter-rewrite 计划 1.99.31 节。
+
+---
+
 ## 附录 A：M3E 关键数值表（实施时照抄）
 
 **形状（10 档）**：0 / 4 / 8 / 12 / 16 / **20** / 28 / **32** / **48** / full

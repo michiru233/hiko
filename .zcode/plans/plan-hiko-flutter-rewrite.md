@@ -3928,3 +3928,28 @@ child: 一摞 HikoGlass))`。`pinned: false` 的 SliverAppBar 只要开始滚动
 - 版本 `1.99.30+143`；Release：`hiko-v1.99.30-macos.zip` + `hiko-v1.99.30-android.apk`。
 - 待裁决（1.99.31 开工前）：`material_new_shapes`（M3ELoadingIndicator）与
   `material_symbols_icons`（可变字体图标）两个新依赖是否引入 —— 与「无新依赖」约定冲突，需用户拍板。
+
+## 1.99.31（2026-10-25）：打磨（M3E 重构收官，1.99.26→31 六版完成）
+
+### 用户裁决
+- `material_new_shapes` 引入（M3ELoadingIndicator 形状来源）；
+  `material_symbols_icons` 不引入（图标残留不足以撑起新依赖）。
+
+### 可见变化
+- 桌面顶栏 → `M3EAppBar.small`（64dp：面包屑中轴 + 动作区）；large 152dp 静态档
+  一并提供，移动端滚动折叠仍由 1.99.9 sliver 承担
+- 内容加载转圈 → `M3ELoadingIndicator` 形状变形（circle→pill→sunny，动效三档门控）
+- 安卓「跟随系统」配色落地：Material You system_accent1（Android 12+，自写通道）
+- 统计卡/搜索历史面板换 M3E 材质
+
+### 验证
+- `flutter test`：**778 passed / 2 skipped**；`flutter analyze`：**44 条**（基线 40），0 error。
+- macOS 实跑：M3EAppBar.small 顶栏目验；aapt2 144/1.99.31；native-code 三 ABI。
+- 包体记录：arm64 单 ABI APK 24MB（Dart AOT 11MB）。
+  ⚠️ `--analyze-size` 会把 app-release.apk 覆盖成单 ABI 包，发版封包必须在其后重跑普通 build。
+
+### 交付
+- 版本 `1.99.31+144`；Release：`hiko-v1.99.31-macos.zip` + `hiko-v1.99.31-android.apk`
+  （APK 首传误为 analyze-size 的单 ABI 包，已 `--clobber` 补传 fat 包并核验）。
+- M3E 重构六版全部收官。遗留后续（非阻塞）：设置壳重做（5 组 72dp/独立页）、
+  30s 滚动 P90 的 DevTools 实测存档、隐私模糊 σ20 的替代方案评估。
