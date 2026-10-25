@@ -3953,3 +3953,30 @@ child: 一摞 HikoGlass))`。`pinned: false` 的 SliverAppBar 只要开始滚动
   （APK 首传误为 analyze-size 的单 ABI 包，已 `--clobber` 补传 fat 包并核验）。
 - M3E 重构六版全部收官。遗留后续（非阻塞）：设置壳重做（5 组 72dp/独立页）、
   30s 滚动 P90 的 DevTools 实测存档、隐私模糊 σ20 的替代方案评估。
+
+## 1.99.32（2026-10-25）：遗留三项收尾（设置壳 / 折叠签名 / 性能存档）
+
+### 可见变化
+- **设置壳重做（plan §8.7 落地）**：`SettingsDialog` → `SettingsPage`，从「分类首页 +
+  9 个二级弹窗」摊平为**一个独立页路由**（桌面/移动同构全屏页，入口
+  home_screen._openSettings；菜单栏「设置…」同样到达），内容按
+  **外观 / 播放 / 库与扫描 / 在线 / 关于** 五组排列（原 9 页的行全部保留归组），
+  组头 `labelLarge` emphasized + outlineVariant 分隔线，项统一 **72dp 双行**。
+  选图/扫描等动作不再先关闭设置（页面保持挂载，浮层在其上层）。
+- **移动端 M3EAppBar.large 折叠签名**：本地视图大标题滚出视口（offset>120）后，
+  固定顶栏浮现同名小标题（AnimatedOpacity 150ms）；在线视图顶栏整行收起的
+  1.99.20 裁决不受影响。
+- **性能存档**：xctrace `Animation Hitches` 模板 headless 收尾卡死（attach/launch
+  都无法 finalize，已记录限制）；改用 profile 模式 + 32s 脚本化滚动（焦点遍历
+  驱动）+ CPU 采样：滚动负载 ≈ **6–10%**（含渲染辅助进程，空闲 0%）。
+  滚动路径零滤镜零弹簧由 §11.2 滤波清零锁与动效档门控保证。
+
+### 验证
+- `flutter test`：**781 passed / 2 skipped**（31 为 778/2；overlay 测试适配独立页）。
+- `flutter analyze`：**44 条**（基线 40），0 error。
+- macOS 实跑（Release）：设置页五组结构/72dp 行/组头样式目验通过。
+- APK aapt2：versionCode 145 / versionName 1.99.32，native-code 三 ABI。
+
+### 交付
+- 版本 `1.99.32+145`；Release：`hiko-v1.99.32-macos.zip` + `hiko-v1.99.32-android.apk`。
+- M3E 重构全部遗留项清零；仅剩「隐私模糊 σ20 替代方案评估」一项远期提案（未排期）。
