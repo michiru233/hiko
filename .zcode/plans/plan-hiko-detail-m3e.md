@@ -194,4 +194,26 @@ Hero 链（`card-{id}` / `drawer-{id}`）。
 
 ## 10. 实施记录
 
-（实施后追加）
+### 1.99.34（2026-10-25）
+
+**落地**：detail_kit 追加 `HikoTrackRowM3E`（56dp/角 16/secondaryContainer 选中态，
+旧 `HikoTrackRow` 保留供在线详情）与 `HikoDetailInfoRowM3E`（56dp + 4dp 进度条）；
+`HikoEyebrowPill`（outlined chip，**内部 id 从展示层移除**，调用方只传分类名）与
+`HikoPersonPill`（左侧 4dp 色点 + 文字、选中态 secondaryContainer）原位 M3E 化
+（在线详情面板同步受益，结构不动）。
+桌面 `detail_drawer`：两栏头部（封面 160 角 28 + 右侧 titleLargeEmphasized 标题列）、
+操作区 M3EButton（1 filled + 3 outlined）、信息分组卡（总时长/完成进度/评分/DLsite）、
+M3EButtonGroup 双 tab、`HikoTrackRowM3E` 曲目列表。
+移动 `album_detail_screen`：同套组件换装（headlineSmallEmphasized 标题 + 元数据行
+声优·RJ·时长 + 完成进度卡 + M3E 曲目行），**删除私有 `_buildMetaPill`/
+`_buildPersonPill`/`_buildTab`/`_buildActionButtons` 重复实现**；胶囊筛选回传
+（1.77 链路）与 Hero 链不变。`DrawerLyricsView` 内部字阶未动（其行高 metrics
+是 LyricsAutoScroll 居中算法的承重件，改动风险大于收益——偏差记录）。
+
+**验证**：`flutter test` **783 passed / 2 skipped**（新增 detail_m3e_test：主行动唯一锁、
+D4 内部 id 不展示、480dp 无溢出、分组卡/分段锁）；analyze 45 条 0 error；
+APK aapt2 147 / 1.99.34 三 ABI。
+实跑备注：桌面抽屉目验因用户正在使用机器而中止（键盘自动化停用，Hiko 已静默退出），
+以 480dp 组件测试 + Release 包交付，效果请以实机为准。
+
+**交付**：版本 `1.99.34+147`；Release：`hiko-v1.99.34-macos.zip` + `hiko-v1.99.34-android.apk`。
