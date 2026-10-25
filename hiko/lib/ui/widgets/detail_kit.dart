@@ -38,18 +38,16 @@ const Color hikoRatingColor = Color(0xFFE8B33C);
 
 /// 详情页里的描边胶囊按钮（收藏 / 评分 / 整理专辑 / 在浏览器打开…）
 ButtonStyle hikoOutlinedPillStyle({
-  required bool isDark,
+  required BuildContext context,
   EdgeInsets padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
 }) =>
     OutlinedButton.styleFrom(
       padding: padding,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      // 1.99.30：玻璃描边 token 删除，描边统一走 outlineVariant
       side: BorderSide(
-        color: isDark ? HikoColors.darkGlassBorder : HikoColors.lightGlassBorderSubtle,
+        color: Theme.of(context).colorScheme.outlineVariant,
       ),
-      backgroundColor: isDark
-          ? Colors.white.withValues(alpha: 0.05)
-          : Colors.black.withValues(alpha: 0.03),
     );
 
 /// 详情页里的实心胶囊按钮（从头播放 / 播放全部）
@@ -585,9 +583,7 @@ class HikoSegmentedTabs extends StatelessWidget {
             : Colors.black.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDark
-              ? HikoColors.darkGlassBorderSubtle
-              : HikoColors.lightGlassBorderSubtle,
+          color: Theme.of(context).colorScheme.outlineVariant,
         ),
       ),
       child: Row(

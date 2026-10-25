@@ -11,10 +11,10 @@ import '../../data/online/online_provider.dart';
 import '../../data/settings_store.dart';
 import '../../utils/time.dart';
 import '../detail_jump_requests.dart';
+import '../m3e/m3e.dart';
 import '../theme.dart';
 import '../widgets/detail_kit.dart';
 import '../widgets/hiko_floating_header.dart';
-import '../widgets/hiko_glass.dart';
 import '../widgets/online_account_dialogs.dart';
 import '../widgets/online_appearance.dart';
 import '../widgets/online_card_kit.dart';
@@ -1098,7 +1098,6 @@ class OnlineWorkCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final coverUrl = ref.watch(onlineClientProvider).coverMainUrl(work.id);
     // 收藏角标：作品在任意歌单里就点亮。未登录/索引未就绪时索引为空，自然不亮
     final favoritePlaylists =
@@ -1136,13 +1135,9 @@ class OnlineWorkCard extends ConsumerWidget {
         ),
     ];
 
-    final isDark = theme.brightness == Brightness.dark;
-    // 玻璃面与本地专辑卡同款（1.99.23）：两处卡片都是瀑布流里的一对兄弟，
-    // 之前在线卡是纯透明的（只有选中态一条描边），摆在专辑卡旁边明显是两种材质。
-    final cardBg = isDark ? HikoColors.darkGlassCard : HikoColors.lightGlassCard;
-    final cardBorder = isDark
-        ? HikoColors.darkGlassBorderSubtle
-        : HikoColors.lightGlassBorderSubtle;
+    // 1.99.30 M3E：与本地专辑卡同款色调面（surfaceContainerLow + 色阶分层，
+    // 不再描边/玻璃）。选中态仍用 primary 描边（与首页定位高亮同语义）。
+    final colors = M3ETheme.of(context).colors;
 
     return InkWell(
       onTap: onTap,
@@ -1161,22 +1156,20 @@ class OnlineWorkCard extends ConsumerWidget {
             },
       // 与卡面圆角对齐（原为 10；卡面用 12，水波纹比卡面小一圈会露出边角）
       borderRadius: BorderRadius.circular(12),
-      child: HikoGlass(
-        tier: HikoGlassTier.tile,
-        borderRadius: 12,
-        padding: const EdgeInsets.all(kOnlineCardPadding),
-        animationDuration: const Duration(milliseconds: 300),
-        tint: cardBg,
-        borderColor: selected ? theme.colorScheme.primary : cardBorder,
-        borderWidth: selected ? 1.5 : 0.8,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
-        child: Column(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(12),
+          border: selected
+              ? Border.all(color: colors.primary, width: 1.5)
+              : null,
+          boxShadow: M3EElevation.shadow(M3EElevation.level1, colors.shadow),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(kOnlineCardPadding),
+            child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ClipRRect(
@@ -1281,6 +1274,8 @@ class OnlineWorkCard extends ConsumerWidget {
               ),
             ],
           ],
+            ),
+          ),
         ),
       ),
     );

@@ -12,7 +12,6 @@ import 'package:hiko/data/settings_store.dart';
 import 'package:hiko/ui/screens/online_screen.dart';
 import 'package:hiko/ui/theme.dart';
 import 'package:hiko/ui/widgets/detail_kit.dart';
-import 'package:hiko/ui/widgets/hiko_glass.dart';
 import 'package:hiko/ui/widgets/online_card_kit.dart';
 import 'package:hiko/ui/widgets/online_cover.dart';
 import 'package:hiko/ui/widgets/online_work_grid.dart';
@@ -146,55 +145,60 @@ void main() {
     });
   });
 
-  group('卡面玻璃（1.99.23 与本地专辑卡对齐）', () {
-    testWidgets('卡面有一层 tile 档玻璃（不能退回纯透明 Container）', (tester) async {
+  group('卡面材质（1.99.30 M3E 色调面）', () {
+    testWidgets('卡面是不透明色调面（surfaceContainerLow），玻璃不得回流', (tester) async {
       await tester.pumpWidget(
         host(OnlineWorkCard(work: work(), onTap: () {})),
       );
       await tester.pump();
 
-      final glass = tester.widgetList<HikoGlass>(find.byType(HikoGlass));
+      // 找卡面上的 DecoratedBox：底色必须是 M3E surfaceContainerLow
+      final decor = tester.widgetList<DecoratedBox>(
+        find.descendant(
+          of: find.byType(OnlineWorkCard),
+          matching: find.byType(DecoratedBox),
+        ),
+      ).map((d) => d.decoration as BoxDecoration).toList();
       expect(
-        glass,
-        isNotEmpty,
-        reason: '在线卡摆在本专辑卡旁边必须是同一种材质，'
+        decor.any((d) =>
+            d.color != null &&
+            d.color != Colors.transparent &&
+            d.borderRadius != null),
+        isTrue,
+        reason: '在线卡必须有不透明色调面，'
             '之前它是纯透明 Container（只有选中态一条描边）',
       );
-      for (final g in glass) {
-        expect(
-          g.tier,
-          HikoGlassTier.tile,
-          reason: '在线卡片同样在主滚动网格里，必须是 standard 轻量档；'
-              '写成 surface 档会逐卡自建渲染图层',
-        );
-        expect(
-          g.animationDuration,
-          isNotNull,
-          reason: '选中态的颜色/描边过渡不能丢',
-        );
-      }
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('选中态加粗描边并换成主色，未选中回到微光边', (tester) async {
+    testWidgets('选中态加 primary 描边，未选中无描边', (tester) async {
       Widget card(bool selected) => host(
         OnlineWorkCard(work: work(), onTap: () {}, selected: selected),
       );
 
+      Color? cardBorder(WidgetTester tester) {
+        for (final d in tester.widgetList<DecoratedBox>(
+          find.descendant(
+            of: find.byType(OnlineWorkCard),
+            matching: find.byType(DecoratedBox),
+          ),
+        )) {
+          final deco = d.decoration as BoxDecoration;
+          if (deco.border is Border) return (deco.border as Border).top.color;
+        }
+        return null;
+      }
+
       await tester.pumpWidget(card(false));
       await tester.pump();
-      final resting = tester.widget<HikoGlass>(find.byType(HikoGlass));
-      expect(resting.borderWidth, lessThan(1.0), reason: '常态是微光边，不该抢眼');
+      final resting = cardBorder(tester);
 
       await tester.pumpWidget(card(true));
       await tester.pump(const Duration(milliseconds: 400));
-      final active = tester.widget<HikoGlass>(find.byType(HikoGlass));
-      expect(
-        active.borderWidth,
-        greaterThan(resting.borderWidth),
-        reason: '选中态必须比常态更粗，否则「已选中」在网格里读不出来',
-      );
-      expect(active.borderColor, isNot(resting.borderColor));
+      final active = cardBorder(tester);
+
+      expect(resting, isNull, reason: '常态无边（层级靠色阶，不靠描边）');
+      expect(active, isNotNull, reason: '选中态必须有描边才在网格里读得出来');
     });
   });
 

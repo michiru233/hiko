@@ -30,7 +30,6 @@ import '../../utils/masonry_layout.dart';
 import '../../utils/rj.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
-import '../theme.dart';
 import '../widgets/album_card.dart';
 import '../widgets/activity_overlay.dart';
 import '../widgets/category_dialog.dart';
@@ -40,7 +39,6 @@ import '../widgets/detail_drawer.dart';
 import '../widgets/hiko_floating_header.dart';
 import '../m3e/m3e.dart';
 import '../widgets/category_chips.dart';
-import '../widgets/hiko_glass.dart';
 import '../widgets/hiko_nav_destinations.dart';
 import '../widgets/online_appearance.dart';
 import '../widgets/toast.dart';
@@ -600,31 +598,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               // 移动端：左边缘右滑呼出抽屉（1.54，安卓惯例）。用 Listener 直接跟踪指针
               //（不进手势竞技场，网格垂直滚动识别器不会吞掉水平拖动）；竖向位移大于
               // 横向即视为滚动放弃呼出。配合 MainActivity 的系统手势排除区使用。
+              // 1.99.30：玻璃时代的「全局动态封面光晕」（σ80 氛围模糊）随玻璃
+              // 一起退场（plan §9.1 滤波清零锁）；播放氛围由全屏播放页的
+              // 封面主色渐变承担。
               child: Stack(
                 children: [
-                  // 背景全局动态封面光晕 (Ambient Backdrop Glow)
-                  if (ref.watch(playbackProvider).album != null)
-                    Positioned(
-                      top: -100,
-                      left: -100,
-                      width: 500,
-                      height: 500,
-                      child: IgnorePointer(
-                        child: Opacity(
-                          opacity: theme.brightness == Brightness.dark ? 0.15 : 0.08,
-                          // RepaintBoundary（1.88.1）：σ80 是本应用里最贵的一个
-                          // 滤镜（且里层还套着封面的 σ20）。它只在正在播放的专辑
-                          // 变化时才会变，此前却每次父级重绘都重算——路由转场要求
-                          // 整页重绘时，这一层就能吃掉半个帧预算。
-                          child: RepaintBoundary(
-                            child: ImageFiltered(
-                              imageFilter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
-                              child: AlbumCover(album: ref.watch(playbackProvider).album!),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
                   Column(
                     children: [
                       Expanded(
@@ -2363,19 +2341,16 @@ class _SortSelector extends StatelessWidget {
       onTap: () => _openSortMenu(context),
       mouseCursor: SystemMouseCursors.click,
       borderRadius: BorderRadius.circular(10),
-      child: HikoGlass(
-        // 与筛选 chips 同款玻璃胶囊底，工具栏三控件视觉统一
-        // 1.99.22：换用 HikoGlass（surface 档），几何与原先的 Container 一致。
-        borderRadius: 10,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        borderWidth: 1.0,
-        tint: theme.brightness == Brightness.dark
-            ? HikoColors.darkGlassCard
-            : HikoColors.lightGlassCard,
-        borderColor: theme.brightness == Brightness.dark
-            ? HikoColors.darkGlassBorderSubtle
-            : HikoColors.lightGlassBorderSubtle,
-        child: Row(
+      // 1.99.30 M3E：色调胶囊（去玻璃），与标签/多选入口同层
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: M3ETheme.of(context).colors.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: M3ETheme.of(context).colors.outlineVariant),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (!isMobile) ...[
@@ -2404,6 +2379,7 @@ class _SortSelector extends StatelessWidget {
               color: theme.hintColor,
             ),
           ],
+          ),
         ),
       ),
     );

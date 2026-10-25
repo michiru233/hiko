@@ -1,3 +1,4 @@
+import 'dart:io' show File;
 import 'dart:typed_data';
 import 'dart:ui' show Color;
 
@@ -5,17 +6,31 @@ import 'package:image/image.dart' as img;
 
 import 'cover_cache.dart';
 
-/// 封面主色提取（1.99.29，播放页背景渐变用）。
+/// 封面主色提取（1.99.29 播放页背景渐变用；1.99.30 兼任配色种子的取色层）。
 ///
 /// 复用 [CoverCache] 的字节缓存（data:/网络同源），`package:image` 降采样到
 /// 32×32 后做粗直方图取主色。plan §9.2 规定的配色种子管线（降采样 → 主色 →
-/// HCT）在 1.99.30 落地时与本文件合并；那里需要 HCT 色调板，这里只要一个
-/// 「能代表这张封面」的颜色，RGB 直方图就够。
+/// HCT）在取到主色后由 ColorScheme.fromSeed 完成 HCT 部分，本文件只要一个
+/// 「能代表这张图」的颜色，RGB 直方图就够。
 ///
 /// 主色规则：饱和度太低的灰段（近黑/近白）不配当主色，除非整张图都灰。
 /// 结果按封面源缓存，同一封面整个会话只解码一次。
 abstract final class CoverColor {
   static final Map<String, Color> _cache = {};
+
+  /// 本地文件（1.99.30 配色种子：自选图片 / macOS 壁纸）。
+  static Future<Color?> fromFile(String path) async {
+    final cached = _cache['file:$path'];
+    if (cached != null) return cached;
+    try {
+      final bytes = await File(path).readAsBytes();
+      final color = _fromBytes(bytes);
+      if (color != null) _cache['file:$path'] = color;
+      return color;
+    } catch (_) {
+      return null;
+    }
+  }
 
   static Color? _fromBytes(Uint8List bytes) {
     final decoded = img.decodeImage(bytes);

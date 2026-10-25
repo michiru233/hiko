@@ -17,8 +17,15 @@ final ValueNotifier<bool> privacyBlur = ValueNotifier(true);
 
 /// 应用设置（对应旧版 localStorage 各项 + 刮削代理）
 class AppSettings {
-  final String theme; // light / dark
-  final String accent; // 六色之一
+  final String theme; // light / dark / system（1.99.30 三态：跟随系统）
+  final String accent; // 六色之一（= seedSource=preset 时的种子）
+  // 1.99.30 配色来源（plan §9.2）：preset 预设强调色 / custom 自选图片 / system 跟随系统。
+  // 种子解析优先级 custom > system > preset（§11.2 配色种子锁），任一档不可用静默回退。
+  final String seedSource;
+  // 1.99.30 动效三档（plan §8.7）：full 完整 / reduced 减弱 / off 关闭
+  final String motionLevel;
+  // 1.99.30 对比度档（ColorScheme.fromSeed contrastLevel）：standard / medium / high
+  final String contrast;
   final double volume; // 0.0 - 1.0
   final double audioGain; // 1.0 - 4.0（音频增益倍率，默认 1.0 即 100% 不放大，最高 4.0x，经 af 链软限幅防破音）
   final String playMode; // list / single / shuffle / album
@@ -102,6 +109,9 @@ class AppSettings {
   const AppSettings({
     this.theme = 'light',
     this.accent = defaultAccent,
+    this.seedSource = 'preset',
+    this.motionLevel = 'full',
+    this.contrast = 'standard',
     this.volume = 0.8,
     this.audioGain = 1.0,
     this.playMode = 'list',
@@ -176,6 +186,9 @@ class AppSettings {
   AppSettings copyWith({
     String? theme,
     String? accent,
+    String? seedSource,
+    String? motionLevel,
+    String? contrast,
     double? volume,
     double? audioGain,
     String? playMode,
@@ -210,6 +223,9 @@ class AppSettings {
       AppSettings(
         theme: theme ?? this.theme,
         accent: accent ?? this.accent,
+        seedSource: seedSource ?? this.seedSource,
+        motionLevel: motionLevel ?? this.motionLevel,
+        contrast: contrast ?? this.contrast,
         volume: volume ?? this.volume,
         audioGain: audioGain ?? this.audioGain,
         playMode: playMode ?? this.playMode,
@@ -267,6 +283,9 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   SettingsNotifier() : super(const AppSettings());
 
   static const _kTheme = 'hiko-theme';
+  static const _kSeedSource = 'hiko-seed-source';
+  static const _kMotionLevel = 'hiko-motion-level';
+  static const _kContrast = 'hiko-contrast';
   static const _kAccent = 'hiko-accent';
   static const _kVolume = 'hiko-volume';
   static const _kAudioGain = 'hiko-audio-gain';
@@ -568,6 +587,9 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     state = AppSettings(
       theme: prefs.getString(_kTheme) ?? 'light',
       accent: prefs.getString(_kAccent) ?? AppSettings.defaultAccent,
+      seedSource: prefs.getString(_kSeedSource) ?? 'preset',
+      motionLevel: prefs.getString(_kMotionLevel) ?? 'full',
+      contrast: prefs.getString(_kContrast) ?? 'standard',
       volume: (prefs.getDouble(_kVolume) ?? 0.8).clamp(0.0, 1.0),
       audioGain: (prefs.getDouble(_kAudioGain) ?? 1.0)
           .clamp(1.0, desktopGainCap()),
@@ -613,6 +635,9 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   }
 
   Future<void> setTheme(String theme) => _save(_kTheme, theme, state.copyWith(theme: theme));
+  Future<void> setSeedSource(String v) => _save(_kSeedSource, v, state.copyWith(seedSource: v));
+  Future<void> setMotionLevel(String v) => _save(_kMotionLevel, v, state.copyWith(motionLevel: v));
+  Future<void> setContrast(String v) => _save(_kContrast, v, state.copyWith(contrast: v));
   Future<void> setAccent(String accent) => _save(_kAccent, accent, state.copyWith(accent: accent));
   Future<void> setVolume(double volume) =>
       _save(_kVolume, volume.clamp(0.0, 1.0), state.copyWith(volume: volume.clamp(0.0, 1.0)));

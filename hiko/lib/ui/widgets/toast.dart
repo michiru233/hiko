@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../m3e/m3e.dart';
 import 'activity_overlay.dart';
 
 /// 全局 toast。应用运行时优先使用 MaterialApp 根通知层，测试或嵌入场景
@@ -30,39 +31,14 @@ void showHikoToast(
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 520),
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 180),
-              builder: (_, opacity, child) =>
-                  Opacity(opacity: opacity, child: child),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 13,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF292735),
-                  borderRadius: BorderRadius.circular(7),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.25),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Text(
-                  message,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                      decoration: TextDecoration.none,
-                  ),
-                ),
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: const Duration(milliseconds: 180),
+                builder: (_, opacity, child) =>
+                    Opacity(opacity: opacity, child: child),
+                // 1.99.30 M3E：inverseSurface 反色面、角 4（plan §8.8 Snackbar）
+                child: _M3EToastSurface(message: message),
               ),
-            ),
           ),
         ),
       ),
@@ -89,5 +65,51 @@ void _dismissActiveToast() {
     try {
       entry.remove();
     } catch (_) {}
+  }
+}
+
+/// toast 材质（1.99.30）：M3E 反色面，角 4；无祖先 M3E 主题时回退 Material 配色。
+class _M3EToastSurface extends StatelessWidget {
+  const _M3EToastSurface({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final m3e = M3ETheme.maybeOf(context);
+    final Color bg;
+    final Color fg;
+    if (m3e != null) {
+      bg = m3e.colors.inverseSurface;
+      fg = m3e.colors.onInverseSurface;
+    } else {
+      final scheme = Theme.of(context).colorScheme;
+      bg = scheme.inverseSurface;
+      fg = scheme.onInverseSurface;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(4),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Text(
+        message,
+        maxLines: 3,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: fg,
+          fontSize: 12,
+          decoration: TextDecoration.none,
+        ),
+      ),
+    );
   }
 }

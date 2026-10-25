@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -19,7 +18,7 @@ import '../lyrics/drawer_lyrics_view.dart';
 import '../theme.dart';
 import '../transitions/fullscreen_player_route.dart';
 import 'detail_kit.dart';
-import 'hiko_glass.dart';
+import '../m3e/m3e.dart';
 import 'offline_download_dialog.dart';
 import '../../data/online/offline_downloads.dart';
 import 'online_account_dialogs.dart';
@@ -56,52 +55,18 @@ class OnlineDetailPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    // 氛围背板的底图：整块被 σ55 糊掉，只留色块，不构成隐私风险。
-    // 与详情大图共用同一个 URL —— 磁盘缓存只存一份
-    final coverUrl = ref.watch(onlineClientProvider).coverMainUrl(workId);
-
-    return Container(
+    // 1.99.30 M3E：不透明色调面（surfaceContainerLow）+ 海拔 3 投影，
+    // 玻璃边框与 σ55 氛围背板一起退场（plan §9.1）
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: isDark ? HikoColors.darkBg : HikoColors.lightBg,
-        border: Border(
-          left: BorderSide(
-            color:
-                isDark ? HikoColors.darkGlassBorder : HikoColors.lightGlassBorder,
-            width: 1,
-          ),
+        color: M3ETheme.of(context).colors.surfaceContainerLow,
+        boxShadow: M3EElevation.shadow(
+          M3EElevation.level3,
+          M3ETheme.of(context).colors.shadow,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.1),
-            blurRadius: 40,
-            offset: const Offset(-15, 0),
-          ),
-        ],
       ),
       child: Stack(
         children: [
-          // 沉浸式虚化封面氛围背板（与本地抽屉同参数）
-          Positioned(
-            top: -60,
-            right: -60,
-            width: 320,
-            height: 320,
-            child: IgnorePointer(
-              child: Opacity(
-                opacity: isDark ? 0.10 : 0.07,
-                // RepaintBoundary（1.88.1 硬约束）：σ55 里层还套着 OnlineCover
-                // 自己的 σ20，不隔离就会在父级每次重绘时把两层高斯都重算一遍。
-                child: RepaintBoundary(
-                  child: ImageFiltered(
-                    imageFilter: ImageFilter.blur(sigmaX: 55, sigmaY: 55),
-                    child: OnlineCover(url: coverUrl),
-                  ),
-                ),
-              ),
-            ),
-          ),
           Positioned.fill(
             child: OnlineDetailBody(
               // 换作品时重置 Tab 与折叠态（State 会随位置被复用）
@@ -112,18 +77,13 @@ class OnlineDetailPanel extends ConsumerWidget {
               onOpenWork: onOpenWork,
             ),
           ),
-          // 关闭按钮（玻璃悬浮微圆角）
-          // 1.99.22：材质换用 HikoGlass（premium 档 + 自建渲染图层）。
-          // 圆形半径 999 / 模糊 10 / 底色与原 IconButton 背景色逐项一致。
+          // 关闭按钮（1.99.30 M3E 色调圆钮，去玻璃）
           Positioned(
             right: 14,
             top: 14,
-            child: HikoGlass(
-              borderRadius: 999,
-              blur: 10,
-              tint: isDark
-                  ? Colors.white.withValues(alpha: 0.12)
-                  : Colors.black.withValues(alpha: 0.06),
+            child: Material(
+              color: M3ETheme.of(context).colors.surfaceContainerHighest,
+              shape: const CircleBorder(),
               child: IconButton(
                 onPressed: onClose,
                 icon: const Icon(Icons.close_rounded, size: 16),
@@ -519,13 +479,13 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
           isDark: isDark,
         ),
         OutlinedButton.icon(
-          style: hikoOutlinedPillStyle(isDark: isDark),
+          style: hikoOutlinedPillStyle(context: context),
           onPressed: () => unawaited(_openInBrowser(work)),
           icon: const Icon(Icons.open_in_new_rounded, size: 15),
           label: Text('在浏览器打开', style: actionStyle),
         ),
         OutlinedButton.icon(
-          style: hikoOutlinedPillStyle(isDark: isDark),
+          style: hikoOutlinedPillStyle(context: context),
           onPressed: work.rjCode == null
               ? null
               : () => unawaited(_copyRj(work.rjCode!)),
@@ -534,7 +494,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
         ),
         if (folderKeys.isNotEmpty)
           OutlinedButton.icon(
-            style: hikoOutlinedPillStyle(isDark: isDark),
+            style: hikoOutlinedPillStyle(context: context),
             onPressed: () => setState(() {
               if (allExpanded) {
                 _expanded.clear();
@@ -1111,7 +1071,7 @@ class OnlineFavoriteButton extends ConsumerWidget {
 
     if (!account.loggedIn) {
       return OutlinedButton.icon(
-        style: hikoOutlinedPillStyle(isDark: isDark),
+        style: hikoOutlinedPillStyle(context: context),
         // 恢复登录态期间禁用：否则冷启动那一下会闪出「去登录」，
         // 而用户其实早就登录了
         onPressed: account.settled
@@ -1151,7 +1111,7 @@ class OnlineFavoriteButton extends ConsumerWidget {
                 alpha: isDark ? 0.16 : 0.08,
               ),
             )
-          : hikoOutlinedPillStyle(isDark: isDark),
+          : hikoOutlinedPillStyle(context: context),
       onPressed: () => unawaited(showPlaylistPicker(context, work: work)),
       icon: Icon(
         highlighted
@@ -1547,7 +1507,7 @@ class _OfflineActionButton extends ConsumerWidget {
     };
 
     return OutlinedButton.icon(
-      style: hikoOutlinedPillStyle(isDark: isDark),
+      style: hikoOutlinedPillStyle(context: context),
       onPressed: onPressed_,
       icon: Icon(icon, size: 15),
       label: Text(label, style: actionStyle),

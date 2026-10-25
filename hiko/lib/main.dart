@@ -14,8 +14,8 @@ import 'data/settings_store.dart';
 import 'playback/audio_handler.dart';
 import 'playback/hiko_media_kit_player.dart';
 import 'playback/playback_controller.dart';
-import 'ui/background.dart';
 import 'ui/covers/cover_cache.dart';
+import 'ui/covers/cover_color.dart';
 import 'ui/global_shortcuts.dart';
 import 'ui/m3e/theme/m3e_theme.dart';
 import 'ui/m3e/theme/m3e_theme_builder.dart';
@@ -91,19 +91,67 @@ class HikoApp extends ConsumerStatefulWidget {
   ConsumerState<HikoApp> createState() => _HikoAppState();
 }
 
-class _HikoAppState extends ConsumerState<HikoApp> {
-  String _bgPathRequested = '';
-
+class _HikoAppState extends ConsumerState<HikoApp> with WidgetsBindingObserver {
   /// M3E 主题缓存（1.99.26）：`builder` 会随 MediaQuery 变化（键盘、窗口缩放）
   /// 反复重建，而配色生成要跑一整套 HCT 色调板 —— 只有强调色/明暗变了才重算。
   String _m3eCacheKey = '';
   M3EThemeData? _m3eData;
 
+  // 1.99.30 配色种子（plan §9.2）：custom 图片 / system 壁纸的解析是异步 IO，
+  // 在这里解一层缓存；解析完成前用预设强调色兜底（§11.2 配色种子锁：静默回退）。
+  String _seedRequestedKey = '';
+  Color? _resolvedSeed;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangePlatformBrightness() {
+    // 主题模式 = 跟随系统时，系统明暗切换要重建整树
+    if (mounted) setState(() {});
+  }
+
+  /// 种子解析链：custom（自选图片）> system（macOS 桌面壁纸）> preset（强调色）。
+  /// 任一档不可用返回 null，调用方回退强调色，不抛错。
+  Future<void> _resolveSeed(AppSettings settings) async {
+    Color? seed;
+    if (settings.seedSource == 'custom' && settings.backgroundPath.isNotEmpty) {
+      seed = await CoverColor.fromFile(settings.backgroundPath);
+    } else if (settings.seedSource == 'system') {
+      seed = await _systemSeedColor();
+    }
+    if (!mounted) return;
+    setState(() => _resolvedSeed = seed);
+  }
+
+  /// 跟随系统：macOS 读当前桌面壁纸文件路径（原生侧 NSWorkspace），
+  /// 复用图片取色管线；其余平台暂无来源（Android 动态取色 1.99.31）。
+  Future<Color?> _systemSeedColor() async {
+    if (!Platform.isMacOS) return null;
+    try {
+      final path = await const MethodChannel('hiko/system')
+          .invokeMethod<String>('wallpaperPath');
+      if (path == null || path.isEmpty) return null;
+      return await CoverColor.fromFile(path);
+    } catch (_) {
+      return null;
+    }
+  }
+
   M3EThemeData _m3eTheme(AppSettings settings) {
-    final key = m3eThemeCacheKey(settings);
+    final key = m3eThemeCacheKey(settings, seed: _resolvedSeed);
     if (_m3eData == null || _m3eCacheKey != key) {
       _m3eCacheKey = key;
-      _m3eData = buildM3EThemeData(settings);
+      _m3eData = buildM3EThemeData(settings, seed: _resolvedSeed);
     }
     return _m3eData!;
   }
@@ -122,21 +170,14 @@ class _HikoAppState extends ConsumerState<HikoApp> {
         final scaledMediaQuery = mediaQuery.copyWith(
           textScaler: TextScaler.linear(settings.fontScale),
         );
-        // 自定义背景（1.84）：根层铺「底色 + 图片 + 薄纱」，Navigator 之下，
-        // Scaffold 透明即透出（外观区里未启用时零开销）。
-        // 背景图经 loadBackgroundImage 一次性解码常驻（1.86），路径变更时重载。
+        // 1.99.30（D6）：背景图不再铺底，语义改为「配色种子」——
+        // 图片只参与取色（_resolveSeed），根层不再渲染任何背景图层。
         Widget content = child ?? const SizedBox.shrink();
-        if (_bgPathRequested != settings.backgroundPath) {
-          _bgPathRequested = settings.backgroundPath;
-          unawaited(loadBackgroundImage(settings.backgroundPath));
-        }
-        if (settings.backgroundPath.isNotEmpty) {
-          content = Stack(
-            children: [
-              BackgroundLayer(settings: settings),
-              Positioned.fill(child: content),
-            ],
-          );
+        final seedKey = '${settings.seedSource}|${settings.backgroundPath}';
+        if (_seedRequestedKey != seedKey) {
+          _seedRequestedKey = seedKey;
+          _resolvedSeed = null; // 解析期间先用强调色，避免旧图颜色滞留
+          unawaited(_resolveSeed(settings));
         }
         return M3ETheme(
           data: _m3eTheme(settings),

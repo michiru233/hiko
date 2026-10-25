@@ -53,6 +53,7 @@ class MainFlutterWindow: NSWindow {
 
     registerPickerChannel(flutterViewController)
     registerMenuChannel(flutterViewController)
+    registerSystemChannel(flutterViewController)
 
     // 注册桌面悬浮歌词 HUD 控制器
     let hudController = DesktopLyricsHUDController()
@@ -71,6 +72,28 @@ class MainFlutterWindow: NSWindow {
       binaryMessenger: controller.engine.binaryMessenger
     )
     MainFlutterWindow.menuChannel = channel
+  }
+
+  /// 系统信息通道（1.99.30 配色种子）：返回当前桌面壁纸的文件路径，
+  /// 取色在 Dart 侧复用图片管线（NSWorkspace 原生侧不碰像素）。
+  private func registerSystemChannel(_ controller: FlutterViewController) {
+    let channel = FlutterMethodChannel(
+      name: "hiko/system",
+      binaryMessenger: controller.engine.binaryMessenger
+    )
+    channel.setMethodCallHandler { call, result in
+      switch call.method {
+      case "wallpaperPath":
+        if let screen = NSScreen.main,
+           let url = NSWorkspace.shared.desktopImageURL(for: screen) {
+          result(url.path)
+        } else {
+          result(nil)
+        }
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
   }
 
   /// 批量导入目录选择（对应旧版 Electron dialog multiSelections）

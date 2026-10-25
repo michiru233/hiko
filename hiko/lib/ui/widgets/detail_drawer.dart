@@ -83,7 +83,6 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final album = ref.watch(
       libraryProvider.select(
         (list) => list.firstWhere(
@@ -178,7 +177,7 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                           label: const Text('从头播放', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                         ),
                         OutlinedButton.icon(
-                          style: hikoOutlinedPillStyle(isDark: isDark),
+                          style: hikoOutlinedPillStyle(context: context),
                           onPressed: () async {
                             await ref
                                 .read(libraryProvider.notifier)
@@ -192,7 +191,7 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                           label: Text(album.favorite ? '已收藏' : '收藏', style: const TextStyle(fontSize: 11)),
                         ),
                         OutlinedButton.icon(
-                          style: hikoOutlinedPillStyle(isDark: isDark),
+                          style: hikoOutlinedPillStyle(context: context),
                           onPressed: () async {
                             final rating = await showRatingDialog(
                               context,
@@ -214,7 +213,7 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                           ),
                         ),
                         OutlinedButton.icon(
-                          style: hikoOutlinedPillStyle(isDark: isDark),
+                          style: hikoOutlinedPillStyle(context: context),
                           onPressed: () async {
                             try {
                               final result = await ref

@@ -24,27 +24,6 @@ class HikoColors {
   static const darkTrack = Color(0xFF3A3D45);
   static const darkCard = Color(0xFF23252C);
 
-  // 玻璃拟态专属色彩规范 (Glassmorphism Tokens)
-  // 深色玻璃表面
-  static const darkGlassSurface = Color(0xB81D1F24); // 72% 不透明度
-  // 1.99.24：卡片底色从 0x9923252C 提亮到 0x992A2C31。
-  // 原因是深色卡原来只比页面底（darkBg 0x1D1F24）亮 2 —— 卡片几乎完全靠边缘
-  // 定义自己，于是把着色器那圈白边放大成了「唯一可见的卡面特征」（1.99.24 深色卡
-  // 改走无着色器面之后尤其明显：没有边缘就没卡片了）。
-  // 现在的合成结果 ≈ (37,39,44)，比页面底亮 8，与浅色卡「比底亮 4~7」同量级。
-  // 不再往上加：深色里再亮就变成灰块了。alpha 仍保持 60%，保留玻璃半透的底色语义
-  // （本 token 也被首页静态胶囊 / 在线卡复用，一起统一）。
-  static const darkGlassCard = Color(0x992A2C31);    // 60% 不透明度
-  static const darkGlassBorder = Color(0x2EFFFFFF);  // 18% 白色高光边缘
-  static const darkGlassBorderSubtle = Color(0x14FFFFFF); // 8% 白色微光边缘
-  static const darkGlassHighlight = Color(0x1AFFFFFF); // 10% 顶边内高光
-
-  // 浅色玻璃表面
-  static const lightGlassSurface = Color(0xB3FFFFFF); // 70% 不透明度
-  static const lightGlassCard = Color(0xC7FFFFFF);    // 78% 不透明度
-  static const lightGlassBorder = Color(0x66FFFFFF);  // 40% 白色反光边缘
-  static const lightGlassBorderSubtle = Color(0x14000000); // 8% 浅黑边缘
-  static const lightGlassHighlight = Color(0x80FFFFFF); // 50% 顶边内高光
 }
 
 /// '#6559d8' → Color
@@ -55,7 +34,15 @@ Color parseHexColor(String hex) {
 }
 
 ThemeData buildHikoTheme(AppSettings settings) {
-  final dark = settings.theme == 'dark';
+  // 1.99.30：主题三态（light/dark/system）；system 走 platformDispatcher
+  //（与 m3e_theme_builder.hikoBrightness 同语义，就地内联避免反向依赖）
+  final dark = switch (settings.theme) {
+    'dark' => true,
+    'system' =>
+      WidgetsBinding.instance.platformDispatcher.platformBrightness ==
+          Brightness.dark,
+    _ => false,
+  };
   final accent = parseHexColor(settings.accent);
   final scheme = ColorScheme.fromSeed(
     seedColor: accent,
@@ -69,10 +56,9 @@ ThemeData buildHikoTheme(AppSettings settings) {
   final base = ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
-    // 自定义背景启用时交给根层 BackgroundLayer 铺底（主题底色 + 图片 + 薄纱），
+    // 1.99.30（D6）：背景图不再铺底，scaffold 永远实底；
     // Scaffold 全透明让背景透出（1.84）
-    scaffoldBackgroundColor:
-        settings.backgroundPath.isNotEmpty ? Colors.transparent : bg,
+    scaffoldBackgroundColor: bg,
   );
 
   // 全局 Ink 按压反馈（1.32）：M3 水波纹 + 按压 overlay ≥0.12 alpha
@@ -110,9 +96,18 @@ ThemeData buildHikoTheme(AppSettings settings) {
     outlinedButtonTheme: OutlinedButtonThemeData(style: inkButtonStyle()),
     textButtonTheme: TextButtonThemeData(style: inkButtonStyle()),
     iconButtonTheme: IconButtonThemeData(style: inkButtonStyle()),
+    // 1.99.30 M3E 对话框壳（plan §8.8）：角 28、surfaceContainerHigh、
+    // 标题 headlineSmall —— 6 个 AlertDialog 一次覆盖
     dialogTheme: DialogThemeData(
-      backgroundColor: dark ? HikoColors.darkCard : const Color(0xFFFAF9F7),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      backgroundColor: scheme.surfaceContainerHigh,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      titleTextStyle: TextStyle(
+        fontSize: 24,
+        fontWeight: FontWeight.w500,
+        color: scheme.onSurface,
+        fontFamily: 'DM Sans',
+        fontFamilyFallback: const ['Noto Sans SC', 'Noto Sans JP'],
+      ),
     ),
     sliderTheme: SliderThemeData(
       activeTrackColor: accent,

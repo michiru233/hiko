@@ -18,7 +18,7 @@ import '../../data/update_checker.dart';
 import '../../playback/gain_chain.dart';
 import '../../playback/playback_controller.dart';
 import '../../platform/platform_service.dart';
-import '../background.dart';
+import 'seed_image_picker.dart';
 import 'online_account_dialogs.dart';
 import 'online_appearance.dart';
 import 'online_tag_menu.dart';
@@ -95,8 +95,6 @@ class SettingsDialog extends ConsumerStatefulWidget {
 
 class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   double? _gainDrag; // 增益滑动条拖动中的临时值（松手才提交）
-  double? _bgBlurDrag; // 背景模糊度拖动中的临时值（松手才提交）
-  double? _bgOpacityDrag; // 背景不透明度拖动中的临时值（松手才提交）
   String? _category; // 当前所在分类 key；null = 分类首页
 
   // ---- 软件更新状态 ----
@@ -247,7 +245,9 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
         ref.read(settingsProvider).backgroundPath,
       );
       if (path == null || !mounted) return;
-      ref.read(settingsProvider.notifier).setBackgroundImage(path);
+      await ref.read(settingsProvider.notifier).setBackgroundImage(path);
+      // 1.99.30：选图即把配色来源切到「自选图片」（plan §9.2）
+      await ref.read(settingsProvider.notifier).setSeedSource('custom');
     } catch (e) {
       if (mounted) _toast('选择背景图失败:$e');
     }
@@ -404,6 +404,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                 for (final (key, label) in [
                   ('light', '浅色'),
                   ('dark', '深色'),
+                  ('system', '跟随系统'),
                 ])
                   InkWell(
                     onTap: () =>
@@ -429,6 +430,20 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                   ),
               ],
             ),
+          ),
+        ),
+        _SettingRow(
+          label: '配色来源',
+          subtitle: '用哪个颜色/图片生成整套配色',
+          trailing: _SettingDropdown<String>(
+            value: settings.seedSource,
+            items: const [
+              ('preset', '预设强调色'),
+              ('custom', '自选图片'),
+              ('system', '跟随系统'),
+            ],
+            onChanged: (v) =>
+                ref.read(settingsProvider.notifier).setSeedSource(v),
           ),
         ),
         _SettingRow(
@@ -464,6 +479,34 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
           ),
         ),
         _SettingRow(
+          label: '对比度',
+          subtitle: '提高正文与底色的对比（无障碍）',
+          trailing: _SettingDropdown<String>(
+            value: settings.contrast,
+            items: const [
+              ('standard', '标准'),
+              ('medium', '中'),
+              ('high', '高'),
+            ],
+            onChanged: (v) =>
+                ref.read(settingsProvider.notifier).setContrast(v),
+          ),
+        ),
+        _SettingRow(
+          label: '动效',
+          subtitle: '关闭后动画直达终态（性能与晕动症双保险）',
+          trailing: _SettingDropdown<String>(
+            value: settings.motionLevel,
+            items: const [
+              ('full', '完整'),
+              ('reduced', '减弱'),
+              ('off', '关闭'),
+            ],
+            onChanged: (v) =>
+                ref.read(settingsProvider.notifier).setMotionLevel(v),
+          ),
+        ),
+        _SettingRow(
           label: '字号大小',
           trailing: _SettingDropdown<double>(
             value: settings.fontScale,
@@ -478,7 +521,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
           ),
         ),
         _SettingRow(
-          label: '自定义背景',
+          label: '自选种子图',
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -524,101 +567,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
             ],
           ),
         ),
-        if (settings.backgroundPath.isNotEmpty) ...[
-          _SettingRow(
-            label: '模糊度',
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 180,
-                  child: Slider(
-                    min: 0,
-                    max: 30,
-                    divisions: 30,
-                    value:
-                        (_bgBlurDrag ?? settings.backgroundBlur).clamp(0, 30),
-                    label:
-                        '${(_bgBlurDrag ?? settings.backgroundBlur).round()}',
-                    mouseCursor: SystemMouseCursors.click,
-                    onChanged: (v) => setState(() => _bgBlurDrag = v),
-                    onChangeEnd: (v) {
-                      setState(() => _bgBlurDrag = null);
-                      ref
-                          .read(settingsProvider.notifier)
-                          .setBackgroundBlur(v);
-                    },
-                  ),
-                ),
-                SizedBox(
-                  width: 42,
-                  child: Text(
-                    '${(_bgBlurDrag ?? settings.backgroundBlur).round()}',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: (_bgBlurDrag ?? settings.backgroundBlur) > 0
-                          ? theme.colorScheme.primary
-                          : theme.hintColor,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _SettingRow(
-            label: '不透明度',
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 180,
-                  child: Slider(
-                    min: 0,
-                    max: 1,
-                    divisions: 20,
-                    value: (_bgOpacityDrag ?? settings.backgroundOpacity)
-                        .clamp(0, 1),
-                    label:
-                        '${(((_bgOpacityDrag ?? settings.backgroundOpacity) * 100).round())}%',
-                    mouseCursor: SystemMouseCursors.click,
-                    onChanged: (v) => setState(() => _bgOpacityDrag = v),
-                    onChangeEnd: (v) {
-                      setState(() => _bgOpacityDrag = null);
-                      ref
-                          .read(settingsProvider.notifier)
-                          .setBackgroundOpacity(v);
-                    },
-                  ),
-                ),
-                SizedBox(
-                  width: 42,
-                  child: Text(
-                    '${(((_bgOpacityDrag ?? settings.backgroundOpacity) * 100).round())}%',
-                    textAlign: TextAlign.right,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              '背景应用于主界面、专辑详情、全屏播放页等全部界面；不透明度调低会透出当前主题底色。',
-              style: TextStyle(
-                fontSize: 10.5,
-                height: 1.5,
-                color: theme.hintColor,
-              ),
-            ),
-          ),
-        ],
       ];
 
   // ---- 音频与增益 ----

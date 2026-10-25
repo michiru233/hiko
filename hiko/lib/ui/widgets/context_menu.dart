@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import 'hiko_glass.dart';
+import '../m3e/m3e.dart';
 
-/// 桌面与移动端通用的轻量、柔和圆角右键/长按上下文菜单项
+/// 桌面与移动端通用的轻量右键/长按上下文菜单项
 class HikoContextMenuItem<T> {
   const HikoContextMenuItem({
     required this.value,
@@ -17,7 +17,8 @@ class HikoContextMenuItem<T> {
   final bool isDestructive;
 }
 
-/// 弹出精致、圆角、柔和微缩动画的右键菜单
+/// 弹出圆角、微缩动画的右键菜单（1.99.30 M3E 化，plan §8.8：角 4、项 48dp、
+/// 分组分隔线 outlineVariant；材质 surfaceContainerHigh + 海拔 3，不再有玻璃模糊）
 Future<T?> showHikoContextMenu<T>({
   required BuildContext context,
   required Offset position,
@@ -84,13 +85,12 @@ class _HikoContextMenuOverlay<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.of(context).size;
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final colors = M3ETheme.of(context).colors;
 
-    // 菜单尺寸与边距计算
+    // 菜单尺寸与边距计算（项 48dp，plan §8.8）
     const menuWidth = 190.0;
     const padding = 12.0;
-    final estimatedHeight = items.length * 36.0 + 12.0;
+    final estimatedHeight = items.length * 48.0 + 12.0;
 
     double left = position.dx;
     double top = position.dy;
@@ -112,16 +112,6 @@ class _HikoContextMenuOverlay<T> extends StatelessWidget {
       curve: Curves.easeOutCubic,
       reverseCurve: Curves.easeInCubic,
     );
-
-    final bgColor = isDark
-        ? const Color(0xE6262830) // 半透深灰
-        : const Color(0xF5FAF9F7); // 半透暖米白
-    final borderColor = isDark
-        ? Colors.white.withValues(alpha: 0.10)
-        : Colors.black.withValues(alpha: 0.08);
-    final shadowColor = isDark
-        ? Colors.black.withValues(alpha: 0.45)
-        : Colors.black.withValues(alpha: 0.12);
 
     return Stack(
       children: [
@@ -150,46 +140,48 @@ class _HikoContextMenuOverlay<T> extends StatelessWidget {
                   position.dx > screenSize.width / 2 ? 0.8 : -0.8,
                   position.dy > screenSize.height / 2 ? 0.8 : -0.8,
                 ),
-                child: HikoGlass(
-                  // 1.99.22：材质换用 HikoGlass（premium 档 + 自建渲染图层）。
-                  // 圆角 / 宽度 / 内边距 / 阴影与原先的 ClipRRect + BackdropFilter 一致。
-                  borderRadius: 12,
-                  blur: 20,
-                  width: menuWidth,
-                  padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 4),
-                  tint: bgColor,
-                  borderColor: borderColor,
-                  boxShadow: [
-                    BoxShadow(
-                      color: shadowColor,
-                      blurRadius: 18,
-                      offset: const Offset(0, 6),
-                      spreadRadius: 0,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: colors.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(M3EShape.xs),
+                    boxShadow: M3EElevation.shadow(
+                      M3EElevation.level3,
+                      colors.shadow,
                     ),
-                  ],
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (int i = 0; i < items.length; i++) ...[
-                        _HikoMenuItemWidget<T>(
-                          item: items[i],
-                          onTap: () => Navigator.of(context).pop(items[i].value),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(M3EShape.xs),
+                    child: SizedBox(
+                      width: menuWidth,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 5),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            for (int i = 0; i < items.length; i++) ...[
+                              _HikoMenuItemWidget<T>(
+                                item: items[i],
+                                onTap: () =>
+                                    Navigator.of(context).pop(items[i].value),
+                              ),
+                              if (i < items.length - 1 &&
+                                  items[i + 1].isDestructive &&
+                                  !items[i].isDestructive)
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 3),
+                                  child: Divider(
+                                    height: 1,
+                                    thickness: 0.6,
+                                    color: colors.outlineVariant,
+                                  ),
+                                ),
+                            ],
+                          ],
                         ),
-                        if (i < items.length - 1 &&
-                            items[i + 1].isDestructive &&
-                            !items[i].isDestructive)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 3),
-                            child: Divider(
-                              height: 1,
-                              thickness: 0.6,
-                              color: borderColor,
-                            ),
-                          ),
-                      ],
-                    ],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -219,25 +211,15 @@ class _HikoMenuItemWidgetState<T> extends State<_HikoMenuItemWidget<T>> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final colors = M3ETheme.of(context).colors;
 
-    final destructiveColor = isDark
-        ? const Color(0xFFFF6B6B)
-        : const Color(0xFFD34C44);
-    final normalColor = isDark
-        ? const Color(0xFFE4E4E8)
-        : const Color(0xFF2C2D30);
-
-    final textColor = widget.item.isDestructive ? destructiveColor : normalColor;
+    final textColor = widget.item.isDestructive
+        ? colors.error
+        : colors.onSurface;
 
     final hoverBg = widget.item.isDestructive
-        ? (isDark
-            ? const Color(0x33FF6B6B)
-            : const Color(0x1AD34C44))
-        : (isDark
-            ? Colors.white.withValues(alpha: 0.08)
-            : Colors.black.withValues(alpha: 0.06));
+        ? colors.error.withValues(alpha: 0.10)
+        : colors.onSurface.withValues(alpha: 0.06);
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -247,24 +229,24 @@ class _HikoMenuItemWidgetState<T> extends State<_HikoMenuItemWidget<T>> {
         color: Colors.transparent,
         child: InkWell(
           onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(M3EShape.xs),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 90),
-            height: 32,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+            height: 48,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
               color: _hovered ? hoverBg : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(M3EShape.xs),
             ),
             child: Row(
               children: [
                 if (widget.item.icon != null) ...[
                   Icon(
                     widget.item.icon,
-                    size: 14,
+                    size: 18,
                     color: textColor.withValues(alpha: 0.85),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                 ],
                 Expanded(
                   child: Text(
@@ -272,7 +254,7 @@ class _HikoMenuItemWidgetState<T> extends State<_HikoMenuItemWidget<T>> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 12.5,
+                      fontSize: 13.5,
                       fontWeight: FontWeight.w500,
                       color: textColor,
                       decoration: TextDecoration.none,

@@ -99,11 +99,9 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     final wide = MediaQuery.sizeOf(context).width >= 1000;
 
     return Scaffold(
-      // 背景由 [_PlayerBackdrop]（封面主色三停渐变）承担；自定义背景图启用时
-      // 仍透出根层背景层（1.84 语义，配色种子 1.99.30 接管）
-      backgroundColor: settings.backgroundPath.isNotEmpty
-          ? Colors.transparent
-          : M3ETheme.of(context).colors.surface,
+      // 背景由 [_PlayerBackdrop]（封面主色三停渐变）承担（1.99.30 起永远渐变：
+      // 根层已无 BackgroundLayer 可透出）
+      backgroundColor: M3ETheme.of(context).colors.surface,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -156,11 +154,10 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
       ),
       body: Stack(
         children: [
-          // 封面主色三停渐变背景（1.99.29；自定义背景图启用时不铺）
-          if (settings.backgroundPath.isEmpty)
-            Positioned.fill(
-              child: _PlayerBackdrop(album: album, playing: state.playing),
-            ),
+          // 封面主色三停渐变背景
+          Positioned.fill(
+            child: _PlayerBackdrop(album: album, playing: state.playing),
+          ),
           SafeArea(
             child: Column(
               children: [
