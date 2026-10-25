@@ -925,6 +925,27 @@ gh release create …
 - APK aapt2：versionCode 144 / versionName 1.99.31；`native-code: arm64-v8a armeabi-v7a x86_64`。
 - M3E 重构（1.99.26→31 六版）全部收官；剩余后续项见 flutter-rewrite 计划 1.99.31 节。
 
+### 1.99.38 移动全屏页顶栏统一（2026-10-25，覆盖审计后 B1 第一件）
+
+**背景**：`audit-hiko-m3e-coverage.md` 指出 13 个 M3E 组件缺位；移动端三处全屏页
+（专辑详情 / 在线详情 / 播放页）仍用 Material `AppBar` + 自绘 scrim 圆钮。
+本版先补 `M3EIconButton` 并把这三处顶栏统一。
+
+**落地**
+- `M3EIconButton`：four variants（standard / filled / tonal / outlined），
+  视觉 32/40/48、热区 40/48/56、图标 20/24/28；`M3EPressable` 状态层 + 弹簧 0.94；
+  支持 tooltip（`excludeFromSemantics`，label 由 Pressable 提供）、selected、禁用、前景/背景覆盖。
+- `M3EAppBar` 增加 `backgroundColor` / `padding` / `topInset`：
+  透明覆盖底不画 scrolled 投影，`preferredSize = 高度 + 状态栏 inset`。
+  移动三页传 `MediaQuery.paddingOf(context).top`，图标区 padding 收到 8。
+- 接线：`album_detail_screen` / `OnlineDetailScreen` / `fullscreen_player_screen` 顶栏；
+  播放页收藏/详情/歌词切换、详情面板与在线面板关闭钮、设置页返回钮全部换 `M3EIconButton`。
+- 顺手去重：移动详情页本地 `_circleColor`/`_voiceColor` → `hikoCircleColor`/`hikoVoiceColor`；
+  删除 `_buildHeader`/`_buildTrackItem` 未使用的 `theme`/`isDark` 参数。
+
+**验证**：`flutter test` 797/2（+14）；analyze 45 条 0 error；
+macOS Release 77.4MB 冒烟启动；APK 71.4MB 后签 v1+v2+v3，aapt2 151/1.99.38。
+
 ---
 
 ## 附录 A：M3E 关键数值表（实施时照抄）

@@ -357,17 +357,16 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
               ),
             ),
           ),
-          // 关闭按钮（M3E 色调圆钮）
+          // 关闭按钮（M3E 色调圆钮，1.99.38 换 M3EIconButton）
           Positioned(
-            right: 14,
-            top: 14,
-            child: Material(
-              color: M3ETheme.of(context).colors.surfaceContainerHighest,
-              shape: const CircleBorder(),
-              child: IconButton(
-                onPressed: widget.onClose,
-                icon: const Icon(Icons.close_rounded, size: 16),
-              ),
+            right: 8,
+            top: 8,
+            child: M3EIconButton(
+              icon: Icons.close_rounded,
+              tooltip: '关闭',
+              onPressed: widget.onClose,
+              backgroundColor:
+                  M3ETheme.of(context).colors.surfaceContainerHighest,
             ),
           ),
         ],

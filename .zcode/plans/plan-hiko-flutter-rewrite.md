@@ -4081,3 +4081,28 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 
 ### 交付
 - 版本 `1.99.33+146`；Release：`hiko-v1.99.33-macos.zip` + `hiko-v1.99.33-android.apk`。
+
+## 1.99.38（2026-10-25）：移动全屏页顶栏统一（M3EIconButton 落地，B1 第一件）
+
+### 可见变化
+- 新增 `M3EIconButton`：standard / filled / tonal / outlined 四变体，
+  视觉 32/40/48 + 热区 40/48/56，走 `M3EPressable` 的 hover/focus/press 状态层、
+  弹簧按压与 Enter/Space 激活；支持 tooltip、selected、禁用态、前景/背景覆盖。
+- 移动端三处全屏页顶栏从 Material `AppBar` + 自绘黑白 scrim 圆钮换成
+  `M3EAppBar.small`（透明底 + 状态栏 `topInset`）：专辑详情、在线详情、全屏播放页。
+- 播放页动作区（收藏 / 详情 / 歌词切换）与返回钮、详情面板/在线面板关闭钮、
+  设置页返回钮全部换 `M3EIconButton`。
+- 移动详情页删除本地重复的社团紫/声优蓝常量，改用 `hikoCircleColor`/`hikoVoiceColor`；
+  清掉 `_buildHeader` / `_buildTrackItem` 里未使用的 `theme` / `isDark` 参数。
+
+### 验证
+- `flutter test`：**797 passed / 2 skipped**（基线 783/2，+14：IconButton 9、
+  AppBar 4、移动详情 360dp 1）。
+- `flutter analyze`：**45 条**（基线 47，0 error）。
+- macOS release 构建 77.4MB，实跑启动 6s 无崩溃；桌面布局不覆盖移动页，未逐页截图。
+- APK 71.4MB；apksigner 后签 v1+v2+v3，`META-INF/HIKO.SF`/`HIKO.RSA` 在位；
+  aapt2 `151 / 1.99.38`，minSdk 24。
+
+### 交付
+- 版本 `1.99.38+151`；Release：`hiko-v1.99.38-macos.zip` + `hiko-v1.99.38-android.apk`。
+- 下一项（需裁决 Q4）：移动详情封面 0 → 28 圆角，修 Hero 链 16→28→28。

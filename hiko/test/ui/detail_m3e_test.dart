@@ -3,11 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:hiko/data/library_provider.dart';
+import 'package:hiko/data/library_store.dart';
 import 'package:hiko/data/settings_store.dart';
 import 'package:hiko/models/album.dart';
 import 'package:hiko/models/track.dart';
 import 'package:hiko/playback/playback_controller.dart';
 import 'package:hiko/ui/m3e/m3e.dart';
+import 'package:hiko/ui/screens/album_detail_screen.dart';
 import 'package:hiko/ui/widgets/detail_drawer.dart';
 
 /// 详情面板 M3E 换装回归锁（1.99.34，plan-hiko-detail-m3e.md §8.2）：
@@ -79,4 +82,38 @@ void main() {
     expect(find.text('曲目列表 (2)'), findsOneWidget);
     expect(find.text('歌词字幕'), findsOneWidget);
   });
+
+  testWidgets('移动 360dp：M3EAppBar + 返回钮，无溢出', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    SharedPreferences.setMockInitialValues({});
+    final album = _album();
+    final container = ProviderContainer(
+      overrides: [
+        settingsProvider.overrideWith((ref) => SettingsNotifier()),
+        libraryProvider.overrideWith((ref) => _SeededLibrary([album])),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(home: AlbumDetailScreen(albumId: album.id)),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byType(M3EAppBar), findsOneWidget);
+    expect(find.byTooltip('返回'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+}
+
+class _SeededLibrary extends LibraryNotifier {
+  _SeededLibrary(List<Album> albums) : super(LibraryStore()) {
+    state = albums;
+  }
 }

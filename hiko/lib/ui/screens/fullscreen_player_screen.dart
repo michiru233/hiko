@@ -98,30 +98,25 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     // 窄窗与移动端回退"封面⇄歌词"切换式；两套布局共用同一份视图与状态代码。
     final wide = MediaQuery.sizeOf(context).width >= 1000;
 
+    final m3eColors = M3ETheme.of(context).colors;
     return Scaffold(
       // 背景由 [_PlayerBackdrop]（封面主色三停渐变）承担（1.99.30 起永远渐变：
       // 根层已无 BackgroundLayer 可透出）
-      backgroundColor: M3ETheme.of(context).colors.surface,
+      backgroundColor: m3eColors.surface,
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
+      // 1.99.38：全屏播放页顶栏统一到 M3EAppBar；压在渐变上时返回键用
+      // surfaceContainerHighest 色调圆底保证对比度，动作区用标准图标钮。
+      appBar: M3EAppBar.small(
+        topInset: MediaQuery.paddingOf(context).top,
         backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.black.withValues(alpha: 0.3)
-                  : Colors.white.withValues(alpha: 0.5),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.keyboard_arrow_down,
-              color: isDark ? Colors.white : Colors.black87,
-              size: 24,
-            ),
-          ),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        title: const SizedBox.shrink(),
+        leading: M3EIconButton(
+          icon: Icons.keyboard_arrow_down,
+          tooltip: '收起',
           onPressed: () => Navigator.of(context).pop(),
+          backgroundColor:
+              m3eColors.surfaceContainerHighest.withValues(alpha: 0.92),
         ),
         actions: [
           // 收藏（1.99.17，仅在线专辑）：复用在线「我的歌单」收藏体系
@@ -132,23 +127,17 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
               workTitle: album.title,
             ),
           // 跳详情（1.99.17，在线/本地通用）：关播放页开详情，播放不中断
-          IconButton(
-            icon: Icon(
-              Icons.info_outline_rounded,
-              color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
-            ),
+          M3EIconButton(
+            icon: Icons.info_outline_rounded,
             tooltip: album.isOnline ? '作品详情' : '专辑详情',
             onPressed: () => _openAlbumDetail(album),
           ),
           // 歌词/封面切换按钮（仅窄窗切换式需要；宽屏并排两块同屏无切换概念）
           if (!wide)
-            IconButton(
-              icon: Icon(
-                _showLyrics ? Icons.album : Icons.lyrics,
-                color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
-              ),
-              onPressed: () => _setShowLyrics(!_showLyrics),
+            M3EIconButton(
+              icon: _showLyrics ? Icons.album : Icons.lyrics,
               tooltip: _showLyrics ? '显示封面' : '显示歌词',
+              onPressed: () => _setShowLyrics(!_showLyrics),
             ),
         ],
       ),
@@ -1454,8 +1443,6 @@ class _PlayerFavoriteButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final account = ref.watch(onlineAccountProvider);
     final collected = ref
         .watch(onlineFavoritesProvider
@@ -1475,16 +1462,11 @@ class _PlayerFavoriteButton extends ConsumerWidget {
               work: OnlineWork(id: workId, title: workTitle),
             ));
 
-    return IconButton(
+    return M3EIconButton(
       onPressed: onPressed,
       tooltip: collected ? '已收藏 · 编辑歌单' : '收藏',
-      icon: Icon(
-        collected ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-        size: 20,
-        color: collected
-            ? hikoFavoriteColor
-            : (isDark ? HikoColors.darkMuted : HikoColors.lightMuted),
-      ),
+      icon: collected ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+      foregroundColor: collected ? hikoFavoriteColor : null,
     );
   }
 }

@@ -77,17 +77,16 @@ class OnlineDetailPanel extends ConsumerWidget {
               onOpenWork: onOpenWork,
             ),
           ),
-          // 关闭按钮（1.99.30 M3E 色调圆钮，去玻璃）
+          // 关闭按钮（M3E 色调圆钮，1.99.38 换 M3EIconButton）
           Positioned(
-            right: 14,
-            top: 14,
-            child: Material(
-              color: M3ETheme.of(context).colors.surfaceContainerHighest,
-              shape: const CircleBorder(),
-              child: IconButton(
-                onPressed: onClose,
-                icon: const Icon(Icons.close_rounded, size: 16),
-              ),
+            right: 8,
+            top: 8,
+            child: M3EIconButton(
+              icon: Icons.close_rounded,
+              tooltip: '关闭',
+              onPressed: onClose,
+              backgroundColor:
+                  M3ETheme.of(context).colors.surfaceContainerHighest,
             ),
           ),
         ],
@@ -120,8 +119,16 @@ class OnlineDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('作品详情', style: TextStyle(fontSize: 15)),
+      // 1.99.38：移动在线详情顶栏统一到 M3EAppBar（原 Material AppBar title 15sp）。
+      appBar: M3EAppBar.small(
+        topInset: MediaQuery.paddingOf(context).top,
+        title: const Text('作品详情'),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        leading: M3EIconButton(
+          icon: Icons.arrow_back_rounded,
+          tooltip: '返回',
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
       ),
       body: OnlineDetailBody(
         key: ValueKey<int>(workId),

@@ -231,8 +231,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         child: Column(
         children: [
           M3EAppBar.small(
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_rounded),
+            leading: M3EIconButton(
+              icon: Icons.arrow_back_rounded,
               tooltip: '返回',
               onPressed: () => Navigator.of(context).pop(),
             ),

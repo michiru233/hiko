@@ -34,16 +34,11 @@ class AlbumDetailScreen extends ConsumerStatefulWidget {
 class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
   int _selectedTabIndex = 0; // 0: 曲目列表, 1: 歌词字幕
 
-  static const _circleColor = Color(0xFFB39DDB); // 社团紫
-  static const _voiceColor = Color(0xFF90CAF9); // 声优蓝
-
   /// 声优串拆分：走共享实现，与桌面详情抽屉同源（1.87 删掉本地重复正则）
   List<String> _voiceNames(Album album) => splitVoiceNames(album.artist);
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final album = ref.watch(
       libraryProvider.select(
         (list) => list.firstWhere(
@@ -74,25 +69,21 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
 
     return Scaffold(
       extendBodyBehindAppBar: true,
-      appBar: AppBar(
+      // 1.99.38：移动全屏页顶栏统一到 M3EAppBar（原先的透明 Material AppBar +
+      // 黑白 scrim 圆钮是玻璃时代的残留）。压在封面上时用色调圆钮保证对比度。
+      appBar: M3EAppBar.small(
+        topInset: MediaQuery.paddingOf(context).top,
         backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.black.withValues(alpha: 0.5)
-                  : Colors.white.withValues(alpha: 0.7),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.arrow_back,
-              color: isDark ? Colors.white : Colors.black87,
-              size: 20,
-            ),
-          ),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        title: const SizedBox.shrink(),
+        leading: M3EIconButton(
+          icon: Icons.arrow_back_rounded,
+          tooltip: '返回',
           onPressed: () => Navigator.of(context).pop(),
+          backgroundColor: M3ETheme.of(context)
+              .colors
+              .surfaceContainerHighest
+              .withValues(alpha: 0.92),
         ),
       ),
       body: CustomScrollView(
@@ -111,7 +102,7 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
             sliver: SliverToBoxAdapter(
-              child: _buildHeader(album, theme, isDark, rj, progress),
+              child: _buildHeader(album, rj, progress),
             ),
           ),
           SliverPadding(
@@ -131,8 +122,6 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
                   album.tracks[index],
                   index,
                   album,
-                  theme,
-                  isDark,
                   index == currentIndex,
                   isPlaying,
                 ),
@@ -154,8 +143,6 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
   /// 分色胶囊（点选回列表筛选）+ 主键/次键操作行 + 完成进度分组卡。
   Widget _buildHeader(
     Album album,
-    ThemeData theme,
-    bool isDark,
     String? rj,
     int progress,
   ) {
@@ -196,14 +183,14 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
               if (circle.isNotEmpty)
                 HikoPersonPill(
                   name: circle,
-                  color: _circleColor,
+                  color: hikoCircleColor,
                   onTap: () => Navigator.of(context)
                       .pop<(String, String)> (('circle', circle)),
                 ),
               for (final name in voices)
                 HikoPersonPill(
                   name: name,
-                  color: _voiceColor,
+                  color: hikoVoiceColor,
                   onTap: () => Navigator.of(context)
                       .pop<(String, String)> (('voice', name)),
                 ),
@@ -286,8 +273,6 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
     Track track,
     int index,
     Album album,
-    ThemeData theme,
-    bool isDark,
     bool isCurrent,
     bool isPlaying,
   ) {
