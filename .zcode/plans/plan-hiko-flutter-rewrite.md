@@ -3851,3 +3851,29 @@ child: 一摞 HikoGlass))`。`pinned: false` 的 SliverAppBar 只要开始滚动
 ### 交付
 - 版本 `1.99.27+140`；Release：`hiko-v1.99.27-android.apk` + `hiko-v1.99.27-macos.zip`。
 - 本版无新增待裁决。
+
+## 1.99.28（2026-10-25）：内容面（界面重构第 3 步）
+
+### 可见变化
+- 专辑卡片整体重写：玻璃卡 → `M3ECard` 色调面（16dp 圆角、封面嵌套 12dp、零投影），
+  标题 titleSmall 两行，RJ 号/时长/标签小胶囊
+- 首页筛选（全部/未听完/已收藏）换 `M3EButtonGroup` 连通式分段（40dp，选中段
+  secondaryContainer 药丸）；标签筛选与多选入口换 `M3EChip`
+- 首页大标题 headlineLarge/Small Emphasized，收藏数 displaySmall，副文案 bodyMedium
+- 定位高亮改 primaryContainer 底 + 2dp primary 描边（挂专用 Key，测试与材质解耦）
+
+### 与计划的偏差
+1. `M3EAppBar` 再推迟到 1.99.31。
+2. 首页多选操作条（玻璃）未动，随 1.99.30 对话框/菜单批处理。
+
+### 验证
+- `flutter test`：**792 passed / 2 skipped**（1.99.27 789/2）。
+- `flutter analyze`：**40 条**（原 41），0 error。
+- macOS 实跑截图核对（Release 包）：专辑卡（含 RJ/时长/标签胶囊）、筛选按钮组、
+  分类 chip 条、大标题 + 收藏数。
+- APK aapt2：versionCode 141 / versionName 1.99.28。
+
+### 交付
+- 版本 `1.99.28+141`；Release：`hiko-v1.99.28-macos.zip` + `hiko-v1.99.28-android.apk`
+  （资产尺寸核验一致后本地已 trash）。
+- 本版无新增待裁决。

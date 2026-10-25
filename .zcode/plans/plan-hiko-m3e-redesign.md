@@ -782,6 +782,31 @@ gh release create …
 
 ---
 
+### 1.99.28 内容面（2026-10-25，由接手会话收尾发布）
+
+**落地**：`album_card.dart` 整体重写（玻璃卡 → `M3ECard` 色调面：16dp 圆角、封面嵌套 12dp、
+零投影、titleSmall 两行 + RJ/时长/标签小胶囊）；新增 `M3EButtonGroup`（连通式分段 40dp，
+选中段 secondaryContainer 药丸）替换首页筛选组；标签/多选入口换 `M3EChip`；
+首页大标题 headlineLarge/Small **Emphasized**、收藏数 displaySmall、副文案 bodyMedium；
+定位高亮改 `primaryContainer` 底 + 2dp primary 描边，挂专用 Key
+`ValueKey('hiko-album-card-highlight')`（测试锁改用 Key，与材质解耦）。
+配套测试更新：album_card / ink_feedback / hiko_glass（玻璃锁改为「不得回流玻璃」）/ locate_playing。
+
+**与计划的偏差**
+1. `M3EAppBar` 再推迟（27 推 28，28 实际也未做），顺延至 1.99.31。
+2. 首页多选操作条（玻璃）未动，随 1.99.30 对话框/菜单批处理。
+
+**验证**
+- `flutter test`：**792 passed / 2 skipped**（1.99.27 为 789/2，净增 3 条）。
+- `flutter analyze`：**40 条**（原 41），0 error。
+- macOS 实跑截图核对（Release 包）：专辑卡（含 RJ/时长/标签胶囊）、筛选按钮组药丸选中态、
+  分类 chip 条、大标题 + 收藏数全部确认。实机自动化备注：合成点击/滚轮（cliclick、
+  CGEvent、System Events `click at`）都进不了 Flutter 内容（AX 树懒加载为空），
+  可用 **Tab 焦点遍历 + 方向键**（M3EPressable 自带 Focus 节点）让网格滚动后再截图。
+- APK aapt2：versionCode 141 / versionName 1.99.28。
+
+---
+
 ## 附录 A：M3E 关键数值表（实施时照抄）
 
 **形状（10 档）**：0 / 4 / 8 / 12 / 16 / **20** / 28 / **32** / **48** / full
