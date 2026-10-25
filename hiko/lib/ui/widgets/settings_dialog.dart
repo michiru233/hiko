@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:universal_platform/universal_platform.dart';
 
+import '../../platform/desktop_window.dart';
 import '../m3e/m3e.dart';
 import '../../data/backup.dart';
 import '../../data/categories_provider.dart';
@@ -224,7 +225,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     return Scaffold(
-      body: Column(
+      // 1.99.33：macOS 红绿灯内缩
+      body: Padding(
+        padding: EdgeInsets.only(top: windowTopInset(context)),
+        child: Column(
         children: [
           M3EAppBar.small(
             leading: IconButton(
@@ -255,6 +259,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           ),
         ],
+        ),
       ),
     );
   }

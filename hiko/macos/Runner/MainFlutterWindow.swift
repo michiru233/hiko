@@ -27,6 +27,15 @@ class MainFlutterWindow: NSWindow {
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)
 
+    // 1.99.33 窗口顶部「大白条」修复（用户反馈 2026-10-25）：标题栏透明 +
+    // 内容延伸到标题栏之下，应用自绘的深色顶栏直接顶到窗口上缘，
+    // 红绿灯浮在内容上（Flutter 侧经 windowTopInset() 让出 ~28pt）。
+    self.titlebarAppearsTransparent = true
+    self.titleVisibility = .hidden
+    self.styleMask.insert(.fullSizeContentView)
+    // 窗口底色同深色内容，避免内容未铺满时露出一瞬浅色底
+    self.backgroundColor = NSColor(calibratedWhite: 0.07, alpha: 1)
+
     // 记忆窗口大小/位置：移动/缩放/关闭时显式写 UserDefaults（AppKit 的
     // frameAutosaveName 在 Flutter 窗口上实测不落盘），启动恢复；
     // 首次启动/无有效记录回落默认 1440×920（对应旧版 Electron 窗口），最小 960×640

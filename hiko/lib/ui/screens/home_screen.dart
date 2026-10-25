@@ -37,6 +37,7 @@ import '../widgets/context_menu.dart';
 import '../widgets/detail_drawer.dart';
 import '../widgets/hiko_floating_header.dart';
 import '../m3e/m3e.dart';
+import '../../platform/desktop_window.dart';
 import '../widgets/category_chips.dart';
 import '../widgets/hiko_nav_destinations.dart';
 import '../widgets/online_appearance.dart';
@@ -552,7 +553,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         }
       },
       child: Scaffold(
-        body: Shortcuts(
+        // 1.99.33：macOS 标题栏透明 + 全尺寸内容后，body 顶层让出红绿灯区
+        body: Padding(
+          padding: EdgeInsets.only(top: windowTopInset(context)),
+          child: Shortcuts(
           shortcuts: {
             // ⌘O / Ctrl+O 导入（对应旧版菜单「导入音声文件夹」）
             const SingleActivator(LogicalKeyboardKey.keyO, meta: true):
@@ -702,6 +706,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             ),
           ),
+        ),
         ),
         // 移动端底部导航（M3E NavigationBar，1.99.27）
         bottomNavigationBar: isMobile ? _buildNavBar(navViews) : null,

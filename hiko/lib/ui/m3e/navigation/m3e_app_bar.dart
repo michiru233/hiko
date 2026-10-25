@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../tokens/elevation_tokens.dart';
-import '../tokens/shape_tokens.dart';
 import '../theme/m3e_theme.dart';
 
 /// M3E 顶栏（plan §8.1）：compact 用 [M3EAppBar.small]（64dp），
@@ -48,9 +47,6 @@ class M3EAppBar extends StatelessWidget implements PreferredSizeWidget {
       height: _height,
       decoration: BoxDecoration(
         color: scrolled ? colors.surfaceContainer : colors.surface,
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(M3EShape.lgPlus),
-        ),
         boxShadow: scrolled
             ? M3EElevation.shadow(M3EElevation.level1, colors.shadow)
             : null,
