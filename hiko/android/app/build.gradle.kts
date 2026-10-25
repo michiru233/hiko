@@ -46,6 +46,12 @@ android {
                 keyAlias = keystoreProps.getProperty("hiko.key.alias")
                 keyPassword = keystoreProps.getProperty("hiko.key.password")
             }
+            // 1.99.37 修复「安装包没有签名文件」：AGP 8 在 minSdk≥24 时默认
+            // 只打 v2、关掉 v1（JAR）——部分国产 ROM 安装器解析不到 v1 就报
+            // 「没有签名文件」。显式全开 v1+v2+v3。
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
         }
     }
 
