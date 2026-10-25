@@ -9,12 +9,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../../data/categories_provider.dart';
 import '../../data/dlsite_scraper.dart';
 import '../../data/filter.dart';
 import '../../data/import_service.dart';
 import '../../data/library_provider.dart';
 import '../../data/library_reorganizer.dart';
 import '../../data/music_folder_scanner.dart';
+import '../../data/online/online_account.dart';
+import '../../data/online/online_favorites.dart';
 import '../../data/online/online_provider.dart';
 import '../../data/settings_store.dart';
 import '../../data/stats.dart';
@@ -35,8 +38,10 @@ import '../widgets/confirm_dialog.dart';
 import '../widgets/context_menu.dart';
 import '../widgets/detail_drawer.dart';
 import '../widgets/hiko_floating_header.dart';
+import '../m3e/m3e.dart';
+import '../widgets/category_chips.dart';
 import '../widgets/hiko_glass.dart';
-import '../widgets/mobile_bottom_nav.dart';
+import '../widgets/hiko_nav_destinations.dart';
 import '../widgets/online_appearance.dart';
 import '../widgets/toast.dart';
 import '../widgets/player_bar.dart';
@@ -44,7 +49,6 @@ import '../detail_jump_requests.dart';
 import '../widgets/rating_dialog.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/stats_view.dart';
-import '../widgets/sidebar.dart';
 import 'album_detail_screen.dart';
 import 'online_favorites_screen.dart';
 import 'online_screen.dart';
@@ -74,8 +78,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _multiMode = false;
   final Set<String> _multiIds = {};
   Album? _detailAlbum;
-  bool _sidebarCollapsed = false;
-  bool _drawerOpen = false;
   bool _importing = false;
   final Set<String> _resumeDismissed = {}; // 本次会话内被 × 关掉的「继续收听」专辑
   final _filterMemo = FilterAlbumsMemo();
@@ -97,8 +99,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   String? _highlightedAlbumId; // 高亮中的专辑 id
   Timer? _highlightTimer;
   // 1.54 移动端左边缘右滑呼出抽屉：起手点在左缘 ≤24dp 时累计横向位移
-  double? _edgeDragDx;
-  double? _edgeStartDy;
   // 1.99.6（裁决 Q1=B / Q8=A / Q9=A）：移动端从左往右划掉播放栏 = 收起 + 暂停；
   // 任何一次「从暂停变成播放」（含系统媒体键 / 锁屏 / 耳机键）都会把它还原。
   bool _playerBarDismissed = false;
@@ -534,8 +534,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           });
         } else if (_detailAlbum != null) {
           setState(() => _detailAlbum = null);
-        } else if (_drawerOpen) {
-          setState(() => _drawerOpen = false);
         } else if (_handleOnlineBack(allowExit: true)) {
           // 在线模块自己消费掉（清筛选 / 在线收藏退回在线 / 干净状态最小化）
         } else if (_view != '本地音声') {
@@ -583,8 +581,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     });
                   } else if (_detailAlbum != null) {
                     setState(() => _detailAlbum = null);
-                  } else if (_drawerOpen) {
-                    setState(() => _drawerOpen = false);
                   } else if (_handleOnlineBack(allowExit: isMobile)) {
                     // 在线模块自己消费掉；桌面 Esc 不退出应用（与旧行为一致）
                   } else if (_view != '本地音声') {
@@ -604,35 +600,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               // 移动端：左边缘右滑呼出抽屉（1.54，安卓惯例）。用 Listener 直接跟踪指针
               //（不进手势竞技场，网格垂直滚动识别器不会吞掉水平拖动）；竖向位移大于
               // 横向即视为滚动放弃呼出。配合 MainActivity 的系统手势排除区使用。
-              child: Listener(
-                onPointerDown: (d) {
-                  final edge = d.localPosition.dx <= 24;
-                  // 1.99.6（裁决 Q4=A）：起手点落在播放栏上时，播放栏的「从左往右
-                  // 划掉」**优先**于左边缘呼出抽屉。本 Listener 是播放栏的祖先，
-                  // raw pointer 事件不进手势竞技场、永远会送到这里 —— 不显式让位
-                  // 就会出现「想划掉播放栏，却把侧栏抽屉拉了出来」。
-                  if (edge && _isInPlayerBar(d.position)) {
-                    _edgeDragDx = null;
-                    _edgeStartDy = null;
-                    return;
-                  }
-                  _edgeDragDx = edge ? 0 : null;
-                  _edgeStartDy = edge ? d.localPosition.dy : null;
-                },
-                onPointerMove: (d) {
-                  if (_edgeDragDx == null) return;
-                  _edgeDragDx = _edgeDragDx! + d.delta.dx;
-                  final dy = (d.localPosition.dy - (_edgeStartDy ?? 0)).abs();
-                  if (_edgeDragDx! > 60 && dy < _edgeDragDx!) {
-                    _edgeDragDx = null;
-                    if (!_drawerOpen && isMobile) {
-                      setState(() => _drawerOpen = true);
-                    }
-                  }
-                },
-                onPointerUp: (_) => _edgeDragDx = null,
-                onPointerCancel: (_) => _edgeDragDx = null,
-                child: Stack(
+              child: Stack(
                 children: [
                   // 背景全局动态封面光晕 (Ambient Backdrop Glow)
                   if (ref.watch(playbackProvider).album != null)
@@ -660,30 +628,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   Column(
                     children: [
                       Expanded(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            if (!isMobile) ...[
-                              SizedBox(
-                                width: _sidebarCollapsed ? 44 : 240,
-                                child: Sidebar(
-                                  activeView: _view,
-                                  collapsed: _sidebarCollapsed,
-                                  onViewChanged: (view) =>
-                                      setState(() => _view = view),
-                                  onOpenSettings: () => _openSettings(context),
-                                ),
-                              ),
-                            ],
-                            Expanded(
-                              child: _buildMain(
-                                filtered,
-                                theme,
-                                isMobile,
-                                currentSort,
-                              ),
-                            ),
-                          ],
+                        child: HikoShell(
+                          rail: isMobile ? null : _buildRail(navViews),
+                          child: _buildMain(
+                            filtered,
+                            theme,
+                            isMobile,
+                            currentSort,
+                          ),
                         ),
                       ),
                       // 1.54 移动端：未播放任何专辑时整个播放条隐藏，底部导航贴底
@@ -702,49 +654,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
                     ],
                   ),
-                  // 移动端：抽屉侧栏
-                  if (isMobile && _drawerOpen)
-                    Positioned.fill(
-                      child: Stack(
-                        children: [
-                          // 遮罩非按钮：NoSplash 防全屏水波纹（关抽屉本身即反馈）
-                          Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: () => setState(() => _drawerOpen = false),
-                              splashFactory: NoSplash.splashFactory,
-                              highlightColor: Colors.transparent,
-                              hoverColor: Colors.transparent,
-                              child: Container(
-                                color: Colors.black.withValues(alpha: 0.35),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            left: 0,
-                            top: 0,
-                            bottom: 0,
-                            width: 240,
-                            child: Material(
-                              elevation: 8,
-                              child: Sidebar(
-                                activeView: _view,
-                                onViewChanged: (view) {
-                                  setState(() {
-                                    _view = view;
-                                    _drawerOpen = false;
-                                  });
-                                },
-                                onOpenSettings: () {
-                                  setState(() => _drawerOpen = false);
-                                  _openSettings(context);
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   // 详情遮罩（桌面）：点击抽屉外区域关闭（不阻断抽屉内交互，
                   // Stack hit test 短路保证上层抽屉命中时遮罩不参与）；遮罩非按钮不加水波纹
                   if (_detailAlbum != null && !isMobile)
@@ -797,46 +706,182 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                 ],
               ),
-              ), // Listener（左边缘右滑呼出抽屉）
             ),
           ),
         ),
-        // 移动端底部导航（玻璃拟态悬浮或半透明背景）
-        // 1.99.22：材质换用 HikoGlass（premium 档 + 自建渲染图层）。
-        // 原实现是顶边单独的 0.8px 分隔线；superellipse 描边是四周等宽，
-        // 而栏是通栏贴边的，左右与下边落在屏幕边缘，视觉上等价。
-        bottomNavigationBar: isMobile
-            ? HikoGlass(
-                borderRadius: 0,
-                blur: 16,
-                tint: theme.brightness == Brightness.dark
-                    ? HikoColors.darkGlassSurface
-                    : HikoColors.lightGlassSurface,
-                borderColor: theme.brightness == Brightness.dark
-                    ? HikoColors.darkGlassBorderSubtle
-                    : HikoColors.lightGlassBorderSubtle,
-                child: MobileBottomNav(
-                  views: navViews,
-                  currentIndex: _navIndex(navViews),
-                  onTapView: (i) => setState(() => _view = navViews[i]),
-                  // 1.99.6：固定格「正在播放」→ 全屏播放页。没在播时置灰，
-                  // 但格子留在原位（裁决 Q7=A）
-                  playerEnabled: ref.watch(playbackProvider).album != null,
-                  onOpenPlayer: () {
-                    // 1.99.6（裁决 Q9=A）：进全屏播放页本身**不**还原播放栏，
-                    // 还原只认「暂停 → 播放」的跳变
-                    Navigator.of(context).push(FullscreenPlayerRoute());
-                  },
-                  onOpenSettings: () => _openSettings(context),
-                ),
-              )
-            : null,
+        // 移动端底部导航（M3E NavigationBar，1.99.27）
+        bottomNavigationBar: isMobile ? _buildNavBar(navViews) : null,
       ),
     );
   }
 
   /// 数据全来自远程服务端的视图（不走本地库筛选，也不参与本地网格）
   bool get _isOnlineView => _view == '在线' || _view == '在线收藏';
+
+  /// 当前 `_view` 是不是用户分类（决定分类条是否出现）。
+  bool get _isCategoryView =>
+      ref.watch(categoriesProvider).any((c) => c.name == _view);
+
+  // ── 壳层（1.99.27）────────────────────────────────────────────────
+
+  /// 导航目的地：一份数据，rail 与 bar 共用。
+  List<M3ENavigationDestination> _navDestinations(List<String> navViews) {
+    final albums = ref.watch(libraryProvider);
+    final favoriteCount = albums.where((a) => a.favorite).length;
+    final playedCount = albums.where((a) => a.lastPlayedAt != null).length;
+    final onlineLoggedIn = ref.watch(onlineLoggedInProvider);
+    final onlineFavoriteCount =
+        ref.watch(onlineFavoritesProvider).index.countOf(null);
+    return <M3ENavigationDestination>[
+      for (final view in navViews)
+        M3ENavigationDestination(
+          label: view,
+          icon: hikoNavIcons[view] ?? hikoNavFallbackIcon,
+          selectedIcon:
+              hikoNavSelectedIcons[view] ?? hikoNavFallbackSelectedIcon,
+          badge: switch (view) {
+            '本地音声' => albums.length,
+            '收藏夹' => favoriteCount,
+            '最近播放' => playedCount,
+            '在线收藏' => onlineLoggedIn ? onlineFavoriteCount : null,
+            _ => null,
+          },
+        ),
+    ];
+  }
+
+  /// 桌面左侧导航栏。
+  Widget _buildRail(List<String> navViews) => M3ENavRail(
+        destinations: _navDestinations(navViews),
+        selectedIndex: navViews.indexOf(_view),
+        onSelected: (index) => setState(() => _view = navViews[index]),
+        header: _railHeader(),
+        trailing: M3ENavRailAction(
+          icon: Icons.settings_outlined,
+          label: '设置',
+          onTap: () => _openSettings(context),
+        ),
+      );
+
+  Widget _railHeader() {
+    final theme = Theme.of(context);
+    final logo = Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: const Center(
+        child: Text(
+          'K',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            fontSize: 18,
+          ),
+        ),
+      ),
+    );
+    if (hikoWindowSizeOf(context) != HikoWindowSize.expanded) return logo;
+    return Row(
+      children: <Widget>[
+        logo,
+        const SizedBox(width: 11),
+        const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('Hiko', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            Text('音声收藏室', style: TextStyle(fontSize: 10, color: Color(0xFF888B92))),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// 移动端底部导航。
+  ///
+  /// 折叠规则（1.99.27）：最多 5 格，其中「正在播放」常驻 1 格
+  /// （1.99.6 裁决 Q7=A 的「一定找得回来」不能丢），末尾 1 格「更多」——
+  /// 余下的目的地与「设置」都收进更多面板。所以可见导航项 =
+  /// min(navViews, 3)。
+  Widget _buildNavBar(List<String> navViews) {
+    final all = _navDestinations(navViews);
+    final folded = foldDestinations(all, reservedSlots: 1);
+    final playerReady = ref.watch(playbackProvider).album != null;
+    final items = <M3ENavigationDestination>[
+      ...folded.visible,
+      M3ENavigationDestination(
+        label: '正在播放',
+        icon: Icons.play_circle_outline,
+        selectedIcon: Icons.play_circle,
+        enabled: playerReady,
+      ),
+      const M3ENavigationDestination(
+        label: '更多',
+        icon: Icons.more_horiz,
+        selectedIcon: Icons.more_horiz,
+      ),
+    ];
+    var selectedIndex = -1;
+    for (var i = 0; i < folded.visible.length; i++) {
+      if (folded.visible[i].label == _view) {
+        selectedIndex = i;
+        break;
+      }
+    }
+    return M3ENavBar(
+      destinations: items,
+      selectedIndex: selectedIndex,
+      onSelected: (index) {
+        if (index == items.length - 1) {
+          unawaited(_openMoreSheet(folded.overflow));
+          return;
+        }
+        if (index == items.length - 2) {
+          Navigator.of(context).push(FullscreenPlayerRoute());
+          return;
+        }
+        setState(() => _view = folded.visible[index].label);
+      },
+    );
+  }
+
+  /// 「更多」面板：放不下的目的地 + 设置。
+  Future<void> _openMoreSheet(List<M3ENavigationDestination> overflow) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: context.m3e.colors.surfaceContainerLow,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(M3EShape.xl)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: M3EList(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          children: <Widget>[
+            for (final destination in overflow)
+              M3EListItem(
+                title: destination.label,
+                leading: Icon(destination.icon),
+                selected: destination.label == _view,
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  setState(() => _view = destination.label);
+                },
+              ),
+            M3EListItem(
+              title: '设置',
+              leading: const Icon(Icons.settings_outlined),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _openSettings(context);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   /// 当前视图在移动端底栏的高亮位置（1.99.4 起底栏项由 navViews 驱动）。
   /// 「在线收藏」优先归到「在线」那一格（它是在线模块的一部分，1.90 语义保留，
@@ -1282,7 +1327,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         viewportWidth: size.width,
         horizontalPadding:
             (isMobile ? 16 : 48) * 2 +
-            (isMobile ? 0 : (_sidebarCollapsed ? 44.0 : 240.0)),
+            (isMobile ? 0 : hikoRailWidthOf(context)),
         showScrapedTags: settings.showScrapedTags,
       ),
     );
@@ -1337,16 +1382,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       child: Row(
         children: [
-          if (!isMobile)
-            IconButton(
-              icon: Icon(
-                _sidebarCollapsed ? Icons.menu_open : Icons.menu,
-                size: 18,
-              ),
-              tooltip: _sidebarCollapsed ? '显示侧栏' : '隐藏侧栏',
-              onPressed: () =>
-                  setState(() => _sidebarCollapsed = !_sidebarCollapsed),
-            ),
           if (!isMobile) ...[
             Text('音声库', style: TextStyle(fontSize: 13, color: theme.hintColor)),
             Padding(
@@ -1521,6 +1556,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // 分类筛选条（1.99.27）：从侧栏迁到首页。只在「本地音声」或
+          // 某个分类视图下出现 —— 它表达的是「同一目的地的视图切换」，
+          // 与 rail 上的目的地是两层不同的东西（见 §8.2 裁决 P3）。
+          if (_view == AppSettings.navViewHome || _isCategoryView) ...[
+            HikoCategoryChips(
+              activeView: _view,
+              onSelected: (view) => setState(() => _view = view),
+            ),
+            const SizedBox(height: 10),
+          ],
           // Wrap（1.99.15）：加标签入口后窄屏一行放不下，允许换行
           Wrap(
             spacing: 8,

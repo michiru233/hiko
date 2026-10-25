@@ -11,10 +11,17 @@
 /// - `components/` 只依赖 tokens + theme，**不依赖任何业务代码**
 library;
 
+export 'adaptive/hiko_breakpoints.dart';
+export 'adaptive/hiko_shell.dart';
 export 'components/actions/m3e_button.dart';
 export 'components/motion/m3e_pressable.dart';
 export 'components/surfaces/m3e_card.dart';
+export 'components/selection/m3e_chip.dart';
 export 'components/surfaces/m3e_list.dart';
+export 'navigation/m3e_nav_badge.dart';
+export 'navigation/m3e_nav_bar.dart';
+export 'navigation/m3e_nav_rail.dart';
+export 'navigation/m3e_navigation_destination.dart';
 export 'theme/m3e_theme.dart';
 export 'theme/m3e_theme_builder.dart';
 export 'tokens/color_tokens.dart';

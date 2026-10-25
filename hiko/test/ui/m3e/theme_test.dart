@@ -26,24 +26,38 @@ void main() {
     expect(identical(read, data), isTrue);
   });
 
-  testWidgets('没有 M3ETheme 时 of 抛出可读错误', (tester) async {
-    late Object error;
+  testWidgets('没有 M3ETheme 时回退到 Material 主题派生（不崩）', (tester) async {
+    late M3EThemeData read;
     await tester.pumpWidget(
       MaterialApp(
+        theme: ThemeData(colorSchemeSeed: const Color(0xFF006874)),
         home: Builder(
           builder: (context) {
-            try {
-              M3ETheme.of(context);
-            } catch (e) {
-              error = e;
-            }
+            read = M3ETheme.of(context);
             return const SizedBox.shrink();
           },
         ),
       ),
     );
-    expect(error, isA<FlutterError>());
-    expect('$error', contains('M3ETheme'));
+    expect(read.colors.primary.a, 1.0);
+    expect(read.motion.level, M3EMotionLevel.full);
+  });
+
+  testWidgets('回退结果按 (主色, 明暗) 缓存，不会每次重建都重算', (tester) async {
+    final themes = <M3EThemeData>[];
+    Widget app(String tag) => MaterialApp(
+          theme: ThemeData(colorSchemeSeed: const Color(0xFF006874)),
+          home: Builder(
+            builder: (context) {
+              themes.add(M3ETheme.of(context));
+              return Text(tag);
+            },
+          ),
+        );
+    await tester.pumpWidget(app('a'));
+    await tester.pumpWidget(app('b')); // 强制重建，走第二次 of()
+    expect(themes.length, greaterThanOrEqualTo(2));
+    expect(identical(themes.first, themes.last), isTrue);
   });
 
   testWidgets('maybeOf 在没有祖先时返回 null', (tester) async {

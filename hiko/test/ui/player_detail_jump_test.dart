@@ -16,7 +16,7 @@ import 'package:hiko/ui/screens/fullscreen_player_screen.dart';
 import 'package:hiko/ui/screens/home_screen.dart';
 import 'package:hiko/ui/transitions/fullscreen_player_route.dart';
 import 'package:hiko/ui/widgets/album_card.dart';
-import 'package:hiko/ui/widgets/mobile_bottom_nav.dart';
+import 'package:hiko/ui/m3e/m3e.dart';
 import 'package:hiko/ui/widgets/online_detail_panel.dart';
 import 'package:hiko/ui/screens/online_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -202,13 +202,24 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 600));
 
-    // 切到「在线」视图（OnlineScreen 在场 = 指令通道的消费方已注册）
-    await tester.tap(
+    // 切到「在线」视图（OnlineScreen 在场 = 指令通道的消费方已注册）。
+    // 1.99.27：底栏最多 5 格，「在线」排在第 4 位 → 收进「更多」面板。
+    expect(
       find.descendant(
-        of: find.byType(MobileBottomNav),
+        of: find.byType(M3ENavBar),
         matching: find.text('在线'),
       ),
+      findsNothing,
+      reason: '前 3 个视图之外的导航项必须折进「更多」',
     );
+    await tester.tap(
+      find.descendant(
+        of: find.byType(M3ENavBar),
+        matching: find.text('更多'),
+      ),
+    );
+    await _pumpFrames(tester);
+    await tester.tap(find.text('在线').last);
     await _pumpFrames(tester);
     expect(find.byType(OnlineScreen), findsOneWidget);
 

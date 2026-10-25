@@ -88,14 +88,36 @@ class M3ETheme extends InheritedWidget {
   static M3EThemeData of(BuildContext context) {
     final inherited = context.dependOnInheritedWidgetOfExactType<M3ETheme>();
     if (inherited != null) return inherited.data;
-    throw FlutterError.fromParts(<DiagnosticsNode>[
-      ErrorSummary('找不到 M3ETheme。'),
-      ErrorDescription(
-        'M3E 组件必须挂在 M3ETheme 之下。应用根层已经由 main.dart 的 '
-        'MaterialApp.builder 挂好；单测里请用 M3ETheme(data: …, child: …) 包一层。',
-      ),
-      ErrorHint('若只想临时读值，用 M3ETheme.maybeOf(context)。'),
-    ]);
+    return _fallbackOf(context);
+  }
+
+  // 兜底缓存：同一套 (主色, 明暗) 只算一次 HCT 色调板。
+  // 组件每帧都可能调 of()，不缓存的话纯色计算会按帧数放大。
+  static M3EThemeData? _fallback;
+  static Color? _fallbackSeed;
+  static Brightness? _fallbackBrightness;
+
+  /// 没有 M3ETheme 祖先时，从 Material 主题派生一套。
+  ///
+  /// **为什么是回退而不是抛错**：M3E 组件会被放进单测、独立子树、
+  /// 以及将来可能的嵌入式面板里；一处漏挂祖先就让整屏崩掉，代价远大于
+  /// 「配色退化成 Material 主题的同款种子色」。真正的主题接线仍由
+  /// `main.dart` 的 `M3ETheme` 负责（plan-hiko-m3e-redesign.md §4.1）。
+  static M3EThemeData _fallbackOf(BuildContext context) {
+    final material = Theme.of(context);
+    final seed = material.colorScheme.primary;
+    if (_fallback != null &&
+        _fallbackSeed == seed &&
+        _fallbackBrightness == material.brightness) {
+      return _fallback!;
+    }
+    _fallbackSeed = seed;
+    _fallbackBrightness = material.brightness;
+    _fallback = M3EThemeData.fromSeed(
+      seed: seed,
+      brightness: material.brightness,
+    );
+    return _fallback!;
   }
 
   static M3EThemeData? maybeOf(BuildContext context) =>

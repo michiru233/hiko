@@ -9,9 +9,8 @@ import 'package:hiko/models/track.dart';
 import 'package:hiko/playback/playback_controller.dart';
 import 'package:hiko/ui/screens/fullscreen_player_screen.dart';
 import 'package:hiko/ui/screens/home_screen.dart';
-import 'package:hiko/ui/widgets/mobile_bottom_nav.dart';
 import 'package:hiko/ui/widgets/player_bar.dart';
-import 'package:hiko/ui/widgets/sidebar.dart';
+import 'package:hiko/ui/m3e/m3e.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 「左划收起播放栏」在**主界面**这一层的接线（1.99.6）。
@@ -102,7 +101,7 @@ void main() {
   testWidgets('划掉播放栏 → 栏消失 + 暂停；下次开始播放 → 栏自己回来', (tester) async {
     await pumpHome(tester);
     expect(find.byType(PlayerBar), findsOneWidget, reason: '有正在播放的专辑就该显示');
-    expect(find.byType(MobileBottomNav), findsOneWidget);
+    expect(find.byType(M3ENavBar), findsOneWidget);
 
     final start = tester.getTopLeft(find.byType(PlayerBar)) + const Offset(30, 25);
     await tester.dragFrom(start, const Offset(500, 0));
@@ -113,7 +112,7 @@ void main() {
     expect(playback.state.playing, isFalse);
 
     // 底栏固定格仍在：划掉之后「一定找得回来」的兜底没有被破坏
-    expect(find.text(MobileBottomNav.playerLabel), findsOneWidget);
+    expect(find.text('正在播放'), findsOneWidget);
 
     // 还原判据 = 任何一次「暂停 → 播放」的跳变（点歌/媒体键/耳机键都算）
     playback.state = playback.state.copyWith(playing: true);
@@ -130,7 +129,7 @@ void main() {
     expect(find.byType(PlayerBar), findsNothing);
 
     // 固定格此时可点（album != null），点击进全屏播放页
-    await tester.tap(find.text(MobileBottomNav.playerLabel));
+    await tester.tap(find.text('正在播放'));
     // 全屏播放页的唱片是**无限旋转**动画（播放中不停），不能 pumpAndSettle
     for (var i = 0; i < 3; i++) {
       await tester.pump(const Duration(milliseconds: 300));
@@ -139,28 +138,5 @@ void main() {
         reason: '固定格「正在播放」→ 全屏播放页（裁决 Q6=A）');
     // 裁决 Q9=A：进全屏播放页本身**不**还原播放栏
     expect(find.byType(PlayerBar), findsNothing);
-  });
-
-  testWidgets('起手落在播放栏左缘：呼出抽屉让位给播放栏（不拉出侧栏）', (tester) async {
-    await pumpHome(tester);
-    final rect = tester.getRect(find.byType(PlayerBar));
-
-    // 左边缘 24px 内起手 + 横划 80px（远超呼出抽屉的 60px 阈值）
-    await tester.dragFrom(Offset(4, rect.center.dy), const Offset(80, 0));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(Sidebar), findsNothing, reason: '裁决 Q4=A：播放栏上的手势优先');
-    expect(find.byType(PlayerBar), findsOneWidget, reason: '80/900 未过收起阈值，栏还在');
-  });
-
-  testWidgets('起手落在播放栏以外（左缘上方）：抽屉照旧能呼出', (tester) async {
-    await pumpHome(tester);
-    final rect = tester.getRect(find.byType(PlayerBar));
-    expect(rect.top, greaterThan(120), reason: '播放栏在底部，上方必有一块空白可控区');
-
-    await tester.dragFrom(Offset(4, rect.top - 100), const Offset(80, 0));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(Sidebar), findsOneWidget, reason: '1.54 的左边缘呼出未被破坏');
   });
 }

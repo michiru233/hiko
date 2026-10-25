@@ -12,7 +12,7 @@ import 'package:hiko/models/album.dart';
 import 'package:hiko/ui/screens/home_screen.dart';
 import 'package:hiko/ui/screens/online_favorites_screen.dart';
 import 'package:hiko/ui/screens/online_screen.dart';
-import 'package:hiko/ui/widgets/mobile_bottom_nav.dart';
+import 'package:hiko/ui/m3e/m3e.dart';
 import 'package:hiko/ui/widgets/online_appearance.dart';
 
 /// 1.99.20 回归锁：移动端在线页顶栏图标收敛 + 「Aa」三合一菜单。
@@ -122,13 +122,12 @@ void main() {
     expect(find.byTooltip('切换主题'), findsOneWidget);
     expect(find.byTooltip('随机播放'), findsOneWidget);
 
-    // 切到「在线」
+    // 切到「在线」（1.99.27 起「在线」排第 4 位，收在「更多」面板里）
     await tester.tap(
-      find.descendant(
-        of: find.byType(MobileBottomNav),
-        matching: find.text('在线'),
-      ),
+      find.descendant(of: find.byType(M3ENavBar), matching: find.text('更多')),
     );
+    await _pumpFrames(tester);
+    await tester.tap(find.text('在线').last);
     await _pumpFrames(tester);
     expect(find.byType(OnlineScreen), findsOneWidget);
 
@@ -142,7 +141,7 @@ void main() {
     // 切回本地视图 —— 必须原样恢复
     await tester.tap(
       find.descendant(
-        of: find.byType(MobileBottomNav),
+        of: find.byType(M3ENavBar),
         matching: find.text('本地音声'),
       ),
     );

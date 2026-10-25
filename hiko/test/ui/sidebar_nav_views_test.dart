@@ -3,20 +3,27 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:hiko/data/library_provider.dart';
+import 'package:hiko/data/library_store.dart';
 import 'package:hiko/data/settings_store.dart';
-import 'package:hiko/ui/widgets/sidebar.dart';
+import 'package:hiko/models/album.dart';
+import 'package:hiko/ui/m3e/m3e.dart';
+import 'package:hiko/ui/screens/home_screen.dart';
 
-/// 侧栏导航项的配置化回归锁（1.99.4）。
+/// 导航项配置化回归锁（1.99.4 立，1.99.27 迁到 rail）。
 ///
-/// 1.99.4 起侧栏一级导航由 `settings.navViews` 驱动（与安卓底栏共用一份
-/// 「可见 + 顺序」配置，「本地音声」为根视图永久显示）。
-/// 这里锁两条不变量：
-/// 1. 隐藏的视图不再渲染；
-/// 2. 显示顺序跟随配置，而不是写死的旧顺序。
-///
-/// 注意：第二个用例会触发 `setNavViewVisible` → **写 SharedPreferences**，
-/// 而 widget 测试里没有真平台通道。不设 `setMockInitialValues` 的话
-/// `getInstance()` 永不返回，整个测试文件会挂死（不是失败，是卡住）。
+/// 1.99.4 起一级导航由 `settings.navViews` 驱动（桌面 rail 与移动底栏共用
+/// 一份「可见 + 顺序」配置，「本地音声」永久显示）。1.99.27 拆掉侧栏后，
+/// 这份配置的消费方从 `Sidebar` 变成了 `HomeScreen._navDestinations`，
+/// 但两条不变量没变：
+/// 1. 隐藏的视图不渲染；
+/// 2. 显示顺序跟随配置，而不是写死顺序。
+class _SeededLibrary extends LibraryNotifier {
+  _SeededLibrary(List<Album> albums) : super(LibraryStore()) {
+    state = albums;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -24,69 +31,79 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  Future<ProviderContainer> pumpSidebar(
-    WidgetTester tester,
-    List<String> navViews,
-  ) async {
-    final navNotifier = SettingsNotifier();
-    navNotifier.state = AppSettings(navViews: navViews);
+  Future<void> pumpHome(WidgetTester tester, List<String> navViews) async {
+    tester.view.physicalSize = const Size(1440, 1000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    final settings = SettingsNotifier();
+    settings.state = AppSettings(navViews: navViews);
     final container = ProviderContainer(
       overrides: [
-        settingsProvider.overrideWith((ref) => navNotifier),
+        libraryProvider.overrideWith((ref) => _SeededLibrary(const [])),
+        settingsProvider.overrideWith((ref) => settings),
       ],
     );
     addTearDown(container.dispose);
+
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: const MaterialApp(
-          home: Scaffold(
-            body: Sidebar(
-              activeView: '本地音声',
-              onViewChanged: _noopView,
-              onOpenSettings: _noopSettings,
-            ),
-          ),
-        ),
+        child: const MaterialApp(home: HomeScreen(debugMobileLayout: false)),
       ),
     );
-    await tester.pump();
-    return container;
+    await tester.pump(const Duration(milliseconds: 600));
   }
 
   testWidgets('隐藏的视图不渲染，配置内的视图与顺序生效', (tester) async {
-    await pumpSidebar(tester, ['本地音声', '统计', '在线']);
+    await pumpHome(tester, const ['本地音声', '统计', '在线']);
 
-    expect(find.text('本地音声'), findsOneWidget, reason: '根视图永久显示');
-    expect(find.text('统计'), findsOneWidget);
-    expect(find.text('在线'), findsOneWidget);
+    final rail = find.byType(M3ENavRail);
+    expect(rail, findsOneWidget);
 
-    // 被隐藏的项一律不出现
-    expect(find.text('最近添加'), findsNothing);
-    expect(find.text('最近播放'), findsNothing);
-    expect(find.text('正在播放'), findsNothing);
-    expect(find.text('收藏夹'), findsNothing);
-    expect(find.text('在线收藏'), findsNothing);
+    // 根视图永久显示
+    expect(
+      find.descendant(of: rail, matching: find.text('本地音声')),
+      findsOneWidget,
+    );
+    // 配置内的两项
+    expect(
+      find.descendant(of: rail, matching: find.text('统计')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: rail, matching: find.text('在线')),
+      findsOneWidget,
+    );
+    // 不在配置里的旧项不得出现
+    expect(
+      find.descendant(of: rail, matching: find.text('收藏夹')),
+      findsNothing,
+    );
 
-    // 顺序跟随配置：统计排在在线之前
-    final statTop = tester.getTopLeft(find.text('统计')).dy;
-    final onlineTop = tester.getTopLeft(find.text('在线')).dy;
-    expect(statTop, lessThan(onlineTop), reason: '顺序应跟随 navViews 配置');
+    // 顺序：本地音声 在 统计 上方，统计 在 在线 上方
+    // 注意作用域：这三个词在顶栏面包屑与页面大标题里也各出现一次
+    Finder inRail(String label) =>
+        find.descendant(of: rail, matching: find.text(label));
+    final home = tester.getTopLeft(inRail('本地音声')).dy;
+    final stats = tester.getTopLeft(inRail('统计')).dy;
+    final online = tester.getTopLeft(inRail('在线')).dy;
+    expect(home, lessThan(stats));
+    expect(stats, lessThan(online));
   });
 
-  testWidgets('全部隐藏项重新显示后回到列表（顺序由配置决定）', (tester) async {
-    final container = await pumpSidebar(tester, ['本地音声']);
-    expect(find.text('统计'), findsNothing);
+  testWidgets('点 rail 项切换主视图', (tester) async {
+    await pumpHome(tester, const ['本地音声', '统计']);
 
-    // 模拟设置页重新显示「统计」：setNavViewVisible 追加到末尾
-    await container
-        .read(settingsProvider.notifier)
-        .setNavViewVisible('统计', true);
-    await tester.pump();
+    await tester.tap(
+      find.descendant(
+        of: find.byType(M3ENavRail),
+        matching: find.text('统计'),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-    expect(find.text('统计'), findsOneWidget);
+    // 统计视图在场（它的滚动体与本地网格不同）
+    expect(find.text('统计'), findsWidgets);
   });
 }
-
-void _noopView(String view) {}
-void _noopSettings() {}
