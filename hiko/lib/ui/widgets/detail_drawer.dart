@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -13,20 +11,21 @@ import '../../utils/person_names.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
 import '../lyrics/drawer_lyrics_view.dart';
+import '../m3e/m3e.dart';
 import '../transitions/fullscreen_player_route.dart';
-import '../theme.dart';
 import 'category_dialog.dart';
 import 'detail_kit.dart';
-import 'hiko_glass.dart';
 import 'rating_dialog.dart';
 import 'toast.dart';
 
-/// 详情抽屉：沉浸式玻璃拟态界面（背景大图虚化 + 拟态高光药丸按钮 + 晶透曲目项）
+/// 专辑详情面板（1.99.29 M3ESheet 化，plan §8.4）：不透明色调面，
+/// 无氛围光晕；封面挂 drawer- 前缀 Hero tag（点曲目进播放页时从封面形变）。
 class DetailDrawer extends ConsumerStatefulWidget {
   const DetailDrawer({
     super.key,
     required this.album,
     required this.onClose,
+    this.sheetVariant = M3ESheetVariant.side,
     this.personFilterKind,
     this.personFilterName,
     this.onPersonFilter,
@@ -34,6 +33,9 @@ class DetailDrawer extends ConsumerStatefulWidget {
 
   final Album album;
   final VoidCallback onClose;
+
+  /// 面板形态：桌面侧滑（默认）/ 移动底部（28dp 顶角）。
+  final M3ESheetVariant sheetVariant;
   /// 1.81 当前生效的社团/声优筛选（用于胶囊选中态；kind: 'circle' | 'voice'）
   final String? personFilterKind;
   final String? personFilterName;
@@ -111,47 +113,10 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
         : 0;
     final rj = albumRjCode(album);
 
-    return Container(
-      decoration: BoxDecoration(
-        // 1.83 视觉统一：面板改主界面同款实底（原半透明玻璃 surface），层级靠边框+投影
-        color: isDark ? HikoColors.darkBg : HikoColors.lightBg,
-        border: Border(
-          left: BorderSide(
-            color: isDark ? HikoColors.darkGlassBorder : HikoColors.lightGlassBorder,
-            width: 1,
-          ),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.1),
-            blurRadius: 40,
-            offset: const Offset(-15, 0),
-          ),
-        ],
-      ),
+    return M3ESheet(
+      variant: widget.sheetVariant,
       child: Stack(
         children: [
-          // 沉浸式虚化封面氛围背板 (Ambient Cover Backdrop)
-          Positioned(
-            top: -60,
-            right: -60,
-            width: 320,
-            height: 320,
-              child: IgnorePointer(
-                child: Opacity(
-                  // 1.83 随实底化压暗：保留沉浸氛围但不与主界面争对比
-                  opacity: isDark ? 0.10 : 0.07,
-                  // RepaintBoundary（1.88.1）：σ55 里层还套着封面的 σ20。
-                  // 它只随专辑变化，不该每次父级重绘都重算。
-                  child: RepaintBoundary(
-                    child: ImageFiltered(
-                      imageFilter: ImageFilter.blur(sigmaX: 55, sigmaY: 55),
-                      child: AlbumCover(album: album),
-                    ),
-                  ),
-                ),
-              ),
-          ),
           Positioned.fill(
             child: SelectionArea(
               child: SingleChildScrollView(
@@ -159,20 +124,11 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 封面（带玻璃投光阴影与精细圆角）
-                    Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15),
-                            blurRadius: 26,
-                            offset: const Offset(0, 12),
-                          ),
-                        ],
-                      ),
+                    // 封面（角 28，挂 drawer- Hero：点曲目进播放页从封面形变）
+                    Hero(
+                      tag: 'drawer-${album.id}',
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(16),
+                        borderRadius: BorderRadius.circular(M3EShape.xl),
                         child: AspectRatio(
                           aspectRatio: 1,
                           child: AlbumCover(album: album),
@@ -345,8 +301,13 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                             } else {
                               controller.playAlbum(album, index: i);
                             }
-                            // 1.79 桌面端点曲目后跳转全屏播放页（抽屉保留在底层）
-                            Navigator.of(context).push(FullscreenPlayerRoute());
+                            // 1.79 桌面端点曲目后跳转全屏播放页（面板保留在底层）
+                            // 1.99.29：从面板封面形变进入
+                            Navigator.of(context).push(
+                              FullscreenPlayerRoute(
+                                heroTag: 'drawer-${album.id}',
+                              ),
+                            );
                           },
                         ),
                     ] else ...[
@@ -360,18 +321,13 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
               ),
             ),
           ),
-          // 关闭按钮（玻璃悬浮微圆角）
-          // 1.99.22：材质换用 HikoGlass（premium 档 + 自建渲染图层）。
-          // 圆形半径 999 / 模糊 10 / 底色与原 IconButton 背景色逐项一致。
+          // 关闭按钮（M3E 色调圆钮）
           Positioned(
             right: 14,
             top: 14,
-            child: HikoGlass(
-              borderRadius: 999,
-              blur: 10,
-              tint: isDark
-                  ? Colors.white.withValues(alpha: 0.12)
-                  : Colors.black.withValues(alpha: 0.06),
+            child: Material(
+              color: M3ETheme.of(context).colors.surfaceContainerHighest,
+              shape: const CircleBorder(),
               child: IconButton(
                 onPressed: widget.onClose,
                 icon: const Icon(Icons.close_rounded, size: 16),

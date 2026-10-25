@@ -63,12 +63,18 @@ class AlbumCard extends ConsumerWidget {
           children: <Widget>[
             Stack(
               children: <Widget>[
-                ClipRRect(
-                  // 16 − 4 = 12
-                  borderRadius: BorderRadius.circular(M3EShape.md),
-                  child: AspectRatio(
-                    aspectRatio: 1,
-                    child: AlbumCover(album: album),
+                // 英雄时刻 A 的起点（1.99.29）：与移动详情页封面同 tag 链式形变。
+                // 前缀 card- 与播放条（bar-）/详情抽屉（drawer-）隔离，避免
+                // 同路由多 Hero 断言；飞行用默认规则（目标子树从来源位置飞入）。
+                Hero(
+                  tag: 'card-${album.id}',
+                  child: ClipRRect(
+                    // 16 − 4 = 12
+                    borderRadius: BorderRadius.circular(M3EShape.md),
+                    child: AspectRatio(
+                      aspectRatio: 1,
+                      child: AlbumCover(album: album),
+                    ),
                   ),
                 ),
                 if (multiMode)

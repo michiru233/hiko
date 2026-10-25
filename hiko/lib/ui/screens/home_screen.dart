@@ -649,7 +649,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           onCoverTap: (_) {
                             // 1.79 桌面对齐移动端：点击播放条封面进入全屏播放页
                             // （详情抽屉仍可从专辑卡片/统计页进入）
-                            Navigator.of(context).push(FullscreenPlayerRoute());
+                            // 1.99.29：从播放条封面形变进入（英雄时刻 B）
+                            Navigator.of(context)
+                                .push(FullscreenPlayerRoute(heroTag: 'bar-cover'));
                           },
                         ),
                     ],
@@ -678,7 +680,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
                       ),
                     ),
-                  // 详情：桌面右侧抽屉 / 移动全屏弹层
+                  // 详情：桌面右侧面板（M3ESheet.side 480）/ 移动底部面板
                   if (_detailAlbum != null)
                     Positioned(
                       right: 0,
@@ -687,14 +689,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       // （1.54 / 1.99.6）
                       bottom: isMobile ? (playerBarVisible ? 118 : 60) : 0,
                       left: isMobile ? 0 : null,
-                      // 桌面：抽屉宽 390，窗口过窄时收缩到窗口可用宽，避免抽屉本身溢出右缘
+                      // 桌面：面板宽 480（plan §8.4），窗口过窄时收缩，避免溢出右缘
                       width: isMobile
                           ? null
                           : MediaQuery.sizeOf(context).width
-                                .clamp(200.0, 390.0),
+                                .clamp(200.0, 480.0),
                       child: DetailDrawer(
                         album: _detailAlbum!,
                         onClose: () => setState(() => _detailAlbum = null),
+                        sheetVariant: isMobile
+                            ? M3ESheetVariant.bottom
+                            : M3ESheetVariant.side,
                         // 1.81 抽屉社团/声优胶囊点选筛选（抽屉保持打开，结果线显示分色胶囊）
                         personFilterKind: _personFilterKind,
                         personFilterName: _personFilterName,
@@ -839,7 +844,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           return;
         }
         if (index == items.length - 2) {
-          Navigator.of(context).push(FullscreenPlayerRoute());
+          // 「正在播放」：有播放条时从其封面形变进入，无播放条则普通转场
+          //（目标 tag 无来源时 Hero 静默跳过，1.99.29）
+          Navigator.of(context)
+              .push(FullscreenPlayerRoute(heroTag: 'bar-cover'));
           return;
         }
         setState(() => _view = folded.visible[index].label);

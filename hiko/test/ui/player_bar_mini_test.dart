@@ -8,11 +8,11 @@ import 'package:hiko/playback/playback_controller.dart';
 import 'package:hiko/ui/widgets/player_bar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 迷你播放栏契约（1.99.7 方案A，仅 compact / 移动端）：
+/// 播放条契约（1.99.7 方案A compact；1.99.29 桌面对齐 + M3EToolbar 材质）：
 /// 1. 单行布局在**手机宽度（360dp）**下不溢出；
-/// 2. 进度降级为顶边细进度线（只显示），compact 里**没有滑杆**；
+/// 2. 进度为 2dp 非交互细线（只显示），任何端都**没有滑杆**；
 /// 3. 点文字区任意处 = 点封面，都回调 `onCoverTap` 进全屏页；
-/// 4. 桌面端（compact: false）仍是双控件行 + 可拖滑杆，本版零改动。
+/// 4. 桌面端（compact: false）同样只有细线 —— 拖动进度收进全屏播放页（plan §8.6）。
 class _FakePlayback extends PlaybackController {
   _FakePlayback(super._ref);
 }
@@ -112,11 +112,11 @@ void main() {
     expect(taps, 1);
   });
 
-  testWidgets('桌面端（compact: false）不受影响：仍有可拖进度滑杆', (tester) async {
-    // 900 宽给足桌面按钮行（macOS 宿主还会多一个桌面歌词按钮）
+  testWidgets('桌面端（compact: false）与移动同构：细线非交互，无滑杆', (tester) async {
     await pumpBar(tester, compact: false, size: const Size(900, 1000));
     expect(tester.takeException(), isNull);
-    expect(find.byType(Slider), findsOneWidget);
-    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(find.byType(Slider), findsNothing,
+        reason: '1.99.29 播放条不再承载 seek，拖动去全屏页');
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
   });
 }

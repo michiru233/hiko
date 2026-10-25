@@ -69,7 +69,7 @@ void main() {
     await settle(tester);
     expect(onLyricsPage(), isTrue);
 
-    final area = tester.getRect(find.byType(AnimatedSwitcher));
+    final area = tester.getRect(find.byKey(const ValueKey('player-central-switcher')));
     // 距顶 40px 处：中央区内、不在「暂无歌词」文字上，只有铺满的手势收得到
     await tester.tapAt(Offset(area.center.dx, area.top + 40));
     await tester.pump();

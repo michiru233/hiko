@@ -1,24 +1,17 @@
-import 'dart:io';
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../data/settings_store.dart';
-import '../../lyrics/desktop_lyrics_service.dart';
 import '../../models/album.dart';
-import '../../playback/gain_chain.dart';
 import '../../playback/playback_controller.dart';
-import '../../playback/playback_rules.dart';
-import '../../playback/sleep_timer.dart';
-import '../../utils/time.dart';
 import '../covers/cover_art.dart';
-import '../theme.dart';
-import 'hiko_glass.dart';
-import 'toast.dart';
+import '../m3e/m3e.dart';
 
-/// 底部播放条：玻璃拟态悬浮胶囊设计（毛玻璃模糊背景 + 双层边框 + 环境反光）
-/// compact（移动端）为两行布局：控件在上，全宽进度条下移成一行。
+/// 底部播放条（M3EToolbar，1.99.29）：64dp 全圆浮动工具条。
+///
+/// 内容 = 封面 40（角 8）+ 标题/艺术家 + 上一首/播放/下一首 + 2dp 非交互进度细线
+/// （点细线/封面/文字任意处进全屏播放页拖动，plan §8.6）。播放模式、睡眠定时、
+/// 倍速、音量、歌词入口全部收进全屏播放页辅助区 —— 移动端 1.99.7 已是此形态，
+/// 本版桌面端对齐。
 class PlayerBar extends ConsumerStatefulWidget {
   const PlayerBar({
     super.key,
@@ -27,10 +20,10 @@ class PlayerBar extends ConsumerStatefulWidget {
     this.onDismiss,
   });
 
-  /// 点击当前封面 → 打开详情
+  /// 点击封面 / 元信息 / 进度细线 → 打开全屏播放页
   final void Function(Album album)? onCoverTap;
 
-  /// 移动端紧凑两行布局
+  /// 移动端紧凑布局（间距收紧）
   final bool compact;
 
   /// 从左往右划掉播放栏（仅移动端传；为 null 时**不套** [Dismissible]，桌面行为不变）。
@@ -44,119 +37,76 @@ class PlayerBar extends ConsumerStatefulWidget {
 }
 
 class _PlayerBarState extends ConsumerState<PlayerBar> {
-  bool _dragging = false;
-  double _dragValue = 0;
-  double? _gainDrag; // 增益滑动条拖动中的临时值（松手才提交）
-  double? _rateDrag; // 倍速滑动条拖动中的临时值（松手才提交）
-
-  /// 归一到一位小数并夹在 1.0~上限（macOS 因缺滤镜 1.3，Windows 4.0）
-  double _snapGain(double v) =>
-      ((v * 10).round() / 10).clamp(1.0, desktopGainCap()).toDouble();
-
-  /// 倍速归一位小数并夹在 0.5~2.0
-  double _snapRate(double v) => ((v * 10).round() / 10).clamp(0.5, 2.0).toDouble();
+  void _openPlayer(Album? album) {
+    if (album != null) widget.onCoverTap?.call(album);
+  }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(playbackProvider);
-    final settings = ref.watch(settingsProvider);
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final album = state.album;
-    final track = state.currentTrack;
-
-    final position = _dragging ? _dragValue : state.position;
+    final position = state.position;
     final duration = state.duration;
-    // compact(移动端)单行化后不再需要按钮间密排间距（1.99.7 移除 gap）
+    final pct = duration > 0 ? (position / duration).clamp(0.0, 1.0) : 0.0;
 
-    // 1.99.7（方案A，仅移动端）：compact 从两行压成单行迷你条 ——
-    // 封面 + 元信息 + 上一首/播放/下一首，进度降级为顶边 2.5px 细进度线
-    // （只显示，seek 去全屏播放页）。模式/睡眠/倍速/音量入口同步移除，
-    // 全屏页都有（倍速是本版新补的第五键）。
-    final innerContent = widget.compact
-        ? Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildMiniProgress(theme, position, duration),
-              const SizedBox(height: 7),
-              Row(
+    final content = RepaintBoundary(
+      child: M3EToolbar(
+        height: 64,
+        margin: widget.compact
+            ? const EdgeInsets.fromLTRB(10, 0, 10, 10)
+            : const EdgeInsets.all(16),
+        padding: widget.compact
+            ? const EdgeInsets.symmetric(horizontal: 12)
+            : const EdgeInsets.symmetric(horizontal: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Expanded(
+              child: Row(
                 children: [
-                  _buildCover(theme, album),
-                  const SizedBox(width: 8),
-                  // 点文字区任意处 = 点封面，都进全屏播放页
+                  _buildCover(album),
+                  SizedBox(width: widget.compact ? 8 : 14),
                   Expanded(
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
-                      onTap: album == null
-                          ? null
-                          : () => widget.onCoverTap?.call(album),
-                      child: _buildMeta(theme, state, album, track),
+                      onTap: () => _openPlayer(album),
+                      child: _buildMeta(state, album),
                     ),
                   ),
-                  _buildControls(theme, state),
+                  SizedBox(width: widget.compact ? 8 : 14),
+                  _buildControls(state),
                 ],
               ),
-            ],
-          )
-        : Row(
-            children: [
-              _buildCover(theme, album),
-              const SizedBox(width: 15),
-              _buildMeta(theme, state, album, track),
-              const SizedBox(width: 18),
-              _buildControls(theme, state),
-              const SizedBox(width: 18),
-              Expanded(child: _buildTimeline(theme, position, duration)),
-              const SizedBox(width: 18),
-              _buildModeButton(theme, state),
-              const SizedBox(width: 14),
-              _buildSleepButton(theme, state),
-              const SizedBox(width: 14),
-              _buildSpeedButton(theme, settings),
-              if (Platform.isMacOS) ...[
-                const SizedBox(width: 14),
-                _buildDesktopLyricsButton(theme),
-              ],
-              const SizedBox(width: 14),
-              _buildVolumeButton(theme, settings),
-            ],
-          );
-
-    final content = RepaintBoundary(
-      // 1.99.22：材质换用 HikoGlass（premium 档 + 自建渲染图层）。
-      // 几何参数（圆角 / 内外边距 / 阴影）逐项保持不变，只换了玻璃材质。
-      child: HikoGlass(
-        blur: 20,
-        borderRadius: widget.compact ? 20 : 0,
-        margin: widget.compact
-            ? const EdgeInsets.fromLTRB(10, 0, 10, 10)
-            : EdgeInsets.zero,
-        padding: EdgeInsets.symmetric(
-          horizontal: widget.compact ? 12 : 24,
-          vertical: widget.compact ? 8 : 10,
+            ),
+            const SizedBox(height: 5),
+            // 2dp 非交互进度细线：点按进全屏拖动（plan §8.6）
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _openPlayer(album),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(1),
+                child: SizedBox(
+                  height: 2,
+                  child: LinearProgressIndicator(
+                    key: const ValueKey('player-bar-progress'),
+                    value: pct,
+                    minHeight: 2,
+                    backgroundColor: M3ETheme.of(context)
+                        .colors
+                        .outlineVariant
+                        .withValues(alpha: 0.6),
+                    valueColor: AlwaysStoppedAnimation(
+                      Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
-        borderColor: isDark ? HikoColors.darkGlassBorder : HikoColors.lightGlassBorder,
-        borderWidth: 1.0,
-        tint: isDark ? HikoColors.darkGlassSurface : HikoColors.lightGlassSurface,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.08),
-            blurRadius: 24,
-            offset: const Offset(0, -2),
-          ),
-        ],
-        child: innerContent,
       ),
     );
 
-    // 1.99.6（裁决 Q5=A）：移动端「从左往右划掉」——跟手位移，过阈值（或带速度
-    // 轻扫）即消失；不加振动。桌面端不传 onDismiss，完全保持原样。
-    //
-    // 栏内的三个 Slider（进度 / 增益 / 倍速）**天然排除**：手势竞技场里最内层的
-    // 横向拖动识别器优先，Slider 会赢下竞技场，所以音量与进度拖动照旧可用。
-    // `resizeDuration: null` = 滑出动画一结束就回调 onDismissed，**跳过** Dismissible
-    // 内部的「高度收缩到 0」动画：本组件不是列表项，收缩动画只会让收起多等 300ms、
-    // 且与父级直接摘除互相打架（也是唯一能避开「dismissed but still in the tree」断言的方式）。
     final onDismiss = widget.onDismiss;
     if (onDismiss == null) return content;
     return Dismissible(
@@ -170,634 +120,84 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
   }
 
   // ---- 封面 ----
-  Widget _buildCover(ThemeData theme, Album? album) {
-    final size = widget.compact ? 40.0 : 48.0;
-    return InkWell(
-      onTap: album == null ? null : () => widget.onCoverTap?.call(album),
-      mouseCursor: album == null ? SystemMouseCursors.basic : SystemMouseCursors.click,
-      borderRadius: BorderRadius.circular(7),
-      child: SizedBox(
-        width: size,
-        height: size,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(7),
-          child: album == null
-              ? Container(color: const Color(0xFFD5D1E8))
-              : AlbumCover(album: album),
-        ),
+  Widget _buildCover(Album? album) {
+    const size = 40.0;
+    final cover = SizedBox(
+      width: size,
+      height: size,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(M3EShape.sm),
+        child: album == null
+            ? ColoredBox(color: M3ETheme.of(context).colors.surfaceContainerHighest)
+            : AlbumCover(album: album),
       ),
+    );
+    // 英雄时刻 B 的起点（1.99.29）：桌面端点播放条封面 → 播放页封面连续形变
+    if (album == null) return cover;
+    return Hero(
+      tag: 'bar-cover',
+      child: GestureDetector(onTap: () => _openPlayer(album), child: cover),
     );
   }
 
-  // ---- 元信息 ----
-  Widget _buildMeta(ThemeData theme, PlaybackState state, Album? album, track) {
-    return SizedBox(
-      width: widget.compact ? null : 190,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (!widget.compact) ...[
-            Text(
-              '正在播放',
-              style: TextStyle(
-                color: theme.colorScheme.primary,
-                fontSize: 9,
-                letterSpacing: 0.8,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 3),
-          ],
-          Text(
-            album == null
-                ? '未在播放'
-                : '${album.title} · ${state.queueIndex >= 0 ? (state.queueIndex + 1).toString().padLeft(2, '0') : '01'}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-          ),
-          Text(
-            track == null ? '' : '${album?.artist ?? ''} · ${track.name}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 10, color: theme.hintColor),
-          ),
-        ],
-      ),
+  // ---- 元信息：标题（含序号）+ 艺术家 · 曲名 ----
+  Widget _buildMeta(PlaybackState state, Album? album) {
+    final track = state.currentTrack;
+    final type = M3ETheme.of(context).type;
+    final colors = M3ETheme.of(context).colors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          album == null
+              ? '未在播放'
+              : '${album.title} · ${state.queueIndex >= 0 ? (state.queueIndex + 1).toString().padLeft(2, '0') : '01'}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: type.titleSmall.copyWith(color: colors.onSurface),
+        ),
+        const SizedBox(height: 1),
+        Text(
+          track == null ? '' : '${album?.artist ?? ''} · ${track.name}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: type.bodySmall.copyWith(color: colors.onSurfaceVariant),
+        ),
+      ],
     );
   }
 
   // ---- 播放控制（Material 图标，两端视觉统一；文字符号在部分 Android 字体渲染异常）----
-  Widget _buildControls(ThemeData theme, PlaybackState state) {
-    final gap = widget.compact ? 8.0 : 12.0;
+  Widget _buildControls(PlaybackState state) {
+    final gap = widget.compact ? 6.0 : 10.0;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         _IconButton(
           icon: Icons.skip_previous_rounded,
           tooltip: '上一首',
-          onPressed: state.album == null ? null : () => ref.read(playbackProvider.notifier).prev(),
+          onPressed: state.album == null
+              ? null
+              : () => ref.read(playbackProvider.notifier).prev(),
         ),
         SizedBox(width: gap),
         _PlayButton(
           playing: state.playing,
-          size: widget.compact ? 38 : 32,
-          onPressed: state.album == null ? null : () => ref.read(playbackProvider.notifier).toggle(),
+          size: widget.compact ? 38 : 36,
+          onPressed: state.album == null
+              ? null
+              : () => ref.read(playbackProvider.notifier).toggle(),
         ),
         SizedBox(width: gap),
         _IconButton(
           icon: Icons.skip_next_rounded,
           tooltip: '下一首',
-          onPressed: state.album == null ? null : () => ref.read(playbackProvider.notifier).next(),
+          onPressed: state.album == null
+              ? null
+              : () => ref.read(playbackProvider.notifier).next(),
         ),
       ],
-    );
-  }
-
-  // ---- 迷你进度线（仅 compact：顶边 2.5px，只显示不可拖）----
-  Widget _buildMiniProgress(ThemeData theme, double position, double duration) {
-    final pct = duration > 0 ? (position / duration).clamp(0.0, 1.0) : 0.0;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(2),
-      child: SizedBox(
-        height: 2.5,
-        child: LinearProgressIndicator(
-          value: pct,
-          minHeight: 2.5,
-          backgroundColor: theme.dividerColor.withValues(alpha: 0.55),
-          valueColor: AlwaysStoppedAnimation(theme.colorScheme.primary),
-        ),
-      ),
-    );
-  }
-
-  // ---- 时间轴 ----
-  Widget _buildTimeline(ThemeData theme, double position, double duration) {
-    final pct = duration > 0 ? (position / duration).clamp(0.0, 1.0) : 0.0;
-    return Row(
-      children: [
-        _TimeText(formatTime(position)),
-        Expanded(
-          child: Slider(
-            value: pct,
-            onChangeStart: (_) => setState(() => _dragging = true),
-            onChanged: (v) => setState(() => _dragValue = v * duration),
-            onChangeEnd: (v) {
-              setState(() {
-                _dragging = false;
-                _dragValue = 0;
-              });
-              ref.read(playbackProvider.notifier).seek(v * duration);
-            },
-          ),
-        ),
-        _TimeText(formatTime(duration), right: true),
-      ],
-    );
-  }
-
-  // ---- 播放模式按钮 ----
-  Widget _buildModeButton(ThemeData theme, PlaybackState state) {
-    return MenuAnchor(
-      style: MenuStyle(
-        backgroundColor: WidgetStatePropertyAll(theme.colorScheme.surface),
-        side: WidgetStatePropertyAll(BorderSide(color: theme.dividerColor)),
-        shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-        padding: const WidgetStatePropertyAll(EdgeInsets.all(8)),
-        elevation: WidgetStatePropertyAll(12),
-      ),
-      builder: (context, controller, child) => _ModeButton(
-        mode: state.mode,
-        onTap: () => controller.isOpen ? controller.close() : controller.open(),
-      ),
-      menuChildren: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-          child: Text('播放模式',
-              style: TextStyle(fontSize: 9, letterSpacing: 1, color: theme.hintColor)),
-        ),
-        for (final m in playModes)
-          _ModeOption(
-            mode: m,
-            active: m.key == state.mode.key,
-            onTap: () {
-              ref.read(playbackProvider.notifier).setMode(PlaybackModeX.fromKey(m.key));
-              ref.read(settingsProvider.notifier).setPlayMode(m.key);
-            },
-          ),
-      ],
-    );
-  }
-
-  // ---- 音量与增益控制按钮（纵向弹出滑块与增益档位）----
-  Widget _buildVolumeButton(ThemeData theme, AppSettings settings) {
-    final isBoosted = settings.audioGain > 1.0;
-    return MenuAnchor(
-      alignmentOffset: const Offset(-20, -12),
-      style: MenuStyle(
-        backgroundColor: WidgetStatePropertyAll(theme.colorScheme.surface),
-        side: WidgetStatePropertyAll(BorderSide(color: theme.dividerColor)),
-        shape: WidgetStatePropertyAll(
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-        padding: const WidgetStatePropertyAll(
-            EdgeInsets.symmetric(vertical: 12, horizontal: 10)),
-        elevation: const WidgetStatePropertyAll(14),
-      ),
-      builder: (context, controller, child) => IconButton(
-        onPressed: () => controller.isOpen ? controller.close() : controller.open(),
-        tooltip: isBoosted
-            ? '音量 ${(settings.volume * 100).round()}% · 增益 ${settings.audioGain.toStringAsFixed(1)}x'
-            : '音量 ${(settings.volume * 100).round()}%',
-        iconSize: 18,
-        visualDensity: widget.compact ? VisualDensity.compact : null,
-        color: isBoosted ? theme.colorScheme.primary : theme.hintColor,
-        icon: Stack(
-          alignment: Alignment.center,
-          clipBehavior: Clip.none,
-          children: [
-            Icon(
-              settings.volume == 0
-                  ? Icons.volume_off_rounded
-                  : settings.volume < 0.5
-                      ? Icons.volume_down_rounded
-                      : Icons.volume_up_rounded,
-            ),
-            if (isBoosted)
-              Positioned(
-                right: -4,
-                top: -3,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 2.5, vertical: 0.5),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    '${settings.audioGain.toStringAsFixed(1)}x',
-                    style: const TextStyle(
-                      fontSize: 7.5,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                      height: 1.0,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-      menuChildren: [
-        SizedBox(
-          width: 150,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '${(settings.volume * 100).round()}%',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-              const SizedBox(height: 6),
-              SizedBox(
-                height: 110,
-                width: 32,
-                child: RotatedBox(
-                  quarterTurns: 3,
-                  child: SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      trackHeight: 4,
-                      thumbShape:
-                          const RoundSliderThumbShape(enabledThumbRadius: 6),
-                      overlayShape:
-                          const RoundSliderOverlayShape(overlayRadius: 12),
-                    ),
-                    child: Slider(
-                      key: const ValueKey('volume-slider'),
-                      value: settings.volume,
-                      mouseCursor: SystemMouseCursors.click,
-                      onChanged: (v) {
-                        ref.read(settingsProvider.notifier).setVolume(v);
-                        ref.read(playbackProvider.notifier).setVolume(v);
-                      },
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Divider(height: 1, color: theme.dividerColor.withValues(alpha: 0.6)),
-              const SizedBox(height: 6),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.bolt_rounded,
-                        size: 11,
-                        color: isBoosted ? theme.colorScheme.primary : theme.hintColor,
-                      ),
-                      const SizedBox(width: 2),
-                      Text(
-                        '增益放大',
-                        style: TextStyle(
-                          fontSize: 9.5,
-                          fontWeight: FontWeight.w600,
-                          color: isBoosted ? theme.colorScheme.primary : theme.hintColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Text(
-                    'x${(_gainDrag ?? settings.audioGain).toStringAsFixed(1)}',
-                    style: TextStyle(
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w700,
-                      color: isBoosted ? theme.colorScheme.primary : theme.hintColor,
-                    ),
-                  ),
-                ],
-              ),
-              SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  trackHeight: 4,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                ),
-                child: Slider(
-                  key: const ValueKey('gain-slider-player-bar'),
-                  min: 1.0,
-                  max: desktopGainCap(),
-                  divisions: desktopGainCap() > 1.3 ? 30 : 3,
-                  value: (_gainDrag ?? settings.audioGain)
-                      .clamp(1.0, desktopGainCap()),
-                  label: 'x${(_gainDrag ?? settings.audioGain).toStringAsFixed(1)}',
-                  mouseCursor: SystemMouseCursors.click,
-                  onChanged: (v) => setState(() => _gainDrag = _snapGain(v)),
-                  onChangeEnd: (v) {
-                    final g = _snapGain(v);
-                    setState(() => _gainDrag = null);
-                    ref.read(settingsProvider.notifier).setAudioGain(g);
-                    ref.read(playbackProvider.notifier).setAudioGain(g);
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-  // ---- 睡眠定时按钮（菜单：关闭 / 15/30/60 分钟 / 播完当前曲 / 播完当前专辑）----
-  Widget _buildSleepButton(ThemeData theme, PlaybackState state) {
-    final active = state.sleepMode != SleepTimerMode.off;
-    final remainingLabel = state.sleepRemaining == null
-        ? null
-        : formatTime(state.sleepRemaining!.inSeconds.toDouble());
-    final tooltip = switch (state.sleepMode) {
-      SleepTimerMode.off => '睡眠定时（关闭）',
-      SleepTimerMode.timed =>
-        '睡眠定时：剩余 ${remainingLabel ?? '--'}（到期淡出停止）',
-      SleepTimerMode.endOfTrack => '睡眠定时：播完当前曲停止',
-      SleepTimerMode.endOfAlbum => '睡眠定时：播完当前专辑停止',
-    };
-    return MenuAnchor(
-      style: MenuStyle(
-        backgroundColor: WidgetStatePropertyAll(theme.colorScheme.surface),
-        side: WidgetStatePropertyAll(BorderSide(color: theme.dividerColor)),
-        shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-        padding: const WidgetStatePropertyAll(EdgeInsets.all(8)),
-        elevation: const WidgetStatePropertyAll(12),
-      ),
-      builder: (context, controller, child) => IconButton(
-        onPressed: () => controller.isOpen ? controller.close() : controller.open(),
-        tooltip: tooltip,
-        iconSize: 18,
-        visualDensity: widget.compact ? VisualDensity.compact : null,
-        color: active ? theme.colorScheme.primary : theme.hintColor,
-        icon: const Icon(Icons.bedtime_rounded),
-      ),
-      menuChildren: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-          child: Text('睡眠定时',
-              style: TextStyle(fontSize: 9, letterSpacing: 1, color: theme.hintColor)),
-        ),
-        if (state.sleepMode == SleepTimerMode.timed && remainingLabel != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
-            child: Text(
-              '剩余 $remainingLabel，到期前 10 秒淡出',
-              style: TextStyle(fontSize: 9, color: theme.colorScheme.primary),
-            ),
-          ),
-        _sleepOption(theme, '关闭', state.sleepMode == SleepTimerMode.off, () {
-          ref.read(playbackProvider.notifier).setSleepOff();
-        }),
-        for (final m in const [15, 30, 60])
-          _sleepOption(
-            theme,
-            '$m 分钟',
-            state.sleepMode == SleepTimerMode.timed,
-            () => ref.read(playbackProvider.notifier).setSleepMinutes(m),
-          ),
-        _sleepOption(theme, '播完当前曲', state.sleepMode == SleepTimerMode.endOfTrack, () {
-          ref.read(playbackProvider.notifier).setSleepEndOfTrack();
-        }),
-        _sleepOption(theme, '播完当前专辑', state.sleepMode == SleepTimerMode.endOfAlbum, () {
-          ref.read(playbackProvider.notifier).setSleepEndOfAlbum();
-        }),
-      ],
-    );
-  }
-
-  Widget _sleepOption(ThemeData theme, String label, bool active, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      mouseCursor: SystemMouseCursors.click,
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-        decoration: BoxDecoration(
-          color: active ? theme.colorScheme.primaryContainer : null,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(label,
-            style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: active ? theme.colorScheme.primary : theme.colorScheme.onSurface)),
-      ),
-    );
-  }
-
-  // ---- 倍速按钮（0.5~2.0 步进 0.1，持久化）----
-  Widget _buildSpeedButton(ThemeData theme, AppSettings settings) {
-    final active = settings.playbackRate != 1.0;
-    return MenuAnchor(
-      alignmentOffset: const Offset(-12, -8),
-      style: MenuStyle(
-        backgroundColor: WidgetStatePropertyAll(theme.colorScheme.surface),
-        side: WidgetStatePropertyAll(BorderSide(color: theme.dividerColor)),
-        shape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-        padding: const WidgetStatePropertyAll(
-            EdgeInsets.symmetric(vertical: 10, horizontal: 12)),
-        elevation: const WidgetStatePropertyAll(14),
-      ),
-      builder: (context, controller, child) => IconButton(
-        onPressed: () => controller.isOpen ? controller.close() : controller.open(),
-        tooltip: '播放倍速 ${settings.playbackRate.toStringAsFixed(1)}x',
-        iconSize: 18,
-        visualDensity: widget.compact ? VisualDensity.compact : null,
-        color: active ? theme.colorScheme.primary : theme.hintColor,
-        icon: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            const Icon(Icons.speed_rounded),
-            if (active)
-              Positioned(
-                right: -6,
-                bottom: -3,
-                child: Text(
-                  '${settings.playbackRate.toStringAsFixed(1)}x',
-                  style: TextStyle(
-                    fontSize: 7,
-                    fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.primary,
-                    height: 1.0,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-      menuChildren: [
-        SizedBox(
-          width: 170,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '播放倍速 x${(_rateDrag ?? settings.playbackRate).toStringAsFixed(1)}',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-              SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  trackHeight: 4,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-                ),
-                child: Slider(
-                  key: const ValueKey('rate-slider-player-bar'),
-                  min: 0.5,
-                  max: 2.0,
-                  divisions: 15,
-                  value: (_rateDrag ?? settings.playbackRate).clamp(0.5, 2.0),
-                  label: 'x${(_rateDrag ?? settings.playbackRate).toStringAsFixed(1)}',
-                  onChanged: (v) => setState(() => _rateDrag = _snapRate(v)),
-                  onChangeEnd: (v) {
-                    final r = _snapRate(v);
-                    setState(() => _rateDrag = null);
-                    ref.read(playbackProvider.notifier).setPlaybackRate(r);
-                  },
-                ),
-              ),
-              const SizedBox(height: 2),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('0.5x', style: TextStyle(fontSize: 9, color: theme.hintColor)),
-                  InkWell(
-                    onTap: () => ref.read(playbackProvider.notifier).setPlaybackRate(1.0),
-                    mouseCursor: SystemMouseCursors.click,
-                    child: Text('恢复 1.0x',
-                        style: TextStyle(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w600,
-                            color: theme.colorScheme.primary)),
-                  ),
-                  Text('2.0x', style: TextStyle(fontSize: 9, color: theme.hintColor)),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ---- 桌面置顶歌词按钮 ----
-  Widget _buildDesktopLyricsButton(ThemeData theme) {
-    final status = ref.watch(desktopLyricsProvider);
-    final notifier = ref.read(desktopLyricsProvider.notifier);
-    final isShowing = status.isShowing;
-    final isLocked = status.isLocked;
-
-    // 组合 Tooltip 提示
-    final tooltip = !isShowing
-        ? '开启桌面置顶悬浮歌词'
-        : isLocked
-            ? '桌面歌词已锁定 (点击解锁 / 右键菜单)'
-            : '关闭桌面悬浮歌词 (右键可锁定)';
-
-    return MenuAnchor(
-      builder: (context, controller, child) => GestureDetector(
-        onSecondaryTapDown: (details) {
-          if (isShowing) {
-            controller.open(position: details.localPosition);
-          }
-        },
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            IconButton(
-              onPressed: () async {
-                if (isLocked) {
-                  // 如果处于锁定状态，点击图标直接解锁
-                  await notifier.setLocked(false);
-                  if (context.mounted) {
-                    showHikoToast(context, '已解除桌面歌词鼠标锁定',
-                        duration: const Duration(seconds: 1));
-                  }
-                } else {
-                  final active = await notifier.toggle();
-                  if (context.mounted) {
-                    showHikoToast(
-                        context, active ? '已开启桌面置顶悬浮歌词' : '已关闭桌面置顶悬浮歌词',
-                        duration: const Duration(seconds: 1));
-                  }
-                }
-              },
-              tooltip: tooltip,
-              iconSize: 18,
-              color: isShowing ? theme.colorScheme.primary : theme.hintColor,
-              icon: Icon(
-                isShowing ? Icons.chat_bubble_rounded : Icons.chat_bubble_outline_rounded,
-              ),
-            ),
-            if (isShowing && isLocked)
-              Positioned(
-                right: 6,
-                bottom: 6,
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.primary,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.lock_rounded,
-                    size: 9,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-      menuChildren: [
-        MenuItemButton(
-          leadingIcon: Icon(
-            isLocked ? Icons.lock_open_rounded : Icons.lock_rounded,
-            size: 16,
-          ),
-          onPressed: () async {
-            await notifier.setLocked(!isLocked);
-            if (context.mounted) {
-              showHikoToast(context, !isLocked ? '已锁定桌面歌词（鼠标点击穿透）' : '已解除桌面歌词锁定',
-                  duration: const Duration(seconds: 1));
-            }
-          },
-          child: Text(
-            isLocked ? '解除悬浮窗锁定' : '锁定悬浮窗（穿透鼠标）',
-            style: const TextStyle(fontSize: 12),
-          ),
-        ),
-        MenuItemButton(
-          leadingIcon: const Icon(Icons.close_rounded, size: 16),
-          onPressed: () async {
-            await notifier.hide();
-            if (context.mounted) {
-              showHikoToast(context, '已关闭桌面悬浮歌词',
-                  duration: const Duration(seconds: 1));
-            }
-          },
-          child: const Text('关闭桌面歌词', style: TextStyle(fontSize: 12)),
-        ),
-      ],
-    );
-  }
-}
-
-class _TimeText extends StatelessWidget {
-  const _TimeText(this.text, {this.right = false});
-
-  final String text;
-  final bool right;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 37,
-      child: Text(
-        text,
-        textAlign: right ? TextAlign.right : TextAlign.left,
-        style: TextStyle(
-          fontSize: 10,
-          color: Theme.of(context).hintColor,
-          fontFeatures: const [FontFeature.tabularFigures()],
-        ),
-      ),
     );
   }
 }
@@ -816,14 +216,14 @@ class _IconButton extends StatelessWidget {
       onPressed: onPressed,
       tooltip: tooltip,
       iconSize: 20,
-      color: onPressed == null ? theme.disabledColor : theme.hintColor,
+      color: onPressed == null ? theme.disabledColor : theme.colorScheme.onSurfaceVariant,
       icon: Icon(icon),
     );
   }
 }
 
 class _PlayButton extends StatelessWidget {
-  const _PlayButton({required this.playing, this.onPressed, this.size = 32});
+  const _PlayButton({required this.playing, this.onPressed, this.size = 36});
 
   final bool playing;
   final VoidCallback? onPressed;
@@ -831,89 +231,25 @@ class _PlayButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return InkWell(
+    final colors = M3ETheme.of(context).colors;
+    return M3EPressable(
       onTap: onPressed,
-      mouseCursor: onPressed == null ? SystemMouseCursors.basic : SystemMouseCursors.click,
       borderRadius: BorderRadius.circular(size / 2),
+      pressScale: 0.94,
+      semanticLabel: playing ? '暂停' : '播放',
       child: Container(
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: theme.colorScheme.primary,
+          color: colors.primary,
           shape: BoxShape.circle,
         ),
         child: Center(
           child: Icon(
             playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
             size: size * 0.55,
-            color: theme.colorScheme.onPrimary,
+            color: colors.onPrimary,
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ModeButton extends StatelessWidget {
-  const _ModeButton({required this.mode, required this.onTap});
-
-  final PlaybackMode mode;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final info = playModes.firstWhere((m) => m.key == mode.key);
-    return InkWell(
-      onTap: onTap,
-      mouseCursor: SystemMouseCursors.click,
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-        decoration: BoxDecoration(
-          border: Border.all(color: theme.dividerColor),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(info.label,
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: theme.hintColor)),
-      ),
-    );
-  }
-}
-
-class _ModeOption extends StatelessWidget {
-  const _ModeOption({required this.mode, required this.active, required this.onTap});
-
-  final PlayModeInfo mode;
-  final bool active;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return InkWell(
-      onTap: onTap,
-      mouseCursor: SystemMouseCursors.click,
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-        decoration: BoxDecoration(
-          color: active ? theme.colorScheme.primaryContainer : null,
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(mode.name,
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: active ? theme.colorScheme.primary : theme.colorScheme.onSurface)),
-            const SizedBox(height: 2),
-            Text(mode.desc, style: TextStyle(fontSize: 9, color: theme.hintColor)),
-          ],
         ),
       ),
     );

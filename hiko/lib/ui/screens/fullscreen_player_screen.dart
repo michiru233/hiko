@@ -1,9 +1,8 @@
 import 'dart:async' show unawaited;
 import 'dart:io' show Platform;
-import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -11,6 +10,7 @@ import '../../data/online/online_account.dart';
 import '../../data/online/online_favorites.dart';
 import '../../data/online/online_models.dart';
 import '../../data/settings_store.dart';
+import '../../lyrics/desktop_lyrics_service.dart';
 import '../../lyrics/lyrics_controller.dart';
 import '../../models/album.dart';
 import '../../playback/gain_chain.dart';
@@ -19,21 +19,29 @@ import '../../playback/playback_rules.dart';
 import '../../playback/sleep_timer.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
+import '../covers/cover_color.dart';
 import '../detail_jump_requests.dart';
 import '../lyrics/lyrics_auto_scroll.dart';
+import '../m3e/m3e.dart';
 import '../theme.dart';
 import '../widgets/detail_kit.dart' show hikoFavoriteColor;
 import '../widgets/online_account_dialogs.dart';
 import '../widgets/toast.dart';
 
-/// 全屏播放页（1.57）：仿网易云双层设计
-/// - 封面层（1.100.0 两套可选，AppBar 切换 + 设置持久化）：
-///     - 黑胶唱片：封面旋转动画 + 唱针抬起/落下拟真联动（默认）
-///     - 简约方封面：大圆角方形封面静态展示
-/// - 歌词层：滚动字幕同步播放进度
-/// - 三核心功能键：睡眠定时、音频增益、音轨/章节列表/详情信息
+/// 全屏播放页（1.57 引入；1.99.29 M3E 重做，plan §8.5）。
+///
+/// - 黑胶拟物样式已移除（裁决 D7）：统一为大封面（320dp、角 28），
+///   播放/暂停时角在 28↔32 间形变 + scale 1.0↔0.98（圆角插值 + 缩放近似，§7.4-2）
+/// - 背景 = 封面主色的纵向三停渐变（不是模糊），播放中做 ±2% 明度呼吸
+/// - Hero：入口带 [heroTag] 时封面参与路由转场形变（英雄时刻 A，§8.5）
+/// - 控制区：M3EFab.large 主键 + M3ESlider 粗轨道进度
+/// - 辅助区：M3EToolbar 全圆浮动工具条（含桌面端音量与悬浮歌词入口）
 class FullscreenPlayerScreen extends ConsumerStatefulWidget {
-  const FullscreenPlayerScreen({super.key});
+  const FullscreenPlayerScreen({super.key, this.heroTag});
+
+  /// 封面 Hero 目标 tag。由打开方传入（详情页封面 / 播放条封面各用不同 tag，
+  /// 避免与首页卡片封面同 tag 撞「同路由多 Hero」断言）；null = 不参与 Hero。
+  final String? heroTag;
 
   @override
   ConsumerState<FullscreenPlayerScreen> createState() =>
@@ -44,19 +52,11 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     with
         SingleTickerProviderStateMixin,
         LyricsAutoScroll<FullscreenPlayerScreen> {
-  late AnimationController _rotationController;
   final ScrollController _lyricsScrollController = ScrollController();
   final Map<int, GlobalKey> _lineKeys = {};
   bool _showLyrics = false;
   bool _dragging = false;
   double _dragValue = 0;
-
-  /// 1.88 入场动效结束后才起转：转场期间两页同时绘制，唱片继续自转等于
-  /// 每帧多一份全盘重绘；观感上也更对——唱针落下（400ms）之后唱片再转起来。
-  bool _entryFinished = false;
-  bool _routeAnimationBound = false;
-  Animation<double>? _routeAnimation;
-  void Function(AnimationStatus)? _entryStatusListener;
 
   @override
   ScrollController get lyricsScrollController => _lyricsScrollController;
@@ -69,55 +69,7 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
       45.0 * ref.read(settingsProvider).lyricsFontScale;
 
   @override
-  void initState() {
-    super.initState();
-    // 黑胶旋转动画：转场结束后才起转（1.88），由 didChangeDependencies 绑定路由动画。
-    // 这里**不能** repeat()——转场期间两页叠加绘制，自转是白花的每帧开销。
-    _rotationController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 20),
-    );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_routeAnimationBound) return;
-    _routeAnimationBound = true;
-
-    final route = ModalRoute.of(context);
-    final animation = route?.animation;
-    // 三种情况视为「已经到位」：无路由动画（单测直接挂 widget）、动画早已完成
-    // （该页是首帧路由）、系统减弱动态效果开启——都不该挡住唱片起转。
-    if (animation == null ||
-        animation.isCompleted ||
-        MediaQuery.disableAnimationsOf(context)) {
-      _entryFinished = true;
-      return;
-    }
-    _routeAnimation = animation;
-    void onStatus(AnimationStatus status) {
-      if (status != AnimationStatus.completed || !mounted) return;
-      _entryFinished = true;
-      // 命令式起转，**不走 setState**——转场刚结束那一帧本来就要合成整页，
-      // 再叠一次全页重建就是肉眼可见的一顿（1.88.1）。
-      // build 里的同步逻辑会继续维持与播放状态一致，这里只是把起转提前。
-      if (ref.read(playbackProvider).playing && !_rotationController.isAnimating) {
-        _rotationController.repeat();
-      }
-    }
-    _entryStatusListener = onStatus;
-    animation.addStatusListener(onStatus);
-  }
-
-  @override
   void dispose() {
-    final animation = _routeAnimation;
-    final listener = _entryStatusListener;
-    if (animation != null && listener != null) {
-      animation.removeStatusListener(listener);
-    }
-    _rotationController.dispose();
     _lyricsScrollController.dispose();
     super.dispose();
   }
@@ -131,21 +83,6 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     final album = state.album;
     final track = state.currentTrack;
 
-    // 尊重系统 reduce-motion 设置，禁用动画时停止旋转
-    final reduceMotion = MediaQuery.disableAnimationsOf(context);
-
-    // 播放页样式（1.100.0）：vinyl 黑胶 / simple 简约方封面
-    final simpleStyle = settings.fullscreenPlayerStyle == 'simple';
-
-    // 同步旋转动画与播放状态（1.88 增加入场完成门控：转场期间不起转）
-    // 简约样式没有唱片，不起转（控制器没有监听者，但仍不该空转）
-    final shouldSpin = !reduceMotion && _entryFinished && state.playing && !simpleStyle;
-    if (shouldSpin && !_rotationController.isAnimating) {
-      _rotationController.repeat();
-    } else if (!shouldSpin && _rotationController.isAnimating) {
-      _rotationController.stop();
-    }
-
     if (album == null) {
       // 无播放内容时关闭页面
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -157,16 +94,17 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     final position = _dragging ? _dragValue : state.position;
     final duration = state.duration;
 
-    // 1.83 宽屏并排：窗口 ≥1000px 时左唱片右歌词同屏（唱片区含曲目信息与进度），
-    // 窄窗与移动端回退原有"唱片⇄歌词"切换式；两套布局共用同一份视图与状态代码。
+    // 1.83 宽屏并排：窗口 ≥1000px 时左封面右歌词同屏（封面区含曲目信息与进度），
+    // 窄窗与移动端回退"封面⇄歌词"切换式；两套布局共用同一份视图与状态代码。
     final wide = MediaQuery.sizeOf(context).width >= 1000;
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      // 自定义背景启用时透出根层背景层（1.84）
+      // 背景由 [_PlayerBackdrop]（封面主色三停渐变）承担；自定义背景图启用时
+      // 仍透出根层背景层（1.84 语义，配色种子 1.99.30 接管）
       backgroundColor: settings.backgroundPath.isNotEmpty
           ? Colors.transparent
-          : (isDark ? HikoColors.darkBg : HikoColors.lightBg),
+          : M3ETheme.of(context).colors.surface,
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -214,92 +152,86 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
               onPressed: () => _setShowLyrics(!_showLyrics),
               tooltip: _showLyrics ? '显示封面' : '显示歌词',
             ),
-          // 播放页样式切换（1.100.0）：图标显示要切去的那套
-          IconButton(
-            icon: Icon(
-              simpleStyle ? Icons.album_outlined : Icons.crop_square_rounded,
-              color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
-            ),
-            onPressed: () {
-              HapticFeedback.selectionClick();
-              ref
-                  .read(settingsProvider.notifier)
-                  .setFullscreenPlayerStyle(simpleStyle ? 'vinyl' : 'simple');
-            },
-            tooltip: simpleStyle ? '切换为黑胶样式' : '切换为简约样式',
-          ),
         ],
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // 中央区域：宽屏并排 / 窄窗切换（220ms 交叉淡入淡出）
-            if (!wide) const SizedBox(height: 12),
-            Expanded(
-              child: wide
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // 左：封面区（曲名与进度落在封面下方，构成独立锚点块）
-                        Expanded(
-                          child: Column(
-                            children: [
-                              Expanded(
-                                child: _buildCoverView(
-                                  album,
-                                  theme,
-                                  isDark,
-                                  state.playing,
-                                  allowToggle: false,
-                                ),
-                              ),
-                              _buildTrackInfo(album, track, theme, isDark),
-                              const SizedBox(height: 12),
-                              _buildProgressBar(position, duration, theme, isDark),
-                            ],
-                          ),
-                        ),
-                        // 右：歌词区（更宽，自动跟随+点句跳播）
-                        Expanded(
-                          child: _buildLyricsView(theme, isDark, allowToggle: false),
-                        ),
-                      ],
-                    )
-                  : AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 220),
-                      child: _showLyrics
-                          ? KeyedSubtree(
-                              key: const ValueKey('lyrics'),
-                              child: _buildLyricsView(theme, isDark),
-                            )
-                          : KeyedSubtree(
-                              // 键随样式变：切样式时中央区走同一条 220ms 交叉淡入
-                              key: ValueKey(simpleStyle ? 'simple' : 'vinyl'),
-                              child: _buildCoverView(
-                                album,
-                                theme,
-                                isDark,
-                                state.playing,
+      body: Stack(
+        children: [
+          // 封面主色三停渐变背景（1.99.29；自定义背景图启用时不铺）
+          if (settings.backgroundPath.isEmpty)
+            Positioned.fill(
+              child: _PlayerBackdrop(album: album, playing: state.playing),
+            ),
+          SafeArea(
+            child: Column(
+              children: [
+                // 中央区域：宽屏并排 / 窄窗切换（220ms 交叉淡入淡出）
+                if (!wide) const SizedBox(height: 12),
+                Expanded(
+                  child: wide
+                      ? Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            // 左：封面区（曲名与进度落在封面下方，构成独立锚点块）
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  Expanded(
+                                    child: _buildCoverArea(
+                                      album,
+                                      state.playing,
+                                      heroTag: widget.heroTag,
+                                    ),
+                                  ),
+                                  _buildTrackInfo(album, track, theme, isDark),
+                                  const SizedBox(height: 12),
+                                  _buildProgressBar(position, duration, theme, isDark),
+                                ],
                               ),
                             ),
-                    ),
+                            // 右：歌词区（更宽，自动跟随+点句跳播）
+                            Expanded(
+                              child: _buildLyricsView(theme, isDark, allowToggle: false),
+                            ),
+                          ],
+                        )
+                      : AnimatedSwitcher(
+                          // 中央区切换器挂专用 key：测试定位用（M3EFab 内也有
+                          // AnimatedSwitcher，byType 会撞车，1.99.29）
+                          key: const ValueKey('player-central-switcher'),
+                          duration: const Duration(milliseconds: 220),
+                          child: _showLyrics
+                              ? KeyedSubtree(
+                                  key: const ValueKey('lyrics'),
+                                  child: _buildLyricsView(theme, isDark),
+                                )
+                              : KeyedSubtree(
+                                  key: const ValueKey('cover'),
+                                  child: _buildCoverArea(
+                                    album,
+                                    state.playing,
+                                    heroTag: widget.heroTag,
+                                  ),
+                                ),
+                        ),
+                ),
+                const SizedBox(height: 16),
+                // 曲目信息与进度条：宽屏时已并入左侧封面块
+                if (!wide) ...[
+                  _buildTrackInfo(album, track, theme, isDark),
+                  const SizedBox(height: 12),
+                  _buildProgressBar(position, duration, theme, isDark),
+                  const SizedBox(height: 12),
+                ],
+                // 播放控制（通栏）
+                _buildPlaybackControls(state, theme, isDark),
+                const SizedBox(height: 8),
+                // 辅助区（M3EToolbar）
+                _buildFunctionButtons(state, settings, theme, isDark),
+                const SizedBox(height: 16),
+              ],
             ),
-            const SizedBox(height: 16),
-            // 曲目信息与进度条：宽屏时已并入左侧唱片块
-            if (!wide) ...[
-              _buildTrackInfo(album, track, theme, isDark),
-              const SizedBox(height: 12),
-              _buildProgressBar(position, duration, theme, isDark),
-              const SizedBox(height: 12),
-            ],
-            // 播放控制（通栏）
-            _buildPlaybackControls(state, theme, isDark),
-            const SizedBox(height: 8),
-            // 三核心功能键
-            _buildFunctionButtons(state, settings, theme, isDark),
-            const SizedBox(height: 16),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -336,174 +268,33 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     setState(() => lastRevealedIndex = -1);
   }
 
-  /// 中央封面区入口：按 `fullscreenPlayerStyle` 分发黑胶 / 简约（1.100.0）。
+  /// 中央封面区：320dp 大封面、角 28，播放态 28↔32 形变 + 缩放（plan §8.5）。
   ///
-  /// 两套视图同语义：点按切歌词（[allowToggle]，1.83 宽屏并排时为 false）。
-  Widget _buildCoverView(
+  /// [allowToggle] 为 false（1.83 宽屏并排模式）时点按不切歌词。
+  Widget _buildCoverArea(
     Album album,
-    ThemeData theme,
-    bool isDark,
     bool isPlaying, {
     bool allowToggle = true,
-  }) {
-    if (ref.read(settingsProvider).fullscreenPlayerStyle == 'simple') {
-      return _buildSimpleCoverView(album, isDark, allowToggle: allowToggle);
-    }
-    return _buildVinylView(album, theme, isDark, isPlaying,
-        allowToggle: allowToggle);
-  }
-
-  /// 简约视图（1.100.0，参照网易云等常规播放器形态）：大圆角方形封面，静态展示。
-  ///
-  /// 与黑胶视图共用其余全部结构（曲目信息 / 进度条 / 控制键 / 功能键），
-  /// 只有中央封面区的形态不同 —— 这是「另一套观感」而非另一套交互。
-  Widget _buildSimpleCoverView(
-    Album album,
-    bool isDark, {
-    bool allowToggle = true,
+    String? heroTag,
   }) {
     return GestureDetector(
-      // 与黑胶视图一致：封面之外的白边点到也切歌词
+      // 铺满整个中央区域：封面之外的留白点到也切歌词
       behavior: HitTestBehavior.opaque,
       onTap: allowToggle ? () => _setShowLyrics(true) : null,
       child: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480, maxHeight: 480),
+            constraints: const BoxConstraints(maxWidth: 320, maxHeight: 320),
             child: AspectRatio(
               aspectRatio: 1,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black
-                          .withValues(alpha: isDark ? 0.45 : 0.2),
-                      blurRadius: 32,
-                      offset: const Offset(0, 12),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: AlbumCover(album: album, fit: BoxFit.cover),
-                ),
+              child: _MorphingHeroCover(
+                album: album,
+                playing: isPlaying,
+                heroTag: heroTag,
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  /// 黑胶唱片视图：封面旋转 + 唱针联动
-  ///
-  /// [allowToggle] 为 false（1.83 宽屏并排模式）时点按不切歌词——两块同屏无切换概念。
-  Widget _buildVinylView(
-    Album album,
-    ThemeData theme,
-    bool isDark,
-    bool isPlaying, {
-    bool allowToggle = true,
-  }) {
-    return GestureDetector(
-      // 铺满整个中央区域：唱片圆盘之外还有上下各约 50px，点到那里也该有反应
-      behavior: HitTestBehavior.opaque,
-      onTap: allowToggle ? () => _setShowLyrics(true) : null,
-      child: Center(
-        child: Stack(
-          alignment: Alignment.center,
-          clipBehavior: Clip.none,
-          children: [
-            // 旋转的黑胶唱片外圈 - 使用 RepaintBoundary 隔离重绘
-            RepaintBoundary(
-              child: AnimatedBuilder(
-                animation: _rotationController,
-                builder: (context, child) {
-                  return Transform.rotate(
-                    angle: _rotationController.value * 2 * math.pi,
-                    child: child,
-                  );
-                },
-                // 静态黑胶唱片作为 child，不重复构建
-                child: Container(
-                  width: 320,
-                  height: 320,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    // 黑胶唱片外圈：黑色圆环
-                    gradient: const RadialGradient(
-                      colors: [
-                        Color(0xFF1a1a1a),
-                        Color(0xFF0d0d0d),
-                        Colors.black,
-                      ],
-                      stops: [0.7, 0.85, 1.0],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        blurRadius: 40,
-                        offset: const Offset(0, 15),
-                      ),
-                    ],
-                  ),
-                  child: Center(
-                    // 封面图片（占中间部分）
-                    child: Container(
-                      width: 220,
-                      height: 220,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.3),
-                            blurRadius: 20,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
-                      ),
-                      child: ClipOval(
-                        child: AlbumCover(album: album, fit: BoxFit.cover),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            // 中心圆孔（在封面上）
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isDark
-                    ? const Color(0xFF0d0d0d)
-                    : const Color(0xFF2a2a2a),
-                border: Border.all(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.15)
-                      : Colors.white.withValues(alpha: 0.2),
-                  width: 2,
-                ),
-              ),
-            ),
-            // 唱针（右上角）：改为更真实的唱针臂设计
-            Positioned(
-              top: -30,
-              right: 40,
-              child: AnimatedRotation(
-                duration: const Duration(milliseconds: 400),
-                turns: isPlaying ? 0.08 : -0.08, // 播放时落下，暂停时抬起
-                alignment: const Alignment(0.3, -0.8), // 旋转中心靠近唱针臂顶部
-                child: CustomPaint(
-                  size: const Size(100, 140),
-                  painter: _VinylArmPainter(isDark: isDark),
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );
@@ -724,7 +515,7 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     );
   }
 
-  /// 进度条
+  /// 进度条（M3ESlider：16dp 粗轨道 + 4×44 把手，plan §8.5）
   Widget _buildProgressBar(
     double position,
     double duration,
@@ -738,35 +529,23 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
-          SliderTheme(
-            data: SliderThemeData(
-              trackHeight: 3,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-              activeTrackColor: theme.colorScheme.primary,
-              inactiveTrackColor: isDark
-                  ? Colors.white.withValues(alpha: 0.1)
-                  : Colors.black.withValues(alpha: 0.1),
-              thumbColor: theme.colorScheme.primary,
-              overlayColor: theme.colorScheme.primary.withValues(alpha: 0.2),
-            ),
-            child: Slider(
-              value: duration > 0 ? displayPosition.clamp(0, duration) : 0,
-              max: duration > 0 ? duration : 1,
-              onChanged: (v) => setState(() {
-                _dragging = true;
-                _dragValue = v;
-              }),
-              onChangeEnd: (v) {
-                ref.read(playbackProvider.notifier).seek(v);
-                setState(() => _dragging = false);
-                // 拖进度条就是「我要跳到那一刻」：落地即恢复跟随并强制重新居中。
-                // 若用户在拖动前手动滑走过歌词，自动跟随正处在暂停窗口里，
-                // 不重置这份记账的话歌词会停在原处，要等下一句变化才自愈。
-                ref.read(lyricsProvider.notifier).resumeAutoScroll();
-                lastRevealedIndex = -1;
-              },
-            ),
+          M3ESlider(
+            key: const ValueKey('player-progress-slider'),
+            value: duration > 0 ? displayPosition.clamp(0, duration) : 0,
+            max: duration > 0 ? duration : 1,
+            onChanged: (v) => setState(() {
+              _dragging = true;
+              _dragValue = v;
+            }),
+            onChangeEnd: (v) {
+              ref.read(playbackProvider.notifier).seek(v);
+              setState(() => _dragging = false);
+              // 拖进度条就是「我要跳到那一刻」：落地即恢复跟随并强制重新居中。
+              // 若用户在拖动前手动滑走过歌词，自动跟随正处在暂停窗口里，
+              // 不重置这份记账的话歌词会停在原处，要等下一句变化才自愈。
+              ref.read(lyricsProvider.notifier).resumeAutoScroll();
+              lastRevealedIndex = -1;
+            },
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -799,53 +578,44 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     );
   }
 
-  /// 播放控制
+  /// 播放控制（M3E，plan §8.5）：M3EFab.large 主键 + 次键图标按钮
   Widget _buildPlaybackControls(dynamic state, ThemeData theme, bool isDark) {
+    final colors = M3ETheme.of(context).colors;
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         // 上一曲
         IconButton(
           icon: const Icon(Icons.skip_previous, size: 36),
-          color: isDark ? HikoColors.darkInk : HikoColors.lightInk,
+          color: colors.onSurface,
           onPressed: () {
             HapticFeedback.lightImpact();
             ref.read(playbackProvider.notifier).prev();
           },
         ),
         const SizedBox(width: 20),
-        // 播放/暂停
-        Container(
-          width: 64,
-          height: 64,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: theme.colorScheme.primary,
-            boxShadow: [
-              BoxShadow(
-                color: theme.colorScheme.primary.withValues(alpha: 0.4),
-                blurRadius: 16,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: IconButton(
-            icon: Icon(
-              state.playing ? Icons.pause : Icons.play_arrow,
-              size: 32,
+        // 播放/暂停：M3EFab.large（96dp / 角 28），图标随状态切换
+        M3EFab(
+          semanticLabel: state.playing ? '暂停' : '播放',
+          onPressed: () {
+            HapticFeedback.mediumImpact(); // 主按钮使用更强烈的反馈
+            ref.read(playbackProvider.notifier).toggle();
+          },
+          child: AnimatedSwitcher(
+            duration: M3ETheme.of(context)
+                .motion
+                .duration(M3ESpringType.effects, M3ESpringSpeed.normal),
+            child: Icon(
+              state.playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+              key: ValueKey(state.playing),
             ),
-            color: theme.colorScheme.onPrimary,
-            onPressed: () {
-              HapticFeedback.mediumImpact(); // 主按钮使用更强烈的反馈
-              ref.read(playbackProvider.notifier).toggle();
-            },
           ),
         ),
         const SizedBox(width: 20),
         // 下一曲
         IconButton(
           icon: const Icon(Icons.skip_next, size: 36),
-          color: isDark ? HikoColors.darkInk : HikoColors.lightInk,
+          color: colors.onSurface,
           onPressed: () {
             HapticFeedback.lightImpact();
             ref.read(playbackProvider.notifier).next();
@@ -855,161 +625,230 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     );
   }
 
-  /// 核心功能键：睡眠定时、音频增益、播放模式、音轨列表；
-  /// Android 1.99.7 起加第五键「倍速」（迷你播放栏砍掉的入口在此回归，
-  /// macOS 全屏页保持原样不动）
+  /// 辅助区（M3EToolbar 全圆浮动，plan §8.5）：定时 / 增益 / 音量(桌面) /
+  /// 悬浮歌词(桌面) / 倍速(Android) / 播放模式 / 列表。
+  ///
+  /// 1.99.29 起播放条不再承载这些入口（对齐移动端 1.99.7 形态），
+  /// 本区是唯一归宿；桌面端因此补了「音量」与「悬浮歌词」两键。
   Widget _buildFunctionButtons(
     dynamic state,
     AppSettings settings,
     ThemeData theme,
     bool isDark,
   ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
+    final isDesktop =
+        !Platform.isAndroid && !Platform.isIOS; // macOS / Windows
+    return M3EToolbar(
+      margin: const EdgeInsets.fromLTRB(40, 0, 40, 0),
+      // 桌面端 7 个动作在窄窗会超出 64dp 工具条宽度，横向滚动兜底；
+      // 宽窗下从左排布（M3E 工具条惯例），不强行 spaceEvenly。
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
           // 睡眠定时
-          _buildFunctionButton(
+          _ToolbarAction(
             icon: Icons.bedtime_outlined,
-            label: '定时',
-            theme: theme,
-            isDark: isDark,
+            tooltip: '睡眠定时',
+            active: state.sleepMode != SleepTimerMode.off,
             onTap: () => _showSleepTimerDialog(theme, isDark),
           ),
           // 音频增益
-          _buildFunctionButton(
-            icon: Icons.volume_up_outlined,
-            label: '增益',
-            theme: theme,
-            isDark: isDark,
+          _ToolbarAction(
+            icon: Icons.graphic_eq_rounded,
+            tooltip: '音频增益',
+            active: settings.audioGain > 1.0,
             onTap: () => _showGainDialog(settings, theme, isDark),
           ),
-          // 倍速（仅 Android）
+          // 音量（桌面：播放条音量键 1.99.29 移入此处）
+          if (isDesktop) _buildVolumeToolbarButton(settings, theme),
+          // 桌面悬浮歌词（桌面专属）
+          if (isDesktop) _buildDesktopLyricsToolbarButton(theme),
+          // 倍速（仅 Android，1.99.7 起）
           if (Platform.isAndroid)
-            _buildFunctionButton(
+            _ToolbarAction(
               icon: Icons.speed_outlined,
-              label: '倍速',
-              theme: theme,
-              isDark: isDark,
+              tooltip: '播放倍速 ${settings.playbackRate.toStringAsFixed(1)}x',
+              active: settings.playbackRate != 1.0,
               onTap: () => _showRateDialog(settings, theme, isDark),
             ),
           // 播放模式
-          _buildPlayModeButton(state.mode, theme, isDark),
+          _buildPlayModeToolbarButton(state.mode, theme),
           // 音轨列表
-          _buildFunctionButton(
+          _ToolbarAction(
             icon: Icons.queue_music_outlined,
-            label: '列表',
-            theme: theme,
-            isDark: isDark,
+            tooltip: '曲目列表',
             onTap: () => _showTrackListSheet(state.album, state.queueIndex),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFunctionButton({
-    required IconData icon,
-    required String label,
-    required ThemeData theme,
-    required bool isDark,
-    required VoidCallback onTap,
-  }) {
-    // 扩大触摸目标到 56×56px（图标 28 + padding 14×2）
-    return InkWell(
-      onTap: () {
-        HapticFeedback.lightImpact(); // 触觉反馈
-        onTap();
-      },
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        constraints: const BoxConstraints(minWidth: 56, minHeight: 56),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 28,
-              color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
-              ),
-            ),
           ],
         ),
       ),
     );
   }
 
-  /// 播放模式按钮（带菜单）
-  Widget _buildPlayModeButton(
-    PlaybackMode currentMode,
-    ThemeData theme,
-    bool isDark,
-  ) {
-    // 根据当前模式选择图标和标签
-    final modeInfo = playModes.firstWhere((m) => m.key == currentMode.key);
-    final IconData icon;
-    switch (currentMode) {
-      case PlaybackMode.list:
-        icon = Icons.repeat_outlined;
-        break;
-      case PlaybackMode.single:
-        icon = Icons.repeat_one_outlined;
-        break;
-      case PlaybackMode.shuffle:
-        icon = Icons.shuffle_outlined;
-        break;
-      case PlaybackMode.album:
-        icon = Icons.album; // 无 outlined 变体
-        break;
-    }
-
+  /// 音量弹出菜单（音量滑杆；增益有自己的对话框，不在这里混）
+  Widget _buildVolumeToolbarButton(AppSettings settings, ThemeData theme) {
     return MenuAnchor(
-      builder: (context, controller, child) {
-        return InkWell(
-          onTap: () {
-            HapticFeedback.lightImpact();
-            if (controller.isOpen) {
-              controller.close();
-            } else {
-              controller.open();
-            }
-          },
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            constraints: const BoxConstraints(minWidth: 56, minHeight: 56),
+      alignmentOffset: const Offset(0, -12),
+      style: MenuStyle(
+        backgroundColor:
+            WidgetStatePropertyAll(M3ETheme.of(context).colors.surfaceContainerHigh),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+      builder: (context, controller, child) => _ToolbarAction(
+        icon: settings.volume == 0
+            ? Icons.volume_off_rounded
+            : settings.volume < 0.5
+                ? Icons.volume_down_rounded
+                : Icons.volume_up_rounded,
+        tooltip: '音量 ${(settings.volume * 100).round()}%',
+        onTap: () => controller.isOpen ? controller.close() : controller.open(),
+      ),
+      menuChildren: [
+        SizedBox(
+          width: 180,
+          child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(
-                  icon,
-                  size: 28,
-                  color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
-                ),
-                const SizedBox(height: 4),
                 Text(
-                  modeInfo.label,
+                  '${(settings.volume * 100).round()}%',
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDark
-                        ? HikoColors.darkMuted
-                        : HikoColors.lightMuted,
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 4,
+                    thumbShape:
+                        const RoundSliderThumbShape(enabledThumbRadius: 6),
+                    overlayShape:
+                        const RoundSliderOverlayShape(overlayRadius: 12),
+                  ),
+                  child: Slider(
+                    key: const ValueKey('volume-slider'),
+                    value: settings.volume,
+                    onChanged: (v) {
+                      ref.read(settingsProvider.notifier).setVolume(v);
+                      ref.read(playbackProvider.notifier).setVolume(v);
+                    },
                   ),
                 ),
               ],
             ),
           ),
-        );
-      },
+        ),
+      ],
+    );
+  }
+
+  /// 桌面悬浮歌词开关（含右键锁定菜单，1.99.29 自播放条移入）
+  Widget _buildDesktopLyricsToolbarButton(ThemeData theme) {
+    final status = ref.watch(desktopLyricsProvider);
+    final notifier = ref.read(desktopLyricsProvider.notifier);
+    final isShowing = status.isShowing;
+    final isLocked = status.isLocked;
+
+    return MenuAnchor(
+      builder: (context, controller, child) => GestureDetector(
+        onSecondaryTapDown: (details) {
+          if (isShowing) controller.open(position: details.localPosition);
+        },
+        child: _ToolbarAction(
+          icon: isShowing
+              ? Icons.chat_bubble_rounded
+              : Icons.chat_bubble_outline_rounded,
+          tooltip: !isShowing
+              ? '开启桌面悬浮歌词'
+              : isLocked
+                  ? '桌面歌词已锁定（点击解锁）'
+                  : '关闭桌面悬浮歌词（右键可锁定）',
+          active: isShowing,
+          onTap: () async {
+            if (isLocked) {
+              await notifier.setLocked(false);
+              if (mounted) {
+                showHikoToast(this.context, '已解除桌面歌词鼠标锁定',
+                    duration: const Duration(seconds: 1));
+              }
+            } else {
+              final active = await notifier.toggle();
+              if (mounted) {
+                showHikoToast(
+                    this.context, active ? '已开启桌面悬浮歌词' : '已关闭桌面悬浮歌词',
+                    duration: const Duration(seconds: 1));
+              }
+            }
+          },
+        ),
+      ),
+      menuChildren: [
+        MenuItemButton(
+          leadingIcon: Icon(
+            isLocked ? Icons.lock_open_rounded : Icons.lock_rounded,
+            size: 16,
+          ),
+          onPressed: () async {
+            await notifier.setLocked(!isLocked);
+            if (mounted) {
+              showHikoToast(this.context,
+                  !isLocked ? '已锁定桌面歌词（鼠标点击穿透）' : '已解除桌面歌词锁定',
+                  duration: const Duration(seconds: 1));
+            }
+          },
+          child: Text(
+            isLocked ? '解除悬浮窗锁定' : '锁定悬浮窗（穿透鼠标）',
+            style: const TextStyle(fontSize: 12),
+          ),
+        ),
+        MenuItemButton(
+          leadingIcon: const Icon(Icons.close_rounded, size: 16),
+          onPressed: () async {
+            await notifier.hide();
+            if (mounted) {
+              showHikoToast(this.context, '已关闭桌面悬浮歌词',
+                  duration: const Duration(seconds: 1));
+            }
+          },
+          child: const Text('关闭桌面歌词', style: TextStyle(fontSize: 12)),
+        ),
+      ],
+    );
+  }
+
+  /// 播放模式按钮（图标态 + 菜单）
+  Widget _buildPlayModeToolbarButton(
+    PlaybackMode currentMode,
+    ThemeData theme,
+  ) {
+    final modeInfo = playModes.firstWhere((m) => m.key == currentMode.key);
+    final IconData icon = switch (currentMode) {
+      PlaybackMode.list => Icons.repeat_outlined,
+      PlaybackMode.single => Icons.repeat_one_outlined,
+      PlaybackMode.shuffle => Icons.shuffle_outlined,
+      PlaybackMode.album => Icons.album,
+    };
+
+    return MenuAnchor(
+      style: MenuStyle(
+        backgroundColor:
+            WidgetStatePropertyAll(M3ETheme.of(context).colors.surfaceContainerHigh),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+      builder: (context, controller, child) => _ToolbarAction(
+        icon: icon,
+        tooltip: '播放模式：${modeInfo.label}',
+        onTap: () => controller.isOpen ? controller.close() : controller.open(),
+      ),
       menuChildren: [
         // 菜单标题
         Padding(
@@ -1653,63 +1492,226 @@ class _PlayerFavoriteButton extends ConsumerWidget {
   }
 }
 
-/// 唱针臂绘制器：绘制真实的唱针形状
-class _VinylArmPainter extends CustomPainter {
-  final bool isDark;
+/// 播放页封面：角 28 ↔ 32 + scale 1.0 ↔ 0.98 的播放态形变（spatialSlow 弹簧）。
+///
+/// 实现约束（plan §7.4）：圆角插值 + Transform.scale 近似，不走 layout 动画；
+/// 动效关闭时不创建动画路径，直接到终态。挂 [heroTag] 时参与路由 Hero 转场
+/// （英雄时刻 A），飞行途中圆角从来源侧 16 连续插值到目标侧 28。
+class _MorphingHeroCover extends StatefulWidget {
+  const _MorphingHeroCover({
+    required this.album,
+    required this.playing,
+    this.heroTag,
+  });
 
-  _VinylArmPainter({required this.isDark});
+  final Album album;
+  final bool playing;
+  final String? heroTag;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    // 唱针臂主体
-    final armPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: isDark
-            ? [const Color(0xFF9e9e9e), const Color(0xFF616161)]
-            : [const Color(0xFFbdbdbd), const Color(0xFF757575)],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..style = PaintingStyle.fill;
+  State<_MorphingHeroCover> createState() => _MorphingHeroCoverState();
+}
 
-    // 唱针臂路径（细长的臂状）
-    final armPath = Path()
-      ..moveTo(size.width * 0.5, 0) // 顶部中心
-      ..lineTo(size.width * 0.65, size.height * 0.6) // 右侧向下延伸
-      ..lineTo(size.width * 0.55, size.height * 0.65) // 底部略窄
-      ..lineTo(size.width * 0.35, size.height * 0.65)
-      ..lineTo(size.width * 0.25, size.height * 0.6)
-      ..close();
+class _MorphingHeroCoverState extends State<_MorphingHeroCover>
+    with SingleTickerProviderStateMixin {
+  /// t：0 = 暂停态（角 28 / scale 1.0），1 = 播放态（角 32 / scale 0.98）。
+  late final AnimationController _t = AnimationController.unbounded(
+    vsync: this,
+    value: widget.playing ? 1 : 0,
+  );
 
-    canvas.drawPath(armPath, armPaint);
+  @override
+  void didUpdateWidget(_MorphingHeroCover oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.playing != widget.playing) {
+      _animate(widget.playing ? 1 : 0);
+    }
+  }
 
-    // 唱针头部（小圆点）
-    final needlePaint = Paint()
-      ..color = isDark ? const Color(0xFF424242) : const Color(0xFF616161)
-      ..style = PaintingStyle.fill;
-
-    canvas.drawCircle(
-      Offset(size.width * 0.45, size.height * 0.7),
-      6,
-      needlePaint,
+  void _animate(double target) {
+    final motion = M3ETheme.of(context).motion;
+    if (!motion.enabled) {
+      _t.value = target;
+      return;
+    }
+    if (motion.level == M3EMotionLevel.reduced) {
+      _t.animateTo(
+        target,
+        duration: motion.duration(M3ESpringType.spatial, M3ESpringSpeed.slow),
+        curve: motion.fallbackCurve,
+      );
+      return;
+    }
+    _t.animateWith(
+      SpringSimulation(
+        motion.spring(M3ESpringType.spatial, M3ESpringSpeed.slow),
+        _t.value,
+        target,
+        0,
+      ),
     );
-
-    // 唱针顶部圆形固定点
-    final pivotPaint = Paint()
-      ..color = isDark ? const Color(0xFF757575) : const Color(0xFF9e9e9e)
-      ..style = PaintingStyle.fill;
-
-    canvas.drawCircle(Offset(size.width * 0.5, 8), 8, pivotPaint);
-
-    // 阴影
-    final shadowPath = armPath.shift(const Offset(3, 3));
-    final shadowPaint = Paint()
-      ..color = Colors.black.withValues(alpha: 0.3)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
-
-    canvas.drawPath(shadowPath, shadowPaint);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  void dispose() {
+    _t.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _t,
+      builder: (context, child) {
+        final t = _t.value;
+        final radius = M3EShape.xl + (M3EShape.xlPlus - M3EShape.xl) * t;
+        final scale = 1.0 - 0.02 * t;
+        Widget cover = ClipRRect(
+          borderRadius: BorderRadius.circular(radius),
+          child: AlbumCover(album: widget.album, fit: BoxFit.cover),
+        );
+        if (widget.heroTag != null) {
+          // 默认 Hero 飞行：目标子树（角 28）从来源位置/尺寸飞入。
+          // 不做自绘圆角插值——链式第二跳（详情 28 → 播放页 28）反而会被
+          // 「先回到 16 再到 28」的自定义插值弄出折返感。
+          cover = Hero(tag: widget.heroTag!, child: cover);
+        }
+        return Transform.scale(scale: scale, child: cover);
+      },
+    );
+  }
+}
+
+/// 播放页背景：封面主色 → 纵向三停渐变（plan §8.5，不是模糊）。
+///
+/// 播放中做 ±2% 明度呼吸：唯一的持续动画，颜色走 RepaintBoundary 内的重绘，
+/// 「减弱/关闭」动效档与系统 reduce-motion 下不起。
+class _PlayerBackdrop extends StatefulWidget {
+  const _PlayerBackdrop({required this.album, required this.playing});
+
+  final Album album;
+  final bool playing;
+
+  @override
+  State<_PlayerBackdrop> createState() => _PlayerBackdropState();
+}
+
+class _PlayerBackdropState extends State<_PlayerBackdrop>
+    with SingleTickerProviderStateMixin {
+  Color? _base;
+
+  late final AnimationController _breath = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 6),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _loadColor();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncBreath();
+  }
+
+  @override
+  void didUpdateWidget(_PlayerBackdrop oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.album.id != widget.album.id) _loadColor();
+    _syncBreath();
+  }
+
+  void _loadColor() {
+    final source = widget.album.currentCover ?? widget.album.localCover;
+    _base = null;
+    CoverColor.of(coverSource: source).then((color) {
+      if (mounted && source != null) {
+        setState(() => _base = color);
+      }
+    });
+  }
+
+  void _syncBreath() {
+    final motion = M3ETheme.of(context).motion;
+    final shouldRun = widget.playing &&
+        motion.level == M3EMotionLevel.full &&
+        !MediaQuery.disableAnimationsOf(context);
+    if (shouldRun && !_breath.isAnimating) {
+      _breath.repeat(reverse: true);
+    } else if (!shouldRun && _breath.isAnimating) {
+      _breath.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _breath.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = M3ETheme.of(context).colors;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    // 主色未就绪/无封面时用主题容器色兜底，不闪白
+    final base = _base ?? colors.primaryContainer;
+
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _breath,
+        builder: (context, child) {
+          // ±2% 明度呼吸：base 在「微暗 ↔ 微亮」两端间往返
+          final lo = Color.lerp(base, Colors.black, 0.02)!;
+          final hi = Color.lerp(base, Colors.white, 0.02)!;
+          final current = Color.lerp(lo, hi, _breath.value)!;
+          final top = Color.lerp(current, Colors.black, dark ? 0.5 : 0.2)!;
+          final mid = Color.lerp(
+            current,
+            dark ? const Color(0xFF101010) : Colors.white,
+            0.72,
+          )!;
+          return DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [top, mid, colors.surface],
+                stops: const [0, 0.5, 1],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 辅助工具条上的图标动作（icon-only + tooltip，激活态用主题色）。
+class _ToolbarAction extends StatelessWidget {
+  const _ToolbarAction({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.active = false,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = M3ETheme.of(context).colors;
+    return IconButton(
+      onPressed: onTap,
+      tooltip: tooltip,
+      iconSize: 24,
+      color: active ? colors.primary : colors.onSurfaceVariant,
+      icon: Icon(icon),
+    );
+  }
 }

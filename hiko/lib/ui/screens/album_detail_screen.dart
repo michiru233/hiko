@@ -96,11 +96,15 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
       ),
       body: CustomScrollView(
         slivers: [
-          // 全宽封面（1:1），延伸到顶栏背后
+          // 全宽封面（1:1），延伸到顶栏背后；Hero tag 与卡片封面一致
+          //（链式形变：卡片 16 → 详情 28 → 播放页 28，1.99.29）
           SliverToBoxAdapter(
             child: AspectRatio(
               aspectRatio: 1,
-              child: AlbumCover(album: album, fit: BoxFit.cover),
+              child: Hero(
+                tag: 'card-${album.id}',
+                child: AlbumCover(album: album, fit: BoxFit.cover),
+              ),
             ),
           ),
           SliverPadding(
@@ -295,8 +299,9 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
               index: resumeIndex,
               startPosition: resumePos,
             );
-            // 自动跳转到全屏播放页
-            Navigator.of(context).push(FullscreenPlayerRoute());
+            // 自动跳转到全屏播放页（从详情封面形变进入，英雄时刻 A 第二跳）
+            Navigator.of(context)
+                .push(FullscreenPlayerRoute(heroTag: 'card-${album.id}'));
           },
           icon: const Icon(Icons.play_arrow, size: 20),
           label: const Text('全部播放'),
@@ -417,8 +422,9 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
                 startPosition: startPos,
               );
 
-              // 点击曲目后自动跳转到全屏播放页
-              Navigator.of(context).push(FullscreenPlayerRoute());
+              // 点击曲目后自动跳转到全屏播放页（封面形变，同上）
+              Navigator.of(context)
+                  .push(FullscreenPlayerRoute(heroTag: 'card-${album.id}'));
             },
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),

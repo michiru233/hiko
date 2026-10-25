@@ -66,12 +66,19 @@ const double _exitWindowFraction = 150 / 250;
 
 /// 全屏播放页路由：只在时长上区别于 MaterialPageRoute，
 /// 转场本体由 [HikoPageTransitionsBuilder] 提供（走 theme）。
+///
+/// [heroTag]：封面 Hero 目标 tag（英雄时刻 A，1.99.29）。调用方按入口传：
+/// 播放条封面 'bar-cover'、详情抽屉封面 'drawer-{id}'、移动详情页封面
+/// 'card-{id}'；不传（如移动底栏「正在播放」）则不参与 Hero。
 class FullscreenPlayerRoute<T> extends MaterialPageRoute<T> {
-  FullscreenPlayerRoute()
+  FullscreenPlayerRoute({this.heroTag})
       : super(
-          builder: (context) => const FullscreenPlayerScreen(),
+          builder: (context) => FullscreenPlayerScreen(heroTag: heroTag),
           settings: const RouteSettings(name: fullscreenPlayerRouteName),
         );
+
+  /// 封面 Hero 目标 tag；null = 不参与 Hero 转场。
+  final String? heroTag;
 
   @override
   Duration get transitionDuration => playerEnterDuration;
