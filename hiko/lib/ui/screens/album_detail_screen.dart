@@ -12,8 +12,9 @@ import '../../utils/rj.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
 import '../lyrics/drawer_lyrics_view.dart';
-import '../theme.dart';
+import '../m3e/m3e.dart';
 import '../widgets/category_dialog.dart';
+import '../widgets/detail_kit.dart';
 import '../widgets/rating_dialog.dart';
 import '../widgets/toast.dart';
 import '../transitions/fullscreen_player_route.dart';
@@ -116,7 +117,7 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
             sliver: SliverToBoxAdapter(
-              child: _buildTabs(theme, isDark, hasLyrics),
+              child: _buildTabs(hasLyrics),
             ),
           ),
           if (_selectedTabIndex == 0)
@@ -148,6 +149,9 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
     );
   }
 
+  /// 1.99.34 M3E 换装（plan-hiko-detail-m3e.md §4）：眉题 chip（分类切换，
+  /// 内部 id 不再展示）+ headlineSmallEmphasized 标题 + 元数据行 +
+  /// 分色胶囊（点选回列表筛选）+ 主键/次键操作行 + 完成进度分组卡。
   Widget _buildHeader(
     Album album,
     ThemeData theme,
@@ -157,228 +161,124 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
   ) {
     final circle = album.albumArtist.trim();
     final voices = _voiceNames(album);
+    final type = M3ETheme.of(context).type;
+    final colors = M3ETheme.of(context).colors;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 标题
+        HikoEyebrowPill(
+          label: album.genre.isEmpty ? '未分类' : album.genre,
+          onTap: () => _showCategoryDialog(album),
+        ),
+        const SizedBox(height: 12),
         Text(
           album.title,
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            height: 1.3,
-            color: isDark ? HikoColors.darkInk : HikoColors.lightInk,
-          ),
+          style: type.headlineSmallEmphasized.copyWith(height: 1.3),
         ),
-        const SizedBox(height: 10),
-        // RJ 码 + 时长 + 进度
-        Wrap(
-          spacing: 8,
-          runSpacing: 6,
-          children: [
-            if (rj != null)
-              _buildMetaPill(
-                rj,
-                color: theme.colorScheme.primary,
-                background: theme.colorScheme.primary.withValues(alpha: 0.2),
-                isDark: isDark,
-              ),
-            _buildMetaPill(
-              album.totalDuration > 0
-                  ? formatDuration(album.totalDuration)
-                  : '${album.duration} 首',
-              color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
-              background: isDark
-                  ? Colors.white.withValues(alpha: 0.1)
-                  : Colors.black.withValues(alpha: 0.05),
-              isDark: isDark,
-            ),
-            if (progress > 0)
-              _buildMetaPill(
-                '已听 $progress%',
-                color: theme.colorScheme.secondary,
-                background: theme.colorScheme.secondary.withValues(alpha: 0.2),
-                isDark: isDark,
-              ),
-          ],
+        const SizedBox(height: 8),
+        Text(
+          [
+            if (album.artist.isNotEmpty) album.artist,
+            if (rj != null) rj,
+            if (album.totalDuration > 0) formatDuration(album.totalDuration),
+          ].join(' · '),
+          style: type.labelMedium.copyWith(color: colors.onSurfaceVariant),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
         ),
-        // 社团｜声优 分节 + 分色胶囊（点选回列表筛选）
+        // 社团｜声优 分色胶囊（点选回列表筛选，1.77 链路不变）
         if (circle.isNotEmpty || voices.isNotEmpty) ...[
           const SizedBox(height: 16),
-          Text(
-            '社团｜声优',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: isDark ? HikoColors.darkInk : HikoColors.lightInk,
-            ),
-          ),
-          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
               if (circle.isNotEmpty)
-                _buildPersonPill(context, 'circle', circle, _circleColor),
+                HikoPersonPill(
+                  name: circle,
+                  color: _circleColor,
+                  onTap: () => Navigator.of(context)
+                      .pop<(String, String)> (('circle', circle)),
+                ),
               for (final name in voices)
-                _buildPersonPill(context, 'voice', name, _voiceColor),
+                HikoPersonPill(
+                  name: name,
+                  color: _voiceColor,
+                  onTap: () => Navigator.of(context)
+                      .pop<(String, String)> (('voice', name)),
+                ),
             ],
           ),
         ],
         const SizedBox(height: 16),
-        // 操作按钮行
-        _buildActionButtons(album, theme, isDark),
-      ],
-    );
-  }
-
-  Widget _buildMetaPill(
-    String text, {
-    required Color color,
-    required Color background,
-    required bool isDark,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: color,
+        // 操作区（D2）：一个 filled 主键 + outlined 次键
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            M3EButton(
+              variant: M3EButtonVariant.filled,
+              label: '从头播放',
+              icon: const Icon(Icons.play_arrow_rounded),
+              onPressed: () {
+                HapticFeedback.mediumImpact();
+                // 从断点继续播放（如果有断点）
+                final resumeIndex =
+                    album.resumeTrackIndex >= 0 ? album.resumeTrackIndex : 0;
+                final resumePos = album.resumeTrackIndex >= 0
+                    ? album.resumePosition
+                    : 0.0;
+                ref.read(playbackProvider.notifier).playAlbum(
+                      album,
+                      index: resumeIndex,
+                      startPosition: resumePos,
+                    );
+                // 自动跳转到全屏播放页（从详情封面形变进入，英雄时刻 A 第二跳）
+                Navigator.of(context)
+                    .push(FullscreenPlayerRoute(heroTag: 'card-${album.id}'));
+              },
+            ),
+            M3EButton(
+              variant: M3EButtonVariant.outlined,
+              label: album.rating > 0 ? '${album.rating} 星' : '未评分',
+              icon: Icon(
+                album.rating > 0
+                    ? Icons.star_rounded
+                    : Icons.star_outline_rounded,
+              ),
+              onPressed: () => _showRatingDialog(album),
+            ),
+            M3EButton(
+              variant: M3EButtonVariant.outlined,
+              label: album.genre.isEmpty ? '未分类' : album.genre,
+              icon: const Icon(Icons.label_outline),
+              onPressed: () => _showCategoryDialog(album),
+            ),
+          ],
         ),
-      ),
-    );
-  }
-
-  /// 社团/声优胶囊：点选后携带 ('circle'|'voice', 名字) 返回列表页应用筛选
-  Widget _buildPersonPill(
-    BuildContext context,
-    String kind,
-    String name,
-    Color color,
-  ) {
-    return InkWell(
-      onTap: () => Navigator.of(context).pop<(String, String)>((kind, name)),
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withValues(alpha: 0.4)),
-        ),
-        child: Text(
-          name,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-            color: color,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButtons(Album album, ThemeData theme, bool isDark) {
-    return Row(
-      children: [
-        // 全部播放 - 点击后跳转到全屏播放页
-        ElevatedButton.icon(
-          onPressed: () {
-            HapticFeedback.mediumImpact(); // 主操作按钮使用中等强度反馈
-            // 从断点继续播放（如果有断点）
-            final resumeIndex = album.resumeTrackIndex >= 0 ? album.resumeTrackIndex : 0;
-            final resumePos = album.resumeTrackIndex >= 0 ? album.resumePosition : 0.0;
-            ref.read(playbackProvider.notifier).playAlbum(
-              album,
-              index: resumeIndex,
-              startPosition: resumePos,
-            );
-            // 自动跳转到全屏播放页（从详情封面形变进入，英雄时刻 A 第二跳）
-            Navigator.of(context)
-                .push(FullscreenPlayerRoute(heroTag: 'card-${album.id}'));
-          },
-          icon: const Icon(Icons.play_arrow, size: 20),
-          label: const Text('全部播放'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: theme.colorScheme.primary,
-            foregroundColor: theme.colorScheme.onPrimary,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
+        // 完成进度分组卡（§4.4）
+        if (album.totalDuration > 0) ...[
+          const SizedBox(height: 16),
+          M3ECard(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: HikoDetailInfoRowM3E(
+              label: '完成进度',
+              value: '$progress%',
+              progress: album.played / album.totalDuration,
             ),
           ),
-        ),
-        const Spacer(),
-        // 评分 - 扩大触摸目标到 48×48px
-        IconButton(
-          onPressed: () => _showRatingDialog(album),
-          icon: Icon(
-            album.rating > 0 ? Icons.star : Icons.star_border,
-            size: 24,
-            color: album.rating > 0
-                ? Colors.amber
-                : (isDark ? HikoColors.darkMuted : HikoColors.lightMuted),
-          ),
-          tooltip: '评分',
-          padding: const EdgeInsets.all(12),
-          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-        ),
-        // 分类 - 扩大触摸目标到 48×48px
-        IconButton(
-          onPressed: () => _showCategoryDialog(album),
-          icon: Icon(
-            Icons.label_outline,
-            size: 24,
-            color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
-          ),
-          tooltip: '分类',
-          padding: const EdgeInsets.all(12),
-          constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
-        ),
+        ],
       ],
     );
   }
 
-  Widget _buildTabs(ThemeData theme, bool isDark, bool hasLyrics) {
-    return Row(
-      children: [
-        _buildTab('曲目', 0, theme, isDark),
-        const SizedBox(width: 16),
-        if (hasLyrics) _buildTab('歌词', 1, theme, isDark),
-      ],
-    );
-  }
-
-  Widget _buildTab(String label, int index, ThemeData theme, bool isDark) {
-    final isSelected = _selectedTabIndex == index;
-    return InkWell(
-      onTap: () => setState(() => _selectedTabIndex = index),
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? theme.colorScheme.primary.withValues(alpha: 0.2)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-            color: isSelected
-                ? theme.colorScheme.primary
-                : (isDark ? HikoColors.darkMuted : HikoColors.lightMuted),
-          ),
-        ),
-      ),
+  Widget _buildTabs(bool hasLyrics) {
+    // M3EButtonGroup：歌词 tab 仅在有歌词时出现（与旧交互一致）
+    final labels = hasLyrics ? const ['曲目', '歌词'] : const ['曲目'];
+    return M3EButtonGroup(
+      labels: labels,
+      selectedIndex: _selectedTabIndex.clamp(0, labels.length - 1),
+      onSelected: (index) => setState(() => _selectedTabIndex = index),
     );
   }
 
@@ -393,93 +293,37 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
   ) {
     // 获取播放器真实时长（如果当前曲目正在播放）
     final playbackState = ref.watch(playbackProvider);
-    final isCurrentlyPlaying = isCurrent && playbackState.currentTrack?.url == track.url;
+    final isCurrentlyPlaying =
+        isCurrent && playbackState.currentTrack?.url == track.url;
     final realDuration = isCurrentlyPlaying && playbackState.duration > 0
         ? playbackState.duration
         : track.duration;
 
-    // 使用 RepaintBoundary 隔离每个列表项的重绘
+    // RepaintBoundary 隔离每个列表项的重绘；行本体为 M3E 版（1.99.34）
     return RepaintBoundary(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Material(
-          color: isCurrent
-              ? theme.colorScheme.primary.withValues(alpha: 0.1)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: () {
-              HapticFeedback.selectionClick(); // 列表项选择使用轻量反馈
+      child: HikoTrackRowM3E(
+        index: index + 1,
+        name: track.name,
+        durationSeconds: realDuration,
+        active: isCurrent,
+        playing: isCurrent && isPlaying,
+        onTap: () {
+          HapticFeedback.selectionClick();
 
-              // 断点续播：如果点击的是上次播放的断点曲目，从断点位置继续
-              final isResumeTrack = (album.resumeTrackIndex == index);
-              final startPos = isResumeTrack ? album.resumePosition : 0.0;
+          // 断点续播：如果点击的是上次播放的断点曲目，从断点位置继续
+          final isResumeTrack = (album.resumeTrackIndex == index);
+          final startPos = isResumeTrack ? album.resumePosition : 0.0;
 
-              ref.read(playbackProvider.notifier).playAlbum(
+          ref.read(playbackProvider.notifier).playAlbum(
                 album,
                 index: index,
                 startPosition: startPos,
               );
 
-              // 点击曲目后自动跳转到全屏播放页（封面形变，同上）
-              Navigator.of(context)
-                  .push(FullscreenPlayerRoute(heroTag: 'card-${album.id}'));
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Row(
-                children: [
-                  // 序号或播放中图标
-                  SizedBox(
-                    width: 32,
-                    child: isCurrent
-                        ? Icon(
-                            isPlaying ? Icons.volume_up : Icons.pause,
-                            size: 18,
-                            color: theme.colorScheme.primary,
-                          )
-                        : Text(
-                            '${index + 1}',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: isDark
-                                  ? HikoColors.darkMuted
-                                  : HikoColors.lightMuted,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                  ),
-                  const SizedBox(width: 8),
-                  // 曲名 - 提升到 16px 可读标准
-                  Expanded(
-                    child: Text(
-                      track.name,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
-                        color: isCurrent
-                            ? theme.colorScheme.primary
-                            : (isDark ? HikoColors.darkInk : HikoColors.lightInk),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // 时长 - 提升到 14px
-                  Text(
-                    formatTime(realDuration),
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+          // 点击曲目后自动跳转到全屏播放页（封面形变，同上）
+          Navigator.of(context)
+              .push(FullscreenPlayerRoute(heroTag: 'card-${album.id}'));
+        },
       ),
     );
   }

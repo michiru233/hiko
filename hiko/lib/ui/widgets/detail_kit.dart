@@ -8,6 +8,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../utils/time.dart';
+import '../m3e/m3e.dart';
 import '../theme.dart';
 
 // ------------------------------------------------------------------ 调色板
@@ -202,6 +203,10 @@ class HikoDetailTextScale extends InheritedWidget {
 
 /// 详情页顶部「眼眉」胶囊（本地：分类 · ALBUM 01；在线：来源 · RJ 号）。
 /// [onTap] 为空时去掉下拉箭头，表示纯标识不可交互。
+/// 详情页眉题胶囊（M3E 化，1.99.34）：outlined chip + 分类切换箭头。
+///
+/// 1.99.34 起**不再展示 ALBUM 内部 id**（用户裁决 D4）：内部 id 是数据层主键，
+/// 对用户无意义；RJ 码在元数据行展示。调用方只传分类名。
 class HikoEyebrowPill extends StatelessWidget {
   const HikoEyebrowPill({super.key, required this.label, this.onTap});
 
@@ -211,21 +216,18 @@ class HikoEyebrowPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colors = M3ETheme.of(context).colors;
     final primary = theme.colorScheme.primary;
-    final radius = BorderRadius.circular(999);
     final textScale = HikoDetailTextScale.of(context);
-    return HikoPillInteraction(
+    return M3EPressable(
       onTap: onTap,
-      borderRadius: radius,
-      builder: (context, active) => AnimatedContainer(
-        duration: kPillHoverDuration,
-        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 10),
+      borderRadius: BorderRadius.circular(M3EShape.full),
+      pressScale: 0.97,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
         decoration: BoxDecoration(
-          color: primary.withValues(alpha: active ? 0.22 : 0.12),
-          borderRadius: radius,
-          border: Border.all(
-            color: primary.withValues(alpha: active ? 0.55 : 0.25),
-          ),
+          borderRadius: BorderRadius.circular(M3EShape.full),
+          border: Border.all(color: colors.outlineVariant),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -233,15 +235,15 @@ class HikoEyebrowPill extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                fontSize: 10 * textScale,
-                letterSpacing: 1.1,
+                fontSize: 11 * textScale,
+                letterSpacing: 0.8,
                 fontWeight: FontWeight.w700,
                 color: primary,
               ),
             ),
             if (onTap != null) ...[
               const SizedBox(width: 4),
-              Icon(Icons.arrow_drop_down, size: 14, color: primary),
+              Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: primary),
             ],
           ],
         ),
@@ -251,6 +253,9 @@ class HikoEyebrowPill extends StatelessWidget {
 }
 
 /// 社团（紫）/ 声优（蓝）分色胶囊。[onTap] 为空即纯展示。
+///
+/// 1.99.34 M3E 化：整胶囊染色底改为「左侧 4dp 色点 + 文字」（深色下不刺眼），
+/// 选中态 `secondaryContainer` 底。筛选语义（点选回列表按人筛选）不变。
 class HikoPersonPill extends StatelessWidget {
   const HikoPersonPill({
     super.key,
@@ -267,36 +272,43 @@ class HikoPersonPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(16);
+    final colors = M3ETheme.of(context).colors;
     final textScale = HikoDetailTextScale.of(context);
-    return HikoPillInteraction(
+    return M3EPressable(
       onTap: onTap,
-      borderRadius: radius,
-      builder: (context, active) => AnimatedContainer(
+      borderRadius: BorderRadius.circular(M3EShape.full),
+      pressScale: 0.97,
+      child: AnimatedContainer(
         duration: kPillHoverDuration,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: color.withValues(
-            alpha: active
-                ? (selected ? 0.42 : 0.28)
-                : (selected ? 0.32 : 0.15),
-          ),
-          borderRadius: radius,
+          color: selected ? colors.secondaryContainer : Colors.transparent,
+          borderRadius: BorderRadius.circular(M3EShape.full),
           border: Border.all(
-            color: color.withValues(
-              alpha: active
-                  ? 1.0
-                  : (selected ? 0.7 : 0.4),
-            ),
+            color: selected ? colors.secondaryContainer : colors.outlineVariant,
           ),
         ),
-        child: Text(
-          name,
-          style: TextStyle(
-            fontSize: 12 * textScale,
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: color,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 4,
+              height: 14,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              name,
+              style: TextStyle(
+                fontSize: 12.5 * textScale,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected ? colors.onSecondaryContainer : colors.onSurface,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -775,6 +787,176 @@ class HikoTrackRow extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 详情页曲目行（M3E，1.99.34）：56dp、角 16、当前曲目 `secondaryContainer`。
+///
+/// 与旧 [HikoTrackRow]（在线详情仍在用）并存的 M3E 版：按压走 [M3EPressable]
+/// 弹簧，选中态靠色阶不靠描边（plan-hiko-detail-m3e.md §4.5）。
+/// 字号仍乘 [HikoDetailTextScale]（详情倍率旋钮语义不变）。
+class HikoTrackRowM3E extends StatelessWidget {
+  const HikoTrackRowM3E({
+    super.key,
+    required this.index,
+    required this.name,
+    required this.durationSeconds,
+    required this.active,
+    required this.playing,
+    required this.onTap,
+  });
+
+  final int index;
+  final String name;
+  final double durationSeconds;
+  final bool active;
+  final bool playing;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = M3ETheme.of(context).colors;
+    final type = M3ETheme.of(context).type;
+    final textScale = HikoDetailTextScale.of(context);
+    final onActive = colors.onSecondaryContainer;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: M3EPressable(
+        onTap: onTap,
+        pressScale: 0.97,
+        borderRadius: BorderRadius.circular(M3EShape.lg),
+        stateLayerColor: active ? onActive : colors.onSurface,
+        child: AnimatedContainer(
+          duration: kPillHoverDuration,
+          height: 56,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: active ? colors.secondaryContainer : Colors.transparent,
+            borderRadius: BorderRadius.circular(M3EShape.lg),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                playing
+                    ? Icons.pause_rounded
+                    : Icons.play_arrow_rounded,
+                size: 22,
+                color: active ? onActive : colors.onSurfaceVariant,
+              ),
+              const SizedBox(width: 12),
+              Text(
+                index.toString().padLeft(2, '0'),
+                style: type.labelMedium.copyWith(
+                  color: active ? onActive : colors.onSurfaceVariant,
+                  fontSize: type.labelMedium.fontSize != null
+                      ? type.labelMedium.fontSize! * textScale
+                      : null,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _ExpandableTrackTitle(
+                  name: hikoTrackDisplayName(name),
+                  style: type.bodyMedium.copyWith(
+                    color: active ? onActive : colors.onSurface,
+                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                    fontSize: type.bodyMedium.fontSize != null
+                        ? type.bodyMedium.fontSize! * textScale
+                        : null,
+                  ),
+                ),
+              ),
+              Text(
+                durationSeconds > 0 ? formatTime(durationSeconds) : '--:--',
+                style: type.labelMedium.copyWith(
+                  color: active ? onActive : colors.onSurfaceVariant,
+                  fontSize: type.labelMedium.fontSize != null
+                      ? type.labelMedium.fontSize! * textScale
+                      : null,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 详情页信息行（M3E，1.99.34）：56dp，label 左 / value 右，放进
+/// `M3ECard(surfaceContainerLow)` 的分组卡里用。[progress] 给了就在
+/// value 下方画 4dp 细进度条（完成进度行专用）。
+class HikoDetailInfoRowM3E extends StatelessWidget {
+  const HikoDetailInfoRowM3E({
+    super.key,
+    required this.label,
+    required this.value,
+    this.progress,
+  });
+
+  final String label;
+  final String value;
+
+  /// 0~1；null = 不显示进度条
+  final double? progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = M3ETheme.of(context).colors;
+    final type = M3ETheme.of(context).type;
+    final textScale = HikoDetailTextScale.of(context);
+    return SizedBox(
+      height: 56,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: type.bodyMedium.copyWith(
+                    color: colors.onSurfaceVariant,
+                    fontSize: type.bodyMedium.fontSize != null
+                        ? type.bodyMedium.fontSize! * textScale
+                        : null,
+                  ),
+                ),
+              ),
+              Text(
+                value,
+                textAlign: TextAlign.right,
+                style: type.bodyMedium.copyWith(
+                  fontWeight: FontWeight.w600,
+                  fontSize: type.bodyMedium.fontSize != null
+                      ? type.bodyMedium.fontSize! * textScale
+                      : null,
+                ),
+              ),
+            ],
+          ),
+          if (progress != null) ...[
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: SizedBox(
+                height: 4,
+                child: LinearProgressIndicator(
+                  value: progress!.clamp(0.0, 1.0),
+                  minHeight: 4,
+                  backgroundColor:
+                      colors.outlineVariant.withValues(alpha: 0.6),
+                  valueColor: AlwaysStoppedAnimation(colors.primary),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

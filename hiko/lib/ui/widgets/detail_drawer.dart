@@ -119,79 +119,108 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
           Positioned.fill(
             child: SelectionArea(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(28),
+                padding: const EdgeInsets.all(24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 封面（角 28，挂 drawer- Hero：点曲目进播放页从封面形变）
-                    Hero(
-                      tag: 'drawer-${album.id}',
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(M3EShape.xl),
-                        child: AspectRatio(
-                          aspectRatio: 1,
-                          child: AlbumCover(album: album),
+                    // 两栏头部（D3）：封面 160 角 28 + 右侧标题列
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Hero(
+                          tag: 'drawer-${album.id}',
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(M3EShape.xl),
+                            child: SizedBox(
+                              width: 160,
+                              height: 160,
+                              child: AlbumCover(album: album),
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              HikoEyebrowPill(
+                                label: album.genre,
+                                onTap: () async {
+                                  final chosen = await showSelectCategoryDialog(
+                                    context,
+                                    currentGenre: album.genre,
+                                    albumCount: 1,
+                                  );
+                                  if (chosen != null && chosen != album.genre) {
+                                    await ref
+                                        .read(libraryProvider.notifier)
+                                        .updateAlbum(album.id,
+                                            (a) => a.copyWith(genre: chosen));
+                                  }
+                                },
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                album.title,
+                                style: M3ETheme.of(context)
+                                    .type
+                                    .titleLargeEmphasized
+                                    .copyWith(height: 1.25),
+                                maxLines: 4,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                '${normalizeVoiceSeparators(album.artist)} · ${album.rjCode ?? '本地导入'}',
+                                style: M3ETheme.of(context).type.labelMedium
+                                    .copyWith(color: theme.hintColor),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 22),
-                    HikoEyebrowPill(
-                      label:
-                          '${album.genre.toUpperCase()} · ALBUM ${album.id.padLeft(2, '0')}',
-                      onTap: () async {
-                        final chosen = await showSelectCategoryDialog(
-                          context,
-                          currentGenre: album.genre,
-                          albumCount: 1,
-                        );
-                        if (chosen != null && chosen != album.genre) {
-                          await ref
-                              .read(libraryProvider.notifier)
-                              .updateAlbum(album.id, (a) => a.copyWith(genre: chosen));
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      album.title,
-                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, letterSpacing: -0.5, height: 1.25),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      // 1.87：此处为「多人一行」概览，不拆成多个胶囊，只归一化分隔符
-                      '${normalizeVoiceSeparators(album.artist)} · ${album.rjCode ?? '本地导入'}',
-                      style: TextStyle(fontSize: 12, color: theme.hintColor),
-                    ),
-                    // 1.81 社团（紫）/声优（蓝）胶囊：点选筛选主列表，抽屉保持打开
+                    // 社团（紫）/ 声优（蓝）分色胶囊：点选筛选主列表
                     _buildPersonPills(album, theme),
                     const SizedBox(height: 20),
-                    // 操作胶囊按钮
+                    // 操作区（D2）：一个 filled 主键 + 三个 outlined 次键
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [
-                        FilledButton.icon(
-                          style: hikoFilledPillStyle(),
-                          onPressed: () => ref.read(playbackProvider.notifier).playAlbum(album, index: 0),
-                          icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                          label: const Text('从头播放', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        M3EButton(
+                          variant: M3EButtonVariant.filled,
+                          label: '从头播放',
+                          icon: const Icon(Icons.play_arrow_rounded),
+                          onPressed: () => ref
+                              .read(playbackProvider.notifier)
+                              .playAlbum(album, index: 0),
                         ),
-                        OutlinedButton.icon(
-                          style: hikoOutlinedPillStyle(context: context),
+                        M3EButton(
+                          variant: M3EButtonVariant.outlined,
+                          label: album.favorite ? '已收藏' : '收藏',
+                          icon: Icon(
+                            album.favorite
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
+                          ),
                           onPressed: () async {
                             await ref
                                 .read(libraryProvider.notifier)
-                                .updateAlbum(album.id, (a) => a.copyWith(favorite: !a.favorite));
+                                .updateAlbum(album.id,
+                                    (a) => a.copyWith(favorite: !a.favorite));
                           },
-                          icon: Icon(
-                            album.favorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                            size: 15,
-                            color: album.favorite ? hikoFavoriteColor : null,
-                          ),
-                          label: Text(album.favorite ? '已收藏' : '收藏', style: const TextStyle(fontSize: 11)),
                         ),
-                        OutlinedButton.icon(
-                          style: hikoOutlinedPillStyle(context: context),
+                        M3EButton(
+                          variant: M3EButtonVariant.outlined,
+                          label: album.rating > 0 ? '${album.rating} 星' : '未评分',
+                          icon: Icon(
+                            album.rating > 0
+                                ? Icons.star_rounded
+                                : Icons.star_outline_rounded,
+                          ),
                           onPressed: () async {
                             final rating = await showRatingDialog(
                               context,
@@ -200,20 +229,14 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                             if (rating == null || !context.mounted) return;
                             await ref
                                 .read(libraryProvider.notifier)
-                                .updateAlbum(album.id, (a) => a.copyWith(rating: rating));
+                                .updateAlbum(album.id,
+                                    (a) => a.copyWith(rating: rating));
                           },
-                          icon: Icon(
-                            album.rating > 0 ? Icons.star_rounded : Icons.star_outline_rounded,
-                            size: 15,
-                            color: album.rating > 0 ? hikoRatingColor : null,
-                          ),
-                          label: Text(
-                            album.rating > 0 ? '${album.rating} 星' : '未评分',
-                            style: const TextStyle(fontSize: 11),
-                          ),
                         ),
-                        OutlinedButton.icon(
-                          style: hikoOutlinedPillStyle(context: context),
+                        M3EButton(
+                          variant: M3EButtonVariant.outlined,
+                          label: '整理',
+                          icon: const Icon(Icons.refresh_rounded),
                           onPressed: () async {
                             try {
                               final result = await ref
@@ -238,18 +261,43 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                               }
                             }
                           },
-                          icon: const Icon(Icons.refresh_rounded, size: 15),
-                          label: const Text('整理专辑', style: TextStyle(fontSize: 11)),
                         ),
                       ],
                     ),
                     const SizedBox(height: 20),
-                    // 信息行
-                    HikoInfoRow(label: '总时长', value: '${album.tracks.length} 首${album.totalDuration > 0 ? ' · ${formatDuration(album.totalDuration)}' : ''}'),
-                    HikoInfoRow(label: '完成进度', value: '$progress%'),
-                    // DLsite 标签
+                    // 信息分组卡（§4.4）
+                    M3ECard(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      child: Column(
+                        children: [
+                          HikoDetailInfoRowM3E(
+                            label: '总时长',
+                            value:
+                                '${album.tracks.length} 首 · ${album.totalDuration > 0 ? formatDuration(album.totalDuration) : '--'}',
+                          ),
+                          HikoDetailInfoRowM3E(
+                            label: '完成进度',
+                            value: '$progress%',
+                            progress: album.totalDuration > 0
+                                ? album.played / album.totalDuration
+                                : null,
+                          ),
+                          HikoDetailInfoRowM3E(
+                            label: '评分',
+                            value: album.rating > 0 ? '★' * album.rating : '未评分',
+                          ),
+                          if (rj != null)
+                            HikoDetailInfoRowM3E(
+                              label: 'DLsite',
+                              value: rj,
+                            ),
+                        ],
+                      ),
+                    ),
+                    // DLsite 标签（点选 = 回列表筛选，现行为）
                     if (album.tags.isNotEmpty) ...[
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
                       Wrap(
                         spacing: 6,
                         runSpacing: 6,
@@ -258,49 +306,38 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                         ],
                       ),
                     ],
-                    if (rj != null) ...[
-                      const SizedBox(height: 10),
-                      Text(
-                        'DLsite $rj${album.dlsiteTitle != null ? ' · ${album.dlsiteTitle}' : ''}',
-                        style: TextStyle(fontSize: 10, color: theme.hintColor),
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-                    // 双 Tab 导航：曲目列表 vs 歌词字幕（胶囊分段开关）
-                    HikoSegmentedTabs(
-                      left: HikoTabButton(
-                        label: '曲目列表 (${album.tracks.length})',
-                        icon: Icons.format_list_bulleted_rounded,
-                        selected: _selectedTabIndex == 0,
-                        onTap: () => setState(() => _selectedTabIndex = 0),
-                      ),
-                      right: HikoTabButton(
-                        label: '歌词字幕',
-                        icon: Icons.subtitles_rounded,
-                        hasBadge: isCurrentAlbum && hasLyrics,
-                        selected: _selectedTabIndex == 1,
-                        onTap: () => setState(() => _selectedTabIndex = 1),
-                      ),
+                    const SizedBox(height: 24),
+                    // 曲目 / 歌词 分段（M3EButtonGroup 连通式）
+                    M3EButtonGroup(
+                      labels: [
+                        '曲目列表 (${album.tracks.length})',
+                        hasLyrics ? '歌词字幕 ●' : '歌词字幕',
+                      ],
+                      selectedIndex: _selectedTabIndex,
+                      onSelected: (index) =>
+                          setState(() => _selectedTabIndex = index),
                     ),
                     const SizedBox(height: 14),
-                    // Tab 内容切换
                     if (_selectedTabIndex == 0) ...[
                       for (var i = 0; i < album.tracks.length; i++)
-                        HikoTrackRow(
+                        HikoTrackRowM3E(
                           index: i + 1,
                           name: album.tracks[i].name,
                           durationSeconds: album.tracks[i].duration,
                           active: isCurrentAlbum && currentIndex == i,
-                          playing: isCurrentAlbum && currentIndex == i && isPlaying,
+                          playing: isCurrentAlbum &&
+                              currentIndex == i &&
+                              isPlaying,
                           onTap: () {
-                            final controller = ref.read(playbackProvider.notifier);
+                            final controller =
+                                ref.read(playbackProvider.notifier);
                             if (isCurrentAlbum && currentIndex == i) {
                               // 1.79 点当前曲目不打断播放：播放中仅跳转；暂停中恢复播放再跳转
                               if (!isPlaying) controller.toggle();
                             } else {
                               controller.playAlbum(album, index: i);
                             }
-                            // 1.79 桌面端点曲目后跳转全屏播放页（面板保留在底层）
+                            // 桌面端点曲目后跳转全屏播放页（面板保留在底层）
                             // 1.99.29：从面板封面形变进入
                             Navigator.of(context).push(
                               FullscreenPlayerRoute(
