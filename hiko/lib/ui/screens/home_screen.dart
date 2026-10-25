@@ -84,6 +84,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // 1.49「定位当前播放」：网格滚动控制、目标卡 Key 与高亮状态
   final _gridScrollController = ScrollController();
 
+  /// 1.99.32 M3EAppBar.large 折叠签名（plan §8.1）：移动端大标题滚出视口后，
+  /// 顶栏浮现同名小标题。只在移动端本地视图消费（在线顶栏整行收起）。
+  bool _mobileTopbarTitle = false;
+
   // 1.99.9 移动端本地视图：头部（hero + 筛选行 + 结果行 + 续播横幅）滚动收起
   // 的离屏测量锚点与测量值。滚动控制器沿用 [_gridScrollController]（定位当前
   // 播放的 jumpTo / 桌面抽屉滚轮转发都绑在它上），只是它现在驱动整个
@@ -104,6 +108,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void initState() {
+
+    _gridScrollController.addListener(_onGridScroll);
     super.initState();
     // macOS 菜单栏动作转发（导入文件夹/设置/检查更新，1.48）
     if (Platform.isMacOS) {
@@ -151,39 +157,45 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
+    _gridScrollController.removeListener(_onGridScroll);
     _gridScrollController.dispose();
     _highlightTimer?.cancel();
     super.dispose();
   }
 
+  void _onGridScroll() {
+    if (!_isMobileLocalView) return;
+    final scrolled = _gridScrollController.hasClients &&
+        _gridScrollController.offset > 120;
+    if (scrolled != _mobileTopbarTitle) {
+      setState(() => _mobileTopbarTitle = scrolled);
+    }
+  }
+
+  /// 当前视图是否为「移动端本地内容视图」（本地音声/分类/最近播放/收藏夹等）。
+  /// 与 build 的 isMobile 同源（Android 宽度断点 + 调试开关），避免第二处口径。
+  bool get _isMobileLocalView {
+    final isMobile = widget.debugMobileLayout ??
+        (Platform.isAndroid
+            ? MediaQuery.sizeOf(context).width <= 1000
+            : false);
+    return isMobile && !_isOnlineView && _view != '统计';
+  }
+
   void _openSettings(BuildContext context, {bool autoCheckUpdate = false}) {
-    showDialog<void>(
-      context: context,
-      builder: (context) => SettingsDialog(
-        autoCheckUpdate: autoCheckUpdate,
-        onImportRequested: () {
-          Navigator.pop(context);
-          _importFolder();
-        },
-        onIncrementalScanRequested: () {
-          Navigator.pop(context);
-          _scanPicked(full: false);
-        },
-        onFullScanRequested: () {
-          Navigator.pop(context);
-          _scanPicked(full: true);
-        },
-        onReorganizeRequested: () {
-          Navigator.pop(context);
-          _reorganizeLibrary();
-        },
-        onCleanMissingRequested: () {
-          Navigator.pop(context);
-          _cleanMissing();
-        },
-        onDownloadUpdateRequested: (release) {
-          _downloadUpdate(release);
-        },
+    // 1.99.32 设置壳重做（plan §8.7）：独立页路由（桌面/移动同构全屏页）。
+    // 回调不再先 pop——选图/扫描等动作直接在设置页上层发生。
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsPage(
+          autoCheckUpdate: autoCheckUpdate,
+          onImportRequested: _importFolder,
+          onIncrementalScanRequested: () => _scanPicked(full: false),
+          onFullScanRequested: () => _scanPicked(full: true),
+          onReorganizeRequested: _reorganizeLibrary,
+          onCleanMissingRequested: _cleanMissing,
+          onDownloadUpdateRequested: _downloadUpdate,
+        ),
       ),
     );
   }
@@ -1420,7 +1432,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // 用 scaffoldBackgroundColor 而不是写死主题底色：两边自然一致。
     final bar = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(children: actionButtons),
+      child: Row(
+        children: [
+          // M3EAppBar.large 折叠签名（1.99.32）：大标题滚出视口后，
+          // 固定顶栏浮现同名小标题（plan §8.1）
+          AnimatedOpacity(
+            opacity: _mobileTopbarTitle ? 1 : 0,
+            duration: const Duration(milliseconds: 150),
+            child: Text(
+              _view,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+          ),
+          const Spacer(),
+          ...actionButtons,
+        ],
+      ),
     );
     return ColoredBox(color: theme.scaffoldBackgroundColor, child: bar);
   }

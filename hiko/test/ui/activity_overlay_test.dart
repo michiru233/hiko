@@ -73,7 +73,7 @@ void main() {
     expect(banner.size.width, lessThanOrEqualTo(520));
   });
 
-  testWidgets('设置触发扫描后弹窗消失，根通知层显示进度', (tester) async {
+  testWidgets('设置触发扫描，根通知层在设置页之上显示进度', (tester) async {
     final controller = ActivityOverlayController();
     await tester.pumpWidget(
       ProviderScope(
@@ -82,14 +82,15 @@ void main() {
           home: Builder(
             builder: (context) => Scaffold(
               body: TextButton(
-                onPressed: () => showDialog<void>(
-                  context: context,
-                  builder: (dialogContext) => SettingsDialog(
-                    // 1.99.11：「立即重新扫描」拆为「增量扫描/全量扫描」，语义不变
-                    onFullScanRequested: () {
-                      Navigator.pop(dialogContext);
-                      controller.start(label: '准备扫描...', progress: 0.0);
-                    },
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => SettingsPage(
+                      // 1.99.11：「立即重新扫描」拆为「增量扫描/全量扫描」，语义不变
+                      // 1.99.32：独立页不再由回调 pop（扫描进度浮层在页面之上显示）
+                      onFullScanRequested: () {
+                        controller.start(label: '准备扫描...', progress: 0.0);
+                      },
+                    ),
                   ),
                 ),
                 child: const Text('打开设置'),
@@ -102,13 +103,17 @@ void main() {
 
     await tester.tap(find.text('打开设置'));
     await tester.pumpAndSettle();
-    expect(find.byType(SettingsDialog), findsOneWidget);
-    // 1.85 分类导航：扫描按钮位于「音乐目录」二级页
-    // 1.99.4：设置分类多了「导航栏」一项，「音乐目录」可能落在可视区外，
-    // 先 ensureVisible 再点（否则 tap 未命中，后续 finder 找不到元素）
-    await tester.ensureVisible(find.text('音乐目录'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('音乐目录'));
+    expect(find.byType(SettingsPage), findsOneWidget);
+    // 1.99.32 设置壳重做：5 组单页，「库与扫描」组在长页深处；
+    // ListView 懒构建，离屏行没有 element——从列表中部固定点拖动滚动，直到行被构建
+    var rescan0 = find.text('全量扫描');
+    for (var i = 0; i < 20 && rescan0.evaluate().isEmpty; i++) {
+      await tester.dragFrom(
+        tester.getCenter(find.byType(ListView)),
+        const Offset(0, -300),
+      );
+      await tester.pumpAndSettle();
+    }
     await tester.pumpAndSettle();
     // 1.99.11：入口拆为「增量扫描/全量扫描」两按钮，两个都要在
     expect(find.text('增量扫描'), findsOneWidget);
@@ -119,7 +124,8 @@ void main() {
     await tester.ensureVisible(rescan);
     await tester.tap(rescan);
     await tester.pumpAndSettle();
-    expect(find.byType(SettingsDialog), findsNothing);
+    // 设置页保持挂载（旧对话框由入口回调 pop；独立页不关，活动浮层在根层之上）
+    expect(find.byType(SettingsPage), findsOneWidget);
     expect(find.text('准备扫描...'), findsOneWidget);
     expect(controller.isActive, isTrue);
     controller.finish();

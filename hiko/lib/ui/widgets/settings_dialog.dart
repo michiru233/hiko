@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:universal_platform/universal_platform.dart';
 
+import '../m3e/m3e.dart';
 import '../../data/backup.dart';
 import '../../data/categories_provider.dart';
 import '../../data/library_provider.dart';
@@ -25,45 +26,11 @@ import 'online_tag_menu.dart';
 import 'toast.dart';
 
 /// 设置分类（1.85）：首页分类列表 → 点进二级页；key 对应各 _xxPage 方法
-class _SettingsCategory {
-  final String key;
-  final String title;
-  final String subtitle;
-  final IconData icon;
-
-  const _SettingsCategory(this.key, this.title, this.subtitle, this.icon);
-}
-
-const _categories = [
-  _SettingsCategory('appearance', '外观', '主题 · 强调色 · 字号 · 背景图',
-      Icons.palette_outlined),
-  _SettingsCategory('audio', '音频与增益', '增益放大 · 输出重接 · 快进快退',
-      Icons.graphic_eq_rounded),
-  _SettingsCategory('home', '主界面', '刮削标签 · 每行专辑数',
-      Icons.grid_view_outlined),
-  // 1.99.4：导航栏可见项与顺序（桌面侧栏 + 安卓底栏共用一份配置）
-  _SettingsCategory('nav', '导航栏', '侧栏与底栏入口 · 显示与拖动排序',
-      Icons.menu_rounded),
-  // 1.93.0：在线相关设置从「数据」页集中到这里
-  _SettingsCategory('online', '在线账号',
-      '登录 asmr.one · 歌单收藏 · 卡片标签 · 黑名单 · 服务器 · 缓存',
-      Icons.person_outline_rounded),
-  // 1.96.0：外观类设置单开一页 —— 它只影响在线界面，塞进「外观」页
-  // （那里管的是全局主题/字号/背景）会让「改这里到底影响谁」变得含糊
-  _SettingsCategory('onlineAppearance', '在线外观',
-      '标签字号 · 卡片与详情文字 · 曲目标题 · 列数 · 每页条数',
-      Icons.text_fields_rounded),
-  _SettingsCategory('data', '数据', '导入 · 整理 · 失效清理 · 刮削代理',
-      Icons.storage_outlined),
-  _SettingsCategory('folders', '音乐目录', '常驻目录 · 自动扫描',
-      Icons.folder_outlined),
-  _SettingsCategory('about', '关于', '版本信息 · 软件更新', Icons.info_outline),
-];
-
-/// 偏好设置弹窗（对应旧版 settings-overlay）
-/// 1.85 起分类导航：首页列出全部分类，点进二级页（三端统一 drill-in）
-class SettingsDialog extends ConsumerStatefulWidget {
-  const SettingsDialog({
+/// 偏好设置页（1.99.32 壳重做，plan §8.7）：5 组 72dp 单页，
+/// 桌面独立页路由 / 移动全屏页（入口 home_screen._openSettings）。
+/// 1.85~1.99.30 曾是「分类首页 + 二级页」对话框，内容行全部保留摊平。
+class SettingsPage extends ConsumerStatefulWidget {
+  const SettingsPage({
     super.key,
     this.onImportRequested,
     this.onIncrementalScanRequested,
@@ -90,12 +57,11 @@ class SettingsDialog extends ConsumerStatefulWidget {
   final bool autoCheckUpdate;
 
   @override
-  ConsumerState<SettingsDialog> createState() => _SettingsDialogState();
+  ConsumerState<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsDialogState extends ConsumerState<SettingsDialog> {
+class _SettingsPageState extends ConsumerState<SettingsPage> {
   double? _gainDrag; // 增益滑动条拖动中的临时值（松手才提交）
-  String? _category; // 当前所在分类 key；null = 分类首页
 
   // ---- 软件更新状态 ----
   String? _appVersion; // PackageInfo 异步加载
@@ -253,141 +219,90 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     }
   }
 
-  void _openCategory(String key) => setState(() => _category = key);
-  void _backToCategories() => setState(() => _category = null);
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final settings = ref.watch(settingsProvider);
-
-    return AlertDialog(
-      titlePadding: const EdgeInsets.fromLTRB(24, 22, 16, 0),
-      contentPadding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
-      content: SizedBox(
-        width: 420,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: _category == null
-                ? _categoryListPage(theme)
-                : _categoryPage(theme, settings),
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(
-            '关闭',
-            style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
-          ),
-        ),
-      ],
-    );
-  }
-
-  // ---- 分类首页 ----
-
-  List<Widget> _categoryListPage(ThemeData theme) => [
-        const SizedBox(height: 8),
-        for (final cat in _categories)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: InkWell(
-              onTap: () => _openCategory(cat.key),
-              mouseCursor: SystemMouseCursors.click,
-              borderRadius: BorderRadius.circular(9),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 11,
+    return Scaffold(
+      body: Column(
+        children: [
+          M3EAppBar.small(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded),
+              tooltip: '返回',
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            title: const Text('设置'),
+            actions: [
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('关闭'),
                 ),
-                child: Row(
-                  children: [
-                    Icon(cat.icon, size: 18, color: theme.hintColor),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            cat.title,
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            cat.subtitle,
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              color: theme.hintColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(Icons.chevron_right, size: 18, color: theme.hintColor),
-                  ],
+              ),
+            ],
+          ),
+          Expanded(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 720),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(24, 4, 24, 32),
+                  children: _sections(settings),
                 ),
               ),
             ),
           ),
-        const SizedBox(height: 8),
-      ];
-
-  List<Widget> _categoryPage(ThemeData theme, AppSettings settings) {
-    switch (_category!) {
-      case 'appearance':
-        return _appearancePage(theme, settings);
-      case 'audio':
-        return _audioPage(theme, settings);
-      case 'home':
-        return _homePage(theme, settings);
-      case 'nav':
-        return _navPage(theme, settings);
-      case 'online':
-        return _onlineAccountPage(theme, settings);
-      case 'onlineAppearance':
-        return _onlineAppearancePage(theme, settings);
-      case 'data':
-        return _dataPage(theme, settings);
-      case 'folders':
-        return _foldersPage(theme, settings);
-      case 'about':
-        return _aboutPage(theme, settings);
-    }
-    return _categoryListPage(theme);
+        ],
+      ),
+    );
   }
 
-  // ---- 二级页公共头 ----
+  /// 5 组结构（plan §8.7）：外观 / 播放 / 库与扫描 / 在线 / 关于。
+  /// 原 9 个二级页的内容行全部保留，只按域归组。
+  List<Widget> _sections(AppSettings settings) {
+    final theme = Theme.of(context);
+    return [
+      _sectionHeader(theme, '外观'),
+      ..._appearancePage(theme, settings),
+      _sectionHeader(theme, '播放'),
+      ..._audioPage(theme, settings),
+      _sectionHeader(theme, '库与扫描'),
+      ..._homePage(theme, settings),
+      ..._navPage(theme, settings),
+      ..._foldersPage(theme, settings),
+      ..._dataPage(theme, settings),
+      _sectionHeader(theme, '在线'),
+      ..._onlineAccountPage(theme, settings),
+      ..._onlineAppearancePage(theme, settings),
+      _sectionHeader(theme, '关于'),
+      ..._aboutPage(theme, settings),
+    ];
+  }
 
-  Widget _pageHeader(ThemeData theme, String title) => Padding(
-        padding: const EdgeInsets.only(bottom: 4),
-        child: Row(
+  Widget _sectionHeader(ThemeData theme, String title) => Padding(
+        padding: const EdgeInsets.fromLTRB(0, 28, 0, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back, size: 18),
-              tooltip: '返回',
-              visualDensity: VisualDensity.compact,
-              onPressed: _backToCategories,
-            ),
-            const SizedBox(width: 4),
             Text(
               title,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+              style: M3ETheme.of(context).type.labelLarge.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: theme.colorScheme.primary,
+                  ),
             ),
+            const SizedBox(height: 6),
+            Divider(height: 1, color: theme.colorScheme.outlineVariant),
           ],
         ),
       );
 
+
   // ---- 外观 ----
 
   List<Widget> _appearancePage(ThemeData theme, AppSettings settings) => [
-        _pageHeader(theme, '外观'),
         _SettingRow(
           label: '主题',
           trailing: Container(
@@ -572,7 +487,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   // ---- 音频与增益 ----
 
   List<Widget> _audioPage(ThemeData theme, AppSettings settings) => [
-        _pageHeader(theme, '音频与增益'),
         _SettingRow(
           label: '默认增益放大',
           trailing: Row(
@@ -698,7 +612,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
         if (!navViews.contains(view)) view,
     ];
     return [
-      _pageHeader(theme, '导航栏'),
       Padding(
         padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
         child: Text(
@@ -803,7 +716,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   }
 
   List<Widget> _homePage(ThemeData theme, AppSettings settings) => [
-        _pageHeader(theme, '主界面'),
         _SettingRow(
           label: '显示刮削标签',
           trailing: Switch(
@@ -872,7 +784,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   List<Widget> _onlineAppearancePage(ThemeData theme, AppSettings settings) {
     final notifier = ref.read(settingsProvider.notifier);
     return [
-      _pageHeader(theme, '在线外观'),
       OnlineFontSliderRow(
         title: '标签胶囊字号',
         hint: '全局生效：本地卡面、本地详情、在线卡面与详情一起变',
@@ -957,7 +868,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     final index = favorites.index;
 
     return [
-      _pageHeader(theme, '在线账号'),
       _SettingRow(
         label: '登录状态',
         trailing: switch (account) {
@@ -1292,7 +1202,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   // ---- 数据 ----
 
   List<Widget> _dataPage(ThemeData theme, AppSettings settings) => [
-        _pageHeader(theme, '数据'),
         _SettingRow(
           label: '导入音声',
           trailing: _ActionButton(
@@ -1456,7 +1365,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   // ---- 音乐目录 ----
 
   List<Widget> _foldersPage(ThemeData theme, AppSettings settings) => [
-        _pageHeader(theme, '音乐目录'),
         if (settings.musicFolders.isEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
@@ -1530,7 +1438,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   // ---- 关于 ----
 
   List<Widget> _aboutPage(ThemeData theme, AppSettings settings) => [
-        _pageHeader(theme, '关于'),
         Row(
           children: [
             Container(
@@ -1727,8 +1634,10 @@ class _SettingRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+    // 1.99.32（plan §8.7）：项 72dp 双行，行内垂直居中
+    return Container(
+      constraints: const BoxConstraints(minHeight: 72),
+      alignment: Alignment.center,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -1736,7 +1645,7 @@ class _SettingRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(fontSize: 12)),
+                Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500)),
                 if (subtitle != null) ...[
                   const SizedBox(height: 2),
                   Text(
