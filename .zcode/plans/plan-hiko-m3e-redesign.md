@@ -851,6 +851,46 @@ gh release create …
 
 ---
 
+### 1.99.30 系统面（2026-10-25，与 29 同会话接续发布）
+
+**落地**
+- **玻璃整体拆除（§9.1 清单全勾）**：`hiko_glass.dart`（401 行）与
+  `liquid_glass_widgets` 依赖、`HikoColors.*Glass*` token（10 个）、`hiko_glass_test`
+  一起删除；σ80（首页光晕）/σ55（在线面板氛围）两处大区 `ImageFiltered` 清零。
+  lock 中 `liquid_glass` 0 命中，包体 macOS −1.3MB / APK −0.9MB（计划预估 −0.3~0.8MB）。
+- **系统件 M3E 化**：context_menu（角 4 / 项 48dp / outlineVariant 分隔）、toast
+  （inverseSurface 反色面）、在线卡（surfaceContainerLow 色调面 + 选中 primary 描边）、
+  在线详情面板（surfaceContainerLow + 海拔 3）、detail_kit 描边走 outlineVariant；
+  6 个 AlertDialog 经 `buildHikoTheme.dialogTheme`（角 28 / surfaceContainerHigh /
+  标题 24）一次覆盖 —— 没有新建 M3EDialog 组件（与计划的偏差，见下）。
+- **配色种子（§9.2）**：`seedSource`（preset/custom/system，默认 preset=旧行为）；
+  解析链 custom > system > preset，落 `main.dart._resolveSeed`（custom=自选图片、
+  system=macOS 壁纸经 `hiko/system` MethodChannel 取路径后复用 `CoverColor.fromFile`），
+  不可用静默回退强调色；`buildM3EThemeData(settings, {seed})` 接收解析结果。
+  背景图不再铺底：`BackgroundLayer`/`loadBackgroundImage`/透明 scaffold 分支/全屏页
+  透明分支全删，`background.dart` 连同其测试删除；选图即切 seedSource=custom；
+  `backgroundBlur/Opacity` 设置 UI 移除（字段冻结）。
+- **设置新增**：主题三态（light/dark/**system**，system 走 platformDispatcher +
+  WidgetsBindingObserver 重建）、对比度三档、动效三档（M3EMotion.level 全局生效）。
+
+**与计划的偏差**
+1. 设置壳保留「对话框 + 分类二级页」结构，未改成 5 组 72dp 列表/独立页（§8.7）——
+   新档位以 `_SettingRow`+subtitle 插入外观页，导航骨架不动（回归面最小）；
+   设置壳重做顺延 1.99.31 后的独立版本。
+2. 没有新建 `M3EDialog` 组件：全局 `dialogTheme` 达成同一观感（§8.8 的角 28/容器色/标题阶）。
+3. 「跟随系统」的 Android 动态取色未含（顺延 1.99.31，勿用 dynamic_color 包）。
+
+**验证**
+- `flutter test`：**778 passed / 2 skipped**（29 为 800/2；删玻璃锁 25 条、在线卡
+  材质锁改写、新增主题装配锁 4 条）。
+- `flutter analyze`：**43 条**（基线 40，0 error）。
+- macOS 实跑（Release）：设置对话框 M3E 壳、外观页四行新档位（主题三态/配色来源/
+  对比度/动效/自选种子图，模糊与不透明度已消失）、断点续播横幅 + 播放条播放态复核；
+  菜单栏「设置…」AX 点击可开设置（比 Tab 盲遍历可靠，实机自动化备注）。
+- APK aapt2：versionCode 143 / versionName 1.99.30。
+
+---
+
 ## 附录 A：M3E 关键数值表（实施时照抄）
 
 **形状（10 档）**：0 / 4 / 8 / 12 / 16 / **20** / 28 / **32** / **48** / full

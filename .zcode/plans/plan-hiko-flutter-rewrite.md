@@ -3902,3 +3902,29 @@ child: 一摞 HikoGlass))`。`pinned: false` 的 SliverAppBar 只要开始滚动
 ### 交付
 - 版本 `1.99.29+142`；Release：`hiko-v1.99.29-macos.zip` + `hiko-v1.99.29-android.apk`。
 - 本版无新增待裁决。
+
+## 1.99.30（2026-10-25）：系统面（界面重构第 5 步，与 29 同会话接续）
+
+### 可见变化
+- 玻璃拟态整体退场：`hiko_glass.dart`、`liquid_glass_widgets` 依赖、玻璃 token、
+  σ80/σ55 氛围模糊全部删除；包体 macOS −1.3MB / APK −0.9MB
+- 右键菜单（角 4/项 48dp）、toast（反色面）、在线卡与在线详情面板（色调面）换新材质；
+  6 个对话框经全局 dialogTheme 换 M3E 壳（角 28）
+- 「背景图」→「自选种子图」：不铺底、只取主色参与配色；配色来源三选一
+  （预设/自选图片/跟随系统），macOS 跟随系统读桌面壁纸；模糊/不透明度设置移除
+- 设置新增：主题模式「跟随系统」、对比度三档、动效三档
+
+### 与计划的偏差
+1. 设置壳重做（5 组 72dp 列表/独立页）顺延：本版保留分类对话框骨架，只加档位行。
+2. 未新建 M3EDialog 组件（全局 dialogTheme 达成同观感）。
+3. Android 动态取色（跟随系统的安卓实现）顺延 1.99.31。
+
+### 验证
+- `flutter test`：**778 passed / 2 skipped**（29 为 800/2，删玻璃锁 25 条、新增主题装配锁 4 条）。
+- `flutter analyze`：**43 条**（基线 40），0 error。
+- macOS 实跑（Release）：设置对话框/新档位/断点续播/播放条播放态；aapt2 143/1.99.30。
+
+### 交付
+- 版本 `1.99.30+143`；Release：`hiko-v1.99.30-macos.zip` + `hiko-v1.99.30-android.apk`。
+- 待裁决（1.99.31 开工前）：`material_new_shapes`（M3ELoadingIndicator）与
+  `material_symbols_icons`（可变字体图标）两个新依赖是否引入 —— 与「无新依赖」约定冲突，需用户拍板。
