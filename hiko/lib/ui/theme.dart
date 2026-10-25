@@ -44,11 +44,21 @@ ThemeData buildHikoTheme(AppSettings settings) {
     _ => false,
   };
   final accent = parseHexColor(settings.accent);
+  // 1.99.35：对比度档传给 ColorScheme（与 M3E 主题同一档），保证
+  // scaffold 与 M3EAppBar/rail 的 surface 逐字节一致（用户反馈三区色不统一）
+  final contrastLevel = switch (settings.contrast) {
+    'medium' => 0.5,
+    'high' => 1.0,
+    _ => 0.0,
+  };
   final scheme = ColorScheme.fromSeed(
     seedColor: accent,
     brightness: dark ? Brightness.dark : Brightness.light,
+    contrastLevel: contrastLevel,
   );
-  final bg = dark ? HikoColors.darkBg : HikoColors.lightBg;
+  // 1.99.35：页面底色统一到 M3E surface（与 M3EAppBar/rail 同层），
+  // 旧 darkBg/lightBg 与 fromSeed 派生色并存导致「顶条/顶栏/rail 三区三色」
+  final bg = scheme.surface;
   final ink = dark ? HikoColors.darkInk : HikoColors.lightInk;
   final line = dark ? HikoColors.darkLine : HikoColors.lightLine;
   final card = dark ? HikoColors.darkCard : HikoColors.lightCard;

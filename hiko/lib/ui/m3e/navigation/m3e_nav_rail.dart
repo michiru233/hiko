@@ -12,7 +12,7 @@ import 'm3e_navigation_destination.dart';
 /// 项高 64dp，选中指示器 56×32 全圆；收起态图标在上、标签在下，
 /// 展开态图标在左、标签在右 —— 两种形态共用同一份目的地数据。
 ///
-/// 视觉上不再有分隔线：M3E 用 `surfaceContainerLow` 与内容的 `surface`
+/// 1.99.35 起 rail 底与内容同层（`surface`），层级交给选中态色块；
 /// 之间的明度差划出导航区，而不是画一条线（见 §3 原则 1）。
 class M3ENavRail extends StatelessWidget {
   const M3ENavRail({
@@ -47,7 +47,7 @@ class M3ENavRail extends StatelessWidget {
     final isExpanded =
         expanded ?? hikoWindowSizeOf(context) == HikoWindowSize.expanded;
     return ColoredBox(
-      color: theme.colors.surfaceContainerLow,
+      color: theme.colors.surface,
       child: SafeArea(
         right: false,
         child: Column(
