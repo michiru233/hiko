@@ -117,17 +117,23 @@ class AlbumCard extends ConsumerWidget {
                         .copyWith(color: colors.onSurface),
                   ),
                   const SizedBox(height: 4),
-                  // 声优与社团各占一行（1.44 起的语义：两颗独立信息，不合并成
-                  // 「A · B」这种一句话 —— 合并后在窄卡上会互相挤到只剩省略号）。
-                  for (final line in _artistLines) ...<Widget>[
-                    Text(
-                      line,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.type.bodySmall
-                          .copyWith(color: colors.onSurfaceVariant),
-                    ),
-                  ],
+                  // 声优/社团分色胶囊（1.44 语义的复刻，1.99.36 用户反馈恢复）：
+                  // 逐人拆分、各一颗独立胶囊；长名在胶囊内换行不溢出。
+                  Wrap(
+                    spacing: 4,
+                    runSpacing: 4,
+                    children: <Widget>[
+                      for (final voice
+                          in splitVoiceNames(
+                              normalizeVoiceSeparators(album.artist)))
+                        _PersonPillMini(
+                            name: voice, color: hikoVoiceColor),
+                      if (_showCirclePill)
+                        _PersonPillMini(
+                            name: album.albumArtist,
+                            color: hikoCircleColor),
+                    ],
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 6,
@@ -178,15 +184,11 @@ class AlbumCard extends ConsumerWidget {
     );
   }
 
-  /// 艺术家行：声优与社团各一行；相同则去重，空值不占位。
-  List<String> get _artistLines {
-    final artist = normalizeVoiceSeparators(album.artist);
-    final albumArtist = album.albumArtist;
-    if (albumArtist.isEmpty || albumArtist == album.artist) {
-      return artist.isEmpty ? const <String>[] : <String>[artist];
-    }
-    if (artist.isEmpty) return <String>[albumArtist];
-    return <String>[artist, albumArtist];
+  /// 社团胶囊是否展示：为空或与声优串相同时不重复占位（沿用 1.44 去重语义）。
+  bool get _showCirclePill {
+    final circle = album.albumArtist;
+    if (circle.isEmpty) return false;
+    return circle != album.artist;
   }
 }
 
@@ -245,6 +247,35 @@ class _MetaPill extends StatelessWidget {
                 ? type.labelSmall.copyWith(fontWeight: FontWeight.w700)
                 : type.labelSmall)
             .copyWith(color: foreground),
+      ),
+    );
+  }
+}
+
+/// 卡片级迷你人名胶囊：声优（蓝）/ 社团（紫）分色，文字超长在胶囊内换行。
+class _PersonPillMini extends StatelessWidget {
+  const _PersonPillMini({required this.name, required this.color});
+
+  final String name;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(M3EShape.full),
+      ),
+      child: Text(
+        name,
+        softWrap: true,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w500,
+          height: 1.25,
+          color: color,
+        ),
       ),
     );
   }
