@@ -3784,3 +3784,40 @@ child: 一摞 HikoGlass))`。`pinned: false` 的 SliverAppBar 只要开始滚动
 ### 交付
 - 版本 `1.99.25+138`；Release：`hiko-v1.99.25-android.apk` + `hiko-v1.99.25-macos.zip`。
 - 本版无新增待裁决。
+
+## 1.99.26（2026-10-25）：M3E 设计系统层（全量界面重构第 1 步）
+
+> 重构总计划见 `.zcode/plans/plan-hiko-m3e-redesign.md`（Material 3 Expressive）。
+> 本版只铺设计系统底座，**不改任何现有界面**；视觉切换从 1.99.27 开始。
+
+### 用户裁决（重构地基）
+1. 全量重设计，不做双皮肤；2. 玻璃拟态整体移除；3. 自研 M3E 层、不迁 `material_ui`
+与 `material_3_expressive`；4. Android 优先、macOS 最大复用；5. 动效让位于性能。
+三件产品决策（背景图转配色种子 / 移除黑胶 / 分类迁首页 chip）见总计划 §13。
+
+### 本版落地
+新增 `lib/ui/m3e/`（12 文件 1,647 行）：
+- `tokens/`：形状 10 档、海拔 6 级、字体 15 角色 ×2、弹簧 6 组、颜色 37 角色。
+- `theme/`：`M3ETheme` InheritedWidget + `context.m3e`；`M3EThemeData.fromSeed`。
+- `components/`：`M3EPressable`（状态层 + 弹簧按压 + Enter/Space 激活）、
+  `M3EButton`（4 变体 × 3 尺寸）、`M3ECard`（3 变体）、`M3EList`/`M3EListItem`。
+- `main.dart`：在 `MaterialApp.builder` 外层挂 `M3ETheme`（按 `accent|theme` 记忆化，
+  避免 MediaQuery 变化时重算 HCT 色调板）。`theme.dart` 未动 → 观感零变化。
+
+### 两个与计划不同的技术选择
+1. **零新依赖**：`ColorScheme.fromSeed` 自 3.47 起支持 `dynamicSchemeVariant` 与
+   `contrastLevel`，配色层不需要 `material_color_utilities`；弹簧用框架自带
+   `SpringSimulation`，不需要 `motor`。首次尝试加依赖导致 130 个包连带升级，已回滚 lock。
+2. **不用 `FocusableActionDetector`**：探针实测它在 3.47 测试环境不派发
+   `onShowHoverHighlight`（原生 `MouseRegion.onEnter` 正常），hover 无法写锁 →
+   改自组合 `MouseRegion` + `Focus` + `GestureDetector`。
+
+### 验证
+- `flutter test`：**780 passed / 2 skipped**（基线 679/2，新增 101 条，0 回归）。
+- `flutter analyze`：**42 条**，与基线一致，0 新增 error。
+- 新增测试：token 值锁（形状/字阶/弹簧/颜色）、主题桥、按压状态层与弹簧、
+  卡片三变体、按钮四变体三尺寸、列表行高与选中态。
+
+### 交付
+- 版本 `1.99.26+139`；Release：`hiko-v1.99.26-android.apk` + `hiko-v1.99.26-macos.zip`。
+- 本版无新增待裁决。

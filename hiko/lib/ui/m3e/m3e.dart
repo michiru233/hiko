@@ -1,0 +1,24 @@
+/// M3E 设计系统层的唯一对外出口。
+///
+/// 业务代码**只 import 这一个文件**（`import '../m3e/m3e.dart';`），
+/// 不直接深入 `tokens/` 或 `components/`。这样将来整体替换实现（例如官方
+/// Material 库内置 M3E 之后切过去）只需要改这个 barrel 与内部实现，
+/// 调用点一行不动。
+///
+/// 分层（见 plan-hiko-m3e-redesign.md §4.1）：
+/// - `tokens/` 纯数值，无 widget，可单独跑单测
+/// - `theme/` 把 token 装配成 InheritedWidget
+/// - `components/` 只依赖 tokens + theme，**不依赖任何业务代码**
+library;
+
+export 'components/actions/m3e_button.dart';
+export 'components/motion/m3e_pressable.dart';
+export 'components/surfaces/m3e_card.dart';
+export 'components/surfaces/m3e_list.dart';
+export 'theme/m3e_theme.dart';
+export 'theme/m3e_theme_builder.dart';
+export 'tokens/color_tokens.dart';
+export 'tokens/elevation_tokens.dart';
+export 'tokens/motion_tokens.dart';
+export 'tokens/shape_tokens.dart';
+export 'tokens/type_tokens.dart';

@@ -17,6 +17,8 @@ import 'playback/playback_controller.dart';
 import 'ui/background.dart';
 import 'ui/covers/cover_cache.dart';
 import 'ui/global_shortcuts.dart';
+import 'ui/m3e/theme/m3e_theme.dart';
+import 'ui/m3e/theme/m3e_theme_builder.dart';
 import 'ui/screens/home_screen.dart';
 import 'ui/theme.dart';
 import 'ui/widgets/activity_overlay.dart';
@@ -92,6 +94,20 @@ class HikoApp extends ConsumerStatefulWidget {
 class _HikoAppState extends ConsumerState<HikoApp> {
   String _bgPathRequested = '';
 
+  /// M3E 主题缓存（1.99.26）：`builder` 会随 MediaQuery 变化（键盘、窗口缩放）
+  /// 反复重建，而配色生成要跑一整套 HCT 色调板 —— 只有强调色/明暗变了才重算。
+  String _m3eCacheKey = '';
+  M3EThemeData? _m3eData;
+
+  M3EThemeData _m3eTheme(AppSettings settings) {
+    final key = m3eThemeCacheKey(settings);
+    if (_m3eData == null || _m3eCacheKey != key) {
+      _m3eCacheKey = key;
+      _m3eData = buildM3EThemeData(settings);
+    }
+    return _m3eData!;
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
@@ -122,17 +138,20 @@ class _HikoAppState extends ConsumerState<HikoApp> {
             ],
           );
         }
-        return MediaQuery(
-          data: scaledMediaQuery,
-          // 标签胶囊字号（1.96.0）：挂在根层，本地与在线一次生效 ——
-          // `HikoTagChip` 共用一份实现，字号也必须只有一份（裁决 Q2=甲）
-          child: HikoTagFontScope(
-            fontSize: settings.tagFontSize,
-            child: HikoGlobalShortcuts(
-              navigatorKey: hikoNavigatorKey,
-              child: ActivityOverlayHost(
-                controller: activityOverlayController,
-                child: content,
+        return M3ETheme(
+          data: _m3eTheme(settings),
+          child: MediaQuery(
+            data: scaledMediaQuery,
+            // 标签胶囊字号（1.96.0）：挂在根层，本地与在线一次生效 ——
+            // `HikoTagChip` 共用一份实现，字号也必须只有一份（裁决 Q2=甲）
+            child: HikoTagFontScope(
+              fontSize: settings.tagFontSize,
+              child: HikoGlobalShortcuts(
+                navigatorKey: hikoNavigatorKey,
+                child: ActivityOverlayHost(
+                  controller: activityOverlayController,
+                  child: content,
+                ),
               ),
             ),
           ),
