@@ -1,4 +1,3 @@
-import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,11 +5,16 @@ import '../../models/album.dart';
 import '../../utils/person_names.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
-import '../theme.dart';
+import '../m3e/m3e.dart';
 import 'detail_kit.dart';
-import 'hiko_glass.dart';
 
-/// 专辑卡片：玻璃拟态质感卡片（玻璃底 + 柔和投光 + 胶囊标签）
+/// 专辑卡片（M3E 内容面，1.99.28）。
+///
+/// 材质从玻璃换成**色调面**：`surfaceContainerLow` 底、16dp 圆角、零投影。
+/// 卡片与页面底（`surface`）的层级差由色阶给出，不再靠描边与模糊 —— 这也是
+/// 深色模式下「卡片看不见」那个老问题的根治办法（见 plan §1.1）。
+///
+/// 圆角遵循嵌套规则：卡片 16 − 内边距 4 = 封面 12。
 class AlbumCard extends ConsumerWidget {
   const AlbumCard({
     super.key,
@@ -33,305 +37,209 @@ class AlbumCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final theme = M3ETheme.of(context);
+    final colors = theme.colors;
     Offset? pointerPosition;
 
-    // 玻璃卡片表面：长列表滚动使用高性能 Faux-Glass（高透半透明 + 渐变微反光）
-    final cardBg = isDark ? HikoColors.darkGlassCard : HikoColors.lightGlassCard;
-    final cardBorder = isDark ? HikoColors.darkGlassBorderSubtle : HikoColors.lightGlassBorderSubtle;
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: Listener(
-        onPointerDown: (event) {
-          pointerPosition = event.position;
-          if (onContextMenu != null && event.buttons == kSecondaryButton) {
-            onContextMenu!(event.position);
-          }
-        },
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            onLongPress: onContextMenu == null
-                ? null
-                : () => onContextMenu!(pointerPosition ?? Offset.zero),
-            borderRadius: BorderRadius.circular(16),
-            child: HikoGlass(
-              // 1.99.22：整体取代原先的 AnimatedContainer——底色、描边、阴影
-              // 全部交给 HikoGlass，并统一走 300ms 补间，选中反馈与旧版一致。
-              // tile 档 = standard 轻量着色器：单 pass、不自建渲染图层、
-              // 不逐卡捕获背景，正是该库标注给「可滚动列表」的那一档。
-              tier: HikoGlassTier.tile,
-              borderRadius: 16,
-              padding: const EdgeInsets.all(8),
-              animationDuration: const Duration(milliseconds: 300),
-              tint: cardBg,
-              borderColor: highlighted || selected
-                  ? theme.colorScheme.primary
-                  : cardBorder,
-              borderWidth: highlighted || selected ? 1.5 : 0.8,
-              boxShadow: [
+    return Listener(
+      onPointerDown: (event) => pointerPosition = event.position,
+      child: M3ECard(
+        padding: const EdgeInsets.all(4),
+        radius: M3EShape.lg,
+        // 定位命中用 primaryContainer 底；多选选中用 secondaryContainer。
+        color: highlighted
+            ? colors.primaryContainer
+            : selected
+                ? colors.secondaryContainer
+                : null,
+        onTap: onTap,
+        onLongPress: onContextMenu == null
+            ? null
+            : () => onContextMenu!(pointerPosition ?? Offset.zero),
+        onSecondaryTapDown: onContextMenu,
+        semanticLabel: album.title,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Stack(
+              children: <Widget>[
+                ClipRRect(
+                  // 16 − 4 = 12
+                  borderRadius: BorderRadius.circular(M3EShape.md),
+                  child: AspectRatio(
+                    aspectRatio: 1,
+                    child: AlbumCover(album: album),
+                  ),
+                ),
+                if (multiMode)
+                  Positioned(
+                    left: 8,
+                    top: 8,
+                    child: _SelectBadge(selected: selected),
+                  ),
                 if (highlighted)
-                  BoxShadow(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.4),
-                    blurRadius: 18,
-                    spreadRadius: 2,
-                  )
-                else
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
-                    blurRadius: 14,
-                    offset: const Offset(0, 6),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      // 定位高亮专用 key：测试用它判定「这张卡正在发光」，
+                      // 与具体材质解耦（玻璃 → 色调面换过一次，锁不该跟着改）。
+                      key: const ValueKey<String>('hiko-album-card-highlight'),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(M3EShape.md),
+                          border: Border.all(
+                            color: colors.primary,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
               ],
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 10, 8, 6),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      return Stack(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: AspectRatio(
-                              aspectRatio: 1,
-                              child: AlbumCover(album: album),
-                            ),
-                          ),
-                          if (multiMode)
-                            Positioned(
-                              left: 8,
-                              top: 8,
-                              child: MouseRegion(
-                                cursor: SystemMouseCursors.click,
-                                child: Material(
-                                  color: Colors.transparent,
-                                  child: InkWell(
-                                    onTap: onTap,
-                                    customBorder: const CircleBorder(),
-                                    child: Container(
-                                      width: 24,
-                                      height: 24,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: selected
-                                            ? theme.colorScheme.primary
-                                            : Colors.black.withValues(alpha: 0.45),
-                                        border: Border.all(
-                                          color: Colors.white.withValues(alpha: 0.9),
-                                          width: 2,
-                                        ),
-                                      ),
-                                      child: Center(
-                                        child: Text(
-                                          selected ? '✓' : '',
-                                          style: TextStyle(
-                                            color: selected
-                                                ? theme.colorScheme.onPrimary
-                                                : Colors.white,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      );
-                    },
+                children: <Widget>[
+                  Text(
+                    album.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: (selected
+                            ? theme.type.titleSmallEmphasized
+                            : theme.type.titleSmall)
+                        .copyWith(color: colors.onSurface),
                   ),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final contentWidth = (constraints.maxWidth - 4).clamp(
-                        1.0,
-                        double.infinity,
-                      );
-                      return Padding(
-                        padding: const EdgeInsets.fromLTRB(4, 10, 4, 4),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              album.title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                height: 1.3,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Wrap(
-                              spacing: 5,
-                              runSpacing: 4,
-                              children: [
-                                _Pill(
-                                  // 1.87：卡片胶囊不拆成多人，只把分隔符归一化为顿号
-                                  text: normalizeVoiceSeparators(album.artist),
-                                  bg: isDark
-                                      ? Colors.white.withValues(alpha: 0.08)
-                                      : Colors.black.withValues(alpha: 0.05),
-                                  color: isDark ? HikoColors.darkInk : HikoColors.lightInk,
-                                  maxWidth: contentWidth,
-                                ),
-                                if (album.albumArtist.isNotEmpty &&
-                                    album.albumArtist != album.artist)
-                                  _Pill(
-                                    text: album.albumArtist,
-                                    bg: isDark
-                                        ? Colors.white.withValues(alpha: 0.08)
-                                        : Colors.black.withValues(alpha: 0.05),
-                                    color: isDark ? HikoColors.darkInk : HikoColors.lightInk,
-                                    maxWidth: contentWidth,
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Wrap(
-                              spacing: 5,
-                              runSpacing: 4,
-                              children: [
-                                _Pill(
-                                  text: album.rjCode ?? '本地导入',
-                                  bg: theme.colorScheme.primary.withValues(alpha: 0.9),
-                                  color: theme.colorScheme.onPrimary,
-                                  bold: true,
-                                  maxWidth: contentWidth,
-                                ),
-                                _Pill(
-                                  text: album.totalDuration > 0
-                                      ? formatDuration(album.totalDuration)
-                                      : '${album.duration} 首',
-                                  bg: isDark
-                                      ? Colors.white.withValues(alpha: 0.06)
-                                      : Colors.black.withValues(alpha: 0.04),
-                                  color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
-                                  maxWidth: contentWidth,
-                                ),
-                                if (album.genre.isNotEmpty)
-                                  _Tag(text: album.genre, maxWidth: contentWidth),
-                              ],
-                            ),
-                            if (showScrapedTags && album.tags.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Wrap(
-                                spacing: 5,
-                                runSpacing: 4,
-                                children: [
-                                  for (final tag in album.tags.take(3))
-                                    _Tag(
-                                      text: tag,
-                                      // 1.99.0：改走主题化标签色（1.42.0 待裁决项），
-                                      // 深底上写死的 0xFF2E8A8F 不够显眼
-                                      color: hikoTagFgColorOf(isDark),
-                                      bg: hikoTagBgColor.withValues(alpha: isDark ? 0.2 : 0.8),
-                                      maxWidth: contentWidth,
-                                    ),
-                                  if (album.tags.length > 3)
-                                    _Tag(
-                                      text: '+${album.tags.length - 3}',
-                                      color: hikoTagFgColorOf(isDark),
-                                      bg: hikoTagBgColor.withValues(alpha: isDark ? 0.2 : 0.8),
-                                      maxWidth: contentWidth,
-                                    ),
-                                ],
-                              ),
-                            ],
-                          ],
+                  const SizedBox(height: 4),
+                  // 声优与社团各占一行（1.44 起的语义：两颗独立信息，不合并成
+                  // 「A · B」这种一句话 —— 合并后在窄卡上会互相挤到只剩省略号）。
+                  for (final line in _artistLines) ...<Widget>[
+                    Text(
+                      line,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.type.bodySmall
+                          .copyWith(color: colors.onSurfaceVariant),
+                    ),
+                  ],
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: <Widget>[
+                      _MetaPill(
+                        text: album.rjCode ?? '本地导入',
+                        background: colors.primaryContainer,
+                        foreground: colors.onPrimaryContainer,
+                        emphasized: true,
+                      ),
+                      _MetaPill(
+                        text: album.totalDuration > 0
+                            ? formatDuration(album.totalDuration)
+                            : '${album.duration} 首',
+                        background: colors.surfaceContainerHigh,
+                        foreground: colors.onSurfaceVariant,
+                      ),
+                      if (album.genre.isNotEmpty)
+                        _MetaPill(
+                          text: album.genre,
+                          background: colors.surfaceContainerHigh,
+                          foreground: colors.onSurfaceVariant,
                         ),
-                      );
-                    },
+                      if (showScrapedTags)
+                        for (final tag in album.tags.take(3))
+                          _MetaPill(
+                            text: tag,
+                            background: hikoTagBgColor
+                                .withValues(alpha: colors.isDark ? 0.28 : 0.9),
+                            foreground: hikoTagFgColorOf(colors.isDark),
+                          ),
+                      if (showScrapedTags && album.tags.length > 3)
+                        _MetaPill(
+                          text: '+${album.tags.length - 3}',
+                          background: hikoTagBgColor
+                              .withValues(alpha: colors.isDark ? 0.28 : 0.9),
+                          foreground: hikoTagFgColorOf(colors.isDark),
+                        ),
+                    ],
                   ),
                 ],
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
+
+  /// 艺术家行：声优与社团各一行；相同则去重，空值不占位。
+  List<String> get _artistLines {
+    final artist = normalizeVoiceSeparators(album.artist);
+    final albumArtist = album.albumArtist;
+    if (albumArtist.isEmpty || albumArtist == album.artist) {
+      return artist.isEmpty ? const <String>[] : <String>[artist];
+    }
+    if (artist.isEmpty) return <String>[albumArtist];
+    return <String>[artist, albumArtist];
+  }
 }
 
-/// 元数据胶囊：文本在卡片内自然换行，不截断单个字段。
-class _Pill extends StatelessWidget {
-  const _Pill({
+/// 多选角标：M3E 的选中语义是「圆形勾选」，不是自绘对勾字符。
+class _SelectBadge extends StatelessWidget {
+  const _SelectBadge({required this.selected});
+
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = M3ETheme.of(context).colors;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 120),
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: selected ? colors.primary : colors.scrim.withValues(alpha: 0.45),
+        border: Border.all(color: colors.surface, width: 2),
+      ),
+      child: selected
+          ? Icon(Icons.check, size: 14, color: colors.onPrimary)
+          : null,
+    );
+  }
+}
+
+/// 元数据小标签：4dp 圆角（芯片语言），labelSmall 字号。
+class _MetaPill extends StatelessWidget {
+  const _MetaPill({
     required this.text,
-    required this.bg,
-    required this.color,
-    this.bold = false,
-    this.maxWidth,
+    required this.background,
+    required this.foreground,
+    this.emphasized = false,
   });
 
   final String text;
-  final Color bg;
-  final Color color;
-  final bool bold;
-  final double? maxWidth;
+  final Color background;
+  final Color foreground;
+  final bool emphasized;
 
   @override
   Widget build(BuildContext context) {
-    Widget pill = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+    final type = M3ETheme.of(context).type;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(6),
+        color: background,
+        borderRadius: BorderRadius.circular(M3EShape.xs),
       ),
       child: Text(
         text,
         softWrap: true,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
-          color: color,
-        ),
+        style: (emphasized
+                ? type.labelSmall.copyWith(fontWeight: FontWeight.w700)
+                : type.labelSmall)
+            .copyWith(color: foreground),
       ),
     );
-    if (maxWidth != null) {
-      pill = ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth!),
-        child: pill,
-      );
-    }
-    return pill;
-  }
-}
-
-class _Tag extends StatelessWidget {
-  const _Tag({required this.text, this.color, this.bg, this.maxWidth});
-
-  final String text;
-  final Color? color;
-  final Color? bg;
-  final double? maxWidth;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    Widget tag = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: bg ?? (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04)),
-        borderRadius: BorderRadius.circular(5),
-      ),
-      child: Text(
-        text,
-        softWrap: true,
-        style: TextStyle(fontSize: 9, color: color ?? (isDark ? HikoColors.darkMuted : HikoColors.lightMuted)),
-      ),
-    );
-    if (maxWidth != null) {
-      tag = ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth!),
-        child: tag,
-      );
-    }
-    return tag;
   }
 }

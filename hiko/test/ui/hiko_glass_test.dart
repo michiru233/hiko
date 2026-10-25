@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hiko/models/album.dart';
 import 'package:hiko/models/track.dart';
 import 'package:hiko/ui/theme.dart';
+import 'package:hiko/ui/m3e/m3e.dart';
 import 'package:hiko/ui/widgets/album_card.dart';
 import 'package:hiko/ui/widgets/hiko_glass.dart';
 // 只有本文件（门面的回归锁）可以直接依赖第三方库：锁的就是「门面把参数喂给了
@@ -195,8 +196,12 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(find.byType(HikoGlass), findsWidgets);
-      expect(find.byType(lg.GlassContainer), findsNothing);
+      // 1.99.28：专辑卡已从玻璃转成实心色调面，这里锁「不再有玻璃」。
+      expect(
+        find.byType(HikoGlass),
+        findsNothing,
+        reason: '内容面不得回流到玻璃（主网格性能与观感双重回退）',
+      );
       expect(tester.takeException(), isNull);
     });
   });
@@ -420,10 +425,8 @@ void main() {
     });
   });
 
-  group('专辑卡必须走 tile 档', () {
-    testWidgets('专辑卡的玻璃是 tile 档（换成 surface 档就是主网格性能回退）', (
-      tester,
-    ) async {
+  group('专辑卡已退出玻璃体系（1.99.28）', () {
+    testWidgets('专辑卡不渲染 HikoGlass，改用 M3ECard 色调面', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -445,20 +448,9 @@ void main() {
       );
       await tester.pump();
 
-      final glass = tester.widgetList<HikoGlass>(find.byType(HikoGlass));
-      expect(glass, isNotEmpty);
-      for (final g in glass) {
-        expect(
-          g.tier,
-          HikoGlassTier.tile,
-          reason: '专辑卡在主滚动网格里，必须是 standard 轻量档',
-        );
-        expect(
-          g.animationDuration,
-          isNotNull,
-          reason: '选中态的颜色/描边/阴影过渡不能丢',
-        );
-      }
+      expect(find.byType(HikoGlass), findsNothing);
+      expect(find.byType(M3ECard), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 }

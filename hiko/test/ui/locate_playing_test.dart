@@ -36,17 +36,11 @@ final Finder locateButton = find.ancestor(
   matching: find.byType(IconButton),
 );
 
-// 1.99.22：卡片底色/描边改由 HikoGlass 承载（原 AnimatedContainer 的 BoxDecoration
-// 只剩阴影），所以高亮改为在 HikoGlass 上判定，并顺便**收紧**成双因子：
-//   ① 描边宽度 1.5（常态是 0.8，选中/高亮才会加粗）
-//   ② 高亮专属的发光阴影 spreadRadius == 2（常态阴影没有 spread）
-// 只看「border 非空」的旧写法在换材质后已经失效，这里比原来更严，不会放宽锁。
-final Finder glowCard = find.byWidgetPredicate(
-  (w) =>
-      w is HikoGlass &&
-      w.borderWidth == 1.5 &&
-      (w.boxShadow?.any((s) => s.spreadRadius == 2) ?? false),
-);
+// 1.99.28：卡片材质从玻璃转成色调面，高亮改成
+// 「primaryContainer 底 + 2dp primary 描边」，并挂一个专用 Key。
+// 锁改用 Key 判定：以后材质再换（比如换成别的容器色）锁也不用跟着改。
+final Finder glowCard =
+    find.byKey(const ValueKey<String>('hiko-album-card-highlight'));
 
 void main() {
   // 用应用默认窗口尺寸（1440×920）：800×600 默认画布下顶栏/播放条会溢出报渲染异常

@@ -14,6 +14,7 @@ library;
 export 'adaptive/hiko_breakpoints.dart';
 export 'adaptive/hiko_shell.dart';
 export 'components/actions/m3e_button.dart';
+export 'components/actions/m3e_button_group.dart';
 export 'components/motion/m3e_pressable.dart';
 export 'components/surfaces/m3e_card.dart';
 export 'components/selection/m3e_chip.dart';

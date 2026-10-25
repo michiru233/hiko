@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hiko/data/settings_store.dart';
 import 'package:hiko/models/album.dart';
 import 'package:hiko/ui/theme.dart';
+import 'package:hiko/ui/m3e/m3e.dart';
 import 'package:hiko/ui/widgets/album_card.dart';
 
 /// 1.32 点击反馈验收：主题按压 overlay ≥0.12 alpha；点击目标是 Ink（水波纹可绘制）
@@ -50,8 +51,12 @@ void main() {
       ),
     );
 
-    expect(find.byType(InkWell), findsOneWidget,
-        reason: '卡片点击目标必须是 Ink（GestureDetector 无水波纹）');
+    // 1.99.28：玻璃卡退役，按压反馈改由 M3E 状态层提供（hover/focus/press 三态）。
+    expect(
+      find.byType(M3EPressable),
+      findsOneWidget,
+      reason: '卡片点击目标必须是 M3EPressable（状态层 + 弹簧按压）',
+    );
     await tester.tap(find.byType(AlbumCard));
     await tester.pumpAndSettle();
     expect(tapped, 1);

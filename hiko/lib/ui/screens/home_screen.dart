@@ -883,32 +883,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  /// 当前视图在移动端底栏的高亮位置（1.99.4 起底栏项由 navViews 驱动）。
-  /// 「在线收藏」优先归到「在线」那一格（它是在线模块的一部分，1.90 语义保留，
-  /// 在线被隐藏时才高亮自己的格子）；非导航视图（分类等）高亮本地音声。
-  int _navIndex(List<String> navViews) {
-    final i = navViews.indexOf(_view);
-    if (i >= 0) return i;
-    if (_view == '在线收藏') {
-      final online = navViews.indexOf('在线');
-      if (online >= 0) return online;
-      final own = navViews.indexOf('在线收藏');
-      if (own >= 0) return own;
-    }
-    return navViews.indexOf(AppSettings.navViewHome);
-  }
-
-  /// 播放栏当前占据的屏幕矩形（未挂载 / 还没有尺寸时返回 null）
-  Rect? _playerBarRect() {
-    final box = _playerBarKey.currentContext?.findRenderObject() as RenderBox?;
-    if (box == null || !box.attached || !box.hasSize) return null;
-    return box.localToGlobal(Offset.zero) & box.size;
-  }
-
-  /// 全局坐标是否落在播放栏内（1.99.6 裁决 Q4=A 的手势优先级判定，
-  /// 消费方是包裹整页的那个 `Listener` 的左边缘呼出抽屉）
-  bool _isInPlayerBar(Offset globalPos) =>
-      _playerBarRect()?.contains(globalPos) ?? false;
 
   /// 从左往右划掉播放栏（1.99.6，裁决 Q1=B）：**收起 + 暂停**。
   ///
@@ -1471,6 +1445,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Widget _buildHero(ThemeData theme, int resultCount, bool isMobile) {
+    final m3e = M3ETheme.of(context);
     final favCount = ref.watch(libraryProvider).where((a) => a.favorite).length;
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -1490,28 +1465,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 if (!isMobile) ...[
                   Text(
                     'PERSONAL LIBRARY',
-                    style: TextStyle(
-                      fontSize: 10,
+                    style: m3e.type.labelSmall.copyWith(
                       letterSpacing: 1.7,
                       fontWeight: FontWeight.w700,
-                      color: theme.colorScheme.primary,
+                      color: m3e.colors.primary,
                     ),
                   ),
-                  const SizedBox(height: 9),
+                  const SizedBox(height: 8),
                 ],
                 Text(
                   _view,
-                  style: TextStyle(
-                    fontSize: isMobile ? 24 : 30,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -1.2,
-                  ),
+                  style: (isMobile
+                          ? m3e.type.headlineSmallEmphasized
+                          : m3e.type.headlineLargeEmphasized)
+                      .copyWith(color: m3e.colors.onSurface),
                 ),
                 if (!isMobile) ...[
                   const SizedBox(height: 6),
                   Text(
                     '把每一次心动、每一段陪伴，都放进自己的声音收藏室。',
-                    style: TextStyle(fontSize: 12, color: theme.hintColor),
+                    style: m3e.type.bodyMedium
+                        .copyWith(color: m3e.colors.onSurfaceVariant),
                   ),
                 ],
               ],
@@ -1523,20 +1497,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               children: [
                 Text(
                   '已收藏',
-                  style: TextStyle(fontSize: 10, color: theme.hintColor),
+                  style: m3e.type.labelSmall
+                      .copyWith(color: m3e.colors.onSurfaceVariant),
                 ),
                 Text(
                   '$favCount',
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.primary,
-                    height: 1.1,
+                  style: m3e.type.displaySmallEmphasized.copyWith(
+                    color: m3e.colors.primary,
                   ),
                 ),
                 Text(
                   '张专辑',
-                  style: TextStyle(fontSize: 10, color: theme.hintColor),
+                  style: m3e.type.labelSmall
+                      .copyWith(color: m3e.colors.onSurfaceVariant),
                 ),
               ],
             ),
@@ -1572,120 +1545,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              // 筛选组（玻璃胶囊分段）
-              // 1.99.22：玻璃胶囊底换用 HikoGlass（surface 档）。
-              // tint / 圆角 10 / 内边距 / 1px 描边与原先的 Container 逐项一致。
-              HikoGlass(
-                borderRadius: 10,
-                padding: const EdgeInsets.all(3),
-                borderWidth: 1.0,
-                tint: theme.brightness == Brightness.dark
-                    ? HikoColors.darkGlassCard
-                    : HikoColors.lightGlassCard,
-                borderColor: theme.brightness == Brightness.dark
-                    ? HikoColors.darkGlassBorderSubtle
-                    : HikoColors.lightGlassBorderSubtle,
-                child: Row(
-                  children: [
-                    for (final (key, label) in [
-                      ('all', '全部'),
-                      ('unplayed', '未听完'),
-                      ('favorite', '已收藏'),
-                    ])
-                      InkWell(
-                        onTap: () => setState(() => _filter = key),
-                        mouseCursor: SystemMouseCursors.click,
-                        borderRadius: BorderRadius.circular(7),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _filter == key
-                                ? (theme.brightness == Brightness.dark
-                                    ? Colors.white.withValues(alpha: 0.12)
-                                    : Colors.white)
-                                : null,
-                            borderRadius: BorderRadius.circular(7),
-                            boxShadow: _filter == key
-                                ? [
-                                    BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.04),
-                                      blurRadius: 4,
-                                      offset: const Offset(0, 1),
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                          child: Text(
-                            label,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: _filter == key ? FontWeight.w700 : FontWeight.w500,
-                              color: _filter == key
-                                  ? theme.colorScheme.primary
-                                  : theme.hintColor,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
+              // 筛选组（M3E 连通式按钮组，1.99.28）
+              M3EButtonGroup(
+                labels: const <String>['全部', '未听完', '已收藏'],
+                selectedIndex: switch (_filter) {
+                  'unplayed' => 1,
+                  'favorite' => 2,
+                  _ => 0,
+                },
+                onSelected: (index) => setState(() {
+                  _filter = switch (index) {
+                    1 => 'unplayed',
+                    2 => 'favorite',
+                    _ => 'all',
+                  };
+                }),
               ),
-              // 标签筛选入口（1.99.15）：点开聚合列表选标签；激活时高亮显示标签名
-              InkWell(
+              // 标签筛选入口（1.99.28：M3E chip）
+              M3EChip(
+                label: _tagFilter ?? '标签',
+                selected: _tagFilter != null,
+                leading: const Icon(Icons.sell_outlined, size: 16),
+                showCheckmark: false,
                 onTap: _showTagFilterDialog,
-                mouseCursor: SystemMouseCursors.click,
-                borderRadius: BorderRadius.circular(10),
-                child: HikoGlass(
-                  // 1.99.22：常态玻璃 / 激活实心（solid 开关）。
-                  // 圆角 10 / 内边距 / 1px 描边 / 两种态各自的取色逐项沿用原 Container。
-                  solid: _tagFilter != null,
-                  borderRadius: 10,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 9,
-                  ),
-                  borderWidth: 1.0,
-                  tint: _tagFilter != null
-                      ? (theme.brightness == Brightness.dark
-                            ? Colors.white.withValues(alpha: 0.12)
-                            : Colors.white)
-                      : (theme.brightness == Brightness.dark
-                            ? HikoColors.darkGlassCard
-                            : HikoColors.lightGlassCard),
-                  borderColor: _tagFilter != null
-                      ? theme.colorScheme.primary
-                      : (theme.brightness == Brightness.dark
-                            ? HikoColors.darkGlassBorderSubtle
-                            : HikoColors.lightGlassBorderSubtle),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.sell_outlined,
-                        size: 12,
-                        color: _tagFilter != null
-                            ? theme.colorScheme.primary
-                            : theme.hintColor,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _tagFilter ?? '标签',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: _tagFilter != null
-                              ? FontWeight.w700
-                              : FontWeight.w500,
-                          color: _tagFilter != null
-                              ? theme.colorScheme.primary
-                              : theme.hintColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
               ),
               // 排序
               _SortSelector(
@@ -1694,46 +1576,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 onSelected: (val) =>
                     ref.read(settingsProvider.notifier).setAlbumSort(val),
               ),
-              // 多选（玻璃胶囊，与筛选 chips 同底；激活时反色填充）
-              InkWell(
+              // 多选（1.99.28）
+              M3EChip(
+                label: _multiMode ? '退出多选' : '多选',
+                selected: _multiMode,
+                leading: Icon(
+                  _multiMode ? Icons.close : Icons.checklist_rounded,
+                  size: 16,
+                ),
+                showCheckmark: false,
                 onTap: () {
                   setState(() {
                     _multiMode = !_multiMode;
                     _multiIds.clear();
                   });
                 },
-                mouseCursor: SystemMouseCursors.click,
-                borderRadius: BorderRadius.circular(10),
-                child: HikoGlass(
-                  // 1.99.22：常态玻璃 / 激活实心（solid 开关），几何沿用原 Container。
-                  solid: _multiMode,
-                  borderRadius: 10,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 9,
-                  ),
-                  borderWidth: 1.0,
-                  tint: _multiMode
-                      ? theme.colorScheme.primary
-                      : (theme.brightness == Brightness.dark
-                            ? HikoColors.darkGlassCard
-                            : HikoColors.lightGlassCard),
-                  borderColor: _multiMode
-                      ? theme.colorScheme.primary
-                      : (theme.brightness == Brightness.dark
-                            ? HikoColors.darkGlassBorderSubtle
-                            : HikoColors.lightGlassBorderSubtle),
-                  child: Text(
-                    _multiMode ? '退出多选' : '多选',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      color: _multiMode
-                          ? theme.colorScheme.onPrimary
-                          : theme.hintColor,
-                    ),
-                  ),
-                ),
               ),
             ],
           ),
