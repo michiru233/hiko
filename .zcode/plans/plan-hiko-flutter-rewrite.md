@@ -4008,6 +4008,35 @@ child: 一摞 HikoGlass))`。`pinned: false` 的 SliverAppBar 只要开始滚动
   导致 tag 指向旧提交——push 成功后用 `gh api -X PATCH git/refs/tags/<tag>` 把
   tag 重指到新提交并核验。**发版顺序应保证 push 成功后再 create release。**
 
+## 1.99.37（2026-10-25）：修复安卓「安装包没有签名文件」（用户实机反馈）
+
+### 问题
+v1.99.36 的 APK 装不上：安卓安装器报「解析失败：安装包没有签名文件」。
+根因：**AGP 8 在 minSdk≥24 时默认只写 v2 签名块、不写 v1（JAR）签名文件**
+（META-INF/*.SF/*.RSA 整个缺失），部分国产 ROM 安装器按旧式解析找不到签名
+文件就报这个错。`flutter build macos` 侧不受影响。
+
+### 修复
+1. `android/app/build.gradle.kts`：release signingConfig 显式
+   `enableV1Signing/enableV2Signing/enableV3Signing = true`（v3 因此从默认关变开）。
+2. AGP 对 v1 仍有 minSdk≥24 的强制跳过（gradle 层 enable 后 verify 仍 v1:false，
+   且 `apksigner sign --v1-signing-enabled true` 单独跑也报 false——**verify 的
+   v1:false 不代表文件里没有 v1**，它只是「minSdk≥24 的设备不使用 v1 验证」）。
+   为绝对稳妥，发版流程追加 **apksigner 后签**：
+   `apksigner sign --min-sdk-version 21 --max-sdk-version 36 --v1/v2/v3 true`
+   ——解包确认 META-INF/HIKO.SF/HIKO.RSA/MANIFEST.MF 实际写入。
+   证书与历版同钥（CN=Hiko, SHA-256 8905a0e4…），覆盖安装无冲突。
+
+### 验证
+- 包内 META-INF 三件套在位；`apksigner verify` 整体 Verifies、v2+v3 verified、
+  v1 文件在位（verify 不计 v1 是 minSdk≥24 的预期行为）。
+- aapt2：150 / 1.99.37，三 ABI。783/2 全绿、0 error。
+
+### 交付
+- 版本 `1.99.37+150`；Release：`hiko-v1.99.37-macos.zip` + `hiko-v1.99.37-android.apk`。
+- **发版流程新增固定步骤：APK 构建后必须 apksigner 后签（v1+v2+v3）再封包**，
+  并解包抽查 META-INF。
+
 ## 1.99.36（2026-10-25）：卡片声优/社团恢复分色胶囊（用户反馈）
 
 ### 问题
