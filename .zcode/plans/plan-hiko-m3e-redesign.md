@@ -946,6 +946,21 @@ gh release create …
 **验证**：`flutter test` 797/2（+14）；analyze 45 条 0 error；
 macOS Release 77.4MB 冒烟启动；APK 71.4MB 后签 v1+v2+v3，aapt2 151/1.99.38。
 
+### 1.99.39 移动顶栏 M3E 化 + 详情封面 28（2026-10-25，M-01 + Q4）
+
+**落地**
+- 移动顶栏：自建 `Padding + Row` → `M3EAppBar.small`（64dp / titleMedium /
+  动作 48dp 热区）；折叠签名过渡改 `M3EMotion`（effects / normal）。
+- 四个顶栏动作统一 `M3EIconButton`（定位/主题/隐私/随机），桌面同步；
+  移动端去掉手写 8dp 间隔。
+- `HikoFloatingGlassHeader` → `M3EFloatingHeader`（移入 `m3e/navigation/`）：
+  底色 `colors.surface`，删除玻璃时代注释；三个页面引用同步。
+- **Q4 裁决（用户批准推荐）**：移动详情封面 20dp 内嵌 + 28dp 圆角，
+  顶部让出状态栏 + 8dp；Hero 链 `16→28→28`。360dp 测试加 28 圆角断言。
+
+**验证**：797/2；analyze 44 条 0 error；macOS Release 截图核对桌面顶栏；
+APK 152/1.99.39 后签 v1+v2+v3。移动页未跑实机（本机 AVD 缺失）。
+
 ---
 
 ## 附录 A：M3E 关键数值表（实施时照抄）

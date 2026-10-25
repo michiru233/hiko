@@ -26,6 +26,7 @@ export 'components/surfaces/m3e_toolbar.dart';
 export 'components/selection/m3e_chip.dart';
 export 'components/surfaces/m3e_list.dart';
 export 'navigation/m3e_app_bar.dart';
+export 'navigation/m3e_floating_header.dart';
 export 'navigation/m3e_nav_badge.dart';
 export 'navigation/m3e_nav_bar.dart';
 export 'navigation/m3e_nav_rail.dart';

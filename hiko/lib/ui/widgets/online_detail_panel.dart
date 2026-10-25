@@ -28,9 +28,9 @@ import 'toast.dart';
 
 /// 桌面端：在线作品详情（从右侧滑出的面板）。
 ///
-/// 1.91.0 起外壳与本地 `DetailDrawer` 完全一致（裁决 Q1/Q8=B）：
-/// 实底 + 左边框 + 大投影 + 封面虚化氛围背板 + 右上角悬浮玻璃关闭钮。
-/// 视觉数值一律取自 `detail_kit.dart`，两处详情页共用同一份实现。
+/// 1.99.30 起外壳与本地 `DetailDrawer` 同语义：`surfaceContainerLow` 色调面 +
+/// 海拔 3 投影 + `M3EIconButton` 关闭钮；玻璃边框与 σ55 氛围背板已退场。
+/// 内容行仍待按 `detail_kit.dart` 的 M3E 版本统一（见覆盖审计 C-09）。
 class OnlineDetailPanel extends ConsumerWidget {
   const OnlineDetailPanel({
     super.key,

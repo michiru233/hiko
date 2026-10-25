@@ -35,7 +35,6 @@ import '../widgets/category_dialog.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/context_menu.dart';
 import '../widgets/detail_drawer.dart';
-import '../widgets/hiko_floating_header.dart';
 import '../m3e/m3e.dart';
 import '../../platform/desktop_window.dart';
 import '../widgets/category_chips.dart';
@@ -1080,9 +1079,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: CustomScrollView(
             controller: _gridScrollController,
             slivers: [
-              // 头部挂成浮层玻璃头部（1.99.25：`preferredSize` 必须声明 0 的理由
-              // 见 HikoFloatingGlassHeader 里的长注释，别改回去）
-              HikoFloatingGlassHeader(
+              // 头部挂成浮层头部（1.99.25：`preferredSize` 必须声明 0 的理由
+              // 见 M3EFloatingHeader 里的长注释，别改回去）
+              M3EFloatingHeader(
                 extent: _localHeaderExtent ?? 300,
                 child: headerColumn,
               ),
@@ -1350,26 +1349,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // 整行返回零高度、不占空间（裁决：彻底不占高度）。
     // 桌面端宽度富裕，顶栏原样保留。
     if (isMobile && _isOnlineView) return const SizedBox.shrink();
-    final iconSize = isMobile ? 24.0 : 18.0;
 
-    // 1.99.31：动作按钮抽成一份列表，桌面走 M3EAppBar.small（64dp 壳），
-    // 移动保持原 Padding 紧凑行。
+    // 1.99.39：动作按钮统一 M3EIconButton（40dp 视觉 / 48dp 热区），
+    // 桌面与移动同一套；原先移动端用 24dp IconButton、桌面 18dp，两套尺寸。
     final actionButtons = <Widget>[
-      IconButton(
-        icon: Icon(Icons.center_focus_strong_rounded, size: iconSize),
+      M3EIconButton(
+        icon: Icons.center_focus_strong_rounded,
         tooltip: '定位当前播放',
         onPressed: ref.watch(playbackProvider).album == null
             ? null
             : _locatePlayingAlbum,
       ),
-      if (isMobile) const SizedBox(width: 8),
-      IconButton(
-        icon: Icon(
-          ref.watch(settingsProvider).theme == 'dark'
-              ? Icons.dark_mode_outlined
-              : Icons.light_mode_outlined,
-          size: iconSize,
-        ),
+      M3EIconButton(
+        icon: ref.watch(settingsProvider).theme == 'dark'
+            ? Icons.dark_mode_outlined
+            : Icons.light_mode_outlined,
         tooltip: '切换主题',
         onPressed: () {
           final s = ref.read(settingsProvider);
@@ -1378,23 +1372,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               .setTheme(s.theme == 'dark' ? 'light' : 'dark');
         },
       ),
-      if (isMobile) const SizedBox(width: 8),
       ValueListenableBuilder<bool>(
         valueListenable: privacyBlur,
-        builder: (_, blurred, _) => IconButton(
-          icon: Icon(
-            blurred
-                ? Icons.visibility_off_outlined
-                : Icons.visibility_outlined,
-            size: iconSize,
-          ),
+        builder: (_, blurred, _) => M3EIconButton(
+          icon: blurred
+              ? Icons.visibility_off_outlined
+              : Icons.visibility_outlined,
           tooltip: blurred ? '关闭隐私模糊' : '隐私模糊（⌘⇧H）',
           onPressed: _togglePrivacyBlur,
         ),
       ),
-      if (isMobile) const SizedBox(width: 8),
-      IconButton(
-        icon: Icon(Icons.shuffle_rounded, size: iconSize),
+      M3EIconButton(
+        icon: Icons.shuffle_rounded,
         tooltip: '随机播放',
         onPressed: _playRandomAlbum,
       ),
@@ -1432,29 +1421,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
     }
 
-    // 1.99.24：移动端顶栏要垫上与下方内容一致的不透明底色
-    //（本地视图头部从 1.99.9 起垫了页面底色，顶栏同色才不出现横向色差）。
-    // 用 scaffoldBackgroundColor 而不是写死主题底色：两边自然一致。
-    final bar = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Row(
-        children: [
-          // M3EAppBar.large 折叠签名（1.99.32）：大标题滚出视口后，
-          // 固定顶栏浮现同名小标题（plan §8.1）
-          AnimatedOpacity(
-            opacity: _mobileTopbarTitle ? 1 : 0,
-            duration: const Duration(milliseconds: 150),
-            child: Text(
-              _view,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-          ),
-          const Spacer(),
-          ...actionButtons,
-        ],
+    // 1.99.39：移动顶栏改用 M3EAppBar.small（64dp、titleMedium、48dp 动作热区）。
+    // 外层保留 ColoredBox：顶栏必须垫与内容一致的不透明底色（1.99.24 锁定）。
+    // 大标题滚出视口后浮现同名小标题（1.99.32 折叠签名），过渡走 M3EMotion。
+    final motion = M3ETheme.of(context).motion;
+    return ColoredBox(
+      color: theme.scaffoldBackgroundColor,
+      child: M3EAppBar.small(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        title: AnimatedOpacity(
+          opacity: _mobileTopbarTitle ? 1 : 0,
+          duration:
+              motion.duration(M3ESpringType.effects, M3ESpringSpeed.normal),
+          child: Text(_view),
+        ),
+        actions: actionButtons,
       ),
     );
-    return ColoredBox(color: theme.scaffoldBackgroundColor, child: bar);
   }
   Widget _buildHero(ThemeData theme, int resultCount, bool isMobile) {
     final m3e = M3ETheme.of(context);

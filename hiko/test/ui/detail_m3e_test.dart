@@ -83,7 +83,7 @@ void main() {
     expect(find.text('歌词字幕'), findsOneWidget);
   });
 
-  testWidgets('移动 360dp：M3EAppBar + 返回钮，无溢出', (tester) async {
+  testWidgets('移动 360dp：M3EAppBar + 28dp 封面，无溢出', (tester) async {
     tester.view.physicalSize = const Size(1080, 2340);
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
@@ -108,6 +108,14 @@ void main() {
 
     expect(find.byType(M3EAppBar), findsOneWidget);
     expect(find.byTooltip('返回'), findsOneWidget);
+    final cover = tester.widget<ClipRRect>(
+      find.byKey(const ValueKey('album-detail-cover')),
+    );
+    expect(
+      cover.borderRadius,
+      BorderRadius.circular(M3EShape.xl),
+      reason: 'Q4：移动详情封面 28dp，Hero 链 16→28→28',
+    );
     expect(tester.takeException(), isNull);
   });
 }

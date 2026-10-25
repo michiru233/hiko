@@ -12,21 +12,18 @@ import 'package:hiko/ui/screens/home_screen.dart';
 
 /// 1.99.25 回归锁：滚动时头部不能被 AppBar 包进半透明 `Opacity`。
 ///
-/// 背景（用户实机反馈「深色模式下往下划，上面的玻璃边框会消失」）：
+/// 背景（用户实机反馈「深色模式下往下划，上面的头部会消失」）：
 /// 头部是挂在 `SliverAppBar(bottom: PreferredSize(...))` 上的，而 `pinned: false`
 /// 的 SliverAppBar 一旦开始滚动就会算
 ///   `bottomOpacity = clampDouble(visibleMainHeight / _bottomHeight, 0, 1) < 1`
 /// （app_bar.dart），于是 Flutter 把整个 `bottom` 包进 `Opacity` —— 一层离屏
-/// saveLayer。玻璃材质是 BackdropFilter：进了 saveLayer 采不到底景，**描边与填充
-/// 整块消失**，只剩文字（文字还会被这层顺带压暗几个 %，所以肉眼看着「就是玻璃没了」）。
+/// saveLayer，头部内容被整体压淡，深色下看起来就是「整块没了」。
 ///
 /// 修法：`bottom` 声明 `Size.fromHeight(0)`（除数为 0 → 上式恒等于 1.0，永不进
 /// Opacity 分支），真实高度改由 `expandedHeight` / `collapsedHeight` 表达。
 ///
 /// 这个锁故意**只锁症状**：只要滚动后头部上方没有 alpha < 1 的 `Opacity` 就行，
 /// 不关心实现细节，换成别的修法也不会误报。
-/// 注意 `flutter_test` 里玻璃会降级成普通子树，但这一层 `Opacity` 是框架加的，
-/// 测试抓得到。
 void main() {
   Future<void> pumpHome(WidgetTester tester) async {
     SharedPreferences.setMockInitialValues({});
@@ -89,7 +86,7 @@ void main() {
         faded,
         findsNothing,
         reason: '第 ${step + 1} 档（offset=${position.pixels}）头部被半透明 Opacity '
-            '包住了 —— 玻璃是 BackdropFilter，进 saveLayer 会整块消失',
+            '包住了 —— 头部内容会被整体压淡',
       );
     }
   });

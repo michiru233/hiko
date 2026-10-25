@@ -4106,3 +4106,31 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 ### 交付
 - 版本 `1.99.38+151`；Release：`hiko-v1.99.38-macos.zip` + `hiko-v1.99.38-android.apk`。
 - 下一项（需裁决 Q4）：移动详情封面 0 → 28 圆角，修 Hero 链 16→28→28。
+
+## 1.99.39（2026-10-25）：移动顶栏 M3E 化 + 详情封面 28（Q4 裁决）
+
+### 可见变化
+- 移动顶栏从自建 `Padding + Row`（14sp 标题、24dp IconButton）换成
+  `M3EAppBar.small`（64dp、titleMedium、动作 48dp 热区）；大标题折叠签名的
+  150ms 裸 `AnimatedOpacity` 改走 `M3EMotion`（effects/normal）。
+- 顶栏四个动作（定位/主题/隐私/随机）统一 `M3EIconButton`，桌面端同步；
+  移动端不再插入 8dp 间隔（48dp 热区自带）。
+- `HikoFloatingGlassHeader` → `M3EFloatingHeader`，文件移入 `lib/ui/m3e/navigation/`，
+  底色改用 `M3ETheme.colors.surface`，删除全部「玻璃进 saveLayer」旧注释；
+  三个页面的引用同步更新。
+- **Q4**：移动详情封面从全宽 0 圆角改为 20dp 内嵌 + 28dp 圆角（`M3EShape.xl`），
+  顶部让出状态栏 + 8dp；Hero 链恢复 `卡片16 → 详情28 → 播放页28`。
+- 顺手更新 `online_detail_panel` 顶部过时类注释（玻璃关闭钮 → M3EIconButton），
+  测试文件 `mobile_header_glass_scroll_test` 更名 `mobile_header_scroll_test`。
+
+### 验证
+- `flutter test`：**797 passed / 2 skipped**（1.99.38 同数；Q4 断言并入既有 360dp 用例）。
+- `flutter analyze`：**44 条**（基线 47，0 error）。
+- macOS Release 77.4MB，实跑截图核对顶栏四个图标钮 + 导入按钮对齐、无裁切。
+- APK 71.4MB；apksigner v1+v2+v3，`META-INF/HIKO.SF`/`HIKO.RSA` 在位；
+  aapt2 `152 / 1.99.39`。
+- Android 实机/模拟器未跑（本机 AVD 已被清理）；移动页由 360dp 组件测试
+  （顶栏/28dp 封面/Hero 链/无溢出）覆盖。
+
+### 交付
+- 版本 `1.99.39+152`；Release：`hiko-v1.99.39-macos.zip` + `hiko-v1.99.39-android.apk`。

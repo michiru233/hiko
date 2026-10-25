@@ -13,7 +13,6 @@ import '../../utils/time.dart';
 import '../detail_jump_requests.dart';
 import '../m3e/m3e.dart';
 import '../widgets/detail_kit.dart';
-import '../widgets/hiko_floating_header.dart';
 import '../widgets/online_account_dialogs.dart';
 import '../widgets/online_appearance.dart';
 import '../widgets/online_card_kit.dart';
@@ -773,10 +772,10 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                   slivers: [
                     // snap 是 SliverAppBar 的能力（SliverPersistentHeader 没有），
                     // 用「零高 toolbar + 头部作 bottom」把自定义头部挂进去。
-                    // 1.99.25：改用 HikoFloatingGlassHeader —— `bottom.preferredSize`
-                    // 必须声明 0，否则滚动时头部会被包进 Opacity、玻璃整块消失
+                    // 1.99.25：改用 M3EFloatingHeader —— `bottom.preferredSize`
+                    // 必须声明 0，否则滚动时头部会被包进 Opacity、整体被压淡
                     // （理由见该类里的长注释）
-                    HikoFloatingGlassHeader(
+                    M3EFloatingHeader(
                       extent: _headerExtent ?? 200,
                       child: _buildHeader(state, theme),
                     ),

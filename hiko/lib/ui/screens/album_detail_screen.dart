@@ -88,14 +88,26 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
       ),
       body: CustomScrollView(
         slivers: [
-          // 全宽封面（1:1），延伸到顶栏背后；Hero tag 与卡片封面一致
-          //（链式形变：卡片 16 → 详情 28 → 播放页 28，1.99.29）
-          SliverToBoxAdapter(
-            child: AspectRatio(
-              aspectRatio: 1,
-              child: Hero(
-                tag: 'card-${album.id}',
-                child: AlbumCover(album: album, fit: BoxFit.cover),
+          // M3E 封面卡（Q4 裁决，1.99.39）：28dp 圆角、左右 20dp 内嵌，
+          // 顶部让出状态栏 + 8dp；Hero 链因此是 卡片16 → 详情28 → 播放页28。
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              MediaQuery.paddingOf(context).top + 8,
+              20,
+              0,
+            ),
+            sliver: SliverToBoxAdapter(
+              child: ClipRRect(
+                key: const ValueKey('album-detail-cover'),
+                borderRadius: BorderRadius.circular(M3EShape.xl),
+                child: AspectRatio(
+                  aspectRatio: 1,
+                  child: Hero(
+                    tag: 'card-${album.id}',
+                    child: AlbumCover(album: album, fit: BoxFit.cover),
+                  ),
+                ),
               ),
             ),
           ),

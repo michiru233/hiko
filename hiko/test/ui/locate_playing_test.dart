@@ -6,6 +6,7 @@ import 'package:hiko/data/library_store.dart';
 import 'package:hiko/models/album.dart';
 import 'package:hiko/models/track.dart';
 import 'package:hiko/playback/playback_controller.dart';
+import 'package:hiko/ui/m3e/m3e.dart';
 import 'package:hiko/ui/screens/home_screen.dart';
 import 'package:hiko/ui/widgets/album_card.dart';
 
@@ -32,7 +33,7 @@ List<Album> _library(int count) =>
 
 final Finder locateButton = find.ancestor(
   of: find.byTooltip('定位当前播放'),
-  matching: find.byType(IconButton),
+  matching: find.byType(M3EIconButton),
 );
 
 // 1.99.28：卡片材质从玻璃转成色调面，高亮改成
@@ -57,7 +58,7 @@ void main() {
     // 等 initState 的 500ms 延迟扫描计时器走完（空目录即返，无 IO）
     await tester.pump(const Duration(milliseconds: 600));
     expect(locateButton, findsOneWidget);
-    expect(tester.widget<IconButton>(locateButton).onPressed, isNull);
+    expect(tester.widget<M3EIconButton>(locateButton).onPressed, isNull);
   });
 
   testWidgets('播放中点击：网格定位到目标卡并短暂发光，约 2 秒后熄灭', (tester) async {
@@ -71,7 +72,7 @@ void main() {
       child: const MaterialApp(home: HomeScreen()),
     ));
     await tester.pump(const Duration(milliseconds: 600));
-    expect(tester.widget<IconButton>(locateButton).onPressed, isNull);
+    expect(tester.widget<M3EIconButton>(locateButton).onPressed, isNull);
 
     // 用真实控制器置播放状态（不触媒体通道），按钮转为可点
     final container = ProviderScope.containerOf(
@@ -86,7 +87,7 @@ void main() {
       duration: 100,
     );
     await tester.pump();
-    expect(tester.widget<IconButton>(locateButton).onPressed, isNotNull);
+    expect(tester.widget<M3EIconButton>(locateButton).onPressed, isNotNull);
     expect(glowCard, findsNothing);
 
     await tester.tap(locateButton);
