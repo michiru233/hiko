@@ -4,8 +4,8 @@
 > 适用对象：接手本项目的开发者 / 下一个 AI agent
 > 仓库：<https://github.com/michiru233/hiko>
 > 本地工作区：`/Users/chenjh/Documents/ChatGPT/New project`（Flutter 主线在 `hiko/`）
-> 当前已发布版本：`1.99.48+161`（Release `v1.99.48`）
-> 当前进行中版本：无（1.99.49 尚未开工）
+> 当前已发布版本：`1.99.49+162`（Release `v1.99.49`）
+> 当前进行中版本：无（M3E 清账已收口）
 > 本文是**全量交接**；逐条 UI 差距证据见 `.zcode/plans/audit-hiko-m3e-coverage.md`，
 > 每版实施记录见 `.zcode/plans/plan-hiko-flutter-rewrite.md` 末尾章节。
 
@@ -22,11 +22,13 @@
 | 设计系统 | 自建 **M3E**（Material 3 Expressive），位于 `hiko/lib/ui/m3e/`，业务只允许 `import 'm3e.dart'` |
 | 当前重心 | M3E 增量重构：把全站从旧自绘体系迁到 M3E 组件 + token |
 | 代码规模 | `lib` 125 个 `.dart`、约 33,300 行；`test` 117 个测试文件 |
-| 验证基线 | `flutter test` **889 passed / 2 skipped**；`flutter analyze` **42 issues / 0 error** |
+| 验证基线 | `flutter test` **896 passed / 2 skipped**；`flutter analyze` **42 issues / 0 error** |
 | 发版节奏 | 每改一次代码 → patch 位 +1 → 双端构建 → APK 后签 → GitHub Release |
 
-**一句话现状**：M3E 骨架（token / 主题 / 组件库）已完备，主链路页面已迁完 10 个版本（1.99.38–1.99.48），
-清账前半（色彩 / 符号 / 菜单 / 主题桥 + 防回流锁）已落地；只剩 1.99.49（圆角 / 字号 / 动效 token 化）收尾。
+**一句话现状**：M3E 已收口。骨架（token / 主题 / 组件库）完备，主链路页面迁完 10 个版本
+（1.99.38–1.99.47），清账两版（1.99.48 色彩与符号、1.99.49 形状与动效）全部落地，
+字面值五类（色 / 圆角 / 字号 / 曲线 / 时长）零残留且各有源码锁。
+后续是可选增强：提示层合并、输入框收口、移动统计、Windows 实机、Android 系统栏。
 
 ---
 

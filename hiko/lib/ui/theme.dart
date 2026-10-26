@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../data/settings_store.dart';
 import 'm3e/tokens/shape_tokens.dart';
+import 'm3e/tokens/type_tokens.dart';
 import 'transitions/fullscreen_player_route.dart';
 
 /// '#6559d8' → Color
@@ -10,6 +11,9 @@ Color parseHexColor(String hex) {
   if (value.length == 6) value = 'FF$value';
   return Color(int.tryParse(value, radix: 16) ?? 0xFF6559D8);
 }
+
+/// Tooltip 悬停多久才弹出（非动效：这是「别误触」的等待时间）。
+const Duration kTooltipWaitDuration = Duration(milliseconds: 400);
 
 /// 旧主题桥：把 [AppSettings] 翻成一份 [ThemeData]，给尚未迁到 M3E 的
 /// Material 组件兜底（对话框、输入框、滚动条、Tooltip 等）。
@@ -100,10 +104,8 @@ ThemeData buildHikoTheme(AppSettings settings) {
     // 标题 headlineSmall —— 6 个 AlertDialog 一次覆盖
     dialogTheme: DialogThemeData(
       backgroundColor: scheme.surfaceContainerHigh,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      titleTextStyle: TextStyle(
-        fontSize: 24,
-        fontWeight: FontWeight.w500,
+      shape: RoundedRectangleBorder(borderRadius: M3EShape.radius(M3EShape.xl)),
+      titleTextStyle: const M3EType().headlineSmall.copyWith(
         color: scheme.onSurface,
         fontFamilyFallback: const ['Noto Sans SC', 'Noto Sans JP'],
       ),
@@ -149,20 +151,19 @@ ThemeData buildHikoTheme(AppSettings settings) {
     tooltipTheme: TooltipThemeData(
       decoration: BoxDecoration(
         color: scheme.inverseSurface,
-        borderRadius: BorderRadius.circular(M3EShape.xs),
+        borderRadius: M3EShape.radius(M3EShape.xs),
       ),
-      textStyle: TextStyle(
+      textStyle: const M3EType().bodySmall.copyWith(
         color: scheme.onInverseSurface,
-        fontSize: 12,
         fontFamilyFallback: const ['Noto Sans SC', 'Noto Sans JP'],
       ),
-      waitDuration: const Duration(milliseconds: 400),
+      waitDuration: kTooltipWaitDuration,
     ),
     snackBarTheme: SnackBarThemeData(
       backgroundColor: const Color(0xFF292735),
-      contentTextStyle: const TextStyle(color: Colors.white, fontSize: 12),
+      contentTextStyle: const M3EType().bodySmall.copyWith(color: Colors.white),
       behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+      shape: RoundedRectangleBorder(borderRadius: M3EShape.radius(M3EShape.sm)),
     ),
   );
 }

@@ -26,6 +26,15 @@ import '../m3e/m3e.dart';
 import '../widgets/online_account_dialogs.dart';
 import '../widgets/toast.dart';
 
+/// 桌面歌词开关类 toast 的停留时长：比常规 toast 短，因为这几条全是
+/// 「刚点的那一下已经给了反馈」的复述（非动效）。
+const Duration kDesktopLyricsToastLinger = Duration(seconds: 1);
+
+/// 播放页封面的明度呼吸周期（氛围动效，不是状态过渡，
+/// 所以不进 `M3EMotion` 的三档弹簧）。
+const Duration kBackdropBreathDuration = Duration(seconds: 6);
+
+
 /// 全屏播放页（1.57 引入；1.99.29 M3E 重做，plan §8.5）。
 ///
 /// - 黑胶拟物样式已移除（裁决 D7）：统一为大封面（320dp、角 28），
@@ -182,7 +191,12 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                           // 中央区切换器挂专用 key：测试定位用（M3EFab 内也有
                           // AnimatedSwitcher，byType 会撞车，1.99.29）
                           key: const ValueKey('player-central-switcher'),
-                          duration: const Duration(milliseconds: 220),
+                          duration: M3ETheme.of(context)
+                              .motion
+                              .duration(
+                                M3ESpringType.spatial,
+                                M3ESpringSpeed.fast,
+                              ),
                           child: _showLyrics
                               ? KeyedSubtree(
                                   key: const ValueKey('lyrics'),
@@ -723,14 +737,14 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
               await notifier.setLocked(false);
               if (mounted) {
                 showHikoToast(this.context, '已解除桌面歌词鼠标锁定',
-                    duration: const Duration(seconds: 1));
+                    duration: kDesktopLyricsToastLinger);
               }
             } else {
               final active = await notifier.toggle();
               if (mounted) {
                 showHikoToast(
                     this.context, active ? '已开启桌面悬浮歌词' : '已关闭桌面悬浮歌词',
-                    duration: const Duration(seconds: 1));
+                    duration: kDesktopLyricsToastLinger);
               }
             }
           },
@@ -745,7 +759,7 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
             if (mounted) {
               showHikoToast(this.context,
                   !isLocked ? '已锁定桌面歌词（鼠标点击穿透）' : '已解除桌面歌词锁定',
-                  duration: const Duration(seconds: 1));
+                  duration: kDesktopLyricsToastLinger);
             }
           },
         ),
@@ -756,7 +770,7 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
             await notifier.hide();
             if (mounted) {
               showHikoToast(this.context, '已关闭桌面悬浮歌词',
-                  duration: const Duration(seconds: 1));
+                  duration: kDesktopLyricsToastLinger);
             }
           },
         ),
@@ -1242,7 +1256,7 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                   height: 4,
                   decoration: BoxDecoration(
                     color: colors.onSurfaceVariant.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(2),
+                    borderRadius: M3EShape.radius(M3EShape.full),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -1427,7 +1441,7 @@ class _MorphingHeroCoverState extends State<_MorphingHeroCover>
         final radius = M3EShape.xl + (M3EShape.xlPlus - M3EShape.xl) * t;
         final scale = 1.0 - 0.02 * t;
         Widget cover = ClipRRect(
-          borderRadius: BorderRadius.circular(radius),
+          borderRadius: M3EShape.radius(radius),
           child: AlbumCover(album: widget.album, fit: BoxFit.cover),
         );
         if (widget.heroTag != null) {
@@ -1462,7 +1476,7 @@ class _PlayerBackdropState extends State<_PlayerBackdrop>
 
   late final AnimationController _breath = AnimationController(
     vsync: this,
-    duration: const Duration(seconds: 6),
+    duration: kBackdropBreathDuration,
   );
 
   @override

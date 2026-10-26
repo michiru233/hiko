@@ -95,7 +95,7 @@ class _CategoryEditDialogState extends ConsumerState<_CategoryEditDialog> {
               errorText: _errorText,
               isDense: true,
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(M3EShape.sm),
+                borderRadius: M3EShape.radius(M3EShape.sm),
               ),
             ),
             onChanged: (_) {
@@ -118,7 +118,7 @@ class _CategoryEditDialogState extends ConsumerState<_CategoryEditDialog> {
               for (final colorVal in CategoryItem.palette)
                 M3EPressable(
                   onTap: () => setState(() => _selectedColor = colorVal),
-                  borderRadius: BorderRadius.circular(M3EShape.full),
+                  borderRadius: M3EShape.radius(M3EShape.full),
                   pressScale: 0.92,
                   semanticLabel: '颜色 ${colorVal.toRadixString(16)}',
                   child: SizedBox(

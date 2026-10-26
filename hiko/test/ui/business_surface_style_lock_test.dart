@@ -145,6 +145,10 @@ void main() {
     test('不再自持色值', () {
       expectFree('lib/ui/widgets/stats_view.dart', noOwnColors);
     });
+
+    test('统计卡半径走档位（M3ECard 的 radius 参数也是圆角真源）', () {
+      expectHas('lib/ui/widgets/stats_view.dart', ['radius: M3EShape.lg']);
+    });
   });
 
   group('提示层', () {

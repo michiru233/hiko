@@ -108,9 +108,6 @@ class _HikoPillInteractionState extends State<HikoPillInteraction> {
   }
 }
 
-/// 悬停/按下反馈的过渡时长（三处胶囊统一，避免同样的手感配出三种速度）
-const Duration kPillHoverDuration = Duration(milliseconds: 140);
-
 /// 悬停/按下时的描边。**始终非空**（不活跃时是透明边）——
 /// `AnimatedContainer` 只在对应字段非空时才建 tween，给 `null` 会让「亮起来」
 /// 这一步没有过渡、只有「灭掉」有，看起来像闪一下。
@@ -188,12 +185,12 @@ class HikoEyebrowPill extends StatelessWidget {
     final textScale = HikoDetailTextScale.of(context);
     return M3EPressable(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(M3EShape.full),
+      borderRadius: M3EShape.radius(M3EShape.full),
       pressScale: 0.97,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(M3EShape.full),
+          borderRadius: M3EShape.radius(M3EShape.full),
           border: Border.all(color: colors.outlineVariant),
         ),
         child: Row(
@@ -201,11 +198,13 @@ class HikoEyebrowPill extends StatelessWidget {
           children: [
             Text(
               label,
-              style: TextStyle(
-                fontSize: 11 * textScale,
-                letterSpacing: 0.8,
-                fontWeight: FontWeight.w700,
-                color: primary,
+              style: M3ETheme.of(context)
+                  .type
+                  .scaled(M3ETypeRole.labelSmall, textScale)
+                  .copyWith(
+                    letterSpacing: 0.8,
+                    fontWeight: FontWeight.w700,
+                    color: primary,
               ),
             ),
             if (onTap != null) ...[
@@ -243,14 +242,14 @@ class HikoPersonPill extends StatelessWidget {
     final textScale = HikoDetailTextScale.of(context);
     return M3EPressable(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(M3EShape.full),
+      borderRadius: M3EShape.radius(M3EShape.full),
       pressScale: 0.97,
       child: AnimatedContainer(
-        duration: kPillHoverDuration,
+        duration: M3ETheme.of(context).motion.stateLayerDuration,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: selected ? colors.secondaryContainer : Colors.transparent,
-          borderRadius: BorderRadius.circular(M3EShape.full),
+          borderRadius: M3EShape.radius(M3EShape.full),
           border: Border.all(
             color: selected ? colors.secondaryContainer : colors.outlineVariant,
           ),
@@ -263,16 +262,19 @@ class HikoPersonPill extends StatelessWidget {
               height: 14,
               decoration: BoxDecoration(
                 color: color,
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: M3EShape.radius(M3EShape.full),
               ),
             ),
             const SizedBox(width: 8),
             Text(
               name,
-              style: TextStyle(
-                fontSize: 12.5 * textScale,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? colors.onSecondaryContainer : colors.onSurface,
+              style: M3ETheme.of(context)
+                  .type
+                  .scaled(M3ETypeRole.labelMedium, textScale)
+                  .copyWith(
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color:
+                        selected ? colors.onSecondaryContainer : colors.onSurface,
               ),
             ),
           ],
@@ -375,7 +377,7 @@ class HikoTagChip extends StatelessWidget {
     final fg = dim
         ? M3ETheme.of(context).colors.onSurfaceVariant
         : M3ESemantic.tagForeground(isDark);
-    final radius = BorderRadius.circular(6);
+    final radius = M3EShape.radius(M3EShape.xs);
 
     return HikoPillInteraction(
       onTap: onTap,
@@ -383,7 +385,7 @@ class HikoTagChip extends StatelessWidget {
       // 菜单也只在可点时给：不可点的标签（服务端只给了名字、拿不到 id）没有可做的事
       onContextMenu: onTap == null ? null : onContextMenu,
       builder: (context, active) => AnimatedContainer(
-        duration: kPillHoverDuration,
+        duration: M3ETheme.of(context).motion.stateLayerDuration,
         padding: const EdgeInsets.symmetric(
           horizontal: horizontalPadding,
           vertical: verticalPadding,
@@ -518,15 +520,15 @@ class HikoTrackRowM3E extends StatelessWidget {
       child: M3EPressable(
         onTap: onTap,
         pressScale: 0.97,
-        borderRadius: BorderRadius.circular(M3EShape.lg),
+        borderRadius: M3EShape.radius(M3EShape.lg),
         stateLayerColor: active ? onActive : colors.onSurface,
         child: AnimatedContainer(
-          duration: kPillHoverDuration,
+          duration: M3ETheme.of(context).motion.stateLayerDuration,
           height: 56,
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             color: active ? colors.secondaryContainer : Colors.transparent,
-            borderRadius: BorderRadius.circular(M3EShape.lg),
+            borderRadius: M3EShape.radius(M3EShape.lg),
           ),
           child: Row(
             children: [
@@ -634,7 +636,7 @@ class HikoDetailInfoRowM3E extends StatelessWidget {
           if (progress != null) ...[
             const SizedBox(height: 6),
             ClipRRect(
-              borderRadius: BorderRadius.circular(2),
+              borderRadius: M3EShape.radius(M3EShape.full),
               child: SizedBox(
                 height: 4,
                 child: LinearProgressIndicator(

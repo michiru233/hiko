@@ -270,7 +270,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
             // 封面（带投光阴影与精细圆角）
             Container(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: M3EShape.radius(M3EShape.lg),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15),
@@ -280,7 +280,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
                 ],
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: M3EShape.radius(M3EShape.lg),
                 child: AspectRatio(
                   aspectRatio: 1,
                   child: OnlineCover(url: client.coverMainUrl(work.id)),
@@ -293,20 +293,24 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
             const SizedBox(height: 10),
             Text(
               work.title,
-              style: TextStyle(
-                fontSize: 22 * textScale,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.5,
-                height: 1.25,
-              ),
+              style: M3ETheme.of(context)
+                  .type
+                  .scaled(M3ETypeRole.titleLarge, textScale)
+                  .copyWith(
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.5,
+                    height: 1.25,
+                  ),
             ),
             const SizedBox(height: 6),
             Text(
               _subtitle(work),
-              style: TextStyle(
-                fontSize: 12 * textScale,
-                color: M3ETheme.of(context).colors.onSurfaceVariant,
-              ),
+              style: M3ETheme.of(context)
+                  .type
+                  .scaled(M3ETypeRole.bodySmall, textScale)
+                  .copyWith(
+                    color: M3ETheme.of(context).colors.onSurfaceVariant,
+                  ),
             ),
             // 社团（紫）/ 声优（蓝）胶囊：1.97.0 起可点 → 弹「按此筛选 / 复制名字」
             // （1.91 的裁决 Q9=A「纯展示不可点」被 1.97 的筛选需求推翻）
@@ -509,8 +513,10 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Text(
             '服务器未返回文件',
-            style: M3ETheme.of(context).type.bodyMedium.copyWith(
-                  fontSize: 12 * _textScale,
+            style: M3ETheme.of(context)
+                .type
+                .scaled(M3ETypeRole.bodySmall, _textScale)
+                .copyWith(
                   color: M3ETheme.of(context).colors.onSurfaceVariant,
                 ),
           ),
@@ -716,7 +722,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
           foregroundColor: Colors.white,
           title: Text(
             onlineTrackDisplayName(track.title),
-            style: const TextStyle(fontSize: 14),
+            style: const M3EType().bodyMedium,
           ),
         ),
         body: InteractiveViewer(
@@ -830,8 +836,10 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     unawaited(
       Scrollable.ensureVisible(
         target,
-        duration: const Duration(milliseconds: 280),
-        curve: Curves.easeOutCubic,
+        duration: M3ETheme.of(context)
+            .motion
+            .duration(M3ESpringType.spatial, M3ESpringSpeed.normal),
+        curve: M3ETheme.of(context).motion.fallbackCurve,
         alignment: 0.35,
       ),
     );
@@ -1107,11 +1115,11 @@ class _EditionChip extends StatelessWidget {
       message: onTap == null ? label : '查看$label版本',
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: M3EShape.radius(M3EShape.full),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: M3EShape.radius(M3EShape.full),
             border: Border.all(
               color: theme.colorScheme.onSurfaceVariant
                   .withValues(alpha: 0.5),
@@ -1128,8 +1136,7 @@ class _EditionChip extends StatelessWidget {
               const SizedBox(width: 5),
               Text(
                 label,
-                style: TextStyle(
-                  fontSize: 12,
+                style: const M3EType().labelMedium.copyWith(
                   fontWeight: FontWeight.w600,
                   color: theme.colorScheme.onSurface,
                 ),
@@ -1186,7 +1193,7 @@ class _FolderRowState extends State<_FolderRow> {
         child: InkWell(
           onTap: widget.onToggle,
           mouseCursor: SystemMouseCursors.click,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: M3EShape.radius(M3EShape.md),
           child: Container(
             margin: const EdgeInsets.symmetric(vertical: 2),
             padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
@@ -1196,14 +1203,16 @@ class _FolderRowState extends State<_FolderRow> {
                       ? Colors.white.withValues(alpha: 0.05)
                       : Colors.black.withValues(alpha: 0.03))
                   : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: M3EShape.radius(M3EShape.md),
             ),
             child: Row(
               children: [
                 AnimatedRotation(
                   // 0.25 圈 = 90°：展开时朝下，折叠时朝右
                   turns: widget.collapsed ? 0 : 0.25,
-                  duration: const Duration(milliseconds: 180),
+                  duration: M3ETheme.of(context)
+                      .motion
+                      .duration(M3ESpringType.spatial, M3ESpringSpeed.fast),
                   child: Icon(
                     Icons.keyboard_arrow_right_rounded,
                     size: 16,
@@ -1219,10 +1228,10 @@ class _FolderRowState extends State<_FolderRow> {
                     widget.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12 * textScale,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: M3ETheme.of(context)
+                        .type
+                        .scaled(M3ETypeRole.labelMedium, textScale)
+                        .copyWith(fontWeight: FontWeight.w600),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1232,7 +1241,7 @@ class _FolderRowState extends State<_FolderRow> {
                     child: InkWell(
                       onTap: widget.onPlay,
                       mouseCursor: SystemMouseCursors.click,
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: M3EShape.radius(M3EShape.full),
                       child: Padding(
                         padding: const EdgeInsets.all(2),
                         child: Icon(
@@ -1249,11 +1258,13 @@ class _FolderRowState extends State<_FolderRow> {
                     '${widget.totalSeconds > 0
                         ? ' · ${formatDuration(widget.totalSeconds)}'
                         : ''}',
-                    style: TextStyle(
-                      fontSize: 10 * textScale,
-                      color: M3ETheme.of(context).colors.onSurfaceVariant,
-                      fontFeatures: const [FontFeature.tabularFigures()],
-                    ),
+                    style: M3ETheme.of(context)
+                        .type
+                        .scaled(M3ETypeRole.labelSmall, textScale)
+                        .copyWith(
+                          color: M3ETheme.of(context).colors.onSurfaceVariant,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                   ),
               ],
             ),
@@ -1291,7 +1302,7 @@ class _FileRow extends ConsumerWidget {
 
     final Widget leading = track.isImage
         ? ClipRRect(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: M3EShape.radius(M3EShape.sm),
             child: SizedBox(
               width: 40,
               height: 40,
@@ -1319,7 +1330,7 @@ class _FileRow extends ConsumerWidget {
       child: InkWell(
         onTap: onTap,
         mouseCursor: SystemMouseCursors.click,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: M3EShape.radius(M3EShape.md),
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 2),
           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
@@ -1332,21 +1343,23 @@ class _FileRow extends ConsumerWidget {
                   onlineTrackDisplayName(track.title),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12 * textScale,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: M3ETheme.of(context)
+                      .type
+                      .scaled(M3ETypeRole.bodySmall, textScale)
+                      .copyWith(fontWeight: FontWeight.w500),
                 ),
               ),
               if (size.isNotEmpty) ...[
                 const SizedBox(width: 8),
                 Text(
                   size,
-                  style: TextStyle(
-                    fontSize: 10 * textScale,
-                    color: M3ETheme.of(context).colors.onSurfaceVariant,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
+                  style: M3ETheme.of(context)
+                      .type
+                      .scaled(M3ETypeRole.labelSmall, textScale)
+                      .copyWith(
+                        color: M3ETheme.of(context).colors.onSurfaceVariant,
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
                 ),
               ],
               const SizedBox(width: 4),
@@ -1386,10 +1399,15 @@ class _ErrorView extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12 * HikoDetailTextScale.of(context),
-                color: M3ETheme.of(context).colors.onSurfaceVariant,
-              ),
+              style: M3ETheme.of(context)
+                  .type
+                  .scaled(
+                    M3ETypeRole.bodySmall,
+                    HikoDetailTextScale.of(context),
+                  )
+                  .copyWith(
+                    color: M3ETheme.of(context).colors.onSurfaceVariant,
+                  ),
             ),
             const SizedBox(height: 14),
             M3EButton(

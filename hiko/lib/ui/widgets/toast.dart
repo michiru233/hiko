@@ -5,6 +5,11 @@ import 'package:flutter/material.dart';
 import '../m3e/m3e.dart';
 import 'activity_overlay.dart';
 
+/// toast 的默认停留时长 —— 这是「读得完」的时间，不是过渡动效，
+/// 所以不进 `M3EMotion`。1.99.49 从默认参数里的裸数字提成具名常量：
+/// 账本锁只放行**具名**时长，调用点随手写数字会红。
+const Duration kToastLinger = Duration(milliseconds: 3200);
+
 /// 全局 toast。应用运行时优先使用 MaterialApp 根通知层，测试或嵌入场景
 /// 没有通知层时回退到根 Overlay；同一时刻只保留最新一条。
 OverlayEntry? _activeToastEntry;
@@ -13,7 +18,7 @@ Timer? _activeToastTimer;
 void showHikoToast(
   BuildContext context,
   String message, {
-  Duration duration = const Duration(milliseconds: 3200),
+  Duration duration = kToastLinger,
 }) {
   if (activityOverlayController.isAttached) {
     activityOverlayController.showToast(message, duration: duration);
@@ -33,7 +38,9 @@ void showHikoToast(
             constraints: const BoxConstraints(maxWidth: 520),
               child: TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0, end: 1),
-                duration: const Duration(milliseconds: 180),
+                duration: M3ETheme.of(context)
+                    .motion
+                    .duration(M3ESpringType.effects, M3ESpringSpeed.normal),
                 builder: (_, opacity, child) =>
                     Opacity(opacity: opacity, child: child),
                 // 1.99.30 M3E：inverseSurface 反色面、角 4（plan §8.8 Snackbar）
@@ -91,7 +98,7 @@ class _M3EToastSurface extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: M3EShape.radius(M3EShape.xs),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.25),
@@ -104,9 +111,8 @@ class _M3EToastSurface extends StatelessWidget {
         message,
         maxLines: 3,
         overflow: TextOverflow.ellipsis,
-        style: TextStyle(
+        style: M3ETheme.of(context).type.bodySmall.copyWith(
           color: fg,
-          fontSize: 12,
           decoration: TextDecoration.none,
         ),
       ),

@@ -9,6 +9,10 @@ import 'package:flutter/foundation.dart' show SynchronousFuture, debugPrint;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+/// 封面下载的 HTTP 连接超时（非动效：网络策略，不随界面动效档位变）。
+const Duration kCoverHttpTimeout = Duration(seconds: 10);
+
+
 /// LRU 内存缓存：LinkedHashMap 保持插入序，get 命中即重插（标记最近使用），
 /// 超容淘汰最旧一条。1.48 前旧实现超 300 张直接整表 clear()，会把整页可见
 /// 封面一起丢光导致滚动反复重解码——本类禁止这种行为。
@@ -159,7 +163,7 @@ class CoverCache {
   }
 
   static Future<Uint8List?> _download(String url) async {
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    final client = HttpClient()..connectionTimeout = kCoverHttpTimeout;
     final proxy = proxyResolver?.call().trim() ?? '';
     if (proxy.isNotEmpty) {
       final uri = Uri.tryParse(proxy.contains('://') ? proxy : 'http://$proxy');

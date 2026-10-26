@@ -52,7 +52,7 @@ class OnlineTagFilterMarker extends StatelessWidget {
       padding: const EdgeInsets.only(left: 4, right: 0),
       decoration: BoxDecoration(
         color: M3ESemantic.tagBackground.withValues(alpha: isDark ? 0.2 : 0.8),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: M3EShape.radius(M3EShape.md),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -66,7 +66,7 @@ class OnlineTagFilterMarker extends StatelessWidget {
                 '标签：$tag',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, color: fg),
+                style: M3ETheme.of(context).type.labelSmall.copyWith(color: fg),
               ),
             ),
           ),
@@ -105,7 +105,7 @@ class OnlineCreatorFilterMarker extends StatelessWidget {
       padding: const EdgeInsets.only(left: 4, right: 0),
       decoration: BoxDecoration(
         color: color.withValues(alpha: isDark ? 0.22 : 0.16),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: M3EShape.radius(M3EShape.md),
         border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Row(
@@ -118,7 +118,7 @@ class OnlineCreatorFilterMarker extends StatelessWidget {
                 '${filter.label}：${filter.name}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, color: color),
+                style: M3ETheme.of(context).type.labelSmall.copyWith(color: color),
               ),
             ),
           ),
@@ -150,14 +150,14 @@ class OnlineBlockedTagsMarker extends StatelessWidget {
     final color = theme.colorScheme.onSurfaceVariant;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: M3EShape.radius(M3EShape.md),
       child: Tooltip(
         message: '管理标签黑名单',
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
             color: color.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: M3EShape.radius(M3EShape.md),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -169,7 +169,7 @@ class OnlineBlockedTagsMarker extends StatelessWidget {
                   '已屏蔽 $count 个标签',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: color),
+                  style: M3ETheme.of(context).type.labelSmall.copyWith(color: color),
                 ),
               ),
             ],
@@ -264,7 +264,7 @@ class OnlineSimpleFilterMarker extends StatelessWidget {
       padding: const EdgeInsets.only(left: 4, right: 0),
       decoration: BoxDecoration(
         color: c.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: M3EShape.radius(M3EShape.md),
         border: Border.all(color: c.withValues(alpha: 0.35)),
       ),
       child: Row(
@@ -282,7 +282,7 @@ class OnlineSimpleFilterMarker extends StatelessWidget {
                 label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, color: c),
+                style: M3ETheme.of(context).type.labelSmall.copyWith(color: c),
               ),
             ),
           ),

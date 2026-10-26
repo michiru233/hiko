@@ -257,7 +257,9 @@ class OnlinePager extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 6),
             child: Text(
               '…',
-              style: TextStyle(fontSize: 11, color: M3ETheme.of(context).colors.onSurfaceVariant),
+              style: M3ETheme.of(context).type.labelSmall.copyWith(
+                color: M3ETheme.of(context).colors.onSurfaceVariant,
+              ),
             ),
           )
         else
@@ -424,7 +426,7 @@ class _PageNumberButton extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: M3EPressable(
         onTap: current ? null : onPressed,
-        borderRadius: BorderRadius.circular(M3EShape.sm),
+        borderRadius: M3EShape.radius(M3EShape.sm),
         pressScale: 0.94,
         semanticLabel: '第 $page 页',
         child: Container(
@@ -434,7 +436,7 @@ class _PageNumberButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 6),
           decoration: BoxDecoration(
             color: current ? colors.secondaryContainer : Colors.transparent,
-            borderRadius: BorderRadius.circular(M3EShape.sm),
+            borderRadius: M3EShape.radius(M3EShape.sm),
           ),
           child: Text(
             '$page',
@@ -478,7 +480,9 @@ class _PageJumpFieldState extends State<_PageJumpField> {
       children: [
         Text(
           '共 ${widget.totalPages} 页',
-          style: TextStyle(fontSize: 11, color: M3ETheme.of(context).colors.onSurfaceVariant),
+          style: M3ETheme.of(context).type.labelSmall.copyWith(
+                color: M3ETheme.of(context).colors.onSurfaceVariant,
+              ),
         ),
         const SizedBox(width: 8),
         SizedBox(
@@ -488,14 +492,16 @@ class _PageJumpFieldState extends State<_PageJumpField> {
             controller: _controller,
             keyboardType: TextInputType.number,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 11),
+            style: M3ETheme.of(context).type.labelSmall,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
             decoration: InputDecoration(
               isDense: true,
               hintText: '跳页',
-              hintStyle: TextStyle(fontSize: 11, color: M3ETheme.of(context).colors.onSurfaceVariant),
+              hintStyle: M3ETheme.of(context).type.labelSmall.copyWith(
+                color: M3ETheme.of(context).colors.onSurfaceVariant,
+              ),
               contentPadding: const EdgeInsets.symmetric(vertical: 4),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              border: OutlineInputBorder(borderRadius: M3EShape.radius(M3EShape.sm)),
             ),
             onSubmitted: (value) {
               final page = int.tryParse(value.trim());

@@ -69,7 +69,7 @@ class AlbumCard extends ConsumerWidget {
                   tag: 'card-${album.id}',
                   child: ClipRRect(
                     // 16 − 4 = 12
-                    borderRadius: BorderRadius.circular(M3EShape.md),
+                    borderRadius: M3EShape.radius(M3EShape.md),
                     child: AspectRatio(
                       aspectRatio: 1,
                       child: AlbumCover(album: album),
@@ -90,7 +90,7 @@ class AlbumCard extends ConsumerWidget {
                       key: const ValueKey<String>('hiko-album-card-highlight'),
                       child: DecoratedBox(
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(M3EShape.md),
+                          borderRadius: M3EShape.radius(M3EShape.md),
                           border: Border.all(
                             color: colors.primary,
                             width: 2,
@@ -201,7 +201,7 @@ class _SelectBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = M3ETheme.of(context).colors;
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 120),
+      duration: M3ETheme.of(context).motion.stateLayerDuration,
       width: 24,
       height: 24,
       decoration: BoxDecoration(
@@ -237,7 +237,7 @@ class _MetaPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(M3EShape.xs),
+        borderRadius: M3EShape.radius(M3EShape.xs),
       ),
       child: Text(
         text,
@@ -264,13 +264,12 @@ class _PersonPillMini extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(M3EShape.full),
+        borderRadius: M3EShape.radius(M3EShape.full),
       ),
       child: Text(
         name,
         softWrap: true,
-        style: TextStyle(
-          fontSize: 10,
+        style: M3ETheme.of(context).type.labelSmall.copyWith(
           fontWeight: FontWeight.w500,
           height: 1.25,
           color: color,

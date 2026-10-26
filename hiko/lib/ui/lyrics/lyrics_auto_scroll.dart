@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import '../m3e/m3e.dart';
 
 /// 歌词列表「把当前句滚到歌词区正中」的共用实现。
 ///
@@ -56,10 +57,11 @@ mixin LyricsAutoScroll<T extends StatefulWidget> on State<T> {
         .offset
         .clamp(0.0, position.maxScrollExtent);
 
+    final motion = M3ETheme.of(context).motion;
     lyricsScrollController.animateTo(
       target,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
+      duration: motion.duration(M3ESpringType.spatial, M3ESpringSpeed.normal),
+      curve: motion.fallbackCurve,
     );
   }
 

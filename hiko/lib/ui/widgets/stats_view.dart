@@ -62,14 +62,19 @@ class StatsView extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 24),
-        Text('最近播放', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurfaceVariant)),
+        Text('最近播放', style: const M3EType().titleSmall.copyWith(
+          fontWeight: FontWeight.w600,
+          color: theme.colorScheme.onSurfaceVariant,
+        )),
         const SizedBox(height: 8),
         if (stats.recentlyPlayed.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 24),
             child: Text(
               '还没有播放记录',
-              style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
+              style: const M3EType().bodySmall.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           )
         else
@@ -87,7 +92,7 @@ class StatsView extends StatelessWidget {
     return Expanded(
       child: M3ECard(
         padding: const EdgeInsets.all(14),
-        radius: 16,
+        radius: M3EShape.lg,
         child: Row(
           children: [
             Icon(icon, size: 20, color: theme.colorScheme.primary),
@@ -95,8 +100,12 @@ class StatsView extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                Text(label, style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
+                Text(value, style: const M3EType().titleMedium.copyWith(
+                  fontWeight: FontWeight.w700,
+                )),
+                Text(label, style: const M3EType().labelSmall.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                )),
               ],
             ),
           ],
@@ -110,9 +119,12 @@ class StatsView extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: M3EShape.radius(M3EShape.lgPlus),
       ),
-      child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
+      child: Text(label, style: const M3EType().labelSmall.copyWith(
+        fontWeight: FontWeight.w600,
+        color: color,
+      )),
     );
   }
 
@@ -123,7 +135,7 @@ class StatsView extends StatelessWidget {
         : '';
     return InkWell(
       onTap: () => onOpenAlbum(album),
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: M3EShape.radius(M3EShape.sm),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
         child: Row(
@@ -132,7 +144,7 @@ class StatsView extends StatelessWidget {
               width: 40,
               height: 40,
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: M3EShape.radius(M3EShape.sm),
                 child: AlbumCover(album: album),
               ),
             ),
@@ -142,19 +154,21 @@ class StatsView extends StatelessWidget {
                 album.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                style: const M3EType().bodyMedium.copyWith(fontWeight: FontWeight.w500),
               ),
             ),
             Text(
               album.rating > 0 ? '★' * album.rating : '',
-              style: const TextStyle(fontSize: 11, color: M3ESemantic.rating),
+              style: const M3EType().labelSmall.copyWith(color: M3ESemantic.rating),
             ),
             const SizedBox(width: 10),
             SizedBox(
               width: 76,
               child: Text(
                 dateText,
-                style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+                style: const M3EType().labelSmall.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
           ],

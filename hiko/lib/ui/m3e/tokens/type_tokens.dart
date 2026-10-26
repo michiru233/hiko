@@ -215,6 +215,17 @@ class M3EType {
   TextStyle role(M3ETypeRole role, {bool emphasized = false}) =>
       (emphasized ? _emphasized : _base)[role]!;
 
+  /// 按倍率缩放某个角色：**只放大字号，行高比例不变**。
+  ///
+  /// 给「外观设置里的文字倍率」用（详情面板 / 标签胶囊 / 在线卡片各有自己的旋钮）。
+  /// 为什么要有这个入口：直接写 `fontSize: 12 * scale` 会把基准字号在调用点
+  /// 再抄一遍，基准一改就漂两处；这里锚在角色上，调用点只声明倍率。
+  TextStyle scaled(M3ETypeRole role, double factor, {bool emphasized = false}) {
+    final style = this.role(role, emphasized: emphasized);
+    if (factor == 1) return style;
+    return style.copyWith(fontSize: style.fontSize! * factor);
+  }
+
   TextStyle get displayLarge => role(M3ETypeRole.displayLarge);
   TextStyle get displayMedium => role(M3ETypeRole.displayMedium);
   TextStyle get displaySmall => role(M3ETypeRole.displaySmall);

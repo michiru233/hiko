@@ -4507,3 +4507,78 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 - 版本 `1.99.48+161`；Release：`hiko-v1.99.48-macos.zip` + `hiko-v1.99.48-android.apk`。
 - 下一项：`1.99.49` 收尾 —— 圆角 / 字号 / 动效 token 化，并把账本锁的
   `_pendingInNextVersion` 三项搬进 `_forbidden`。
+
+## 1.99.49（2026-10-26）：清账收尾（圆角 / 字号 / 动效 / 账本锁全开）
+
+> M3E 收口的最后一版。裁决沿用 1.99.48 的四条：圆角全吸附、字号只吸 ≤1dp、
+> 锁硬零全扫、时长按白名单（具名放行）。**平局方向取「向上」**，
+> 例外只有两类：细条 / 圆点用 `full`（几何上本来就是全圆），标签族留 `xs`
+> 以与在线胶囊同档。
+
+### 可见变化
+- **圆角：76 处 `BorderRadius.circular(` → `M3EShape.radius(`**，
+  其中 44 处字面值吸附到十档、32 处变量直传。吸附表（含平局方向）：
+
+  | 原值 | 档位 | 依据 |
+  |---|---|---|
+  | 1 / 2 | `full` | 2dp 细条、4dp 圆点的半径本就是「半高」= 全圆 |
+  | 5 | `xs`(4) | 封面角标，小徽标档 |
+  | 6 | `xs`(4) 标签 / `sm`(8) 缩略图 | 标签与在线元数据胶囊同档；缩略图靠 `sm` |
+  | 7 / 8 / 10 / 11 / 12 | `sm`(8) / `sm` / `md`(12) / `md` / `md` | 平局（7、10）向上 |
+  | 16 / 18 / 20 / 28 / 999 | `lg` / `lgPlus`(20) / `lgPlus` / `xl`(28) / `full` | 平局（18）向上 |
+
+  另外 `M3ECard(radius: 16)` 这类**组件参数上的字面圆角**也一并收掉（1 处）。
+- **字号：业务层 48 处字面值 → 字阶**：`labelSmall`(11) / `bodySmall`(12) /
+  `labelMedium`(12) / `bodyMedium`(14) / `labelLarge`(14) / `titleSmall`(14) /
+  `titleMedium`(16) / `bodyLarge`(16) / `titleLarge`(22) / `headlineSmall`(24)。
+  离格值处理：12.5→12、13→14、13.5→14、15→16、10→11（≤1dp 规则），
+  **只有 9sp 的封面角标例外**，提成 `kCoverBadgeFontSize` 具名常量
+  （角标只有两三个汉字，11sp 会把 20dp 的角标顶到 24dp、盖住封面）。
+- **新增 `M3EType.scaled(role, factor)`**：取代 `fontSize: 12 * textScale` 这种
+  「把基准字号抄第二遍」的写法。调用点只声明倍率，基准留在字阶里；
+  行高是倍率制，缩放后比例自动保持。
+- **动效接 token**：
+  - 5 处裸 `Curves` → `M3EMotion.fallbackCurve`（`context_menu` 的路由曲线
+    拿不到 context，用 `const M3EMotion().fallbackCurve`，反向用 `.flipped`）。
+  - 8 处交互动画时长 → `motion.duration(...)` / `motion.stateLayerDuration`：
+    专辑卡与胶囊的 hover、菜单行、详情折叠箭头、曲目滚动、播放页中央切换、
+    toast 淡入。**动效调到「关闭」档时，这些真的会瞬间到位**（以前裸时长不受控）。
+  - 12 处**非动效**时长 → 具名常量（`kToastLinger` / `kActivityLinger` /
+    `kPostLaunchScanDelay` / `kLocateHighlightDuration` / `kCoverHttpTimeout` /
+    `kDesktopLyricsToastLinger` / `kBackdropBreathDuration` / `kHikoMenuEnter·
+    ExitDuration` / `kTooltipWaitDuration`）。理由写在账本锁的注释里：
+    这些是「等待 / 停留 / 超时 / 氛围」，塞进弹簧 token 会让「动效关」
+    顺手关掉定时器。
+  - `kPillHoverDuration`（140ms 共用常量）删除 —— 三处胶囊改用
+    `stateLayerDuration`，语义上它本来就是状态层过渡。
+- **账本锁全开**：`style_ledger_lock_test` 从 3 条扩到 5 条，
+  新增「圆角 / 字号字面数字」「裸时长（具名放行）」两条正则锁；
+  `_pendingInNextVersion` 与那条「清单与现状一致」的过渡测试一并删除。
+
+### 刻意没动
+- **9sp 封面角标**与**6s 封面呼吸周期**：一个在字阶下、一个是氛围动效，
+  都提成具名常量并写明理由，不硬塞进标尺。
+- **`buildPageItems(radius: 2)`** 那个 `radius` 是「当前页两侧各显示几个页码」，
+  不是圆角，未纳入锁（锁只认 `M3EShape.radius(数字)` 与 `BorderRadius.circular(`）。
+- 间距（`EdgeInsets` / `SizedBox`）不在这两版范围内 —— 审计把它列为「形状」之外的
+  下一层，真要收需要先定 8dp 网格，属于新议题。
+
+### 验证
+- `flutter test`：**896 passed / 2 skipped**（889 + 4 条 `type_scaled` +
+  1 条统计卡半径锁 + 账本锁净增 2 条）。
+- `flutter analyze`：**42 条、0 error**（与基线一致）。
+- 既有布局锁全部通过：360dp 设置页四档、在线工具栏窄屏、首页排序菜单、
+  歌词 18 条承重锁 —— 说明字号 +1/+2 与圆角吸附没有把窄屏挤爆。
+- 新增 `test/ui/m3e/type_scaled_test.dart`：倍率 1 原样返回、只改字号、
+  emphasized 字重保持、基准只来自 `m3eTypeSpecs`。
+- macOS 实机截图核对：rail / 面包屑 / 筛选行 / 续播卡 / 网格 / 播放条
+  无溢出、无重叠、无文字被裁。
+
+### 交付
+- 版本 `1.99.49+162`；Release：`hiko-v1.99.49-macos.zip` + `hiko-v1.99.49-android.apk`。
+- **M3E 收口完成**：`HikoColors` / `hintColor` / 字面 hex / 字面圆角 / 字面字号 /
+  裸曲线 / 裸时长 / 三套菜单 全部清零，且每一类都有源码锁。
+- 下一批是可选项（按审计）：`M3ESnackbar` + `M3EProgress` 合并提示层、
+  `M3ETextField` 收口 11 处输入框、两处 `showModalBottomSheet` → `M3ESheet.bottom`、
+  移动统计页布局、`context_menu` 归并、Windows 实机验收（Q6）、
+  Android 系统栏 edge-to-edge（M-09）。

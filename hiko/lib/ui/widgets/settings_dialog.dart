@@ -354,7 +354,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       .read(settingsProvider.notifier)
                       .setAccent(accent),
                   mouseCursor: SystemMouseCursors.click,
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: M3EShape.radius(M3EShape.full),
                   child: Container(
                     width: 20,
                     height: 20,
@@ -432,7 +432,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 )
               else ...[
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: M3EShape.radius(M3EShape.sm),
                   child: Image.file(
                     File(settings.backgroundPath),
                     width: 56,
@@ -618,7 +618,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               decoration: BoxDecoration(
                 color: theme.colorScheme.surfaceContainerHighest
                     .withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: M3EShape.radius(M3EShape.sm),
               ),
               child: Row(
                 children: [
@@ -996,11 +996,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 vertical: 8,
               ),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(7),
+                borderRadius: M3EShape.radius(M3EShape.sm),
                 borderSide: BorderSide(color: theme.dividerColor),
               ),
               enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(7),
+                borderRadius: M3EShape.radius(M3EShape.sm),
                 borderSide: BorderSide(color: theme.dividerColor),
               ),
             ),
@@ -1086,7 +1086,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   constraints: const BoxConstraints(maxHeight: 200),
                   decoration: BoxDecoration(
                     border: Border.all(color: theme.dividerColor),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: M3EShape.radius(M3EShape.sm),
                   ),
                   child: ListView.builder(
                     shrinkWrap: true,
@@ -1261,11 +1261,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   vertical: 8,
                 ),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(7),
+                  borderRadius: M3EShape.radius(M3EShape.sm),
                   borderSide: BorderSide(color: theme.dividerColor),
                 ),
                 enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(7),
+                  borderRadius: M3EShape.radius(M3EShape.sm),
                   borderSide: BorderSide(color: theme.dividerColor),
                 ),
               ),
@@ -1377,7 +1377,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               height: 40,
               decoration: BoxDecoration(
                 color: theme.colorScheme.primary,
-                borderRadius: BorderRadius.circular(11),
+                borderRadius: M3EShape.radius(M3EShape.md),
               ),
               child: Center(
                 child: Text(
@@ -1427,7 +1427,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               color: theme.colorScheme.primaryContainer.withValues(
                 alpha: 0.35,
               ),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: M3EShape.radius(M3EShape.sm),
               border: Border.all(
                 color: theme.colorScheme.primary.withValues(alpha: 0.4),
               ),

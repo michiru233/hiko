@@ -98,7 +98,7 @@ class _LoginDialogState extends ConsumerState<_LoginDialog> {
                 isDense: true,
                 border: OutlineInputBorder(),
               ),
-              style: const TextStyle(fontSize: 12),
+              style: M3ETheme.of(context).type.bodySmall,
             ),
             const SizedBox(height: 12),
             TextField(
@@ -111,7 +111,7 @@ class _LoginDialogState extends ConsumerState<_LoginDialog> {
                 isDense: true,
                 border: OutlineInputBorder(),
               ),
-              style: const TextStyle(fontSize: 12),
+              style: M3ETheme.of(context).type.bodySmall,
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),
@@ -512,7 +512,7 @@ Future<String?> showPlaylistNameDialog(
                   isDense: true,
                   border: OutlineInputBorder(),
                 ),
-                style: const TextStyle(fontSize: 12),
+                style: M3ETheme.of(context).type.bodySmall,
               ),
               Text(
                 '新建的歌单默认「私享」，只有你自己看得到。',

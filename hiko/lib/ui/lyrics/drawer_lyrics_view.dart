@@ -188,7 +188,7 @@ class _LyricLineWidgetState extends State<_LyricLineWidget> {
     final fontWeight = widget.isActive ? FontWeight.w700 : FontWeight.w500;
     final fontSize = widget.isActive ? 15.5 : 13.5;
 
-    final radius = BorderRadius.circular(M3EShape.sm);
+    final radius = M3EShape.radius(M3EShape.sm);
     return M3EPressable(
       onTap: widget.onTap,
       borderRadius: radius,
@@ -196,7 +196,7 @@ class _LyricLineWidgetState extends State<_LyricLineWidget> {
       onHoverChanged: (hovered) => setState(() => _isHovered = hovered),
       child: AnimatedContainer(
         duration: theme.motion.stateLayerDuration,
-        curve: Curves.easeOut,
+        curve: theme.motion.fallbackCurve,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: widget.isActive
@@ -218,7 +218,7 @@ class _LyricLineWidgetState extends State<_LyricLineWidget> {
                         height: 16,
                         decoration: BoxDecoration(
                           color: colors.primary,
-                          borderRadius: BorderRadius.circular(2),
+                          borderRadius: M3EShape.radius(M3EShape.full),
                         ),
                       )
                     : (_isHovered
@@ -251,7 +251,7 @@ class _LyricLineWidgetState extends State<_LyricLineWidget> {
                           color: widget.isActive
                               ? colors.secondaryContainer
                               : colors.surfaceContainerHigh,
-                          borderRadius: BorderRadius.circular(M3EShape.xs),
+                          borderRadius: M3EShape.radius(M3EShape.xs),
                         ),
                         child: Text(
                           widget.line.speaker!,

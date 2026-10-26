@@ -52,6 +52,13 @@ import 'online_favorites_screen.dart';
 import 'online_screen.dart';
 import '../transitions/fullscreen_player_route.dart';
 
+/// 启动后延迟多久再跑静默扫描（等首帧与库加载稳定，非动效）。
+const Duration kPostLaunchScanDelay = Duration(milliseconds: 500);
+
+/// 定位到某张卡后高亮保持多久（非动效：这是「看见」的时间）。
+const Duration kLocateHighlightDuration = Duration(seconds: 2);
+
+
 /// 主界面：桌面三栏布局（侧栏 | 网格 | 详情抽屉）+ 底部播放条；
 /// Android 触屏（≤1000px）切换为移动布局：底部导航 + 抽屉侧栏 + 全屏详情 + 长按菜单 + 系统返回逐层关闭。
 class HomeScreen extends ConsumerStatefulWidget {
@@ -129,7 +136,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     }
     // 启动后执行静默扫描：由于有了快速增量 diff 检查，无新文件时 10ms 即可极速返回；
     // 有新文件时展示非阻塞轻量提示与进度浮条。
-    Future.delayed(const Duration(milliseconds: 500), () async {
+    Future.delayed(kPostLaunchScanDelay, () async {
       if (!mounted) return;
       final scanner = ref.read(musicFolderScannerProvider);
       final added = await scanner.scanAll(
@@ -773,7 +780,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       height: 32,
       decoration: BoxDecoration(
         color: theme.colors.primary,
-        borderRadius: BorderRadius.circular(M3EShape.sm),
+        borderRadius: M3EShape.radius(M3EShape.sm),
       ),
       child: Center(
         child: Text(
@@ -1184,7 +1191,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ClipRRect(
               // 卡片 16 圆角、内边距 8，按 inner = outer − padding 应取 8；
               // 封面只有 40dp，8 偏方，沿用详情卡的 md(12) 与本地/在线卡一致。
-              borderRadius: BorderRadius.circular(M3EShape.md),
+              borderRadius: M3EShape.radius(M3EShape.md),
               child: SizedBox(
                 width: 40,
                 height: 40,
@@ -1335,13 +1342,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (ctx != null) {
         Scrollable.ensureVisible(
           ctx,
-          duration: const Duration(milliseconds: 120),
+          duration: M3ETheme.of(context)
+              .motion
+              .duration(M3ESpringType.spatial, M3ESpringSpeed.fast),
           alignment: 0.15,
         );
       }
       _highlightTimer?.cancel();
       setState(() => _highlightedAlbumId = albumId);
-      _highlightTimer = Timer(const Duration(seconds: 2), () {
+      _highlightTimer = Timer(kLocateHighlightDuration, () {
         if (!mounted) return;
         setState(() {
           _highlightedAlbumId = null;
@@ -1745,7 +1754,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(M3EShape.full),
+        borderRadius: M3EShape.radius(M3EShape.full),
         border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Row(
@@ -1761,7 +1770,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               _personFilterKind = null;
               _personFilterName = null;
             }),
-            borderRadius: BorderRadius.circular(M3EShape.full),
+            borderRadius: M3EShape.radius(M3EShape.full),
             pressScale: 0.9,
             semanticLabel: '清除人物筛选',
             child: Padding(

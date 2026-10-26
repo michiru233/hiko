@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../m3e/m3e.dart';
 
+/// 活动进度条的默认停留时长（非动效：处理完还要让人看清结果）。
+const Duration kActivityLinger = Duration(milliseconds: 3200);
+
 class ActivityProgress {
   const ActivityProgress({
     required this.label,
@@ -74,7 +77,7 @@ class ActivityOverlayController extends ChangeNotifier {
 
   void showToast(
     String message, {
-    Duration duration = const Duration(milliseconds: 3200),
+    Duration duration = kActivityLinger,
   }) {
     _toastTimer?.cancel();
     _toast = message;
@@ -157,7 +160,7 @@ class _ActivityBanner extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: M3ESemantic.toastSurface,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: M3EShape.radius(M3EShape.md),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.3),
@@ -174,16 +177,15 @@ class _ActivityBanner extends StatelessWidget {
                     '${activity.label}$count',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
+                    style: M3ETheme.of(context).type.bodySmall.copyWith(
+                      color: M3ESemantic.onToastSurface,
                       fontWeight: FontWeight.w500,
                       decoration: TextDecoration.none,
                     ),
                   ),
                   const SizedBox(height: 7),
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: M3EShape.radius(M3EShape.xs),
                     child: LinearProgressIndicator(
                       value: activity.progress,
                       minHeight: 4,
@@ -220,7 +222,7 @@ class _ToastBanner extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
               decoration: BoxDecoration(
                 color: M3ESemantic.toastSurface,
-                borderRadius: BorderRadius.circular(7),
+                borderRadius: M3EShape.radius(M3EShape.sm),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.25),
@@ -233,9 +235,8 @@ class _ToastBanner extends StatelessWidget {
                 message,
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: M3ETheme.of(context).type.bodySmall.copyWith(
                   color: M3ESemantic.onToastSurface,
-                  fontSize: 12,
                   decoration: TextDecoration.none,
                 ),
               ),

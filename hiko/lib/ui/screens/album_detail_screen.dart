@@ -101,7 +101,7 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
             sliver: SliverToBoxAdapter(
               child: ClipRRect(
                 key: const ValueKey('album-detail-cover'),
-                borderRadius: BorderRadius.circular(M3EShape.xl),
+                borderRadius: M3EShape.radius(M3EShape.xl),
                 child: AspectRatio(
                   aspectRatio: 1,
                   child: Hero(

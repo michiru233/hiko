@@ -39,7 +39,7 @@ class _RatingDialog extends StatelessWidget {
               for (var i = 1; i <= 5; i++)
                 M3EPressable(
                   onTap: () => Navigator.pop(context, i),
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: M3EShape.radius(M3EShape.lgPlus),
                   pressScale: 0.94,
                   semanticLabel: '$i 星',
                   child: Padding(

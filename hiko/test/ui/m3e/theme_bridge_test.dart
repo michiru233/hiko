@@ -53,8 +53,9 @@ void main() {
       for (var i = 0; i < lines.length; i++) {
         final t = lines[i].trimLeft();
         if (t.startsWith('//') || t.startsWith('*')) continue;
-        if (lines[i].contains('DM Sans'))
+        if (lines[i].contains('DM Sans')) {
           offenders.add('${i + 1}: ${lines[i]}');
+        }
       }
       expect(offenders, isEmpty, reason: offenders.join('\n'));
     });

@@ -84,7 +84,7 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
               behavior: HitTestBehavior.opaque,
               onTap: () => _openPlayer(album),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(1),
+                borderRadius: M3EShape.radius(M3EShape.full),
                 child: SizedBox(
                   height: 2,
                   child: LinearProgressIndicator(
@@ -126,7 +126,7 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
       width: size,
       height: size,
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(M3EShape.sm),
+        borderRadius: M3EShape.radius(M3EShape.sm),
         child: album == null
             ? ColoredBox(color: M3ETheme.of(context).colors.surfaceContainerHighest)
             : AlbumCover(album: album),
@@ -234,7 +234,7 @@ class _PlayButton extends StatelessWidget {
     final colors = M3ETheme.of(context).colors;
     return M3EPressable(
       onTap: onPressed,
-      borderRadius: BorderRadius.circular(size / 2),
+      borderRadius: M3EShape.radius(size / 2),
       pressScale: 0.94,
       semanticLabel: playing ? '暂停' : '播放',
       child: Container(

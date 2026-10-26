@@ -369,7 +369,9 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                   _statusLine(index, favorites, selected),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: M3ETheme.of(context).colors.onSurfaceVariant),
+                  style: M3ETheme.of(context).type.labelSmall.copyWith(
+                    color: M3ETheme.of(context).colors.onSurfaceVariant,
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -476,10 +478,14 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                                 Text(
                                   '同步失败：${favorites.error}',
                                   textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: M3ETheme.of(context).colors.onSurfaceVariant,
-                                  ),
+                                  style: M3ETheme.of(context)
+                                      .type
+                                      .bodySmall
+                                      .copyWith(
+                                        color: M3ETheme.of(context)
+                                            .colors
+                                            .onSurfaceVariant,
+                                      ),
                                 ),
                                 const SizedBox(height: 14),
                                 M3EButton(
@@ -517,11 +523,15 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                                     ? '还没有收藏任何作品\n在在线作品的详情页点「收藏」就能加入歌单'
                                     : '这个歌单还是空的',
                                 textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  height: 1.7,
-                                  color: M3ETheme.of(context).colors.onSurfaceVariant,
-                                ),
+                                style: M3ETheme.of(context)
+                                    .type
+                                    .bodySmall
+                                    .copyWith(
+                                      height: 1.7,
+                                      color: M3ETheme.of(context)
+                                          .colors
+                                          .onSurfaceVariant,
+                                    ),
                               ),
                             ],
                           ),
@@ -628,7 +638,10 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                   ? '还没有收藏任何作品\n在在线作品的详情页点「收藏」就能加入歌单'
                   : '这个歌单还是空的',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, height: 1.7, color: M3ETheme.of(context).colors.onSurfaceVariant),
+              style: M3ETheme.of(context).type.bodySmall.copyWith(
+                height: 1.7,
+                color: M3ETheme.of(context).colors.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -847,9 +860,11 @@ class _LoginGuide extends StatelessWidget {
               color: m3e.colors.onSurfaceVariant,
             ),
             const SizedBox(height: 14),
-            const Text(
+            Text(
               '在线收藏',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+              style: M3ETheme.of(context).type.titleMedium.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: 8),
             Text(

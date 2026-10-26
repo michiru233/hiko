@@ -22,7 +22,15 @@ import '../widgets/online_filter_marker.dart';
 import '../widgets/online_sort_menu.dart';
 import '../widgets/online_tag_menu.dart';
 import '../widgets/online_work_grid.dart';
+
 import '../widgets/toast.dart';
+
+/// 封面角标（字幕 / 分级）的专用字号：9sp。
+///
+/// **全仓唯一保留的字面字号**（1.99.49 裁决）。不进 `labelSmall`（11sp）的理由：
+/// 角标只有两三个汉字、压在半透明黑底上，11sp 会把 20dp 高的角标顶到 24dp，
+/// 盖住封面右上角。账本锁按「具名常量」放行，直接写数字仍然会红。
+const double kCoverBadgeFontSize = 9;
 
 /// 顶部两个预设入口：chip 上的短名 + 它指向的排序项。
 ///
@@ -411,7 +419,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
       decoration: BoxDecoration(
         // 1.99.31 M3E：surfaceContainerHigh + 海拔 3（§8.8 Menu 同层）
         color: M3ETheme.of(context).colors.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: M3EShape.radius(M3EShape.md),
         boxShadow: M3EElevation.shadow(
           M3EElevation.level3,
           M3ETheme.of(context).colors.shadow,
@@ -428,8 +436,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                 children: [
                   Text(
                     '搜索历史',
-                    style: TextStyle(
-                      fontSize: 11,
+                    style: M3ETheme.of(context).type.labelSmall.copyWith(
                       fontWeight: FontWeight.w600,
                       color: M3ETheme.of(context).colors.onSurfaceVariant,
                     ),
@@ -437,8 +444,12 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                   const Spacer(),
                   GestureDetector(
                     onTapDown: (_) => unawaited(_clearSearchHistory()),
-                    child: Text('清空', style: TextStyle(
-                        fontSize: 11, color: theme.colorScheme.primary)),
+                    child: Text(
+                      '清空',
+                      style: M3ETheme.of(context).type.labelSmall.copyWith(
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -466,7 +477,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                           term,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 12),
+                          style: M3ETheme.of(context).type.bodySmall,
                         ),
                       ),
                     ),
@@ -644,7 +655,9 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.right,
-                        style: TextStyle(fontSize: 11, color: M3ETheme.of(context).colors.onSurfaceVariant),
+                        style: M3ETheme.of(context).type.labelSmall.copyWith(
+                          color: M3ETheme.of(context).colors.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ],
@@ -955,7 +968,7 @@ class _OnlineAccountEntry extends ConsumerWidget {
               account.displayName,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11),
+              style: M3ETheme.of(context).type.labelSmall,
             ),
             visualDensity: VisualDensity.compact,
           );
@@ -964,7 +977,7 @@ class _OnlineAccountEntry extends ConsumerWidget {
       maxWidth: 260,
       builder: (context, controller, child) => M3EPressable(
         onTap: () => controller.isOpen ? controller.close() : controller.open(),
-        borderRadius: BorderRadius.circular(M3EShape.full),
+        borderRadius: M3EShape.radius(M3EShape.full),
         pressScale: 0.97,
         semanticLabel: compact ? '在线账号' : account.displayName,
         child: trigger,
@@ -1126,7 +1139,7 @@ class OnlineWorkCard extends ConsumerWidget {
           children: [
             ClipRRect(
               // 16 − 4 = 12，与本地卡同一嵌套规则
-              borderRadius: BorderRadius.circular(M3EShape.md),
+              borderRadius: M3EShape.radius(M3EShape.md),
               child: AspectRatio(
                 aspectRatio: 1,
                 child: Stack(
@@ -1258,11 +1271,11 @@ class _SubtitleBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(5),
+        borderRadius: M3EShape.radius(M3EShape.xs),
       ),
       child: const Text(
         '字幕',
-        style: TextStyle(fontSize: 9, color: Colors.white),
+        style: TextStyle(fontSize: kCoverBadgeFontSize, color: Colors.white),
       ),
     );
   }
@@ -1283,7 +1296,7 @@ class _FavoriteBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(5),
+        borderRadius: M3EShape.radius(M3EShape.xs),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1293,7 +1306,7 @@ class _FavoriteBadge extends StatelessWidget {
             const SizedBox(width: 2),
             Text(
               '$count',
-              style: const TextStyle(fontSize: 9, color: Colors.white),
+              style: const TextStyle(fontSize: kCoverBadgeFontSize, color: Colors.white),
             ),
           ],
         ],

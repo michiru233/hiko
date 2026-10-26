@@ -130,7 +130,7 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                         Hero(
                           tag: 'drawer-${album.id}',
                           child: ClipRRect(
-                            borderRadius: BorderRadius.circular(M3EShape.xl),
+                            borderRadius: M3EShape.radius(M3EShape.xl),
                             child: SizedBox(
                               width: 160,
                               height: 160,

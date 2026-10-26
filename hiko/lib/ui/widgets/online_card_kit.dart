@@ -132,7 +132,7 @@ class OnlinePill extends StatelessWidget {
       decoration: BoxDecoration(
         color: colors.bg,
         // 1.99.45：6dp → 4dp（`M3EShape.xs`，与 `HikoTagChip` 同一档）
-        borderRadius: BorderRadius.circular(M3EShape.xs),
+        borderRadius: M3EShape.radius(M3EShape.xs),
       ),
       child: Text(
         text,
