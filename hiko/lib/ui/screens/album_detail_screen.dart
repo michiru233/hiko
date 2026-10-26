@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/library_provider.dart';
+import '../../data/library_reorganizer.dart';
 import '../../models/album.dart';
 import '../../models/track.dart';
 import '../../playback/playback_controller.dart';
@@ -210,7 +211,8 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
           ),
         ],
         const SizedBox(height: 16),
-        // 操作区（D2）：一个 filled 主键 + outlined 次键
+        // 操作区（D2）：一个 filled 主键 + 四个 outlined 次键。
+        // 1.99.44（M-04）：收藏 / 整理 补上，动作集合与桌面详情对齐。
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -239,6 +241,18 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
             ),
             M3EButton(
               variant: M3EButtonVariant.outlined,
+              label: album.favorite ? '已收藏' : '收藏',
+              icon: Icon(
+                album.favorite
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+              ),
+              onPressed: () => ref
+                  .read(libraryProvider.notifier)
+                  .updateAlbum(album.id, (a) => a.copyWith(favorite: !a.favorite)),
+            ),
+            M3EButton(
+              variant: M3EButtonVariant.outlined,
               label: album.rating > 0 ? '${album.rating} 星' : '未评分',
               icon: Icon(
                 album.rating > 0
@@ -249,22 +263,74 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
             ),
             M3EButton(
               variant: M3EButtonVariant.outlined,
+              label: '整理',
+              icon: const Icon(Icons.refresh_rounded),
+              onPressed: () async {
+                try {
+                  final result = await ref
+                      .read(libraryReorganizerProvider)
+                      .reorganizeSingleAlbum(album);
+                  if (result.albums.isNotEmpty) {
+                    final updated = result.albums.first;
+                    await ref
+                        .read(libraryProvider.notifier)
+                        .updateAlbum(album.id, (_) => updated);
+                  }
+                  if (!mounted) return;
+                  showHikoToast(
+                    context,
+                    result.stats.hasChanges
+                        ? '专辑已整理完成（变动已同步）'
+                        : '专辑文件与元数据已是最新',
+                  );
+                } catch (e) {
+                  if (mounted) showHikoToast(context, '整理失败：$e');
+                }
+              },
+            ),
+            M3EButton(
+              variant: M3EButtonVariant.outlined,
               label: album.genre.isEmpty ? '未分类' : album.genre,
               icon: const Icon(Icons.label_outline),
               onPressed: () => _showCategoryDialog(album),
             ),
           ],
         ),
-        // 完成进度分组卡（§4.4）
-        if (album.totalDuration > 0) ...[
+        // 信息分组卡（§4.4）：与桌面详情同一组行（M-04）
+        const SizedBox(height: 16),
+        M3ECard(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Column(
+            children: <Widget>[
+              HikoDetailInfoRowM3E(
+                label: '总时长',
+                value: '${album.tracks.length} 首 · '
+                    '${album.totalDuration > 0 ? formatDuration(album.totalDuration) : '--'}',
+              ),
+              HikoDetailInfoRowM3E(
+                label: '完成进度',
+                value: '$progress%',
+                progress: album.totalDuration > 0
+                    ? album.played / album.totalDuration
+                    : null,
+              ),
+              HikoDetailInfoRowM3E(
+                label: '评分',
+                value: album.rating > 0 ? '★' * album.rating : '未评分',
+              ),
+              if (rj != null) HikoDetailInfoRowM3E(label: 'DLsite', value: rj),
+            ],
+          ),
+        ),
+        // DLsite 标签行（与桌面一致）
+        if (album.tags.isNotEmpty) ...[
           const SizedBox(height: 16),
-          M3ECard(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: HikoDetailInfoRowM3E(
-              label: '完成进度',
-              value: '$progress%',
-              progress: album.played / album.totalDuration,
-            ),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: <Widget>[
+              for (final tag in album.tags) HikoTagChip(tag: tag),
+            ],
           ),
         ],
       ],

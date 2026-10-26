@@ -35,6 +35,7 @@ import '../widgets/category_dialog.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/context_menu.dart';
 import '../widgets/detail_drawer.dart';
+import '../widgets/detail_kit.dart';
 import '../m3e/m3e.dart';
 import '../../platform/desktop_window.dart';
 import '../widgets/category_chips.dart';
@@ -681,11 +682,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       // （1.54 / 1.99.6）
                       bottom: isMobile ? (playerBarVisible ? 118 : 60) : 0,
                       left: isMobile ? 0 : null,
-                      // 桌面：面板宽 480（plan §8.4），窗口过窄时收缩，避免溢出右缘
+                      // 桌面：面板宽 420（1.99.44 裁决，与在线详情统一），
+                      // 窗口过窄时收缩，避免溢出右缘
                       width: isMobile
                           ? null
                           : MediaQuery.sizeOf(context).width
-                                .clamp(200.0, 480.0),
+                                .clamp(200.0, kHikoDetailPanelWidth),
                       child: DetailDrawer(
                         album: _detailAlbum!,
                         onClose: () => setState(() => _detailAlbum = null),

@@ -368,18 +368,31 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
             const SizedBox(height: 20),
             _buildActions(context, detail, folderKeys, allExpanded),
             const SizedBox(height: 20),
-            HikoInfoRow(
-              label: '总时长',
-              value: _durationText(work, audio.length),
+            M3ECard(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Column(
+                children: <Widget>[
+                  HikoDetailInfoRowM3E(
+                    label: '总时长',
+                    value: _durationText(work, audio.length),
+                  ),
+                  HikoDetailInfoRowM3E(
+                    label: '发售日期',
+                    value: formatOnlineDate(work.release).isEmpty
+                        ? '未知'
+                        : formatOnlineDate(work.release),
+                  ),
+                  HikoDetailInfoRowM3E(
+                    label: '下载量',
+                    value: formatOnlineCount(work.dlCount),
+                  ),
+                  HikoDetailInfoRowM3E(
+                    label: '评分',
+                    value: _ratingText(work),
+                  ),
+                ],
+              ),
             ),
-            HikoInfoRow(
-              label: '发售日期',
-              value: formatOnlineDate(work.release).isEmpty
-                  ? '未知'
-                  : formatOnlineDate(work.release),
-            ),
-            HikoInfoRow(label: '下载量', value: formatOnlineCount(work.dlCount)),
-            HikoInfoRow(label: '评分', value: _ratingText(work)),
             if (work.tags.isNotEmpty) ...[
               const SizedBox(height: 12),
               Wrap(
@@ -413,20 +426,14 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
               ),
             ],
             const SizedBox(height: 20),
-            HikoSegmentedTabs(
-              left: HikoTabButton(
-                label: '曲目列表 (${audio.length})',
-                icon: Icons.format_list_bulleted_rounded,
-                selected: _tabIndex == 0,
-                onTap: () => setState(() => _tabIndex = 0),
-              ),
-              right: HikoTabButton(
-                label: '歌词字幕',
-                icon: Icons.subtitles_rounded,
-                hasBadge: isCurrentWork && hasLiveLyrics,
-                selected: _tabIndex == 1,
-                onTap: () => setState(() => _tabIndex = 1),
-              ),
+            M3EButtonGroup(
+              labels: <String>[
+                '曲目列表 (${audio.length})',
+                // 正在播且当前曲目有实时歌词时加圆点（旧 HikoTabButton 的 hasBadge）
+                isCurrentWork && hasLiveLyrics ? '歌词字幕 ●' : '歌词字幕',
+              ],
+              selectedIndex: _tabIndex,
+              onSelected: (index) => setState(() => _tabIndex = index),
             ),
             const SizedBox(height: 14),
             if (_tabIndex == 0)
@@ -452,56 +459,45 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     List<String> folderKeys,
     bool allExpanded,
   ) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final work = detail.work;
     final audio = detail.audioTracks;
-    final textScale = _textScale;
-    // 按钮文字跟着详情倍率走 —— 但按钮的内边距不跟着变：
-    // 它们是固定几何（`hikoOutlinedPillStyle`），跟着变会让胶囊高矮不一
-    final actionStyle = TextStyle(fontSize: 11 * textScale);
 
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       children: [
-        FilledButton.icon(
-          style: hikoFilledPillStyle(),
+        M3EButton(
+          label: audio.isEmpty ? '无可播放音轨' : '播放全部',
+          icon: const Icon(Icons.play_arrow_rounded),
           onPressed: audio.isEmpty
               ? null
               : () => unawaited(_playFrom(detail: detail, queue: audio)),
-          icon: const Icon(Icons.play_arrow_rounded, size: 18),
-          label: Text(
-            audio.isEmpty ? '无可播放音轨' : '播放全部',
-            style: TextStyle(
-              fontSize: 12 * textScale,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
         ),
         OnlineFavoriteButton(work: work),
-        _OfflineActionButton(
-          work: work,
-          audio: audio,
-          actionStyle: actionStyle,
-          isDark: isDark,
-        ),
-        OutlinedButton.icon(
-          style: hikoOutlinedPillStyle(context: context),
+        _OfflineActionButton(work: work, audio: audio),
+        M3EButton(
+          label: '在浏览器打开',
+          variant: M3EButtonVariant.outlined,
+          icon: const Icon(Icons.open_in_new_rounded),
           onPressed: () => unawaited(_openInBrowser(work)),
-          icon: const Icon(Icons.open_in_new_rounded, size: 15),
-          label: Text('在浏览器打开', style: actionStyle),
         ),
-        OutlinedButton.icon(
-          style: hikoOutlinedPillStyle(context: context),
+        M3EButton(
+          label: '复制 RJ 号',
+          variant: M3EButtonVariant.outlined,
+          icon: const Icon(Icons.content_copy_rounded),
           onPressed: work.rjCode == null
               ? null
               : () => unawaited(_copyRj(work.rjCode!)),
-          icon: const Icon(Icons.content_copy_rounded, size: 15),
-          label: Text('复制 RJ 号', style: actionStyle),
         ),
         if (folderKeys.isNotEmpty)
-          OutlinedButton.icon(
-            style: hikoOutlinedPillStyle(context: context),
+          M3EButton(
+            variant: M3EButtonVariant.outlined,
+            label: allExpanded ? '折叠全部' : '展开全部',
+            icon: Icon(
+              allExpanded
+                  ? Icons.unfold_less_rounded
+                  : Icons.unfold_more_rounded,
+            ),
             onPressed: () => setState(() {
               if (allExpanded) {
                 _expanded.clear();
@@ -511,16 +507,6 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
                   ..addAll(folderKeys);
               }
             }),
-            icon: Icon(
-              allExpanded
-                  ? Icons.unfold_less_rounded
-                  : Icons.unfold_more_rounded,
-              size: 15,
-            ),
-            label: Text(
-              allExpanded ? '折叠全部' : '展开全部',
-              style: actionStyle,
-            ),
           ),
       ],
     );
@@ -681,7 +667,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     required bool isPlaying,
   }) {
     final active = isCurrentWork && currentHash == track.hash;
-    return HikoTrackRow(
+    return HikoTrackRowM3E(
       // 当前行挂全局 key，供「自动滚到正在播放的那一行」定位（裁决 Q2）。
       // 同一时刻只可能有一行 active，所以这个 key 不会撞。
       key: active ? _activeRowKey : null,
@@ -1077,12 +1063,12 @@ class OnlineFavoriteButton extends ConsumerWidget {
     final isDark = theme.brightness == Brightness.dark;
     final account = ref.watch(onlineAccountProvider);
     final index = ref.watch(onlineFavoritesProvider).index;
-    // 收藏按钮在详情面板里，跟着详情倍率走（不在面板里时作用域缺省为 1.0）
-    final textScale = HikoDetailTextScale.of(context);
 
     if (!account.loggedIn) {
-      return OutlinedButton.icon(
-        style: hikoOutlinedPillStyle(context: context),
+      return M3EButton(
+        label: '收藏',
+        variant: M3EButtonVariant.outlined,
+        icon: const Icon(Icons.bookmark_border_rounded),
         // 恢复登录态期间禁用：否则冷启动那一下会闪出「去登录」，
         // 而用户其实早就登录了
         onPressed: account.settled
@@ -1090,8 +1076,6 @@ class OnlineFavoriteButton extends ConsumerWidget {
                   showLoginRequiredDialog(context, action: '收藏作品'),
                 )
             : null,
-        icon: const Icon(Icons.bookmark_border_rounded, size: 15),
-        label: Text('收藏', style: TextStyle(fontSize: 11 * textScale)),
       );
     }
 
@@ -1107,38 +1091,22 @@ class OnlineFavoriteButton extends ConsumerWidget {
     };
     final highlighted = names.isNotEmpty;
 
-    final button = OutlinedButton.icon(
-      style: highlighted
-          ? OutlinedButton.styleFrom(
-              // 与 hikoOutlinedPillStyle 同一套几何（圆角 / 内边距），只换配色
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(999),
-              ),
-              side: BorderSide(
-                color: hikoFavoriteColor.withValues(alpha: 0.5),
-              ),
-              backgroundColor: hikoFavoriteColor.withValues(
-                alpha: isDark ? 0.16 : 0.08,
-              ),
-            )
-          : hikoOutlinedPillStyle(context: context),
-      onPressed: () => unawaited(showPlaylistPicker(context, work: work)),
+    final button = M3EButton(
+      label: label,
+      variant: M3EButtonVariant.outlined,
       icon: Icon(
         highlighted
             ? Icons.bookmark_rounded
             : Icons.bookmark_border_rounded,
-        size: 15,
-        color: highlighted ? hikoFavoriteColor : null,
       ),
-      label: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11 * textScale,
-          fontWeight: highlighted ? FontWeight.w600 : null,
-          color: highlighted ? hikoFavoriteColor : null,
-        ),
-      ),
+      // 已收藏：用品牌红整颗点亮（语义色表达不了「收藏」的红色语义）
+      backgroundColor: highlighted
+          ? hikoFavoriteColor.withValues(alpha: isDark ? 0.16 : 0.08)
+          : null,
+      foregroundColor: highlighted ? hikoFavoriteColor : null,
+      borderColor:
+          highlighted ? hikoFavoriteColor.withValues(alpha: 0.5) : null,
+      onPressed: () => unawaited(showPlaylistPicker(context, work: work)),
     );
     if (names.isEmpty) return button;
     return Tooltip(message: '已在：${names.join('、')}', child: button);
@@ -1466,17 +1434,10 @@ class _ErrorView extends StatelessWidget {
 /// 离线下载状态按钮（1.99.16）：未离线→勾选对话框；排队/下载中→取消；
 /// 已离线→确认删除（缓存文件 + 离线索引一并移除）。
 class _OfflineActionButton extends ConsumerWidget {
-  const _OfflineActionButton({
-    required this.work,
-    required this.audio,
-    required this.actionStyle,
-    required this.isDark,
-  });
+  const _OfflineActionButton({required this.work, required this.audio});
 
   final OnlineWork work;
   final List<OnlineTrack> audio;
-  final TextStyle actionStyle;
-  final bool isDark;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1516,11 +1477,11 @@ class _OfflineActionButton extends ConsumerWidget {
         ),
     };
 
-    return OutlinedButton.icon(
-      style: hikoOutlinedPillStyle(context: context),
+    return M3EButton(
+      label: label,
+      variant: M3EButtonVariant.outlined,
+      icon: Icon(icon),
       onPressed: onPressed_,
-      icon: Icon(icon, size: 15),
-      label: Text(label, style: actionStyle),
     );
   }
 

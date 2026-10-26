@@ -49,6 +49,9 @@ class M3EButton extends StatelessWidget {
     this.size = M3EButtonSize.medium,
     this.icon,
     this.expand = false,
+    this.backgroundColor,
+    this.foregroundColor,
+    this.borderColor,
   });
 
   final String label;
@@ -61,6 +64,13 @@ class M3EButton extends StatelessWidget {
 
   /// 撑满父级宽度（移动端底部主按钮用）。
   final bool expand;
+
+  /// 配色逃生口（1.99.44）：只在**语义色表达不了**时用 ——
+  /// 例如在线详情的「已收藏」要用品牌红把整颗胶囊点亮。
+  /// 禁用态一律走规范的 12%/38%，覆盖不生效。
+  final Color? backgroundColor;
+  final Color? foregroundColor;
+  final Color? borderColor;
 
   bool get _enabled => onPressed != null;
 
@@ -99,12 +109,12 @@ class M3EButton extends StatelessWidget {
 
     // 禁用态：容器 12% onSurface、文字 38% onSurface（M3 规范值）。
     final effectiveBackground = _enabled
-        ? background
-        : (background == null
+        ? (backgroundColor ?? background)
+        : ((backgroundColor ?? background) == null
             ? null
             : colors.onSurface.withValues(alpha: 0.12));
     final effectiveForeground = _enabled
-        ? foreground
+        ? (foregroundColor ?? foreground)
         : colors.onSurface.withValues(alpha: 0.38);
 
     final textStyle =
@@ -142,11 +152,11 @@ class M3EButton extends StatelessWidget {
       decoration: BoxDecoration(
         color: effectiveBackground,
         borderRadius: BorderRadius.circular(M3EShape.full),
-        border: border == null
+        border: (borderColor ?? border) == null
             ? null
             : Border.all(
                 color: _enabled
-                    ? border
+                    ? (borderColor ?? border!)
                     : colors.onSurface.withValues(alpha: 0.12),
               ),
       ),

@@ -329,8 +329,8 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
             color: theme.dividerColor.withValues(alpha: 0.4),
           ),
           SizedBox(
-            // 与本地详情抽屉同宽（390），两处详情页观感一致
-            width: 390,
+            // 与本地详情抽屉同宽（1.99.44 裁决：两端统一 420）
+            width: kHikoDetailPanelWidth,
             child: OnlineDetailPanel(
               workId: _detailWorkId!,
               onClose: () => setState(() => _detailWorkId = null),

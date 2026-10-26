@@ -12,30 +12,33 @@ import 'package:hiko/playback/playback_controller.dart';
 import 'package:hiko/ui/m3e/m3e.dart';
 import 'package:hiko/ui/screens/album_detail_screen.dart';
 import 'package:hiko/ui/widgets/detail_drawer.dart';
+import 'package:hiko/ui/widgets/detail_kit.dart';
 
 /// 详情面板 M3E 换装回归锁（1.99.34，plan-hiko-detail-m3e.md §8.2）：
 /// 1. 主行动唯一锁：操作区 filled 主键恰好 1 个（从头播放）；
 /// 2. 分组卡与曲目行在 480dp 面板宽度下无溢出；
 /// 3. ALBUM 内部 id 不再出现在展示层（D4）。
 Album _album() => Album(
-      id: 'local-a6c1d64d1c088c07',
-      sourcePath: '/x/local-a6c1d64d1c088c07',
-      title: '【簡体中文版】テストアルバム名がここに入るとても長いタイトル',
-      genre: '素',
-      date: DateTime(2026),
-      totalDuration: 4800,
-      played: 1200,
-      tracks: [
-        Track(index: 0, name: 'トラック1', url: 'file:///x/1.mp3', duration: 600),
-        Track(index: 1, name: 'トラック2', url: 'file:///x/2.mp3', duration: 600),
-      ],
-    );
+  id: 'local-a6c1d64d1c088c07',
+  sourcePath: '/x/local-a6c1d64d1c088c07',
+  title: '【簡体中文版】テストアルバム名がここに入るとても長いタイトル',
+  genre: '素',
+  rjCode: 'RJ123456',
+  tags: const ['ASMR', '耳语'],
+  date: DateTime(2026),
+  totalDuration: 4800,
+  played: 1200,
+  tracks: [
+    Track(index: 0, name: 'トラック1', url: 'file:///x/1.mp3', duration: 600),
+    Track(index: 1, name: 'トラック2', url: 'file:///x/2.mp3', duration: 600),
+  ],
+);
 
 Future<void> _pump(WidgetTester tester) async {
   SharedPreferences.setMockInitialValues({});
-  final container = ProviderContainer(overrides: [
-    settingsProvider.overrideWith((ref) => SettingsNotifier()),
-  ]);
+  final container = ProviderContainer(
+    overrides: [settingsProvider.overrideWith((ref) => SettingsNotifier())],
+  );
   addTearDown(container.dispose);
 
   await tester.pumpWidget(
@@ -44,7 +47,7 @@ Future<void> _pump(WidgetTester tester) async {
       child: MaterialApp(
         home: Scaffold(
           body: SizedBox(
-            width: 480,
+            width: kHikoDetailPanelWidth,
             child: DetailDrawer(album: _album(), onClose: () {}),
           ),
         ),
@@ -57,9 +60,9 @@ Future<void> _pump(WidgetTester tester) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('480dp 面板：无溢出，主行动唯一，内部 id 不展示', (tester) async {
+  testWidgets('420dp 面板：无溢出，主行动唯一，内部 id 不展示', (tester) async {
     await _pump(tester);
-    expect(tester.takeException(), isNull, reason: '480dp 面板不得溢出');
+    expect(tester.takeException(), isNull, reason: '420dp 面板不得溢出');
 
     // 主行动唯一锁：从头播放（filled 主键）只此一个
     expect(find.text('从头播放'), findsOneWidget);
@@ -75,6 +78,23 @@ void main() {
     expect(find.text('25%'), findsOneWidget, reason: '1200/4800=25%');
     // 曲目行（懒构建视口内至少第一首）
     expect(find.text('01'), findsWidgets);
+  });
+
+  testWidgets('桌面详情：5 个动作 + 信息项 + 标签行（M-04 对齐后）', (tester) async {
+    await _pump(tester);
+
+    // 动作集合：从头播放 / 收藏 / 评分 / 分类 / 整理
+    for (final label in <String>['从头播放', '收藏', '未评分', '素', '整理']) {
+      expect(find.text(label), findsWidgets, reason: '桌面详情缺动作「$label」');
+    }
+    // 信息项：总时长 / 完成进度 / 评分 / DLsite
+    for (final label in <String>['总时长', '完成进度', '评分', 'DLsite']) {
+      expect(find.text(label), findsOneWidget, reason: '桌面详情缺信息行「$label」');
+    }
+    expect(find.text('RJ123456'), findsOneWidget);
+    // 标签行
+    expect(find.text('ASMR'), findsOneWidget);
+    expect(find.text('耳语'), findsOneWidget);
   });
 
   testWidgets('曲目/歌词分段存在', (tester) async {
@@ -117,6 +137,40 @@ void main() {
       reason: 'Q4：移动详情封面 28dp，Hero 链 16→28→28',
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('移动详情：动作与信息项和桌面一致（M-04）', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3.0;
+    addTearDown(tester.view.reset);
+
+    SharedPreferences.setMockInitialValues({});
+    final album = _album();
+    final container = ProviderContainer(
+      overrides: [
+        settingsProvider.overrideWith((ref) => SettingsNotifier()),
+        libraryProvider.overrideWith((ref) => _SeededLibrary([album])),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(home: AlbumDetailScreen(albumId: album.id)),
+      ),
+    );
+    await tester.pump();
+
+    for (final label in <String>['从头播放', '收藏', '未评分', '整理', '素']) {
+      expect(find.text(label), findsWidgets, reason: '移动详情缺动作「$label」');
+    }
+    for (final label in <String>['总时长', '完成进度', '评分', 'DLsite']) {
+      expect(find.text(label), findsOneWidget, reason: '移动详情缺信息行「$label」');
+    }
+    expect(find.text('RJ123456'), findsOneWidget);
+    expect(find.text('ASMR'), findsOneWidget);
+    expect(tester.takeException(), isNull, reason: '360dp 下不得溢出');
   });
 }
 

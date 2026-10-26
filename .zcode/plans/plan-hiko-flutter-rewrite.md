@@ -4268,3 +4268,43 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 ### 交付
 - 版本 `1.99.43+156`；Release：`hiko-v1.99.43-macos.zip` + `hiko-v1.99.43-android.apk`。
 - 下一项：`1.99.44` 移动详情 parity（M-04）+ 在线详情内容层。
+
+## 1.99.44（2026-10-26）：移动详情 parity（M-04）+ 在线详情内容层
+
+### 裁决（用户 2026-10-26）
+- **详情面板宽度统一 420**（原本地 480 / 在线 390）→ 新增
+  `kHikoDetailPanelWidth = 420`，两处都引用它。
+- **动作集合统一 5 个**：从头播放 / 收藏 / 评分 / 分类 / 整理 ——
+  移动补收藏与整理，桌面补分类。
+
+### 可见变化
+- **移动详情**：操作区从 3 个动作补齐到 5 个；完成进度单行卡换成信息分组卡
+  （总时长 / 完成进度 / 评分 / DLsite 四行）；补 DLsite 标签行。
+  「整理」在 Android 可用 —— `LibraryReorganizer` 对 SAF `content://` 有降级路径
+  （扫目录不成则逐曲校验），不需要平台开关。
+- **在线详情**：信息行从四条带分隔线的旧行换成 `M3ECard` +
+  `HikoDetailInfoRowM3E`；曲目/歌词分段换 `M3EButtonGroup`（实时歌词仍用
+  「●」后缀）；曲目行换 `HikoTrackRowM3E`；操作行（播放全部 / 收藏 / 离线 /
+  浏览器 / 复制 RJ / 展开全部）全部换 `M3EButton`。
+  「已收藏」仍用品牌红整颗点亮 —— `M3EButton` 新增
+  `backgroundColor` / `foregroundColor` / `borderColor` 三个配色逃生口
+  （禁用态依旧走规范 12%/38%）。
+- `HikoTrackRowM3E` 并入旧 `HikoTrackRow` 的三个在线能力：`indent`（目录缩进）、
+  `trailing`（字幕角标）、`titleFontSize`（曲名基准字号旋钮，仍乘详情倍率）。
+- **删除旧组件**：`HikoTrackRow` / `HikoInfoRow` / `HikoTabButton` /
+  `HikoSegmentedTabs` / `hikoOutlinedPillStyle` / `hikoFilledPillStyle`
+  （审计 C-09 / C-12 点名的「同一语义两套实现」）。
+
+### 验证
+- `flutter test`：**834 passed / 2 skipped**（830 + 桌面详情动作/信息 1 条 +
+  移动详情 parity 1 条 + 源码锁 2 条）。
+- `flutter analyze`：**42 条、0 error**。
+- `test/ui/detail_m3e_test.dart`：桌面面板从 480 改 420（引用常量）；新增
+  「5 个动作 + 4 个信息行 + DLsite + 标签」断言，桌面与移动各一条。
+- 新增 `test/ui/detail_kit_lock_test.dart`：`lib/ui` 再现 `HikoTrackRow(` /
+  `HikoInfoRow(` / `HikoSegmentedTabs(` / `HikoTabButton(` 即失败；
+  两端宽度必须引用 `kHikoDetailPanelWidth` 且不再出现写死的 390/480。
+
+### 交付
+- 版本 `1.99.44+157`；Release：`hiko-v1.99.44-macos.zip` + `hiko-v1.99.44-android.apk`。
+- 下一项：`1.99.45` 在线三面（浏览 / 收藏 / 卡片 / 分页）。

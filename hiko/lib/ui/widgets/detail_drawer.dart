@@ -235,6 +235,24 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                         ),
                         M3EButton(
                           variant: M3EButtonVariant.outlined,
+                          label: album.genre.isEmpty ? '未分类' : album.genre,
+                          icon: const Icon(Icons.label_outline),
+                          onPressed: () async {
+                            final chosen = await showSelectCategoryDialog(
+                              context,
+                              currentGenre: album.genre,
+                              albumCount: 1,
+                            );
+                            if (chosen == null || !context.mounted) return;
+                            if (chosen == album.genre) return;
+                            await ref.read(libraryProvider.notifier).updateAlbum(
+                                  album.id,
+                                  (a) => a.copyWith(genre: chosen),
+                                );
+                          },
+                        ),
+                        M3EButton(
+                          variant: M3EButtonVariant.outlined,
                           label: '整理',
                           icon: const Icon(Icons.refresh_rounded),
                           onPressed: () async {

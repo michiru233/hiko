@@ -31,32 +31,17 @@ const Color hikoTagFgColorDark = Color(0xFF8FDDE2);
 Color hikoTagFgColorOf(bool isDark) =>
     isDark ? hikoTagFgColorDark : hikoTagFgColor;
 
+/// 详情面板宽度（1.99.44 裁决：两端统一 420）。
+///
+/// 之前本地 480 / 在线 390，同语义两个宽度；420 是折中：
+/// 在线信息行与标签不再挤，480 在 1280 窗口下会压掉主网格近一半。
+const double kHikoDetailPanelWidth = 420;
+
 /// 收藏红 / 评分金（详情页操作胶囊用）
 const Color hikoFavoriteColor = Color(0xFFD34C44);
 const Color hikoRatingColor = Color(0xFFE8B33C);
 
 // ------------------------------------------------------------------ 样式件
-
-/// 详情页里的描边胶囊按钮（收藏 / 评分 / 整理专辑 / 在浏览器打开…）
-ButtonStyle hikoOutlinedPillStyle({
-  required BuildContext context,
-  EdgeInsets padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-}) =>
-    OutlinedButton.styleFrom(
-      padding: padding,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-      // 1.99.30：玻璃描边 token 删除，描边统一走 outlineVariant
-      side: BorderSide(
-        color: Theme.of(context).colorScheme.outlineVariant,
-      ),
-    );
-
-/// 详情页里的实心胶囊按钮（从头播放 / 播放全部）
-ButtonStyle hikoFilledPillStyle() => FilledButton.styleFrom(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-      elevation: 0,
-    );
 
 /// 可点胶囊的悬停 / 按下反馈（1.95.0 裁决 Q2=甲、Q3=丙）。
 ///
@@ -452,163 +437,6 @@ class HikoTagChip extends StatelessWidget {
   }
 }
 
-/// 详情页信息行（上方一条分隔线，两端对齐）
-class HikoInfoRow extends StatelessWidget {
-  const HikoInfoRow({super.key, required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final style =
-        TextStyle(fontSize: 11 * HikoDetailTextScale.of(context));
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: theme.dividerColor)),
-      ),
-      // 两端对齐但**两侧都留出收缩余地**：字号可调之后，长值 + 长标签
-      // 在窄面板里会先挤爆 Row 而不是换行，`Flexible` 把它变回「换行」
-      child: Row(
-        children: [
-          Flexible(
-            child: Text(label, style: style.copyWith(color: theme.hintColor)),
-          ),
-          const SizedBox(width: 12),
-          Flexible(
-            child: Text(
-              value,
-              textAlign: TextAlign.right,
-              style: style.copyWith(fontWeight: FontWeight.w500),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 胶囊分段开关里的单个 Tab
-class HikoTabButton extends StatelessWidget {
-  const HikoTabButton({
-    super.key,
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
-    this.hasBadge = false,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final bool hasBadge;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final primaryColor = theme.colorScheme.primary;
-    final textScale = HikoDetailTextScale.of(context);
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(6),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        decoration: BoxDecoration(
-          color: selected
-              ? (isDark ? Colors.white.withValues(alpha: 0.12) : Colors.white)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-          boxShadow: selected
-              ? [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 4,
-                    offset: const Offset(0, 1),
-                  ),
-                ]
-              : null,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 13,
-              color: selected ? primaryColor : (isDark ? Colors.white60 : Colors.black54),
-            ),
-            const SizedBox(width: 5),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11 * textScale,
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                  color: selected
-                      ? (isDark ? Colors.white : primaryColor)
-                      : (isDark ? Colors.white60 : Colors.black54),
-                ),
-              ),
-            ),
-            if (hasBadge) ...[
-              const SizedBox(width: 4),
-              Container(
-                width: 6,
-                height: 6,
-                decoration: BoxDecoration(
-                  color: primaryColor,
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 双 Tab 分段开关外壳（曲目列表 / 歌词字幕）
-class HikoSegmentedTabs extends StatelessWidget {
-  const HikoSegmentedTabs({super.key, required this.left, required this.right});
-
-  final Widget left;
-  final Widget right;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.08)
-            : Colors.black.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Theme.of(context).colorScheme.outlineVariant,
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(child: left),
-          const SizedBox(width: 4),
-          Expanded(child: right),
-        ],
-      ),
-    );
-  }
-}
-
 /// 曲名展示清洗（1.99.12）：剥掉与左侧序号列重复的 `Track01_` 类半角前缀，
 /// 长中文标题省出的宽度通常正好让两行放下。只改显示不改数据；
 /// 剥完为空（名字本身就叫 Track01）时保留原名。
@@ -656,12 +484,17 @@ class _ExpandableTrackTitleState extends State<_ExpandableTrackTitle> {
   }
 }
 
-/// 详情页曲目行：圆形播放/暂停键 + 两位序号 + 标题 + 时长。
+/// 详情页曲目行（M3E，1.99.34；1.99.44 起本地与在线共用）：56dp、角 16、
+/// 当前曲目 `secondaryContainer`。
 ///
-/// 本地与在线共用同一套视觉（1.91.0 抽出）。[indent] 供在线按目录层级缩进，
-/// 本地传 0。[name] 由调用方映射（本地 `Track.name`、在线剥掉扩展名的标题）。
-class HikoTrackRow extends StatelessWidget {
-  const HikoTrackRow({
+/// 按压走 [M3EPressable] 弹簧，选中态靠色阶不靠描边（plan-hiko-detail-m3e.md §4.5）。
+/// 字号仍乘 [HikoDetailTextScale]（详情倍率旋钮语义不变）。
+///
+/// 1.99.44 把旧 [HikoTrackRow] 的三个在线专用能力并进来，随后删掉旧类：
+/// [indent]（按目录层级缩进）、[trailing]（时长左边的字幕角标）、
+/// [titleFontSize]（曲名基准字号旋钮）。
+class HikoTrackRowM3E extends StatelessWidget {
+  const HikoTrackRowM3E({
     super.key,
     required this.index,
     required this.name,
@@ -674,146 +507,21 @@ class HikoTrackRow extends StatelessWidget {
     this.titleFontSize,
   });
 
-  /// 展示用序号（1 起）。在线按「所在目录内」编号，本地按专辑内编号
   final int index;
   final String name;
   final double durationSeconds;
   final bool active;
   final bool playing;
   final VoidCallback onTap;
+
+  /// 按目录层级缩进（在线详情用）。本地传 0。
   final double indent;
 
-  /// 右侧时长左边额外的角标（在线用来放字幕图标）
+  /// 时长左侧的额外角标（在线用来放「有字幕」图标）。
   final Widget? trailing;
 
-  /// 曲目标题的**基准**字号（1.97.0，在线详情页专用旋钮）。
-  ///
-  /// 给了就以它为基准；不传（本地详情抽屉）基准 12。1.99.10 起基准字号
-  /// **再乘 `HikoDetailTextScale`** —— 曲名是详情页里信息量最大的文字，
-  /// 倍率拉动时它不动会显得「其他都大了就曲名没大」；要单独微调就用本旋钮。
-  /// 序号/时长等辅助文字同样乘详情倍率。
+  /// 曲名**基准**字号；不传用 `bodyMedium`。仍乘 [HikoDetailTextScale]。
   final double? titleFontSize;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final color = active ? theme.colorScheme.primary : theme.colorScheme.onSurface;
-    final textScale = HikoDetailTextScale.of(context);
-    return Padding(
-      padding: EdgeInsets.only(left: indent),
-      child: InkWell(
-        onTap: onTap,
-        mouseCursor: SystemMouseCursors.click,
-        borderRadius: BorderRadius.circular(10),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-          margin: const EdgeInsets.symmetric(vertical: 2),
-          decoration: BoxDecoration(
-            color: active
-                ? theme.colorScheme.primary.withValues(alpha: isDark ? 0.16 : 0.08)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-            border: active
-                ? Border.all(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                    width: 1,
-                  )
-                : null,
-          ),
-          child: Row(
-            children: [
-              InkWell(
-                onTap: onTap,
-                mouseCursor: SystemMouseCursors.click,
-                borderRadius: BorderRadius.circular(13),
-                child: Container(
-                  width: 26,
-                  height: 26,
-                  decoration: BoxDecoration(
-                    color: active
-                        ? theme.colorScheme.primary
-                        : (isDark
-                            ? Colors.white.withValues(alpha: 0.08)
-                            : Colors.black.withValues(alpha: 0.05)),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    // Material 图标：与播放条统一，避免文字符号在 Android 字体渲染异常
-                    child: Icon(
-                      playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                      size: 13,
-                      color: active ? theme.colorScheme.onPrimary : theme.hintColor,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              // 最小 20 而非固定 20：序号恒为两位、宽度天然一致，固定宽度会在
-              // 「详情倍率 1.30 × 全局字号 1.30」这种叠加场景下把两位数字挤成两行
-              ConstrainedBox(
-                constraints: const BoxConstraints(minWidth: 20),
-                child: Text(
-                  index.toString().padLeft(2, '0'),
-                  style: TextStyle(
-                    fontSize: 10 * textScale,
-                    fontWeight: FontWeight.w600,
-                    color: active ? theme.colorScheme.primary : theme.hintColor,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _ExpandableTrackTitle(
-                  // 展示名剥掉 TrackNN_ 前缀（1.99.12）；两行 + 点标题展开全文
-                  name: hikoTrackDisplayName(name),
-                  style: TextStyle(
-                    fontSize: (titleFontSize ?? 12) * textScale,
-                    color: color,
-                    fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                  ),
-                ),
-              ),
-              ?trailing,
-              Text(
-                durationSeconds > 0 ? formatTime(durationSeconds) : '--:--',
-                style: TextStyle(
-                  fontSize: 10 * textScale,
-                  color: active ? theme.colorScheme.primary : theme.hintColor,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 详情页曲目行（M3E，1.99.34）：56dp、角 16、当前曲目 `secondaryContainer`。
-///
-/// 与旧 [HikoTrackRow]（在线详情仍在用）并存的 M3E 版：按压走 [M3EPressable]
-/// 弹簧，选中态靠色阶不靠描边（plan-hiko-detail-m3e.md §4.5）。
-/// 字号仍乘 [HikoDetailTextScale]（详情倍率旋钮语义不变）。
-class HikoTrackRowM3E extends StatelessWidget {
-  const HikoTrackRowM3E({
-    super.key,
-    required this.index,
-    required this.name,
-    required this.durationSeconds,
-    required this.active,
-    required this.playing,
-    required this.onTap,
-  });
-
-  final int index;
-  final String name;
-  final double durationSeconds;
-  final bool active;
-  final bool playing;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -821,8 +529,10 @@ class HikoTrackRowM3E extends StatelessWidget {
     final type = M3ETheme.of(context).type;
     final textScale = HikoDetailTextScale.of(context);
     final onActive = colors.onSecondaryContainer;
+    final titleSize = (titleFontSize ?? type.bodyMedium.fontSize ?? 14) *
+        textScale;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
+      padding: EdgeInsets.only(left: indent),
       child: M3EPressable(
         onTap: onTap,
         pressScale: 0.97,
@@ -863,12 +573,11 @@ class HikoTrackRowM3E extends StatelessWidget {
                   style: type.bodyMedium.copyWith(
                     color: active ? onActive : colors.onSurface,
                     fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                    fontSize: type.bodyMedium.fontSize != null
-                        ? type.bodyMedium.fontSize! * textScale
-                        : null,
+                    fontSize: titleSize,
                   ),
                 ),
               ),
+              ?trailing,
               Text(
                 durationSeconds > 0 ? formatTime(durationSeconds) : '--:--',
                 style: type.labelMedium.copyWith(
