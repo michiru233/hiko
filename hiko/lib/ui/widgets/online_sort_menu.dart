@@ -45,7 +45,16 @@ class OnlineSortMenu extends StatelessWidget {
       // 排序条目最长「销量倒序」+ 勾，280 够用且不至于在 360dp 上顶满整行
       maxWidth: 280,
       builder: (context, controller, child) => M3EChip(
-        label: '排序：${current.label}',
+        // 只写当前排序名（「销量倒序」），不再带「排序：」前缀：
+        // 1.99.41 实测 360dp × 1.3 字号下，带前缀的 14sp 胶囊比原来的
+        // 11sp compact `Chip` 宽 35dp，把这一行挤爆 8.3dp。
+        // 换回图标（旧 `Chip` 本来就有 swap_vert）后宽度与旧版持平。
+        label: current.label,
+        leading: Icon(
+          Icons.swap_vert_rounded,
+          size: 16,
+          color: M3ETheme.of(context).colors.onSurfaceVariant,
+        ),
         // 再点一次收起 —— `PopupMenuButton` 原来就是这个手感
         onTap: () => controller.isOpen ? controller.close() : controller.open(),
       ),

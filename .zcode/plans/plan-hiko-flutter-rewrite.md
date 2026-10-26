@@ -4172,4 +4172,26 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 
 ### 交付
 - 版本 `1.99.40+153`；Release：`hiko-v1.99.40-macos.zip` + `hiko-v1.99.40-android.apk`。
-- 下一项：`1.99.41 M3EDialog`（B2），替换 21 个 `AlertDialog` + 设置页内容控件。
+- 下一项：`1.99.41` 修窄屏溢出（见下），`1.99.42` M3EDialog（B2）。
+
+## 1.99.41（2026-10-26）：360dp × 1.3 字号下在线工具栏溢出修复
+
+### 可见变化
+- 在线页排序入口只显示当前排序名（「销量倒序」）+ 排序图标，去掉「排序：」
+  前缀。「排序：」是 `Chip` 时代的补丁 —— 14sp 的 `M3EChip` 带上它之后，
+  360dp × 1.3 字号下整行横向溢出 8.3dp（胶囊 116 → 154dp）。
+  换成「名字 + swap_vert 图标」后胶囊 121dp，与 1.99.39 的旧 `Chip` 基本持平。
+- 其余菜单、入口、行为不动。
+
+### 验证
+- `flutter test`：**807 passed / 2 skipped**（1.99.40 的 806 + 1 条窄屏锁）。
+- 新增 `test/ui/online_toolbar_narrow_test.dart`：真挂移动壳 `OnlineScreen`，
+  根层 `TextScaler(1.3)` + 360dp，溢出会以 `FlutterError` 直接判失败；
+  同时锁「字幕 `FilterChip` + 排序/Aa 两枚 `M3EChip`」这排入口不缺席。
+- `flutter analyze`：44 条、0 error。
+- 实测宽度（360dp × 1.3）：字幕 103.6 + 排序 121.2 + Aa 62.6 + 间距 16 = 303.4，
+  可用 328，状态行仍剩 ~24dp。
+
+### 交付
+- 版本 `1.99.41+154`；Release：`hiko-v1.99.41-macos.zip` + `hiko-v1.99.41-android.apk`。
+- 下一项：`1.99.42 M3EDialog`（B2）—— 版本号从 M3EDialog 起整体后移一位。
