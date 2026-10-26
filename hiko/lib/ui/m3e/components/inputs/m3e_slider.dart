@@ -15,6 +15,8 @@ class M3ESlider extends StatelessWidget {
     this.onChanged,
     this.onChangeStart,
     this.onChangeEnd,
+    this.divisions,
+    this.label,
   });
 
   final double value;
@@ -23,6 +25,12 @@ class M3ESlider extends StatelessWidget {
   final ValueChanged<double>? onChanged;
   final ValueChanged<double>? onChangeStart;
   final ValueChanged<double>? onChangeEnd;
+
+  /// 档位数（1.99.43 追加）。给了就吸附到档位，并在拖动时显示 [label]。
+  final int? divisions;
+
+  /// 拖动时气泡里的文字（只在有 [divisions] 时显示）。
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
@@ -36,12 +44,19 @@ class M3ESlider extends StatelessWidget {
         inactiveTrackColor: colors.surfaceContainerHighest,
         overlayShape: const RoundSliderOverlayShape(overlayRadius: 20),
         overlayColor: colors.primary.withValues(alpha: 0.12),
-        showValueIndicator: ShowValueIndicator.never,
+        showValueIndicator: divisions == null
+            ? ShowValueIndicator.never
+            : ShowValueIndicator.onlyForDiscrete,
+        valueIndicatorColor: colors.primary,
+        valueIndicatorTextStyle: M3ETheme.of(context).type.labelMedium
+            .copyWith(color: colors.onPrimary),
       ),
       child: Slider(
         value: value,
         min: min,
         max: max,
+        divisions: divisions,
+        label: label,
         onChanged: onChanged,
         onChangeStart: onChangeStart,
         onChangeEnd: onChangeEnd,
@@ -85,10 +100,7 @@ class M3ESliderThumb extends SliderComponentShape {
       width: _width,
       height: _height,
     );
-    final rrect = RRect.fromRectAndRadius(
-      rect,
-      const Radius.circular(_radius),
-    );
+    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(_radius));
     context.canvas.drawRRect(rrect, Paint()..color = sliderTheme.thumbColor!);
   }
 }

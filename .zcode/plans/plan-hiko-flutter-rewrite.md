@@ -4233,3 +4233,38 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 ### 交付
 - 版本 `1.99.42+155`；Release：`hiko-v1.99.42-macos.zip` + `hiko-v1.99.42-android.apk`。
 - 下一项：`1.99.43` 设置页内容层（含 `M3ESwitch`/`M3ECheckbox`、`M3ESlider` 加 `divisions`）。
+
+## 1.99.43（2026-10-26）：设置页内容层（B2 后半，M-08）
+
+### 可见变化
+- 新增三个输入控件：
+  - `M3ESwitch`（轨 52×32、把手 24/16、选中 `primary` + 勾、未选 `outline` 描边，触控高 48）；
+  - `M3ECheckbox`（视觉 18、圆角 4、热区 40，二态）；
+  - `M3ESelect<T>`（当前值 + 展开箭头，菜单直接复用 `M3EMenu`）。
+  `M3ESlider` 追加 `divisions` / `label`：给档位就吸附并在拖动时显示气泡。
+- 设置页的 Material 交互控件全部换掉：
+  - 主题三选一 → `M3EButtonGroup`（原来是手写 `InkWell` 段）；
+  - 5 个 `Switch` → `M3ESwitch`；2 个 `Slider` → `M3ESlider`（增益带档位）；
+  - 2 个 `DropdownButton` → `M3ESelect`；
+  - 12 个 `TextButton` / `OutlinedButton` / `FilledButton` → `M3EButton`；
+  - 2 个 `IconButton` → `M3EIconButton`；分组标题的 `Divider` 换 1dp `outlineVariant` 细线。
+- 行壳与文案收口：`_SettingRow` 标题 → `bodyLarge`、副标题 → `bodySmall` + `onSurfaceVariant`；
+  `_sectionHeader`、`_ActionButton`（→ `M3EButton.outlined.small`）同步。
+  **`hintColor` 34 处 → 0，`fontSize` 52 处 → 0**（新增 `context.hintText` / `context.m3eTheme`
+  两个本地入口；说明文字统一 `bodySmall` + `onSurfaceVariant`）。
+- 与设置页共用的 `OnlineFontSliderRow`（在线外观对话框里的四行字号）一并换
+  `M3ESlider` + `M3EIconButton` + M3E 字阶，否则「设置页不再有 Material Slider」不成立。
+
+### 验证
+- `flutter test`：**830 passed / 2 skipped**（817 + 8 条输入控件 + 5 条设置页）。
+- `flutter analyze`：**42 条、0 error**。
+- 新增 `test/ui/m3e/m3e_inputs_test.dart`：开关/复选框/下拉/滑杆的尺寸、点击、禁用、档位下发。
+- 新增 `test/ui/settings_layout_test.dart`：**360 / 360×1.3 字号 / 480 / 720** 四档真挂
+  `SettingsPage` 不溢出；并断言页内不再出现 Material `Switch`/`Slider`/`DropdownButton`/
+  `OutlinedButton`/`TextButton`/`FilledButton`/`ElevatedButton`（`Slider` 用
+  「数量 == `M3ESlider` 数量」判定，因为 `M3ESlider` 内部本来就包一个 Material `Slider`）。
+- `test/ui/activity_overlay_test.dart` 的「全量扫描」定位从 `OutlinedButton` 改为 `M3EButton`。
+
+### 交付
+- 版本 `1.99.43+156`；Release：`hiko-v1.99.43-macos.zip` + `hiko-v1.99.43-android.apk`。
+- 下一项：`1.99.44` 移动详情 parity（M-04）+ 在线详情内容层。

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hiko/ui/widgets/activity_overlay.dart';
+import 'package:hiko/ui/m3e/m3e.dart';
 import 'package:hiko/ui/widgets/settings_dialog.dart';
 
 void main() {
@@ -117,9 +118,10 @@ void main() {
     await tester.pumpAndSettle();
     // 1.99.11：入口拆为「增量扫描/全量扫描」两按钮，两个都要在
     expect(find.text('增量扫描'), findsOneWidget);
+    // 1.99.43：设置页动作按钮换成 M3EButton（不再有 Material OutlinedButton）
     final rescan = find.ancestor(
       of: find.text('全量扫描'),
-      matching: find.byType(OutlinedButton),
+      matching: find.byType(M3EButton),
     );
     await tester.ensureVisible(rescan);
     await tester.tap(rescan);

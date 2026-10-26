@@ -245,9 +245,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             actions: [
               Padding(
                 padding: const EdgeInsets.only(right: 12),
-                child: TextButton(
+                child: M3EButton(
+                  label: '关闭',
+                  variant: M3EButtonVariant.text,
+                  size: M3EButtonSize.small,
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('关闭'),
                 ),
               ),
             ],
@@ -304,7 +306,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ),
             ),
             const SizedBox(height: 6),
-            Divider(height: 1, color: theme.colorScheme.outlineVariant),
+            SizedBox(
+              height: 1,
+              child: ColoredBox(color: theme.colorScheme.outlineVariant),
+            ),
           ],
         ),
       );
@@ -315,46 +320,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   List<Widget> _appearancePage(ThemeData theme, AppSettings settings) => [
         _SettingRow(
           label: '主题',
-          trailing: Container(
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceContainerHighest.withValues(
-                alpha: 0.6,
-              ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final (key, label) in [
-                  ('light', '浅色'),
-                  ('dark', '深色'),
-                  ('system', '跟随系统'),
-                ])
-                  InkWell(
-                    onTap: () =>
-                        ref.read(settingsProvider.notifier).setTheme(key),
-                    mouseCursor: SystemMouseCursors.click,
-                    borderRadius: BorderRadius.circular(6),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: settings.theme == key
-                            ? theme.colorScheme.surface
-                            : null,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        label,
-                        style: const TextStyle(fontSize: 11),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+          trailing: M3EButtonGroup(
+            labels: const ['浅色', '深色', '跟随系统'],
+            selectedIndex: const ['light', 'dark', 'system']
+                .indexOf(settings.theme),
+            onSelected: (i) => ref
+                .read(settingsProvider.notifier)
+                .setTheme(const ['light', 'dark', 'system'][i]),
           ),
         ),
         _SettingRow(
@@ -451,10 +423,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (settings.backgroundPath.isEmpty)
-                TextButton.icon(
+                M3EButton(
+                  label: '选择图片',
+                  variant: M3EButtonVariant.text,
+                  size: M3EButtonSize.small,
+                  icon: const Icon(Icons.image_outlined),
                   onPressed: _pickBackground,
-                  icon: const Icon(Icons.image_outlined, size: 18),
-                  label: const Text('选择图片'),
                 )
               else ...[
                 ClipRRect(
@@ -470,12 +444,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ),
                 ),
                 const SizedBox(width: 4),
-                TextButton.icon(
+                M3EButton(
+                  label: '更换',
+                  variant: M3EButtonVariant.text,
+                  size: M3EButtonSize.small,
+                  icon: const Icon(Icons.swap_horiz),
                   onPressed: _pickBackground,
-                  icon: const Icon(Icons.swap_horiz, size: 18),
-                  label: const Text('更换'),
                 ),
-                TextButton.icon(
+                M3EButton(
+                  label: '清除',
+                  variant: M3EButtonVariant.text,
+                  size: M3EButtonSize.small,
+                  icon: const Icon(Icons.close_rounded),
                   onPressed: () {
                     final old = settings.backgroundPath;
                     try {
@@ -485,8 +465,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         .read(settingsProvider.notifier)
                         .setBackgroundImage('');
                   },
-                  icon: const Icon(Icons.close, size: 18),
-                  label: const Text('清除'),
                 ),
               ],
             ],
@@ -504,7 +482,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             children: [
               SizedBox(
                 width: 180,
-                child: Slider(
+                child: M3ESlider(
                   min: 1.0,
                   max: desktopGainCap(),
                   divisions: desktopGainCap() > 1.3 ? 30 : 3,
@@ -514,7 +492,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ),
                   label:
                       'x${(_gainDrag ?? settings.audioGain).toStringAsFixed(1)}',
-                  mouseCursor: SystemMouseCursors.click,
                   onChanged: (v) =>
                       setState(() => _gainDrag = _snapGain(v)),
                   onChangeEnd: (v) {
@@ -530,12 +507,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 child: Text(
                   'x${(_gainDrag ?? settings.audioGain).toStringAsFixed(1)}',
                   textAlign: TextAlign.right,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
+                  style: context.m3eTheme.type.labelMedium.copyWith(
                     color: (_gainDrag ?? settings.audioGain) > 1.0
                         ? theme.colorScheme.primary
-                        : theme.hintColor,
+                        : context.m3eTheme.colors.onSurfaceVariant,
                   ),
                 ),
               ),
@@ -551,34 +526,28 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               isMac
                   ? '此平台（macOS）因底层解码库未随附音量滤镜，增益并入主音量调节（上限 ${cap}x，过高会削波破音）。Windows 版走滤镜链软增益+软限幅，可到 4.0x 不削波。'
                   : '增益在音频滤镜链内以浮点精度放大，并经 -1dB 软限幅器兜底，高增益下不会削波破音。亦可在播放底栏音量图标处快捷调节。',
-              style: TextStyle(
-                fontSize: 10.5,
-                height: 1.5,
-                color: theme.hintColor,
-              ),
+              style: context.hintText,
             );
           }),
         ),
         _SettingRow(
           label: '重置音频输出',
-          trailing: TextButton.icon(
+          trailing: M3EButton(
+            label: '立即重接',
+            variant: M3EButtonVariant.text,
+            size: M3EButtonSize.small,
+            icon: const Icon(Icons.restart_alt),
             onPressed: () async {
               await ref.read(playbackProvider.notifier).resetAudioOutput();
               if (mounted) _toast('已重接音频输出（audio-device=auto）');
             },
-            icon: const Icon(Icons.restart_alt, size: 18),
-            label: const Text('立即重接'),
           ),
         ),
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Text(
             '蓝牙耳机断连/切换后若出现「进度在走但没声音」，点此把音频输出重接回当前可用设备；播放中检测到输出异常时也会自动重接。',
-            style: TextStyle(
-              fontSize: 10.5,
-              height: 1.5,
-              color: theme.hintColor,
-            ),
+            style: context.hintText,
           ),
         ),
         _SettingRow(
@@ -601,11 +570,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           padding: const EdgeInsets.only(bottom: 12),
           child: Text(
             '键盘 ←→ 快退/快进的步长，播放底栏对应按钮同此步长。',
-            style: TextStyle(
-              fontSize: 10.5,
-              height: 1.5,
-              color: theme.hintColor,
-            ),
+            style: context.hintText,
           ),
         ),
       ];
@@ -629,7 +594,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           '「本地音声」是根视图，始终显示；安卓底栏末尾还固定有'
           '「正在播放」（打开全屏播放页）与「设置」两格，不在此表内、无法隐藏；'
           '项较多时底栏可横向滑动。',
-          style: TextStyle(fontSize: 11, color: theme.hintColor),
+          style: context.hintText,
         ),
       ),
       // 显示中的视图：拖动排序 + 开关（根视图开关禁用）
@@ -663,18 +628,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 9),
                       child: Icon(Icons.drag_handle_rounded,
-                          size: 16, color: theme.hintColor),
+                          size: 16, color: context.m3eTheme.colors.onSurfaceVariant),
                     ),
                   ),
                   Expanded(
                     child: Text(
                       view,
-                      style: const TextStyle(fontSize: 12.5),
+                      style: context.m3eTheme.type.bodyMedium,
                     ),
                   ),
-                  Switch(
+                  M3ESwitch(
                     value: true,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     onChanged: view == AppSettings.navViewHome
                         ? null
                         : (v) => notifier.setNavViewVisible(view, v),
@@ -690,11 +654,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
           child: Text(
             '已隐藏',
-            style: TextStyle(
-              fontSize: 10,
+            style: context.m3eTheme.type.labelSmall.copyWith(
               letterSpacing: 1,
               fontWeight: FontWeight.w600,
-              color: theme.hintColor,
+              color: context.m3eTheme.colors.onSurfaceVariant,
             ),
           ),
         ),
@@ -708,14 +671,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 Expanded(
                   child: Text(
                     view,
-                    style: TextStyle(
-                        fontSize: 12.5,
-                        color: theme.hintColor.withValues(alpha: 0.7)),
+                    style: context.m3eTheme.type.bodyMedium.copyWith(
+                      color: context.m3eTheme.colors.onSurfaceVariant
+                          .withValues(alpha: 0.7),
+                    ),
                   ),
                 ),
-                Switch(
+                M3ESwitch(
                   value: false,
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   onChanged: (v) => notifier.setNavViewVisible(view, v),
                 ),
               ],
@@ -728,7 +691,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   List<Widget> _homePage(ThemeData theme, AppSettings settings) => [
         _SettingRow(
           label: '显示刮削标签',
-          trailing: Switch(
+          trailing: M3ESwitch(
             value: settings.showScrapedTags,
             onChanged: (v) => ref
                 .read(settingsProvider.notifier)
@@ -774,11 +737,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             Platform.isAndroid
                 ? '移动端网格每行显示的专辑数，与桌面端档位独立。'
                 : '「自动」按窗口宽度计算每行数量；固定档位在窗口缩放时保持不变。',
-            style: TextStyle(
-              fontSize: 10.5,
-              height: 1.5,
-              color: theme.hintColor,
-            ),
+            style: context.hintText,
           ),
         ),
       ];
@@ -860,7 +819,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         child: Text(
           '这几组缩放都叠在「外观 → 字号」之上：最终字号 = 元素基准字号 × '
           '这里的倍率 × 全局字号。想整体放大用全局字号，只想放大在线内容才用这里。',
-          style: TextStyle(fontSize: 10.5, height: 1.5, color: theme.hintColor),
+          style: context.hintText,
         ),
       ),
     ];
@@ -882,7 +841,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         label: '登录状态',
         trailing: switch (account) {
           _ when account.restoring =>
-            Text('检查中…', style: TextStyle(fontSize: 11, color: theme.hintColor)),
+            Text('检查中…', style: context.hintText),
           _ when account.loggedIn => Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -897,13 +856,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 const SizedBox(width: 6),
                 Text(
                   account.displayName,
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                  style: context.m3eTheme.type.labelMedium.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
           _ => Text(
               '未登录',
-              style: TextStyle(fontSize: 11, color: theme.hintColor),
+              style: context.hintText,
             ),
         },
       ),
@@ -914,7 +875,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             favorites.loading && index.playlists.isEmpty
                 ? '同步中…'
                 : '${index.playlists.length} 个 · ${index.countOf(null)} 个作品',
-            style: const TextStyle(fontSize: 11),
+            style: context.m3eTheme.type.labelSmall,
           ),
         ),
         _SettingRow(
@@ -924,15 +885,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             children: [
               Text(
                 favorites.error ?? '与网页版共用同一份歌单',
-                style: TextStyle(
-                  fontSize: 10.5,
-                  color: favorites.error == null
-                      ? theme.hintColor
-                      : const Color(0xFFD34C44),
-                ),
+                style: M3ETheme.of(context).type.bodySmall.copyWith(
+                      color: favorites.error == null
+                          ? M3ETheme.of(context).colors.onSurfaceVariant
+                          : M3ETheme.of(context).colors.error,
+                    ),
               ),
               const SizedBox(width: 8),
-              OutlinedButton(
+              M3EButton(
+                label: '刷新',
+                variant: M3EButtonVariant.outlined,
+                size: M3EButtonSize.small,
                 onPressed: favorites.loading
                     ? null
                     : () async {
@@ -945,19 +908,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           );
                         }
                       },
-                child: const Text('刷新', style: TextStyle(fontSize: 11)),
               ),
             ],
           ),
         ),
         _SettingRow(
           label: '登录令牌',
-          trailing: OutlinedButton(
+          trailing: M3EButton(
+            label: '退出登录',
+            variant: M3EButtonVariant.outlined,
+            size: M3EButtonSize.small,
             onPressed: () async {
               await ref.read(onlineAccountProvider.notifier).logout();
               if (mounted) _toast('已退出登录');
             },
-            child: const Text('退出登录', style: TextStyle(fontSize: 11)),
           ),
         ),
         Padding(
@@ -965,21 +929,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           child: Text(
             'Hiko 只保存 asmr.one 的登录令牌（有效期 30 天，服务端没有续期接口，'
             '过期后重新登录即可），不保存密码，也不会上传任何本地音声库信息。',
-            style: TextStyle(
-              fontSize: 10.5,
-              height: 1.5,
-              color: theme.hintColor,
-            ),
+            style: context.hintText,
           ),
         ),
       ] else ...[
         _SettingRow(
           label: '登录',
-          trailing: FilledButton(
+          trailing: M3EButton(
+            label: '登录 asmr.one',
+            size: M3EButtonSize.small,
             onPressed: account.restoring
                 ? null
                 : () => unawaited(showOnlineLoginDialog(context)),
-            child: const Text('登录 asmr.one', style: TextStyle(fontSize: 11)),
           ),
         ),
         Padding(
@@ -988,11 +949,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             '登录后才能收藏作品、管理歌单。收藏走 asmr.one 的歌单体系，'
             '所以可以建「未听」「已听」这类歌单来记录收听状态。'
             '没有账号的话去 www.asmr.one 注册（Hiko 不提供注册）。',
-            style: TextStyle(
-              fontSize: 10.5,
-              height: 1.5,
-              color: theme.hintColor,
-            ),
+            style: context.hintText,
           ),
         ),
       ],
@@ -1000,7 +957,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       _SettingRow(
         label: '卡片显示标签',
         subtitle: '在作品卡片上直接显示标签，点击可按该标签筛选',
-        trailing: Switch(
+        trailing: M3ESwitch(
           value: settings.showOnlineTags,
           onChanged: (v) =>
               ref.read(settingsProvider.notifier).setShowOnlineTags(v),
@@ -1013,14 +970,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         label: '标签黑名单',
         subtitle: '被屏蔽的标签不会出现在在线浏览、搜索与标签筛选结果里；'
             '只作用于在线内容，本地音声库不受影响',
-        trailing: OutlinedButton(
+        trailing: M3EButton(
+          label: settings.blockedTags.isEmpty
+              ? '管理'
+              : '管理（${settings.blockedTags.length}）',
+          variant: M3EButtonVariant.outlined,
+          size: M3EButtonSize.small,
           onPressed: () => unawaited(showOnlineBlacklistDialog(context)),
-          child: Text(
-            settings.blockedTags.isEmpty
-                ? '管理'
-                : '管理（${settings.blockedTags.length}）',
-            style: const TextStyle(fontSize: 11),
-          ),
         ),
       ),
       _SettingRow(
@@ -1033,7 +989,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ref.read(settingsProvider.notifier).setOnlineServer(v),
             decoration: InputDecoration(
               hintText: 'api.asmr.one',
-              hintStyle: TextStyle(fontSize: 11, color: theme.hintColor),
+              hintStyle: context.hintText,
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 10,
@@ -1048,7 +1004,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 borderSide: BorderSide(color: theme.dividerColor),
               ),
             ),
-            style: const TextStyle(fontSize: 11),
+            style: context.m3eTheme.type.labelSmall,
           ),
         ),
       ),
@@ -1058,32 +1014,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           '在线音声服务地址（Kikoeru 兼容协议）。默认 asmr.one 官方实例，也可填写自建服务器地址；'
           '留空回退默认。在线浏览与播放无需登录；账号与歌单是 asmr.one 的私有能力，'
           '自建 Kikoeru 服务器上不可用。直连不通时请到「数据」页配置代理。',
-          style: TextStyle(
-            fontSize: 10.5,
-            height: 1.5,
-            color: theme.hintColor,
-          ),
+          style: context.hintText,
         ),
       ),
       _SettingRow(
         label: '在线缓存上限',
-        trailing: DropdownButton<double>(
+        trailing: M3ESelect<double>(
           value: settings.onlineCacheLimitGb,
-          isDense: true,
-          underline: const SizedBox.shrink(),
-          style: const TextStyle(fontSize: 11),
-          items: [
+          options: [
             for (final gb in SettingsNotifier.onlineCacheLimitOptions)
-              DropdownMenuItem(
-                value: gb,
-                child: Text(gb == 0.0 ? '关闭（不缓存）' : _formatGb(gb)),
+              M3ESelectOption<double>(
+                gb,
+                gb == 0.0 ? '关闭（不缓存）' : _formatGb(gb),
               ),
           ],
-          onChanged: (v) {
-            if (v != null) {
-              ref.read(settingsProvider.notifier).setOnlineCacheLimit(v);
-            }
-          },
+          onChanged: (v) =>
+              ref.read(settingsProvider.notifier).setOnlineCacheLimit(v),
         ),
       ),
       _SettingRow(
@@ -1097,18 +1043,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 final bytes = snap.data;
                 return Text(
                   bytes == null ? '统计中…' : _formatBytes(bytes),
-                  style: TextStyle(fontSize: 11, color: theme.hintColor),
+                  style: context.hintText,
                 );
               },
             ),
             const SizedBox(width: 8),
-            OutlinedButton(
+            M3EButton(
+              label: '清理',
+              variant: M3EButtonVariant.outlined,
+              size: M3EButtonSize.small,
               onPressed: () async {
                 await ref.read(onlineAudioCacheProvider).clear();
                 if (mounted) setState(() {});
                 _toast('在线缓存已清空');
               },
-              child: const Text('清理', style: TextStyle(fontSize: 11)),
             ),
           ],
         ),
@@ -1131,7 +1079,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   padding: const EdgeInsets.only(bottom: 4),
                   child: Text(
                     '按作品清理',
-                    style: TextStyle(fontSize: 11, color: theme.hintColor),
+                    style: context.hintText,
                   ),
                 ),
                 Container(
@@ -1154,23 +1102,18 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         dense: true,
                         visualDensity: VisualDensity.compact,
                         title: Text(label,
-                            style: const TextStyle(fontSize: 12)),
+                            style: context.m3eTheme.type.bodyMedium),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
                               _formatBytes(entry.value),
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: theme.hintColor,
-                              ),
+                              style: context.hintText,
                             ),
-                            IconButton(
+                            M3EIconButton(
                               tooltip: '清理该作品缓存',
-                              icon: const Icon(Icons.close_rounded, size: 15),
-                              visualDensity: VisualDensity.compact,
-                              constraints: const BoxConstraints(
-                                  minWidth: 30, minHeight: 30),
+                              icon: Icons.close_rounded,
+                              size: M3EIconButtonSize.small,
                               onPressed: () async {
                                 await ref
                                     .read(onlineAudioCacheProvider)
@@ -1199,11 +1142,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         child: Text(
           '在线播放在超过 20 秒后才开始后台缓存整首音频到本地（避免点开即退白耗流量），'
           '超出上限时按最久未播放淘汰。缓存独立存放，不写入本地音声库。',
-          style: TextStyle(
-            fontSize: 10.5,
-            height: 1.5,
-            color: theme.hintColor,
-          ),
+          style: context.hintText,
         ),
       ),
     ];
@@ -1243,11 +1182,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           child: Text(
             '备份包含全部专辑（收藏/评分/进度/刮削）、分类与设置；不含登录令牌、封面与本机路径。'
             '导入会覆盖当前库与设置，本地源文件路径失效时可用「清理失效记录」清理。',
-            style: TextStyle(
-              fontSize: 10.5,
-              height: 1.5,
-              color: theme.hintColor,
-            ),
+            style: context.hintText,
           ),
         ),
         _SettingRow(
@@ -1319,10 +1254,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   .setScrapeProxy(v.trim()),
               decoration: InputDecoration(
                 hintText: '留空使用系统代理',
-                hintStyle: TextStyle(
-                  fontSize: 11,
-                  color: theme.hintColor,
-                ),
+                hintStyle: context.hintText,
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 10,
@@ -1337,7 +1269,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   borderSide: BorderSide(color: theme.dividerColor),
                 ),
               ),
-              style: const TextStyle(fontSize: 11),
+              style: context.m3eTheme.type.labelSmall,
             ),
           ),
         ),
@@ -1345,22 +1277,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           padding: const EdgeInsets.only(bottom: 12),
           child: Text(
             '刮削代理用于访问 DLsite 元数据与封面，留空走系统代理。',
-            style: TextStyle(
-              fontSize: 10.5,
-              height: 1.5,
-              color: theme.hintColor,
-            ),
+            style: context.hintText,
           ),
         ),
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Text(
             '在线音声服务地址与缓存设置已移到「在线账号」页（1.93.0 起在线相关设置集中在那里）。',
-            style: TextStyle(
-              fontSize: 10.5,
-              height: 1.5,
-              color: theme.hintColor,
-            ),
+            style: context.hintText,
           ),
         ),
       ];
@@ -1386,11 +1310,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             padding: const EdgeInsets.only(bottom: 10),
             child: Text(
               '尚未设置音乐目录。导入音声文件夹时会自动记住；之后每次启动自动扫描新增内容。',
-              style: TextStyle(
-                fontSize: 11,
-                height: 1.6,
-                color: theme.hintColor,
-              ),
+              style: context.hintText,
             ),
           ),
         for (final folder in settings.musicFolders)
@@ -1401,7 +1321,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 Icon(
                   Icons.folder_outlined,
                   size: 15,
-                  color: theme.hintColor,
+                  color: context.m3eTheme.colors.onSurfaceVariant,
                 ),
                 const SizedBox(width: 6),
                 Expanded(
@@ -1409,13 +1329,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     _displayFolder(folder),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11),
+                    style: context.m3eTheme.type.labelSmall,
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 14),
+                M3EIconButton(
+                  icon: Icons.close_rounded,
                   tooltip: '移除目录',
-                  visualDensity: VisualDensity.compact,
+                  size: M3EIconButtonSize.small,
                   onPressed: () => ref
                       .read(settingsProvider.notifier)
                       .removeMusicFolder(folder),
@@ -1432,7 +1352,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               const SizedBox(width: 8),
               Text(
                 '共 ${settings.musicFolders.length} 个常驻目录',
-                style: TextStyle(fontSize: 10, color: theme.hintColor),
+                style: context.hintText,
               ),
             ],
           ],
@@ -1442,11 +1362,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             child: Text(
               '增量扫描只解析选中目录里新增/变化的文件；全量扫描重建全部元数据。'
               '两者不登记常驻目录，启动静默扫描仅覆盖「导入文件夹」登记的目录。',
-              style: TextStyle(
-              fontSize: 10.5,
-              height: 1.5,
-              color: theme.hintColor,
-            ),
+              style: context.hintText,
           ),
         ),
       ];
@@ -1463,13 +1379,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 color: theme.colorScheme.primary,
                 borderRadius: BorderRadius.circular(11),
               ),
-              child: const Center(
+              child: Center(
                 child: Text(
                   'K',
-                  style: TextStyle(
+                  style: context.m3eTheme.type.titleLarge.copyWith(
                     color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
@@ -1479,19 +1393,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Hiko · 音声收藏室',
-                    style: TextStyle(
-                      fontSize: 13,
+                    style: context.m3eTheme.type.titleSmall.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   Text(
                     '版本 ${_appVersion ?? '…'} · 本地优先的音声库管理器',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: theme.hintColor,
-                    ),
+                    style: context.hintText,
                   ),
                 ],
               ),
@@ -1535,8 +1445,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     const SizedBox(width: 6),
                     Text(
                       '发现新版本 ${_latestRelease!.tagName}',
-                      style: TextStyle(
-                        fontSize: 12,
+                      style: context.m3eTheme.type.labelMedium.copyWith(
                         fontWeight: FontWeight.w700,
                         color: theme.colorScheme.primary,
                       ),
@@ -1550,11 +1459,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     child: SingleChildScrollView(
                       child: Text(
                         _latestRelease!.body.trim(),
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          height: 1.5,
-                          color: theme.hintColor,
-                        ),
+                        style: context.hintText,
                       ),
                     ),
                   ),
@@ -1572,16 +1477,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       },
                     ),
                     const SizedBox(width: 8),
-                    TextButton(
+                    M3EButton(
+                      label: '暂不更新',
+                      variant: M3EButtonVariant.text,
+                      size: M3EButtonSize.small,
                       onPressed: () =>
                           setState(() => _latestRelease = null),
-                      child: Text(
-                        '暂不更新',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: theme.hintColor,
-                        ),
-                      ),
                     ),
                   ],
                 ),
@@ -1607,29 +1508,12 @@ class _SettingDropdown<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: DropdownButton<T>(
-        value: value,
-        underline: const SizedBox.shrink(),
-        isDense: true,
-        borderRadius: BorderRadius.circular(8),
-        dropdownColor: theme.cardColor,
-        style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface),
-        icon: Icon(Icons.arrow_drop_down, size: 18, color: theme.hintColor),
-        items: [
-          for (final (v, label) in items)
-            DropdownMenuItem<T>(value: v, child: Text(label)),
-        ],
-        onChanged: (v) {
-          if (v != null) onChanged(v);
-        },
-      ),
+    return M3ESelect<T>(
+      value: value,
+      options: [
+        for (final (v, label) in items) M3ESelectOption<T>(v, label),
+      ],
+      onChanged: onChanged,
     );
   }
 }
@@ -1649,7 +1533,7 @@ class _SettingRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final theme = M3ETheme.of(context);
     // 1.99.32（plan §8.7）：项 72dp 双行，行内垂直居中
     return Container(
       constraints: const BoxConstraints(minHeight: 72),
@@ -1661,12 +1545,14 @@ class _SettingRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500)),
+                Text(label, style: theme.type.bodyLarge),
                 if (subtitle != null) ...[
                   const SizedBox(height: 2),
                   Text(
                     subtitle!,
-                    style: TextStyle(fontSize: 10.5, color: theme.hintColor),
+                    style: theme.type.bodySmall.copyWith(
+                      color: theme.colors.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ],
@@ -1693,32 +1579,11 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return OutlinedButton(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        side: BorderSide(color: theme.dividerColor),
-        foregroundColor: theme.colorScheme.onSurface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
-      ),
-      child: loading
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 11,
-                  height: 11,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 1.8,
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(label, style: const TextStyle(fontSize: 11)),
-              ],
-            )
-          : Text(label, style: const TextStyle(fontSize: 11)),
+    return M3EButton(
+      label: loading ? '处理中…' : label,
+      variant: M3EButtonVariant.outlined,
+      size: M3EButtonSize.small,
+      onPressed: loading ? null : onTap,
     );
   }
 }
@@ -1734,4 +1599,17 @@ String _displayFolder(String folder) {
   }
   final parts = folder.split(RegExp(r'[/\\]'));
   return parts.where((p) => p.isNotEmpty).lastOrNull ?? folder;
+}
+
+/// 设置页的统一文案（1.99.43）。
+///
+/// 说明文字此前全是手写的 `fontSize: 10/10.5/11 + hintColor`，
+/// 同一页出现 5 档字号与 3 种灰度。这里收成一个入口：`bodySmall` +
+/// `onSurfaceVariant`；行标题与分组标题分别在 `_SettingRow` / `_sectionHeader`。
+extension _SettingsTypography on BuildContext {
+  M3EThemeData get m3eTheme => M3ETheme.of(this);
+
+  TextStyle get hintText => m3eTheme.type.bodySmall.copyWith(
+        color: m3eTheme.colors.onSurfaceVariant,
+      );
 }

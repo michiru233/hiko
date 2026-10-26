@@ -169,7 +169,7 @@ class OnlineFontSliderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final theme = M3ETheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -178,34 +178,35 @@ class OnlineFontSliderRow extends StatelessWidget {
           child: Row(
             children: [
               Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w700),
-                ),
+                child: Text(title, style: theme.type.labelLarge),
               ),
               Text(
                 format(value),
-                style: TextStyle(
-                  fontSize: 11,
-                  color: theme.colorScheme.primary,
+                style: theme.type.labelMedium.copyWith(
+                  color: theme.colors.primary,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
-              IconButton(
+              M3EIconButton(
+                icon: Icons.restart_alt_rounded,
                 tooltip: '重置为默认',
-                visualDensity: VisualDensity.compact,
-                onPressed: value == defaultValue ? null : () => onChanged(defaultValue),
-                icon: const Icon(Icons.restart_alt_rounded, size: 15),
+                size: M3EIconButtonSize.small,
+                onPressed:
+                    value == defaultValue ? null : () => onChanged(defaultValue),
               ),
             ],
           ),
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-          child: Text(hint, style: TextStyle(fontSize: 10.5, color: theme.hintColor)),
+          child: Text(
+            hint,
+            style: theme.type.bodySmall.copyWith(
+              color: theme.colors.onSurfaceVariant,
+            ),
+          ),
         ),
-        Slider(
+        M3ESlider(
           value: value.clamp(min, max),
           min: min,
           max: max,
