@@ -9,37 +9,19 @@ import 'package:flutter/material.dart';
 
 import '../../utils/time.dart';
 import '../m3e/m3e.dart';
-import '../theme.dart';
 
 // ------------------------------------------------------------------ 调色板
-
-/// 社团胶囊紫（1.77 起沿用）
-const Color hikoCircleColor = Color(0xFFB39DDB);
-
-/// 声优胶囊蓝
-const Color hikoVoiceColor = Color(0xFF90CAF9);
-
-/// DLsite 标签底色 / 字色
-const Color hikoTagBgColor = Color(0xFFE3F4F2);
-const Color hikoTagFgColor = Color(0xFF2E8A8F);
-
-/// 暗色主题下的标签字色（1.99.0）：0xFF2E8A8F 在深底上对比不足，
-/// 同一色相提亮保证可读；亮色主题维持原色
-const Color hikoTagFgColorDark = Color(0xFF8FDDE2);
-
-/// 标签字色随主题取亮 / 暗
-Color hikoTagFgColorOf(bool isDark) =>
-    isDark ? hikoTagFgColorDark : hikoTagFgColor;
+//
+// 1.99.48：社团紫 / 声优蓝 / 收藏红 / 评分金 / 标签青全部迁进
+// `m3e/tokens/semantic_color_tokens.dart`。它们承载信息（靠色相区分声优与社团），
+// 不属于 Material 的层级色，也不该被种子色算掉 —— 但也不该散落在业务文件里。
+// 业务侧统一从 `M3ESemantic` 取。
 
 /// 详情面板宽度（1.99.44 裁决：两端统一 420）。
 ///
 /// 之前本地 480 / 在线 390，同语义两个宽度；420 是折中：
 /// 在线信息行与标签不再挤，480 在 1280 窗口下会压掉主网格近一半。
 const double kHikoDetailPanelWidth = 420;
-
-/// 收藏红 / 评分金（详情页操作胶囊用）
-const Color hikoFavoriteColor = Color(0xFFD34C44);
-const Color hikoRatingColor = Color(0xFFE8B33C);
 
 // ------------------------------------------------------------------ 样式件
 
@@ -391,8 +373,8 @@ class HikoTagChip extends StatelessWidget {
     final fontSize = HikoTagFontScope.of(context);
     final dim = muted || blocked;
     final fg = dim
-        ? (isDark ? HikoColors.darkMuted : HikoColors.lightMuted)
-        : hikoTagFgColorOf(isDark);
+        ? M3ETheme.of(context).colors.onSurfaceVariant
+        : M3ESemantic.tagForeground(isDark);
     final radius = BorderRadius.circular(6);
 
     return HikoPillInteraction(
@@ -413,7 +395,7 @@ class HikoTagChip extends StatelessWidget {
               ? (isDark
                   ? Colors.white.withValues(alpha: active ? 0.13 : 0.06)
                   : Colors.black.withValues(alpha: active ? 0.09 : 0.04))
-              : hikoTagBgColor.withValues(
+              : M3ESemantic.tagBackground.withValues(
                   alpha: active
                       ? (isDark ? 0.36 : 0.95)
                       : (isDark ? 0.2 : 0.8),

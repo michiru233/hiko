@@ -54,22 +54,22 @@ class StatsView extends StatelessWidget {
         const SizedBox(height: 12),
         Row(
           children: [
-            _chip(theme, '听完 ${stats.finishedCount}', const Color(0xFF4C9E6B)),
+            _chip(theme, '听完 ${stats.finishedCount}', M3ESemantic.statFinished),
             const SizedBox(width: 8),
-            _chip(theme, '听过 ${stats.startedCount}', const Color(0xFFE8B33C)),
+            _chip(theme, '听过 ${stats.startedCount}', M3ESemantic.statStarted),
             const SizedBox(width: 8),
-            _chip(theme, '未听 ${stats.unplayedCount}', const Color(0xFF9A8FC2)),
+            _chip(theme, '未听 ${stats.unplayedCount}', M3ESemantic.statUnplayed),
           ],
         ),
         const SizedBox(height: 24),
-        Text('最近播放', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.hintColor)),
+        Text('最近播放', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.colorScheme.onSurfaceVariant)),
         const SizedBox(height: 8),
         if (stats.recentlyPlayed.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 24),
             child: Text(
               '还没有播放记录',
-              style: TextStyle(fontSize: 12, color: theme.hintColor),
+              style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant),
             ),
           )
         else
@@ -96,7 +96,7 @@ class StatsView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                Text(label, style: TextStyle(fontSize: 11, color: theme.hintColor)),
+                Text(label, style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
               ],
             ),
           ],
@@ -147,14 +147,14 @@ class StatsView extends StatelessWidget {
             ),
             Text(
               album.rating > 0 ? '★' * album.rating : '',
-              style: const TextStyle(fontSize: 11, color: Color(0xFFE8B33C)),
+              style: const TextStyle(fontSize: 11, color: M3ESemantic.rating),
             ),
             const SizedBox(width: 10),
             SizedBox(
               width: 76,
               child: Text(
                 dateText,
-                style: TextStyle(fontSize: 11, color: theme.hintColor),
+                style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
               ),
             ),
           ],

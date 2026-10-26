@@ -23,7 +23,6 @@ import '../covers/cover_color.dart';
 import '../detail_jump_requests.dart';
 import '../lyrics/lyrics_auto_scroll.dart';
 import '../m3e/m3e.dart';
-import '../widgets/detail_kit.dart' show hikoFavoriteColor;
 import '../widgets/online_account_dialogs.dart';
 import '../widgets/toast.dart';
 
@@ -1348,7 +1347,7 @@ class _PlayerFavoriteButton extends ConsumerWidget {
       onPressed: onPressed,
       tooltip: collected ? '已收藏 · 编辑歌单' : '收藏',
       icon: collected ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-      foregroundColor: collected ? hikoFavoriteColor : null,
+      foregroundColor: collected ? M3ESemantic.favorite : null,
     );
   }
 }
@@ -1531,7 +1530,7 @@ class _PlayerBackdropState extends State<_PlayerBackdrop>
           final top = Color.lerp(current, Colors.black, dark ? 0.5 : 0.2)!;
           final mid = Color.lerp(
             current,
-            dark ? const Color(0xFF101010) : Colors.white,
+            dark ? M3ESemantic.artworkVignette : Colors.white,
             0.72,
           )!;
           return DecoratedBox(

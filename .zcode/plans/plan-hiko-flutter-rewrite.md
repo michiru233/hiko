@@ -4436,3 +4436,74 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 - 版本 `1.99.47+160`；Release：`hiko-v1.99.47-macos.zip` + `hiko-v1.99.47-android.apk`。
 - 下一项：`1.99.48` 清账（`HikoColors` / `hintColor` / 字面 hex / 数字圆角 /
   裸 `Duration`·`Curve`、删旧组件与 `DM Sans`、补 grep 锁与业务面样式锁）。
+
+## 1.99.48（2026-10-26）：清账前半（色彩 / 符号 / 菜单 / 主题桥）
+
+> 裁决：清账拆两版。本版只做**零观感变化**的那一层（色彩与符号），
+> 圆角 / 字号 / 动效留给 1.99.49 —— 那三类的离格值吸附会改观感，
+> 和「删旧调色板」混在一版里，视觉回归无法二分定位。
+
+### 可见变化
+- **新增产品语义色 token**：`lib/ui/m3e/tokens/semantic_color_tokens.dart`，
+  `M3ESemantic` + `M3ETintPair`。装的是「承载信息、不由种子色派生」的那批颜色：
+  社团紫 / 声优蓝、收藏红、评分金、成功绿、统计三色、DLsite 标签青（亮暗分叉）、
+  在线元数据胶囊四对（艺术家 / 社团 / 下载量 / 中性）、恒暗提示层、封面渐变锚。
+  **为什么独立于 37 个角色**：用户把强调色改成绿色，社团胶囊仍必须是紫的，
+  否则「靠色相区分声优与社团」这条读卡规则当场失效。
+- **业务层字面 hex 30 → 0**：`detail_kit`(7，含 5 支调色板常量) /
+  `online_card_kit`(14) / `stats_view`(4) / `activity_overlay`(2) /
+  `settings_dialog`(1) / `rating_dialog`(1) / `fullscreen_player`(1)。
+- **`hintColor` 8 → 0**（`online_filter_marker` 2 / `stats_view` 4 /
+  `online_cover` 1 / `detail_drawer` 1）→ `onSurfaceVariant`。
+  这是一处**有意的观感微调**：旧 `#888B92` 比 M3E 的中性色浅，
+  统一后次要文字对比度略升（标签的 `+N` / 屏蔽态最明显）。
+- **`HikoColors` 调色板删除**（14 支）：业务层 6 处改 `onSurface` /
+  `onSurfaceVariant`；`theme.dart` 里自己的 `ink / line / card` 改
+  `scheme.onSurface / outlineVariant / surfaceContainerLow`。
+  `theme.dart` 从此只剩 `buildHikoTheme` + `parseHexColor`。
+- **最后一处 `showMenu` 收进 `M3EMenu`**：在线详情的创作者 / 声优胶囊。
+  旧实现是 36dp 行高 / 12sp / 无图标的 `PopupMenuItem`（审计 D-05 的第三套规格），
+  现在是 48dp 行 + 图标 + `destructive` 屏蔽行；三条动作（筛选 / 复制 / 屏蔽）
+  拆成独立方法，行为不变（筛选仍回 `onSelectCreator`、屏蔽仍写服务端黑名单）。
+  至此 `lib/ui` 业务层再无 `showMenu(` / `PopupMenuButton(` / 裸 `MenuAnchor(`。
+- **删 `DM Sans`**（两处声明）：这个字体从未打进包，声明它只让两端回退链多绕一层。
+  CJK 回退链（`Noto Sans SC/JP`）保留，Windows 缺字还要靠它。
+- **补 `scrollbarTheme` / `tooltipTheme`**（审计 D-08）：滚动条 6dp / 角 4 /
+  `onSurfaceVariant@45%`；Tooltip 反色面 + 角 4 + 12sp。
+
+### 刻意没动
+- **圆角 44 处字面值（28 处不在十档）、字号 56 处（12 处离格）、
+  裸 `Curves` 5 处、交互动画中的裸 `Duration` 约 8 处** → 1.99.49。
+  账本锁里 `_pendingInNextVersion` 就是这批清单，清一项搬一项。
+- **提示层仍是两套**（`activity_overlay` 的 `_ToastBanner` + `toast.dart`，
+  `M3ESnackbar` 未建）：本版只把它的色值收进语义表，合并路径是后续可选项。
+- **`TextField` 未统一、统计页布局未改、移动「更多」面板未换 `M3ESheet`**：
+  都属于「补件」而不是「清账」，按审计 Q1 的「用到才建」继续往后排。
+- **`context_menu.dart` 保留**：它服务专辑右键菜单与长按，是浮层菜单不是选择菜单。
+
+### 验证
+- `flutter test`：**889 passed / 2 skipped**（847 + 42 条新锁）。
+- `flutter analyze`：**42 条、0 error**（与基线一致，未新增）。
+- 新增：
+  - `test/ui/m3e/semantic_colors_test.dart`（14 条）：逐值锁核心语义色、
+    亮暗分叉、四对胶囊底/字互不相同、亮色对比度、恒暗提示层。
+  - `test/ui/style_ledger_lock_test.dart`（3 条）：**账本锁** ——
+    `lib/ui`（除 `m3e/` 与 `theme.dart` 桥）出现 `HikoColors` / `hintColor` /
+    `Color(0x` / `showMenu(` / `PopupMenuButton(` / `MenuAnchor(` 即失败；
+    另有一条「待清清单必须与仓库现状一致」，防止清单写了却没搬进锁。
+  - `test/ui/business_surface_style_lock_test.dart`（13 条）：按面锁
+    设置 / 在线 / 对话框 / 歌词 / 统计 / 提示层，既禁旧写法、也断言
+    「必须接到哪一支 token」（只禁不导，下次会被等价写法绕过去）。
+  - `test/ui/online_creator_menu_test.dart`（6 条）：`showMenu` → `M3EMenu`
+    之后三条动作仍生效（筛选回 kind+name、复制进剪贴板、屏蔽写黑名单）、
+    行高 48、无回调时不可点。
+  - `test/ui/m3e/theme_bridge_test.dart`（9 条）：`HikoColors` 不再出现、
+    `DM Sans` 不再声明、滚动条 / Tooltip 主题在位、CJK 回退链保留。
+- **已知债务（记录在案）**：DLsite 标签青 `#2E8A8F` 压在 `#E3F4F2` 上是 **3.58:1**，
+  未达小字 AA 的 4.5。这是 1.77 以来的既有配色，本版只做色值收口不改观感，
+  语义色测试按 ≥ 3:1 锁；真要提对比度时，改色值的同时把断言抬到 4.5。
+
+### 交付
+- 版本 `1.99.48+161`；Release：`hiko-v1.99.48-macos.zip` + `hiko-v1.99.48-android.apk`。
+- 下一项：`1.99.49` 收尾 —— 圆角 / 字号 / 动效 token 化，并把账本锁的
+  `_pendingInNextVersion` 三项搬进 `_forbidden`。

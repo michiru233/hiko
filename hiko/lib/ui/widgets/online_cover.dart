@@ -80,7 +80,7 @@ class OnlineCover extends StatelessWidget {
         child: Icon(
           Icons.music_note_outlined,
           size: 22,
-          color: theme.hintColor.withValues(alpha: 0.6),
+          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
         ),
       ),
     );

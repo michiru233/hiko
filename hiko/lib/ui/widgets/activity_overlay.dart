@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../m3e/m3e.dart';
+
 class ActivityProgress {
   const ActivityProgress({
     required this.label,
@@ -154,7 +156,7 @@ class _ActivityBanner extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: const Color(0xFF292735),
+                color: M3ESemantic.toastSurface,
                 borderRadius: BorderRadius.circular(10),
                 boxShadow: [
                   BoxShadow(
@@ -217,7 +219,7 @@ class _ToastBanner extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
               decoration: BoxDecoration(
-                color: const Color(0xFF292735),
+                color: M3ESemantic.toastSurface,
                 borderRadius: BorderRadius.circular(7),
                 boxShadow: [
                   BoxShadow(
@@ -232,7 +234,7 @@ class _ToastBanner extends StatelessWidget {
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: M3ESemantic.onToastSurface,
                   fontSize: 12,
                   decoration: TextDecoration.none,
                 ),

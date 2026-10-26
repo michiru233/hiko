@@ -6,7 +6,6 @@ import '../../utils/person_names.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
 import '../m3e/m3e.dart';
-import 'detail_kit.dart';
 
 /// 专辑卡片（M3E 内容面，1.99.28）。
 ///
@@ -127,11 +126,11 @@ class AlbumCard extends ConsumerWidget {
                           in splitVoiceNames(
                               normalizeVoiceSeparators(album.artist)))
                         _PersonPillMini(
-                            name: voice, color: hikoVoiceColor),
+                            name: voice, color: M3ESemantic.voiceTint),
                       if (_showCirclePill)
                         _PersonPillMini(
                             name: album.albumArtist,
-                            color: hikoCircleColor),
+                            color: M3ESemantic.circleTint),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -162,16 +161,16 @@ class AlbumCard extends ConsumerWidget {
                         for (final tag in album.tags.take(3))
                           _MetaPill(
                             text: tag,
-                            background: hikoTagBgColor
+                            background: M3ESemantic.tagBackground
                                 .withValues(alpha: colors.isDark ? 0.28 : 0.9),
-                            foreground: hikoTagFgColorOf(colors.isDark),
+                            foreground: M3ESemantic.tagForeground(colors.isDark),
                           ),
                       if (showScrapedTags && album.tags.length > 3)
                         _MetaPill(
                           text: '+${album.tags.length - 3}',
-                          background: hikoTagBgColor
+                          background: M3ESemantic.tagBackground
                               .withValues(alpha: colors.isDark ? 0.28 : 0.9),
-                          foreground: hikoTagFgColorOf(colors.isDark),
+                          foreground: M3ESemantic.tagForeground(colors.isDark),
                         ),
                     ],
                   ),

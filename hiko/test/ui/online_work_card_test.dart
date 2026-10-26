@@ -12,7 +12,6 @@ import 'package:hiko/data/settings_store.dart';
 import 'package:hiko/ui/m3e/m3e.dart';
 import 'package:hiko/ui/screens/online_screen.dart';
 import 'package:hiko/ui/theme.dart';
-import 'package:hiko/ui/widgets/detail_kit.dart';
 import 'package:hiko/ui/widgets/online_card_kit.dart';
 import 'package:hiko/ui/widgets/online_cover.dart';
 import 'package:hiko/ui/widgets/online_work_grid.dart';
@@ -665,7 +664,7 @@ void main() {
           for (final kind in OnlinePillKind.values)
             onlinePillColors(kind, isDark: isDark, scheme: scheme).fg,
           // 第六类：标签胶囊的青色
-          hikoTagFgColorOf(isDark),
+          M3ESemantic.tagForeground(isDark),
         ];
         expect(
           fgs.toSet().length,

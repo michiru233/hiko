@@ -10,7 +10,6 @@ import '../../data/online/online_models.dart';
 import '../../data/online/online_provider.dart';
 import '../../data/settings_store.dart';
 import '../widgets/confirm_dialog.dart';
-import '../widgets/detail_kit.dart' show hikoFavoriteColor;
 import '../widgets/context_menu.dart';
 import '../widgets/online_account_dialogs.dart';
 import '../widgets/online_appearance.dart';
@@ -297,7 +296,7 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                                         : Icons.bookmark_rounded,
                                     size: 14,
                                     color: playlist.isLiked
-                                        ? hikoFavoriteColor
+                                        ? M3ESemantic.favorite
                                         : m3e.colors.onSurfaceVariant,
                                   )
                                 : null,

@@ -1,30 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../data/settings_store.dart';
+import 'm3e/tokens/shape_tokens.dart';
 import 'transitions/fullscreen_player_route.dart';
-
-/// 主题：移植旧版 styles.css 的浅/深两套配色 + 6 强调色，
-/// 用 Material 3 ColorScheme.fromSeed 生成组件色，覆盖表面色保持原观感。
-class HikoColors {
-  // 浅色
-  static const lightBg = Color(0xFFF6F5F2);
-  static const lightInk = Color(0xFF20232A);
-  static const lightMuted = Color(0xFF888B92);
-  static const lightLine = Color(0xFFE6E3DE);
-  static const lightSidebar = Color(0xFFEFEEE9);
-  static const lightTrack = Color(0xFFE6E2DE);
-  static const lightCard = Colors.white;
-
-  // 深色
-  static const darkBg = Color(0xFF1D1F24);
-  static const darkInk = Color(0xFFE7E5E0);
-  static const darkMuted = Color(0xFF9A9AA1);
-  static const darkLine = Color(0xFF2E3138);
-  static const darkSidebar = Color(0xFF17181D);
-  static const darkTrack = Color(0xFF3A3D45);
-  static const darkCard = Color(0xFF23252C);
-
-}
 
 /// '#6559d8' → Color
 Color parseHexColor(String hex) {
@@ -33,6 +11,13 @@ Color parseHexColor(String hex) {
   return Color(int.tryParse(value, radix: 16) ?? 0xFF6559D8);
 }
 
+/// 旧主题桥：把 [AppSettings] 翻成一份 [ThemeData]，给尚未迁到 M3E 的
+/// Material 组件兜底（对话框、输入框、滚动条、Tooltip 等）。
+///
+/// **1.99.48 起这里不再有自己的调色板**：`HikoColors` 那 14 支写死的浅/深色
+/// 已全部删除，文字 / 分隔线 / 卡片面改为从 `ColorScheme` 的角色派生
+/// （见下方的 `ink / line / card`）。
+/// 业务代码需要颜色时只能用 M3E 角色或 `M3ESemantic`，不要再往这里加常量。
 ThemeData buildHikoTheme(AppSettings settings) {
   // 1.99.30：主题三态（light/dark/system）；system 走 platformDispatcher
   //（与 m3e_theme_builder.hikoBrightness 同语义，就地内联避免反向依赖）
@@ -59,9 +44,12 @@ ThemeData buildHikoTheme(AppSettings settings) {
   // 1.99.35：页面底色统一到 M3E surface（与 M3EAppBar/rail 同层），
   // 旧 darkBg/lightBg 与 fromSeed 派生色并存导致「顶条/顶栏/rail 三区三色」
   final bg = scheme.surface;
-  final ink = dark ? HikoColors.darkInk : HikoColors.lightInk;
-  final line = dark ? HikoColors.darkLine : HikoColors.lightLine;
-  final card = dark ? HikoColors.darkCard : HikoColors.lightCard;
+  // 1.99.48：旧 `HikoColors` 的 ink / line / card 三支改由角色派生 ——
+  // 它们本来就是 onSurface / outlineVariant / 内容面的同义复述，
+  // 单独存一份只会在换种子色时与 M3E 那半边错开。
+  final ink = scheme.onSurface;
+  final line = scheme.outlineVariant;
+  final card = scheme.surfaceContainerLow;
 
   final base = ThemeData(
     useMaterial3: true,
@@ -93,7 +81,9 @@ ThemeData buildHikoTheme(AppSettings settings) {
     textTheme: base.textTheme.apply(
       bodyColor: ink,
       displayColor: ink,
-      fontFamily: 'DM Sans',
+      // 1.99.48：删掉 `fontFamily: 'DM Sans'` —— 这个字体从未打进包，
+      // 声明它只让两端的回退链多绕一层（macOS 落到系统字、Android 落到
+      // 系统 CJK），实际形同虚设。回退链保留，Windows 的 CJK 缺字还要靠它。
       fontFamilyFallback: const ['Noto Sans SC', 'Noto Sans JP'],
     ),
     dividerColor: line,
@@ -115,7 +105,6 @@ ThemeData buildHikoTheme(AppSettings settings) {
         fontSize: 24,
         fontWeight: FontWeight.w500,
         color: scheme.onSurface,
-        fontFamily: 'DM Sans',
         fontFamilyFallback: const ['Noto Sans SC', 'Noto Sans JP'],
       ),
     ),
@@ -145,6 +134,29 @@ ThemeData buildHikoTheme(AppSettings settings) {
       foregroundColor: ink,
       elevation: 0,
       surfaceTintColor: Colors.transparent,
+    ),
+    // 1.99.48（审计 D-08）：桌面滚动条与 Tooltip 此前完全走 Material 默认 ——
+    // 亮色下滚动条是一条灰黑细线、Tooltip 的圆角与字号也和 M3E 不接。
+    // 这里按 M3E 的形状与反色面补两条，免得「只差这两个控件」看起来像两个应用。
+    scrollbarTheme: ScrollbarThemeData(
+      thickness: const WidgetStatePropertyAll(6),
+      radius: const Radius.circular(M3EShape.xs),
+      crossAxisMargin: 2,
+      thumbColor: WidgetStatePropertyAll(
+        scheme.onSurfaceVariant.withValues(alpha: 0.45),
+      ),
+    ),
+    tooltipTheme: TooltipThemeData(
+      decoration: BoxDecoration(
+        color: scheme.inverseSurface,
+        borderRadius: BorderRadius.circular(M3EShape.xs),
+      ),
+      textStyle: TextStyle(
+        color: scheme.onInverseSurface,
+        fontSize: 12,
+        fontFamilyFallback: const ['Noto Sans SC', 'Noto Sans JP'],
+      ),
+      waitDuration: const Duration(milliseconds: 400),
     ),
     snackBarTheme: SnackBarThemeData(
       backgroundColor: const Color(0xFF292735),

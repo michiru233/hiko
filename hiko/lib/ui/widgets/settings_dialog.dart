@@ -849,7 +849,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   width: 7,
                   height: 7,
                   decoration: const BoxDecoration(
-                    color: Color(0xFF4CAF50),
+                    color: M3ESemantic.success,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -1603,7 +1603,7 @@ String _displayFolder(String folder) {
 
 /// 设置页的统一文案（1.99.43）。
 ///
-/// 说明文字此前全是手写的 `fontSize: 10/10.5/11 + hintColor`，
+/// 说明文字此前全是手写的 `fontSize: 10/10.5/11 + 旧主题中性灰`，
 /// 同一页出现 5 档字号与 3 种灰度。这里收成一个入口：`bodySmall` +
 /// `onSurfaceVariant`；行标题与分组标题分别在 `_SettingRow` / `_sectionHeader`。
 extension _SettingsTypography on BuildContext {

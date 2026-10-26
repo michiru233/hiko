@@ -15,7 +15,6 @@ import '../../lyrics/lyrics_controller.dart';
 import '../../playback/playback_controller.dart';
 import '../../utils/time.dart';
 import '../lyrics/drawer_lyrics_view.dart';
-import '../theme.dart';
 import '../transitions/fullscreen_player_route.dart';
 import 'detail_kit.dart';
 import '../m3e/m3e.dart';
@@ -318,32 +317,16 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
                 runSpacing: 8,
                 children: [
                   if (work.circleName.isNotEmpty)
-                    Builder(
-                      builder: (pillContext) => HikoPersonPill(
-                        name: work.circleName,
-                        color: hikoCircleColor,
-                        onTap: widget.onSelectCreator == null
-                            ? null
-                            : () => unawaited(_showCreatorMenu(
-                                  pillContext,
-                                  name: work.circleName,
-                                  kind: OnlineCreatorKind.circle,
-                                )),
-                      ),
+                    _creatorPill(
+                      name: work.circleName,
+                      kind: OnlineCreatorKind.circle,
+                      color: M3ESemantic.circleTint,
                     ),
                   for (final name in work.vas)
-                    Builder(
-                      builder: (pillContext) => HikoPersonPill(
-                        name: name,
-                        color: hikoVoiceColor,
-                        onTap: widget.onSelectCreator == null
-                            ? null
-                            : () => unawaited(_showCreatorMenu(
-                                  pillContext,
-                                  name: name,
-                                  kind: OnlineCreatorKind.va,
-                                )),
-                      ),
+                    _creatorPill(
+                      name: name,
+                      kind: OnlineCreatorKind.va,
+                      color: M3ESemantic.voiceTint,
                     ),
                 ],
               ),
@@ -856,90 +839,79 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
 
   // ---------------------------------------------------------------- 交互
 
-  /// 声优 / 社团胶囊的点击菜单（1.97.0）：按此筛选 / 复制名字。
+  /// 创作者胶囊 + 它的菜单（1.99.48：仓库里最后一处 `showMenu` 收口）。
   ///
-  /// 菜单锚在胶囊自己的位置 —— `pillContext` 由外层 [Builder] 提供，
-  /// 用本 State 的 context 会把菜单钉到整个面板左上角去。
-  Future<void> _showCreatorMenu(
-    BuildContext pillContext, {
+  /// 以前是 `showMenu` + 三个 36dp / 12sp 的 `PopupMenuItem`，属于审计 D-05
+  /// 记的「三套菜单规格」之一。现在锚点、面板材质、行高、键盘都由
+  /// `M3EMenu` 负责，这里只声明三条动作：筛选、复制、屏蔽（destructive）。
+  ///
+  /// 没有 `onSelectCreator` 时胶囊不可点、也不出菜单 —— 与 1.97.0 的行为一致：
+  /// 只有「能筛选」的面才把这三个动作当作可用集合。
+  Widget _creatorPill({
     required String name,
     required OnlineCreatorKind kind,
-  }) async {
-    final box = pillContext.findRenderObject() as RenderBox?;
-    final overlay =
-        Overlay.of(pillContext).context.findRenderObject() as RenderBox?;
-    if (box == null || overlay == null || !pillContext.mounted) return;
-    final position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        box.localToGlobal(Offset.zero, ancestor: overlay),
-        box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
-      ),
-      Offset.zero & overlay.size,
-    );
+    required Color color,
+  }) {
     final isVa = kind == OnlineCreatorKind.va;
-    final action = await showMenu<String>(
-      context: pillContext,
-      position: position,
-      constraints: const BoxConstraints(minWidth: 140),
-      items: [
-        PopupMenuItem(
-          value: 'filter',
-          height: 36,
-          child: Text(
-            isVa ? '按此声优筛选' : '按此社团筛选',
-            style: const TextStyle(fontSize: 12),
+    final enabled = widget.onSelectCreator != null;
+    return M3EMenu(
+      minWidth: 168,
+      maxWidth: 240,
+      builder: (context, controller, _) => HikoPersonPill(
+        name: name,
+        color: color,
+        onTap: enabled ? () => controller.open() : null,
+      ),
+      children: <Widget>[
+        M3EMenuAction(
+          label: isVa ? '按此声优筛选' : '按此社团筛选',
+          leadingIcon: Icons.filter_alt_outlined,
+          onPressed: () => widget.onSelectCreator!(
+            OnlineCreatorFilter(kind: kind, name: name),
           ),
         ),
-        PopupMenuItem(
-          value: 'copy',
-          height: 36,
-          child: const Text('复制名字', style: TextStyle(fontSize: 12)),
+        M3EMenuAction(
+          label: '复制名字',
+          leadingIcon: Icons.copy_rounded,
+          onPressed: () => unawaited(_copyCreatorName(name)),
         ),
-        PopupMenuItem(
-          value: 'block',
-          height: 36,
-          child: Text(
-            isVa ? '屏蔽此声优' : '屏蔽此社团',
-            style: TextStyle(
-              fontSize: 12,
-              color: hikoFavoriteColor,
-            ),
-          ),
+        M3EMenuAction(
+          label: isVa ? '屏蔽此声优' : '屏蔽此社团',
+          leadingIcon: Icons.block_rounded,
+          destructive: true,
+          onPressed: () => unawaited(_blockCreator(name: name, kind: kind)),
         ),
       ],
     );
+  }
+
+  Future<void> _copyCreatorName(String name) async {
+    await Clipboard.setData(ClipboardData(text: name));
     if (!mounted) return;
-    switch (action) {
-      case 'filter':
-        widget.onSelectCreator!(
-          OnlineCreatorFilter(kind: kind, name: name),
+    ScaffoldMessenger.maybeOf(context)
+        ?.showSnackBar(SnackBar(content: Text('已复制 $name')));
+  }
+
+  /// 声优 / 社团黑名单（1.99.3）：与标签黑名单同一套机制，
+  /// 编进搜索关键字在服务端过滤；管理入口在设置 → 在线账号的黑名单对话框。
+  Future<void> _blockCreator({
+    required String name,
+    required OnlineCreatorKind kind,
+  }) async {
+    final isVa = kind == OnlineCreatorKind.va;
+    await ref.read(settingsProvider.notifier).addBlockedCreator(
+          OnlineCreatorBlock(
+            kind: isVa
+                ? OnlineCreatorBlock.kindVa
+                : OnlineCreatorBlock.kindCircle,
+            name: name,
+          ),
         );
-      case 'block':
-        // 声优 / 社团黑名单（1.99.3）：与标签黑名单同一套机制，
-        // 编进搜索关键字在服务端过滤；管理入口在设置 → 在线账号的黑名单对话框
-        await ref.read(settingsProvider.notifier).addBlockedCreator(
-              OnlineCreatorBlock(
-                kind: isVa
-                    ? OnlineCreatorBlock.kindVa
-                    : OnlineCreatorBlock.kindCircle,
-                name: name,
-              ),
-            );
-        if (mounted && pillContext.mounted) {
-          showHikoToast(
-            pillContext,
-            '已屏蔽${isVa ? '声优' : '社团'}「$name」，浏览与搜索不再出现 TA 的作品',
-          );
-        }
-      case 'copy':
-        await Clipboard.setData(ClipboardData(text: name));
-        if (mounted) {
-          ScaffoldMessenger.maybeOf(context)
-              ?.showSnackBar(SnackBar(content: Text('已复制 $name')));
-        }
-      default:
-        break;
-    }
+    if (!mounted) return;
+    showHikoToast(
+      context,
+      '已屏蔽${isVa ? '声优' : '社团'}「$name」，浏览与搜索不再出现 TA 的作品',
+    );
   }
 
   void _onTrackTap(
@@ -1101,11 +1073,11 @@ class OnlineFavoriteButton extends ConsumerWidget {
       ),
       // 已收藏：用品牌红整颗点亮（语义色表达不了「收藏」的红色语义）
       backgroundColor: highlighted
-          ? hikoFavoriteColor.withValues(alpha: isDark ? 0.16 : 0.08)
+          ? M3ESemantic.favorite.withValues(alpha: isDark ? 0.16 : 0.08)
           : null,
-      foregroundColor: highlighted ? hikoFavoriteColor : null,
+      foregroundColor: highlighted ? M3ESemantic.favorite : null,
       borderColor:
-          highlighted ? hikoFavoriteColor.withValues(alpha: 0.5) : null,
+          highlighted ? M3ESemantic.favorite.withValues(alpha: 0.5) : null,
       onPressed: () => unawaited(showPlaylistPicker(context, work: work)),
     );
     if (names.isEmpty) return button;
@@ -1128,7 +1100,6 @@ class _EditionChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
     final label = edition.isOriginal
         ? '${edition.lang}（原版）'
         : edition.lang;
@@ -1142,7 +1113,7 @@ class _EditionChip extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
-              color: (isDark ? HikoColors.darkMuted : HikoColors.lightMuted)
+              color: theme.colorScheme.onSurfaceVariant
                   .withValues(alpha: 0.5),
             ),
           ),
@@ -1160,7 +1131,7 @@ class _EditionChip extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: isDark ? HikoColors.darkInk : HikoColors.lightInk,
+                  color: theme.colorScheme.onSurface,
                 ),
               ),
             ],
@@ -1240,7 +1211,7 @@ class _FolderRowState extends State<_FolderRow> {
                   ),
                 ),
                 const SizedBox(width: 2),
-                const Icon(Icons.folder_rounded, size: 15, color: hikoRatingColor),
+                const Icon(Icons.folder_rounded, size: 15, color: M3ESemantic.rating),
                 const SizedBox(width: 8),
                 Expanded(
                   // 两行（1.99.12）：目录名与曲名同样会被挤截断

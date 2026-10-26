@@ -73,8 +73,8 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
         spacing: 8,
         runSpacing: 8,
         children: [
-          if (circle.isNotEmpty) pill('circle', circle, hikoCircleColor),
-          for (final name in voices) pill('voice', name, hikoVoiceColor),
+          if (circle.isNotEmpty) pill('circle', circle, M3ESemantic.circleTint),
+          for (final name in voices) pill('voice', name, M3ESemantic.voiceTint),
         ],
       ),
     );
@@ -172,8 +172,10 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                               const SizedBox(height: 6),
                               Text(
                                 '${normalizeVoiceSeparators(album.artist)} · ${album.rjCode ?? '本地导入'}',
-                                style: M3ETheme.of(context).type.labelMedium
-                                    .copyWith(color: theme.hintColor),
+                                style: M3ETheme.of(context).type.labelMedium.copyWith(
+                                    color: M3ETheme.of(context)
+                                        .colors
+                                        .onSurfaceVariant),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                               ),

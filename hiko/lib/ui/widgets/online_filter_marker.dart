@@ -23,7 +23,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../data/online/online_provider.dart';
-import 'detail_kit.dart';
+import '../m3e/m3e.dart';
 
 /// 标签筛选的可关闭标记（1.94.0 裁决 Q7=甲）。
 ///
@@ -47,11 +47,11 @@ class OnlineTagFilterMarker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final fg = hikoTagFgColorOf(isDark);
+    final fg = M3ESemantic.tagForeground(isDark);
     return Container(
       padding: const EdgeInsets.only(left: 4, right: 0),
       decoration: BoxDecoration(
-        color: hikoTagBgColor.withValues(alpha: isDark ? 0.2 : 0.8),
+        color: M3ESemantic.tagBackground.withValues(alpha: isDark ? 0.2 : 0.8),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
@@ -99,8 +99,8 @@ class OnlineCreatorFilterMarker extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final color = filter.kind == OnlineCreatorKind.va
-        ? hikoVoiceColor
-        : hikoCircleColor;
+        ? M3ESemantic.voiceTint
+        : M3ESemantic.circleTint;
     return Container(
       padding: const EdgeInsets.only(left: 4, right: 0),
       decoration: BoxDecoration(
@@ -147,7 +147,7 @@ class OnlineBlockedTagsMarker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = theme.hintColor;
+    final color = theme.colorScheme.onSurfaceVariant;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
@@ -250,7 +250,7 @@ class OnlineSimpleFilterMarker extends StatelessWidget {
   /// 可选前置图标（字幕 / 分级各一个，帮助区分同族标记）
   final IconData? icon;
 
-  /// 底色与文字色。默认取主题 hintColor（中性灰，与黑名单标记同族）。
+  /// 底色与文字色。默认取主题 `onSurfaceVariant`（中性色，与黑名单标记同族）。
   final Color? color;
 
   /// 同 [OnlineTagFilterMarker.maxTextWidth]。
@@ -259,7 +259,7 @@ class OnlineSimpleFilterMarker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final c = color ?? theme.hintColor;
+    final c = color ?? theme.colorScheme.onSurfaceVariant;
     return Container(
       padding: const EdgeInsets.only(left: 4, right: 0),
       decoration: BoxDecoration(

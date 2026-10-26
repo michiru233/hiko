@@ -42,5 +42,6 @@ export 'theme/m3e_theme_builder.dart';
 export 'tokens/color_tokens.dart';
 export 'tokens/elevation_tokens.dart';
 export 'tokens/motion_tokens.dart';
+export 'tokens/semantic_color_tokens.dart';
 export 'tokens/shape_tokens.dart';
 export 'tokens/type_tokens.dart';

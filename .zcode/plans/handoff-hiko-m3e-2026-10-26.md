@@ -8,11 +8,15 @@
 > 本文只写「怎么接、已经做了什么、下一步做什么」；逐条差距的完整证据见
 > `.zcode/plans/audit-hiko-m3e-coverage.md`（下称「审计」）。
 
-> **状态更新（1.99.47 发版后，2026-10-26）**：当前 `1.99.47+160`。
+> **状态更新（1.99.48 发版后，2026-10-26）**：当前 `1.99.48+161`。
 > `M3EMenu`、`M3EDialog`、设置页、详情两端、在线三面、播放页尾部与歌词、
-> 首页次要区与桌面收尾均已完成；基线 **847 passed / 2 skipped**、analyze **42 条 0 error**。
-> 下一步是 **1.99.48 清账**（`HikoColors` / `hintColor` / 字面 hex / 数字圆角 /
-> 裸 `Duration`·`Curve`、删旧组件与 `DM Sans`、补 grep 锁与业务面样式锁）。
+> 首页次要区与桌面收尾均已完成；**清账前半也已完成**（`HikoColors` 删除、
+> 语义色 token 落地、业务层字面 hex 与 `hintColor` 归零、最后一处 `showMenu`
+> 收进 `M3EMenu`、删 `DM Sans`、补滚动条 / Tooltip 主题、账本锁与业务面锁上线）。
+> 基线 **889 passed / 2 skipped**、analyze **42 条 0 error**。
+> 下一步是 **1.99.49 收尾**：圆角（44 处字面值 / 28 处离格）、字号（56 处 / 12 处离格）、
+> 动效（裸 `Curves` 5 处、交互动画里的裸 `Duration` 约 8 处）token 化，
+> 并把 `test/ui/style_ledger_lock_test.dart` 的 `_pendingInNextVersion` 三项搬进 `_forbidden`。
 > 全量交接书见 `.zcode/plans/handover-hiko-project-2026-10-26.md`，
 > 可直接粘给新 agent 的提示词见 `.zcode/plans/prompt-hiko-next-agent-2026-10-26.md`。
 > 下面 §1–§3 仍是 1.99.39 视角的清单，逐版状态以

@@ -1735,11 +1735,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// 1.77 详情页胶囊回传筛选的可关闭标记（社团紫 / 声优蓝）
   ///
-  /// 1.99.47：色值改用 `hikoCircleColor` / `hikoVoiceColor`（页面里不再有字面 hex），
+  /// 1.99.47：色值改用 `M3ESemantic.circleTint` / `M3ESemantic.voiceTint`（页面里不再有字面 hex），
   /// 形状收到全圆 + `labelMedium`；关闭钮走 `M3EPressable`（原来是自己套 InkWell）。
   Widget _buildPersonFilterChip(ThemeData theme) {
     final isCircle = _personFilterKind == 'circle';
-    final color = isCircle ? hikoCircleColor : hikoVoiceColor;
+    final color = isCircle ? M3ESemantic.circleTint : M3ESemantic.voiceTint;
     final m3e = M3ETheme.of(context);
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),

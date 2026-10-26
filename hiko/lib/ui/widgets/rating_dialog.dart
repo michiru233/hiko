@@ -50,7 +50,7 @@ class _RatingDialog extends StatelessWidget {
                           : Icons.star_outline_rounded,
                       size: 34,
                       // 品牌金黄：不随主题种子变（1.99.48 统一收口）
-                      color: const Color(0xFFE8B33C),
+                      color: M3ESemantic.rating,
                     ),
                   ),
                 ),

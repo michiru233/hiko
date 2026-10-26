@@ -16,8 +16,6 @@ import 'package:flutter/material.dart';
 
 import '../m3e/m3e.dart';
 
-import '../theme.dart';
-
 /// 一类胶囊的底色 / 字色（+ 是否加粗）
 class OnlinePillColors {
   const OnlinePillColors({
@@ -60,6 +58,9 @@ enum OnlinePillKind {
 ///
 /// 只有 `rj` 走实底反白：在线卡片上它是最能定位作品的一枚，
 /// 也是本地卡面一直以来的处理方式（主色实底 + 反白 + 加粗）。
+///
+/// 1.99.48：四对色值搬进 [M3ESemantic]（产品语义色，不随种子色变）；
+/// 这里只做「语义类目 → 色对」的映射，不再持有任何色值。
 OnlinePillColors onlinePillColors(
   OnlinePillKind kind, {
   required bool isDark,
@@ -67,28 +68,14 @@ OnlinePillColors onlinePillColors(
 }) {
   switch (kind) {
     case OnlinePillKind.artist:
-      // 蓝：与详情页的声优胶囊同色相（`hikoVoiceColor` 0xFF90CAF9）
-      return isDark
-          ? const OnlinePillColors(
-              bg: Color(0x3390CAF9),
-              fg: Color(0xFFB6DBFC),
-            )
-          : const OnlinePillColors(
-              bg: Color(0xFFE1EFFC),
-              fg: Color(0xFF2C6DA8),
-            );
+      // 蓝：与详情页的声优胶囊同一支（[M3ESemantic.voiceTint]）
+      final tint = M3ESemantic.artistPill(isDark);
+      return OnlinePillColors(bg: tint.background, fg: tint.foreground);
     case OnlinePillKind.circle:
-      // 琥珀金：与上面那支紫的社团胶囊（详情页 `hikoCircleColor`）刻意错开，
+      // 琥珀金：与详情页那支紫的社团胶囊刻意错开，
       // 免得「卡片上一排紫胶囊」和主色实底的作品号糊成一片
-      return isDark
-          ? const OnlinePillColors(
-              bg: Color(0x33E8C87A),
-              fg: Color(0xFFEFD79B),
-            )
-          : const OnlinePillColors(
-              bg: Color(0xFFFBF0DA),
-              fg: Color(0xFF8F6410),
-            );
+      final tint = M3ESemantic.circlePill(isDark);
+      return OnlinePillColors(bg: tint.background, fg: tint.foreground);
     case OnlinePillKind.rj:
       return OnlinePillColors(
         bg: scheme.primary.withValues(alpha: 0.9),
@@ -97,27 +84,13 @@ OnlinePillColors onlinePillColors(
       );
     case OnlinePillKind.duration:
       // 中性灰：它就是个数字，不该跟任何一支色相抢注意力
-      return isDark
-          ? const OnlinePillColors(
-              bg: Color(0x0FFFFFFF),
-              fg: HikoColors.darkMuted,
-            )
-          : const OnlinePillColors(
-              bg: Color(0x0D000000),
-              fg: HikoColors.lightMuted,
-            );
+      final tint = M3ESemantic.neutralPill(isDark);
+      return OnlinePillColors(bg: tint.background, fg: tint.foreground);
     case OnlinePillKind.download:
       // 玫红：与琥珀金同为暖色但色相差得够开（40° vs 335°），
       // 也和「青色标签」「蓝色艺术家」不会看混
-      return isDark
-          ? const OnlinePillColors(
-              bg: Color(0x33E88DA8),
-              fg: Color(0xFFF0AFC0),
-            )
-          : const OnlinePillColors(
-              bg: Color(0xFFFCE9EF),
-              fg: Color(0xFFA8425F),
-            );
+      final tint = M3ESemantic.downloadPill(isDark);
+      return OnlinePillColors(bg: tint.background, fg: tint.foreground);
   }
 }
 

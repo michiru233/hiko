@@ -196,14 +196,14 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
               if (circle.isNotEmpty)
                 HikoPersonPill(
                   name: circle,
-                  color: hikoCircleColor,
+                  color: M3ESemantic.circleTint,
                   onTap: () => Navigator.of(context)
                       .pop<(String, String)> (('circle', circle)),
                 ),
               for (final name in voices)
                 HikoPersonPill(
                   name: name,
-                  color: hikoVoiceColor,
+                  color: M3ESemantic.voiceTint,
                   onTap: () => Navigator.of(context)
                       .pop<(String, String)> (('voice', name)),
                 ),
