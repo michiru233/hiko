@@ -10,6 +10,7 @@ import '../../data/online/online_models.dart';
 import '../../data/online/online_provider.dart';
 import '../../data/settings_store.dart';
 import '../widgets/confirm_dialog.dart';
+import '../widgets/detail_kit.dart' show hikoFavoriteColor;
 import '../widgets/context_menu.dart';
 import '../widgets/online_account_dialogs.dart';
 import '../widgets/online_appearance.dart';
@@ -98,19 +99,14 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
             padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
             child: Row(
               children: [
-                ChoiceChip(
-                  avatar: Icon(
+                M3EChip(
+                  label: '离线 ${ref.watch(offlineIndexListProvider).length}',
+                  leading: Icon(
                     Icons.offline_pin_rounded,
-                    size: 12,
+                    size: 14,
                     color: theme.colorScheme.primary,
                   ),
-                  label: Text(
-                    '离线 ${ref.watch(offlineIndexListProvider).length}',
-                    style: const TextStyle(fontSize: 11),
-                  ),
-                  selected: false,
-                  visualDensity: VisualDensity.compact,
-                  onSelected: (_) => setState(() {
+                  onTap: () => setState(() {
                     _playlistId = _offlineTab;
                     _page = 1;
                   }),
@@ -241,6 +237,7 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
   ) {
     final pad = widget.isMobile ? 16.0 : 48.0;
     final selected = _playlistById(index, _playlistId);
+    final m3e = M3ETheme.of(context);
 
     return Padding(
       padding: EdgeInsets.fromLTRB(pad, 2, pad, 8),
@@ -256,21 +253,18 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                     children: [
                       Padding(
                         padding: const EdgeInsets.only(right: 6),
-                        child: ChoiceChip(
-                          avatar: Icon(
+                        child: M3EChip(
+                          label:
+                              '离线 ${ref.watch(offlineIndexListProvider).length}',
+                          leading: Icon(
                             Icons.offline_pin_rounded,
-                            size: 12,
+                            size: 14,
                             color: _playlistId == _offlineTab
-                                ? theme.colorScheme.primary
-                                : null,
-                          ),
-                          label: Text(
-                            '离线 ${ref.watch(offlineIndexListProvider).length}',
-                            style: const TextStyle(fontSize: 11),
+                                ? m3e.colors.onSecondaryContainer
+                                : m3e.colors.onSurfaceVariant,
                           ),
                           selected: _playlistId == _offlineTab,
-                          visualDensity: VisualDensity.compact,
-                          onSelected: (_) => setState(() {
+                          onTap: () => setState(() {
                             _playlistId = _offlineTab;
                             _page = 1;
                             _resetScroll();
@@ -280,14 +274,10 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                       if (_playlistId != _offlineTab) ...[
                       Padding(
                         padding: const EdgeInsets.only(right: 6),
-                        child: ChoiceChip(
-                          label: Text(
-                            '全部 ${index.countOf(null)}',
-                            style: const TextStyle(fontSize: 11),
-                          ),
+                        child: M3EChip(
+                          label: '全部 ${index.countOf(null)}',
                           selected: _playlistId == null,
-                          visualDensity: VisualDensity.compact,
-                          onSelected: (_) => setState(() {
+                          onTap: () => setState(() {
                             _playlistId = null;
                             _page = 1;
                             _resetScroll();
@@ -297,25 +287,22 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                       for (final playlist in index.playlists)
                         Padding(
                           padding: const EdgeInsets.only(right: 6),
-                          child: ChoiceChip(
-                            avatar: playlist.isSystem
+                          child: M3EChip(
+                            label:
+                                '${playlist.displayName} ${index.countOf(playlist.id)}',
+                            leading: playlist.isSystem
                                 ? Icon(
                                     playlist.isLiked
                                         ? Icons.favorite_rounded
                                         : Icons.bookmark_rounded,
-                                    size: 12,
+                                    size: 14,
                                     color: playlist.isLiked
-                                        ? const Color(0xFFD34C44)
-                                        : null,
+                                        ? hikoFavoriteColor
+                                        : m3e.colors.onSurfaceVariant,
                                   )
                                 : null,
-                            label: Text(
-                              '${playlist.displayName} ${index.countOf(playlist.id)}',
-                              style: const TextStyle(fontSize: 11),
-                            ),
                             selected: _playlistId == playlist.id,
-                            visualDensity: VisualDensity.compact,
-                            onSelected: (_) => setState(() {
+                            onTap: () => setState(() {
                               _playlistId = playlist.id;
                               _page = 1;
                               _resetScroll();
@@ -383,7 +370,7 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                   _statusLine(index, favorites, selected),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: theme.hintColor),
+                  style: TextStyle(fontSize: 11, color: M3ETheme.of(context).colors.onSurfaceVariant),
                 ),
               ),
               const SizedBox(width: 8),
@@ -484,7 +471,7 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                                 Icon(
                                   Icons.cloud_off_outlined,
                                   size: 30,
-                                  color: theme.hintColor,
+                                  color: M3ETheme.of(context).colors.onSurfaceVariant,
                                 ),
                                 const SizedBox(height: 10),
                                 Text(
@@ -492,17 +479,19 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     fontSize: 12,
-                                    color: theme.hintColor,
+                                    color: M3ETheme.of(context).colors.onSurfaceVariant,
                                   ),
                                 ),
                                 const SizedBox(height: 14),
-                                OutlinedButton(
+                                M3EButton(
+                                  label: '重试',
+                                  variant: M3EButtonVariant.outlined,
+                                  size: M3EButtonSize.small,
                                   onPressed: () => unawaited(
                                     ref
                                         .read(onlineFavoritesProvider.notifier)
                                         .refresh(),
                                   ),
-                                  child: const Text('重试'),
                                 ),
                               ],
                             ),
@@ -519,7 +508,7 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                               Icon(
                                 Icons.bookmark_border_rounded,
                                 size: 30,
-                                color: theme.hintColor,
+                                color: M3ETheme.of(context).colors.onSurfaceVariant,
                               ),
                               const SizedBox(height: 10),
                               Text(
@@ -532,7 +521,7 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
                                 style: TextStyle(
                                   fontSize: 12,
                                   height: 1.7,
-                                  color: theme.hintColor,
+                                  color: M3ETheme.of(context).colors.onSurfaceVariant,
                                 ),
                               ),
                             ],
@@ -606,18 +595,22 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.cloud_off_outlined, size: 30, color: theme.hintColor),
+              Icon(Icons.cloud_off_outlined, size: 30, color: M3ETheme.of(context).colors.onSurfaceVariant),
               const SizedBox(height: 10),
               Text(
                 '同步失败：${favorites.error}',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: theme.hintColor),
+                style: M3ETheme.of(context).type.bodyMedium.copyWith(
+                      color: M3ETheme.of(context).colors.onSurfaceVariant,
+                    ),
               ),
               const SizedBox(height: 14),
-              OutlinedButton(
+              M3EButton(
+                label: '重试',
+                variant: M3EButtonVariant.outlined,
+                size: M3EButtonSize.small,
                 onPressed: () =>
                     unawaited(ref.read(onlineFavoritesProvider.notifier).refresh()),
-                child: const Text('重试'),
               ),
             ],
           ),
@@ -629,14 +622,14 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.bookmark_border_rounded, size: 30, color: theme.hintColor),
+            Icon(Icons.bookmark_border_rounded, size: 30, color: M3ETheme.of(context).colors.onSurfaceVariant),
             const SizedBox(height: 10),
             Text(
               _playlistId == null
                   ? '还没有收藏任何作品\n在在线作品的详情页点「收藏」就能加入歌单'
                   : '这个歌单还是空的',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, height: 1.7, color: theme.hintColor),
+              style: TextStyle(fontSize: 12, height: 1.7, color: M3ETheme.of(context).colors.onSurfaceVariant),
             ),
           ],
         ),
@@ -842,14 +835,18 @@ class _LoginGuide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final m3e = M3ETheme.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.bookmark_border_rounded, size: 34, color: theme.hintColor),
+            Icon(
+              Icons.bookmark_border_rounded,
+              size: 34,
+              color: m3e.colors.onSurfaceVariant,
+            ),
             const SizedBox(height: 14),
             const Text(
               '在线收藏',
@@ -860,19 +857,25 @@ class _LoginGuide extends StatelessWidget {
               '收藏存在你的 asmr.one 账号里（歌单体系），\n'
               '登录后和网页版、手机版看到的是同一份。',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11.5, height: 1.8, color: theme.hintColor),
+              style: m3e.type.bodySmall.copyWith(
+                height: 1.8,
+                color: m3e.colors.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 6),
             Text(
               '可以按「未听 / 已听」这类状态建多个歌单来分类管理。',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, height: 1.7, color: theme.hintColor),
+              style: m3e.type.bodySmall.copyWith(
+                height: 1.7,
+                color: m3e.colors.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 18),
-            FilledButton.icon(
+            M3EButton(
+              label: '登录 asmr.one',
+              icon: const Icon(Icons.login_rounded),
               onPressed: onLogin,
-              icon: const Icon(Icons.login_rounded, size: 16),
-              label: const Text('登录 asmr.one', style: TextStyle(fontSize: 12)),
             ),
           ],
         ),

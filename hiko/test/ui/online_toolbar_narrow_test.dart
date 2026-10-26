@@ -54,7 +54,9 @@ void main() {
     }
 
     expect(find.byType(OnlineScreen), findsOneWidget);
-    expect(find.byType(FilterChip), findsOneWidget, reason: '字幕筛选');
-    expect(find.byType(M3EChip), findsNWidgets(2), reason: '排序 + Aa');
+    // 1.99.45：预设两枚 + 字幕 + 排序 + Aa，整页胶囊统一成 5 枚 M3EChip
+    expect(find.byType(M3EChip), findsNWidgets(5));
+    expect(find.byType(FilterChip), findsNothing);
+    expect(find.byType(ChoiceChip), findsNothing);
   });
 }

@@ -4308,3 +4308,39 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 ### 交付
 - 版本 `1.99.44+157`；Release：`hiko-v1.99.44-macos.zip` + `hiko-v1.99.44-android.apk`。
 - 下一项：`1.99.45` 在线三面（浏览 / 收藏 / 卡片 / 分页）。
+
+## 1.99.45（2026-10-26）：在线三面（浏览 / 收藏 / 卡片 / 分页）
+
+### 可见变化
+- 新增 `M3ESearchBar`：40/48dp 全圆、`surfaceContainerHigh`、无描边、前置搜索图标 +
+  有字才出现的清除钮；内部仍是 `TextField`（IME/选区交给框架）。
+- **在线卡换成本地卡同一件材质**：`M3ECard`（16 圆角、`filled` =
+  `surfaceContainerHighest`、零投影、内边距 4）+ 封面 12（嵌套规则）+ 标题
+  `titleSmall`；选中态从「primary 描边」改成「`secondaryContainer` 底」，
+  与本地卡的多选态同构。旧在线卡的 `level1` 阴影与 `surfaceContainerLow`
+  一并消失（审计 C-05）。
+- 元数据胶囊从 10sp / 6dp 收到 11sp / 4dp（`M3EShape.xs`），与 `HikoTagChip` 同档。
+- 工具栏：预设（热门/最新）、字幕筛选、搜索历史全部换 `M3EChip`；搜索框换
+  `M3ESearchBar`；未登录的账号入口换 `M3EButton.tonal`。
+- 分页条：四个箭头 `IconButton` → `M3EIconButton`；页码从 Material `TextButton`
+  换成 `M3EPressable` 胶囊（`secondaryContainer` 选中、`labelMedium`）；
+  顶部分隔线换 `outlineVariant`。
+  **没有换成 `M3EToolbar`**：那条是「64dp 浮动工具条」，而分页条是贴底的固定条，
+  套上去会变成一颗悬空药丸 —— 手写这条偏离已在计划里显式记录。
+- 在线收藏：离线 / 全部 / 歌单三组 `ChoiceChip` → `M3EChip`（系统歌单保留红心/书签
+  前导图标）；登录引导与错误态换 M3E 字阶 + `M3EButton`。
+- 在线面 `hintColor` 22 处 → 0；空态/错误态文案换 `bodyMedium` + `onSurfaceVariant`。
+
+### 验证
+- `flutter test`：**840 passed / 2 skipped**（834 + 3 条搜索框 + 1 条卡片封面圆角 +
+  2 条在线面源码锁）。
+- `flutter analyze`：**42 条、0 error**。
+- 新增 `test/ui/m3e/m3e_search_bar_test.dart`（壳/回调/清除钮）、
+  `test/ui/online_surfaces_lock_test.dart`（在线面禁 Material chip/按钮/hintColor +
+  卡片必须 M3ECard/16/封面 12/零 level1）。
+- 更新：`online_work_card_test` 的材质组（3 条，改用 M3ECard 断言）、
+  `online_pager_test`（箭头类型）、`online_toolbar_narrow_test`（胶囊从 3 枚变 5 枚）。
+
+### 交付
+- 版本 `1.99.45+158`；Release：`hiko-v1.99.45-macos.zip` + `hiko-v1.99.45-android.apk`。
+- 下一项：`1.99.46` 播放页尾部 + 歌词（音量 `M3ESlider`、曲目 sheet、歌词字阶）。

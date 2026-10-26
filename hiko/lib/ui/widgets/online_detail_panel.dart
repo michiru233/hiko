@@ -306,7 +306,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
               _subtitle(work),
               style: TextStyle(
                 fontSize: 12 * textScale,
-                color: theme.hintColor,
+                color: M3ETheme.of(context).colors.onSurfaceVariant,
               ),
             ),
             // 社团（紫）/ 声优（蓝）胶囊：1.97.0 起可点 → 弹「按此筛选 / 复制名字」
@@ -526,10 +526,10 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Text(
             '服务器未返回文件',
-            style: TextStyle(
-              fontSize: 12 * _textScale,
-              color: Theme.of(context).hintColor,
-            ),
+            style: M3ETheme.of(context).type.bodyMedium.copyWith(
+                  fontSize: 12 * _textScale,
+                  color: M3ETheme.of(context).colors.onSurfaceVariant,
+                ),
           ),
         ),
       ];
@@ -1236,7 +1236,7 @@ class _FolderRowState extends State<_FolderRow> {
                   child: Icon(
                     Icons.keyboard_arrow_right_rounded,
                     size: 16,
-                    color: theme.hintColor,
+                    color: M3ETheme.of(context).colors.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(width: 2),
@@ -1280,7 +1280,7 @@ class _FolderRowState extends State<_FolderRow> {
                         : ''}',
                     style: TextStyle(
                       fontSize: 10 * textScale,
-                      color: theme.hintColor,
+                      color: M3ETheme.of(context).colors.onSurfaceVariant,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
                   ),
@@ -1315,7 +1315,6 @@ class _FileRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final textScale = HikoDetailTextScale.of(context);
     final size = _sizeLabel(track.size);
 
@@ -1339,7 +1338,7 @@ class _FileRow extends ConsumerWidget {
                     ? Icons.description_rounded
                     : Icons.movie_rounded,
                 size: 20,
-                color: theme.hintColor,
+                color: M3ETheme.of(context).colors.onSurfaceVariant,
               ),
             ),
           );
@@ -1374,7 +1373,7 @@ class _FileRow extends ConsumerWidget {
                   size,
                   style: TextStyle(
                     fontSize: 10 * textScale,
-                    color: theme.hintColor,
+                    color: M3ETheme.of(context).colors.onSurfaceVariant,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
@@ -1387,7 +1386,7 @@ class _FileRow extends ConsumerWidget {
                         ? Icons.notes_rounded
                         : Icons.open_in_new_rounded,
                 size: 13,
-                color: theme.hintColor,
+                color: M3ETheme.of(context).colors.onSurfaceVariant,
               ),
             ],
           ),
@@ -1405,25 +1404,29 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off_outlined, size: 30, color: theme.hintColor),
+            Icon(Icons.cloud_off_outlined, size: 30, color: M3ETheme.of(context).colors.onSurfaceVariant),
             const SizedBox(height: 12),
             Text(
               message,
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 12 * HikoDetailTextScale.of(context),
-                color: theme.hintColor,
+                color: M3ETheme.of(context).colors.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 14),
-            OutlinedButton(onPressed: onRetry, child: const Text('重试')),
+            M3EButton(
+              label: '重试',
+              variant: M3EButtonVariant.outlined,
+              size: M3EButtonSize.small,
+              onPressed: onRetry,
+            ),
           ],
         ),
       ),

@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hiko/data/online/online_favorites.dart';
 import 'package:hiko/data/online/online_models.dart';
 import 'package:hiko/data/settings_store.dart';
+import 'package:hiko/ui/m3e/m3e.dart';
 import 'package:hiko/ui/screens/online_screen.dart';
 import 'package:hiko/ui/theme.dart';
 import 'package:hiko/ui/widgets/detail_kit.dart';
@@ -40,27 +41,30 @@ void main() {
       OnlineWork(id: id, title: title, circleName: 'サークル');
 
   /// 造一个带标签的作品。`withId: false` 用来模拟服务端只给名字的异常形态
-  OnlineWork tagged(List<String> names, {bool withId = true, int id = 1657200}) =>
-      OnlineWork(
-        id: id,
-        title: '测试作品',
-        circleName: 'サークル',
-        tags: [
-          for (var i = 0; i < names.length; i++)
-            OnlineTag(id: withId ? 100 + i : 0, name: names[i]),
-        ],
-      );
+  OnlineWork tagged(
+    List<String> names, {
+    bool withId = true,
+    int id = 1657200,
+  }) => OnlineWork(
+    id: id,
+    title: '测试作品',
+    circleName: 'サークル',
+    tags: [
+      for (var i = 0; i < names.length; i++)
+        OnlineTag(id: withId ? 100 + i : 0, name: names[i]),
+    ],
+  );
 
   /// 各条元数据都齐的作品：两个声优 + 社团 + RJ号 + 2小时25分钟 + 1.2万下载
   OnlineWork fullWork({int id = 1657200}) => OnlineWork(
-        id: id,
-        title: '测试作品',
-        circleName: 'サークル',
-        rjCode: 'RJ01318014',
-        durationSeconds: 145 * 60,
-        dlCount: 12345,
-        vas: const ['声优A', '声优B'],
-      );
+    id: id,
+    title: '测试作品',
+    circleName: 'サークル',
+    rjCode: 'RJ01318014',
+    durationSeconds: 145 * 60,
+    dlCount: 12345,
+    vas: const ['声优A', '声优B'],
+  );
 
   /// 宿主给一个**足够高**的框：卡片高度现在由内容决定（瀑布流），
   /// 撑不满只是留白，撑过头才会当场 `RenderFlex overflowed`。
@@ -78,9 +82,12 @@ void main() {
       );
 
   /// 覆盖收藏索引（免去真实登录与网络）
-  Widget hostWithFavorites(Widget child, OnlineFavorites index) => ProviderScope(
+  Widget hostWithFavorites(Widget child, OnlineFavorites index) =>
+      ProviderScope(
         overrides: [
-          onlineFavoritesProvider.overrideWith((ref) => _StubFavorites(ref, index)),
+          onlineFavoritesProvider.overrideWith(
+            (ref) => _StubFavorites(ref, index),
+          ),
         ],
         child: MaterialApp(
           theme: buildHikoTheme(const AppSettings()),
@@ -95,9 +102,7 @@ void main() {
 
   group('封面清晰度（1.93.0 回归锁）', () {
     testWidgets('卡片请求的是原图（type=main），不是 240x240 缩略图', (tester) async {
-      await tester.pumpWidget(
-        host(OnlineWorkCard(work: work(), onTap: () {})),
-      );
+      await tester.pumpWidget(host(OnlineWorkCard(work: work(), onTap: () {})));
       await tester.pump();
       await tester.pump();
 
@@ -117,9 +122,7 @@ void main() {
     });
 
     testWidgets('同一个作品只请求一个封面地址（磁盘缓存只存一份）', (tester) async {
-      await tester.pumpWidget(
-        host(OnlineWorkCard(work: work(), onTap: () {})),
-      );
+      await tester.pumpWidget(host(OnlineWorkCard(work: work(), onTap: () {})));
       await tester.pump();
       await tester.pump();
 
@@ -132,9 +135,7 @@ void main() {
     });
 
     testWidgets('封面是精确的 1:1（1.99.21：不再靠内边距凑那 8px 余量）', (tester) async {
-      await tester.pumpWidget(
-        host(OnlineWorkCard(work: work(), onTap: () {})),
-      );
+      await tester.pumpWidget(host(OnlineWorkCard(work: work(), onTap: () {})));
       await tester.pump();
 
       // 固定高度的年代封面是 `Expanded`，只能靠「预算里的 8px 余量」间接控高度，
@@ -145,60 +146,76 @@ void main() {
     });
   });
 
-  group('卡面材质（1.99.30 M3E 色调面）', () {
-    testWidgets('卡面是不透明色调面（surfaceContainerLow），玻璃不得回流', (tester) async {
-      await tester.pumpWidget(
-        host(OnlineWorkCard(work: work(), onTap: () {})),
-      );
+  group('卡面材质（1.99.45：与本地 AlbumCard 同一件 M3ECard）', () {
+    testWidgets('16 圆角 + surfaceContainerHighest + 零投影', (tester) async {
+      await tester.pumpWidget(host(OnlineWorkCard(work: work(), onTap: () {})));
       await tester.pump();
 
-      // 找卡面上的 DecoratedBox：底色必须是 M3E surfaceContainerLow
-      final decor = tester.widgetList<DecoratedBox>(
-        find.descendant(
-          of: find.byType(OnlineWorkCard),
-          matching: find.byType(DecoratedBox),
-        ),
-      ).map((d) => d.decoration as BoxDecoration).toList();
+      final card = tester.widget<M3ECard>(find.byType(M3ECard));
+      expect(card.radius, M3EShape.lg, reason: '与本地卡同为 16');
+
+      final colors = M3ETheme.of(tester.element(find.byType(M3ECard))).colors;
+      final deco =
+          tester
+                  .widget<DecoratedBox>(
+                    find
+                        .descendant(
+                          of: find.byType(M3ECard),
+                          matching: find.byType(DecoratedBox),
+                        )
+                        .first,
+                  )
+                  .decoration
+              as BoxDecoration;
       expect(
-        decor.any((d) =>
-            d.color != null &&
-            d.color != Colors.transparent &&
-            d.borderRadius != null),
-        isTrue,
-        reason: '在线卡必须有不透明色调面，'
-            '之前它是纯透明 Container（只有选中态一条描边）',
+        deco.color,
+        colors.surfaceContainerHighest,
+        reason: '与本地卡同一色阶（filled），不再用旧的 surfaceContainerLow',
+      );
+      expect(
+        deco.boxShadow ?? const <BoxShadow>[],
+        isEmpty,
+        reason: '内容卡零投影：层深靠色阶（审计 C-05）',
       );
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('选中态加 primary 描边，未选中无描边', (tester) async {
-      Widget card(bool selected) => host(
-        OnlineWorkCard(work: work(), onTap: () {}, selected: selected),
-      );
+    testWidgets('封面 12 圆角（16 − 4 内边距，嵌套规则）', (tester) async {
+      await tester.pumpWidget(host(OnlineWorkCard(work: work(), onTap: () {})));
+      await tester.pump();
 
-      Color? cardBorder(WidgetTester tester) {
-        for (final d in tester.widgetList<DecoratedBox>(
-          find.descendant(
-            of: find.byType(OnlineWorkCard),
-            matching: find.byType(DecoratedBox),
-          ),
-        )) {
-          final deco = d.decoration as BoxDecoration;
-          if (deco.border is Border) return (deco.border as Border).top.color;
-        }
-        return null;
-      }
+      // M3ECard 自己也有一层 16 圆角的 ClipRRect，所以从封面往上找
+      final clip = tester.widget<ClipRRect>(
+        find
+            .ancestor(
+              of: find.byType(AspectRatio).first,
+              matching: find.byType(ClipRRect),
+            )
+            .first,
+      );
+      expect(clip.borderRadius, BorderRadius.circular(M3EShape.md));
+    });
+
+    testWidgets('选中态用 secondaryContainer 底（与本地卡同构，不靠描边）', (tester) async {
+      Widget card(bool selected) =>
+          host(OnlineWorkCard(work: work(), onTap: () {}, selected: selected));
 
       await tester.pumpWidget(card(false));
       await tester.pump();
-      final resting = cardBorder(tester);
+      final colors = M3ETheme.of(tester.element(find.byType(M3ECard))).colors;
+      expect(
+        tester.widget<M3ECard>(find.byType(M3ECard)).color,
+        isNull,
+        reason: '常态不覆写底色',
+      );
 
       await tester.pumpWidget(card(true));
       await tester.pump(const Duration(milliseconds: 400));
-      final active = cardBorder(tester);
-
-      expect(resting, isNull, reason: '常态无边（层级靠色阶，不靠描边）');
-      expect(active, isNotNull, reason: '选中态必须有描边才在网格里读得出来');
+      expect(
+        tester.widget<M3ECard>(find.byType(M3ECard)).color,
+        colors.secondaryContainer,
+        reason: '选中 = 色阶块，与本地卡的多选态一致',
+      );
     });
   });
 
@@ -303,14 +320,7 @@ void main() {
     });
 
     testWidgets('标签**全部**渲染，不再有 +N', (tester) async {
-      const names = [
-        '双声道立体声/人头麦',
-        '亲热/甜蜜',
-        '青梅竹马',
-        '学生',
-        'ASMR',
-        '环绕音',
-      ];
+      const names = ['双声道立体声/人头麦', '亲热/甜蜜', '青梅竹马', '学生', 'ASMR', '环绕音'];
       await tester.pumpWidget(
         host(
           OnlineWorkCard(
@@ -378,13 +388,7 @@ void main() {
     });
 
     testWidgets('窄卡片（移动端 2 列）也全部渲染且不溢出', (tester) async {
-      const names = [
-        '双声道立体声/人头麦',
-        '亲热/甜蜜',
-        '青梅竹马',
-        '学生',
-        '环绕音',
-      ];
+      const names = ['双声道立体声/人头麦', '亲热/甜蜜', '青梅竹马', '学生', '环绕音'];
       await tester.pumpWidget(
         host(
           OnlineWorkCard(
@@ -411,38 +415,31 @@ void main() {
       List<OnlineTag> blocked = const [],
       double scale = 1.0,
       double width = 200,
-    }) =>
-        ProviderScope(
-          overrides: [
-            settingsProvider.overrideWith((ref) => _StubSettings(blocked)),
-          ],
-          child: MaterialApp(
-            theme: buildHikoTheme(const AppSettings()),
-            builder: (context, inner) => MediaQuery(
-              data: MediaQuery.of(context)
-                  .copyWith(textScaler: TextScaler.linear(scale)),
-              child: inner!,
-            ),
-            home: Scaffold(
-              body: Align(
-                alignment: Alignment.topLeft,
-                child: SizedBox(width: width, height: 900, child: card),
-              ),
-            ),
+    }) => ProviderScope(
+      overrides: [
+        settingsProvider.overrideWith((ref) => _StubSettings(blocked)),
+      ],
+      child: MaterialApp(
+        theme: buildHikoTheme(const AppSettings()),
+        builder: (context, inner) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(scale)),
+          child: inner!,
+        ),
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(width: width, height: 900, child: card),
           ),
-        );
+        ),
+      ),
+    );
 
     testWidgets('全局字号放大到 1.30 时标签组仍不溢出', (tester) async {
       await tester.pumpWidget(
         hostWith(
           OnlineWorkCard(
-            work: tagged([
-              '双声道立体声/人头麦',
-              '学生',
-              '青梅竹马',
-              'ASMR',
-              '环绕音',
-            ]),
+            work: tagged(['双声道立体声/人头麦', '学生', '青梅竹马', 'ASMR', '环绕音']),
             onTap: () {},
             showTags: true,
             onTagTap: (_) {},
@@ -452,11 +449,7 @@ void main() {
       );
       await tester.pump();
 
-      expect(
-        tester.takeException(),
-        isNull,
-        reason: '字号放大后标签组不该溢出：换行必须是真的换行',
-      );
+      expect(tester.takeException(), isNull, reason: '字号放大后标签组不该溢出：换行必须是真的换行');
     });
 
     testWidgets('被屏蔽的标签弱化显示：删除线，普通标签没有', (tester) async {
@@ -560,13 +553,14 @@ void main() {
     /// 卡面上每一枚元数据胶囊的「文字 → 类别」映射。
     /// 按文字取类别而不是按位置取，是因为位置将来会调整，类别不会。
     Map<String, OnlinePillKind> pillKinds(WidgetTester tester) => {
-          for (final pill
-              in tester.widgetList<OnlinePill>(find.byType(OnlinePill)))
-            pill.text: pill.kind,
-        };
+      for (final pill in tester.widgetList<OnlinePill>(find.byType(OnlinePill)))
+        pill.text: pill.kind,
+    };
 
     testWidgets('每个声优一枚胶囊，社团 / RJ号 / 时长 / 下载量各一枚', (tester) async {
-      await tester.pumpWidget(host(OnlineWorkCard(work: fullWork(), onTap: () {})));
+      await tester.pumpWidget(
+        host(OnlineWorkCard(work: fullWork(), onTap: () {})),
+      );
       await tester.pump();
 
       final kinds = pillKinds(tester);
@@ -580,16 +574,20 @@ void main() {
     });
 
     testWidgets('时长走「2小时25分钟」而不是钟表写法 2:25:00', (tester) async {
-      await tester.pumpWidget(host(OnlineWorkCard(work: fullWork(), onTap: () {})));
+      await tester.pumpWidget(
+        host(OnlineWorkCard(work: fullWork(), onTap: () {})),
+      );
       await tester.pump();
 
       expect(find.text('2小时25分钟'), findsOneWidget);
-      expect(find.text('2:25:00'), findsNothing,
-          reason: '两端同一个概念必须是同一种写法：本地卡面用的是 formatDuration');
+      expect(
+        find.text('2:25:00'),
+        findsNothing,
+        reason: '两端同一个概念必须是同一种写法：本地卡面用的是 formatDuration',
+      );
     });
 
-    testWidgets('取不到的几枚直接不出现（没 RJ号 / 时长为 0 / 下载量为 0）',
-        (tester) async {
+    testWidgets('取不到的几枚直接不出现（没 RJ号 / 时长为 0 / 下载量为 0）', (tester) async {
       await tester.pumpWidget(
         host(
           OnlineWorkCard(
@@ -623,8 +621,7 @@ void main() {
       expect(kinds, {'45分钟': OnlinePillKind.duration});
     });
 
-    testWidgets('在线卡片文字倍率由卡片自己读设置（倍率 1.5 → 标题 13×1.5）',
-        (tester) async {
+    testWidgets('在线卡片文字倍率由卡片自己读设置（倍率 1.5 → 标题 13×1.5）', (tester) async {
       const title = '一个标题';
       await tester.pumpWidget(
         ProviderScope(
@@ -680,11 +677,7 @@ void main() {
           for (final kind in OnlinePillKind.values)
             onlinePillColors(kind, isDark: isDark, scheme: scheme).bg,
         ];
-        expect(
-          bgs.toSet().length,
-          bgs.length,
-          reason: '$theme 主题下有两类胶囊底色撞了',
-        );
+        expect(bgs.toSet().length, bgs.length, reason: '$theme 主题下有两类胶囊底色撞了');
       }
     });
   });
@@ -697,34 +690,33 @@ void main() {
       bool showTags = false,
       double width = 900,
       double height = 1400,
-    }) =>
-        ProviderScope(
-          overrides: [
-            settingsProvider.overrideWith(
-              (ref) => _StubSettings(const [], gridColumns: gridColumns),
-            ),
-          ],
-          child: MaterialApp(
-            theme: buildHikoTheme(const AppSettings()),
-            home: Scaffold(
-              body: SizedBox(
-                width: width,
-                height: height,
-                child: OnlineWorkGrid(
-                  works: works,
-                  isMobile: isMobile,
-                  showTags: showTags,
-                  onTap: (_) {},
-                ),
-              ),
+    }) => ProviderScope(
+      overrides: [
+        settingsProvider.overrideWith(
+          (ref) => _StubSettings(const [], gridColumns: gridColumns),
+        ),
+      ],
+      child: MaterialApp(
+        theme: buildHikoTheme(const AppSettings()),
+        home: Scaffold(
+          body: SizedBox(
+            width: width,
+            height: height,
+            child: OnlineWorkGrid(
+              works: works,
+              isMobile: isMobile,
+              showTags: showTags,
+              onTap: (_) {},
             ),
           ),
-        );
+        ),
+      ),
+    );
 
     List<Offset> cardOffsets(WidgetTester tester, int count) => [
-          for (var i = 0; i < count; i++)
-            tester.getTopLeft(find.byType(OnlineWorkCard).at(i)),
-        ];
+      for (var i = 0; i < count; i++)
+        tester.getTopLeft(find.byType(OnlineWorkCard).at(i)),
+    ];
 
     testWidgets('卡片高度由内容决定：同一屏里出现不同高度', (tester) async {
       await tester.pumpWidget(
@@ -751,8 +743,11 @@ void main() {
 
       final tall = tester.getSize(find.byType(OnlineWorkCard).at(0)).height;
       final short = tester.getSize(find.byType(OnlineWorkCard).at(1)).height;
-      expect(tall, greaterThan(short + 20),
-          reason: '等高网格会强行把两张卡拉成一样高，那就不是瀑布流了');
+      expect(
+        tall,
+        greaterThan(short + 20),
+        reason: '等高网格会强行把两张卡拉成一样高，那就不是瀑布流了',
+      );
       expect(tester.takeException(), isNull);
     });
 
@@ -764,12 +759,7 @@ void main() {
               id: 1,
               title: '这是一个足够长的标题，长到在 300px 宽的卡片里必然占满两行',
               tags: [
-                for (final name in const [
-                  '双声道立体声/人头麦',
-                  '亲热/甜蜜',
-                  '青梅竹马',
-                  '学生',
-                ])
+                for (final name in const ['双声道立体声/人头麦', '亲热/甜蜜', '青梅竹马', '学生'])
                   OnlineTag(id: 200, name: name),
               ],
             ),
@@ -790,9 +780,7 @@ void main() {
 
     testWidgets('自动档在 900 宽下是 3 列：第 4 张换行', (tester) async {
       await tester.pumpWidget(
-        gridHost(
-          works: [for (var i = 0; i < 6; i++) work(id: 1657200 + i)],
-        ),
+        gridHost(works: [for (var i = 0; i < 6; i++) work(id: 1657200 + i)]),
       );
       await tester.pump();
 

@@ -18,6 +18,7 @@ export 'components/actions/m3e_button_group.dart';
 export 'components/actions/m3e_fab.dart';
 export 'components/actions/m3e_icon_button.dart';
 export 'components/inputs/m3e_checkbox.dart';
+export 'components/inputs/m3e_search_bar.dart';
 export 'components/inputs/m3e_select.dart';
 export 'components/inputs/m3e_slider.dart';
 export 'components/inputs/m3e_switch.dart';

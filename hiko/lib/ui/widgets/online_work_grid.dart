@@ -245,7 +245,6 @@ class OnlinePager extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final pad = isMobile ? 16.0 : 48.0;
     final total = totalPages;
 
@@ -258,7 +257,7 @@ class OnlinePager extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 6),
             child: Text(
               '…',
-              style: TextStyle(fontSize: 11, color: theme.hintColor),
+              style: TextStyle(fontSize: 11, color: M3ETheme.of(context).colors.onSurfaceVariant),
             ),
           )
         else
@@ -272,7 +271,9 @@ class OnlinePager extends StatelessWidget {
     return Container(
       padding: EdgeInsets.fromLTRB(pad, 6, pad, 12),
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: theme.dividerColor)),
+        border: Border(
+          top: BorderSide(color: M3ETheme.of(context).colors.outlineVariant),
+        ),
       ),
       child: Row(
         children: [
@@ -395,13 +396,11 @@ class _PagerIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      icon: Icon(icon, size: 18),
+    return M3EIconButton(
+      icon: icon,
       tooltip: tooltip,
       onPressed: onPressed,
-      visualDensity: VisualDensity.compact,
-      constraints: const BoxConstraints(minWidth: 30, minHeight: 28),
-      padding: EdgeInsets.zero,
+      size: M3EIconButtonSize.small,
     );
   }
 }
@@ -419,29 +418,31 @@ class _PageNumberButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final theme = M3ETheme.of(context);
+    final colors = theme.colors;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: SizedBox(
-        height: 28,
-        child: TextButton(
-          onPressed: current ? null : onPressed,
-          style: TextButton.styleFrom(
-            minimumSize: const Size(32, 28),
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            backgroundColor: current
-                ? theme.colorScheme.primary.withValues(alpha: 0.14)
-                : null,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            ),
+      child: M3EPressable(
+        onTap: current ? null : onPressed,
+        borderRadius: BorderRadius.circular(M3EShape.sm),
+        pressScale: 0.94,
+        semanticLabel: '第 $page 页',
+        child: Container(
+          constraints: const BoxConstraints(minWidth: 32),
+          height: 32,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          decoration: BoxDecoration(
+            color: current ? colors.secondaryContainer : Colors.transparent,
+            borderRadius: BorderRadius.circular(M3EShape.sm),
           ),
           child: Text(
             '$page',
-            style: TextStyle(
-              fontSize: 11,
+            style: theme.type.labelMedium.copyWith(
               fontWeight: current ? FontWeight.w700 : FontWeight.w500,
-              color: current ? theme.colorScheme.primary : null,
+              color: current
+                  ? colors.onSecondaryContainer
+                  : colors.onSurfaceVariant,
             ),
           ),
         ),
@@ -472,13 +473,12 @@ class _PageJumpFieldState extends State<_PageJumpField> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           '共 ${widget.totalPages} 页',
-          style: TextStyle(fontSize: 11, color: theme.hintColor),
+          style: TextStyle(fontSize: 11, color: M3ETheme.of(context).colors.onSurfaceVariant),
         ),
         const SizedBox(width: 8),
         SizedBox(
@@ -493,7 +493,7 @@ class _PageJumpFieldState extends State<_PageJumpField> {
             decoration: InputDecoration(
               isDense: true,
               hintText: '跳页',
-              hintStyle: TextStyle(fontSize: 11, color: theme.hintColor),
+              hintStyle: TextStyle(fontSize: 11, color: M3ETheme.of(context).colors.onSurfaceVariant),
               contentPadding: const EdgeInsets.symmetric(vertical: 4),
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
             ),

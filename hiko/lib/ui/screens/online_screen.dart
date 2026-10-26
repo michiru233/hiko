@@ -360,11 +360,10 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
               for (final (preset, label) in _onlinePresets)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Text(label, style: const TextStyle(fontSize: 12)),
+                  child: M3EChip(
+                    label: label,
                     selected: state.isPresetActive(preset),
-                    visualDensity: VisualDensity.compact,
-                    onSelected: (_) => unawaited(
+                    onTap: () => unawaited(
                       ref
                           .read(onlineBrowseProvider.notifier)
                           .applyPreset(preset),
@@ -432,7 +431,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: theme.hintColor,
+                      color: M3ETheme.of(context).colors.onSurfaceVariant,
                     ),
                   ),
                   const Spacer(),
@@ -462,7 +461,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                         visualDensity: VisualDensity.compact,
                         minLeadingWidth: 24,
                         leading: Icon(Icons.history_rounded,
-                            size: 15, color: theme.hintColor),
+                            size: 15, color: M3ETheme.of(context).colors.onSurfaceVariant),
                         title: Text(
                           term,
                           maxLines: 1,
@@ -490,16 +489,9 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
             runSpacing: 6,
             children: [
               for (final term in _searchHistory)
-                ActionChip(
-                  label: Text(
-                    term,
-                    style: const TextStyle(fontSize: 11),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  tooltip: '重新搜索“$term”',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () {
+                M3EChip(
+                  label: term,
+                  onTap: () {
                     _searchController.text = term;
                     unawaited(_submitSearch(term));
                     setState(() {});
@@ -508,50 +500,29 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
             ],
           ),
         ),
-        TextButton(
+        M3EButton(
+          label: '清空',
+          variant: M3EButtonVariant.text,
+          size: M3EButtonSize.small,
           onPressed: () => unawaited(_clearSearchHistory()),
-          child: const Text('清空', style: TextStyle(fontSize: 11)),
         ),
       ],
     );
   }
 
   Widget _buildSearchField(ThemeData theme) {
-    return SizedBox(
-      height: 36,
-      child: TextField(
-        controller: _searchController,
-        focusNode: ref.watch(onlineSearchFocusProvider),
-        textInputAction: TextInputAction.search,
-        style: const TextStyle(fontSize: 12),
-        onSubmitted: (value) => unawaited(_submitSearch(value)),
-        onChanged: (_) => setState(() {}), // 刷新清除按钮的显隐
-        decoration: InputDecoration(
-          isDense: true,
-          hintText: '搜索在线作品（日文原关键词命中率最高）',
-          hintStyle: TextStyle(fontSize: 12, color: theme.hintColor),
-          prefixIcon: const Icon(Icons.search, size: 16),
-          prefixIconConstraints:
-              const BoxConstraints(minWidth: 34, minHeight: 30),
-          suffixIcon: _searchController.text.isEmpty
-              ? null
-              : IconButton(
-                  icon: const Icon(Icons.close, size: 14),
-                  tooltip: '清除',
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() {});
-                    unawaited(ref
-                        .read(onlineBrowseProvider.notifier)
-                        .applyPreset(OnlineSort.popularPreset));
-                  },
-                ),
-          suffixIconConstraints:
-              const BoxConstraints(minWidth: 30, minHeight: 30),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-          contentPadding: const EdgeInsets.symmetric(vertical: 8),
-        ),
-      ),
+    return M3ESearchBar(
+      height: 40,
+      controller: _searchController,
+      focusNode: ref.watch(onlineSearchFocusProvider),
+      hintText: '搜索在线作品（日文原关键词命中率最高）',
+      onSubmitted: (value) => unawaited(_submitSearch(value)),
+      onClear: () {
+        setState(() {});
+        unawaited(ref
+            .read(onlineBrowseProvider.notifier)
+            .applyPreset(OnlineSort.popularPreset));
+      },
     );
   }
 
@@ -619,11 +590,10 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
           children: [
             // 字幕筛选（1.99.5）：任何来源下都可用 —— 实测 `subtitle=1`
             // 在 /api/works、/api/tags/{id}/works、/api/search/{kw} 三处都生效
-            FilterChip(
-              label: const Text('只看带字幕', style: TextStyle(fontSize: 11)),
+            M3EChip(
+              label: '只看带字幕',
               selected: state.subtitleOnly,
-              visualDensity: VisualDensity.compact,
-              onSelected: (_) => unawaited(
+              onTap: () => unawaited(
                 ref.read(onlineBrowseProvider.notifier).toggleSubtitleOnly(),
               ),
             ),
@@ -674,7 +644,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.right,
-                        style: TextStyle(fontSize: 11, color: theme.hintColor),
+                        style: TextStyle(fontSize: 11, color: M3ETheme.of(context).colors.onSurfaceVariant),
                       ),
                     ),
                   ],
@@ -870,14 +840,21 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
 
   /// 空态文案（桌面结果区与移动端 sliver 共用）
   Widget _buildEmptyResults(OnlineBrowseState state, ThemeData theme) {
+    final m3e = M3ETheme.of(context);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.cloud_off_outlined, size: 30, color: theme.hintColor),
+        Icon(
+          Icons.cloud_off_outlined,
+          size: 30,
+          color: m3e.colors.onSurfaceVariant,
+        ),
         const SizedBox(height: 10),
         Text(
           state.source == OnlineSource.search ? '没有找到匹配的作品' : '没有拿到数据',
-          style: TextStyle(fontSize: 12, color: theme.hintColor),
+          style: m3e.type.bodyMedium.copyWith(
+            color: m3e.colors.onSurfaceVariant,
+          ),
         ),
       ],
     );
@@ -956,15 +933,12 @@ class _OnlineAccountEntry extends ConsumerWidget {
           padding: EdgeInsets.zero,
         );
       }
-      return TextButton.icon(
+      return M3EButton(
+        label: '登录',
+        variant: M3EButtonVariant.tonal,
+        size: M3EButtonSize.small,
+        icon: const Icon(Icons.person_outline_rounded),
         onPressed: () => unawaited(showOnlineLoginDialog(context)),
-        icon: const Icon(Icons.person_outline_rounded, size: 15),
-        label: const Text('登录', style: TextStyle(fontSize: 11)),
-        style: TextButton.styleFrom(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          minimumSize: const Size(0, 32),
-          visualDensity: VisualDensity.compact,
-        ),
       );
     }
 
@@ -1127,11 +1101,16 @@ class OnlineWorkCard extends ConsumerWidget {
     // 不再描边/玻璃）。选中态仍用 primary 描边（与首页定位高亮同语义）。
     final colors = M3ETheme.of(context).colors;
 
-    return InkWell(
+    // 1.99.45：与本地 `AlbumCard` 同一件材质 —— `M3ECard`（16 圆角、
+    // 色阶底、零投影、内边距 4 → 封面 12）。此前是自绘 12 圆角 +
+    // `level1` 阴影，与本地卡「一个浮起一个不浮起」（审计 C-05）。
+    return M3ECard(
+      padding: const EdgeInsets.all(kOnlineCardPadding),
+      radius: M3EShape.lg,
+      color: selected ? colors.secondaryContainer : null,
+      semanticLabel: work.title,
       onTap: onTap,
-      onSecondaryTapDown: onContextMenu == null
-          ? null
-          : (d) => onContextMenu!(d.globalPosition),
+      onSecondaryTapDown: onContextMenu,
       onLongPress: onContextMenu == null
           ? null
           : () {
@@ -1142,26 +1121,12 @@ class OnlineWorkCard extends ConsumerWidget {
                   : box.localToGlobal(box.size.center(Offset.zero));
               onContextMenu!(origin);
             },
-      // 与卡面圆角对齐（原为 10；卡面用 12，水波纹比卡面小一圈会露出边角）
-      borderRadius: BorderRadius.circular(12),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: colors.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(12),
-          border: selected
-              ? Border.all(color: colors.primary, width: 1.5)
-              : null,
-          boxShadow: M3EElevation.shadow(M3EElevation.level1, colors.shadow),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.all(kOnlineCardPadding),
-            child: Column(
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(9),
+              // 16 − 4 = 12，与本地卡同一嵌套规则
+              borderRadius: BorderRadius.circular(M3EShape.md),
               child: AspectRatio(
                 aspectRatio: 1,
                 child: Stack(
@@ -1191,11 +1156,10 @@ class OnlineWorkCard extends ConsumerWidget {
               overflow: TextOverflow.ellipsis,
               // 字号与行高都从尺寸那批常量取 —— 本地卡面用同一套值，
               // 两种卡片现在都是瀑布流，视觉上应当是一对兄弟
-              style: TextStyle(
-                fontSize: kOnlineCardTitleFontSize * textScale,
-                fontWeight: FontWeight.w700,
-                height: kOnlineCardLineHeight,
-              ),
+              style: M3ETheme.of(context).type.titleSmall.copyWith(
+                    fontSize: kOnlineCardTitleFontSize * textScale,
+                    height: kOnlineCardLineHeight,
+                  ),
             ),
             // 元数据分三组，每组自带一行：① 艺术家 ② 社团 ③ 作品号/时长/下载量。
             // 不挤进同一个 `Wrap` 里 —— 否则一个长社团名就会把作品号顶到下一行，
@@ -1262,9 +1226,6 @@ class OnlineWorkCard extends ConsumerWidget {
               ),
             ],
           ],
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -1349,22 +1310,32 @@ class _OnlineError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off_outlined, size: 32, color: theme.hintColor),
+            Icon(
+              Icons.cloud_off_outlined,
+              size: 32,
+              color: M3ETheme.of(context).colors.onSurfaceVariant,
+            ),
             const SizedBox(height: 12),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: theme.hintColor),
+              style: M3ETheme.of(context).type.bodyMedium.copyWith(
+                    color: M3ETheme.of(context).colors.onSurfaceVariant,
+                  ),
             ),
             const SizedBox(height: 14),
-            OutlinedButton(onPressed: onRetry, child: const Text('重试')),
+            M3EButton(
+              label: '重试',
+              variant: M3EButtonVariant.outlined,
+              size: M3EButtonSize.small,
+              onPressed: onRetry,
+            ),
           ],
         ),
       ),

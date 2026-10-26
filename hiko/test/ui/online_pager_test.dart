@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:hiko/ui/m3e/m3e.dart';
 import 'package:hiko/ui/widgets/online_work_grid.dart';
 
 /// 在线分页条的移动端回归锁（1.99.0）。
@@ -80,10 +81,11 @@ void main() {
     testWidgets('第 1 页：上一页禁用', (tester) async {
       await pumpPager(tester, page: 1, total: 100);
       expect(tester.takeException(), isNull);
-      final btn = tester.widget<IconButton>(
+      // 1.99.45：分页箭头换成 M3EIconButton
+      final btn = tester.widget<M3EIconButton>(
         find.ancestor(
           of: find.byTooltip('上一页'),
-          matching: find.byType(IconButton),
+          matching: find.byType(M3EIconButton),
         ),
       );
       expect(btn.onPressed, isNull);
@@ -94,10 +96,10 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.text('99'), findsOneWidget);
       expect(find.text('100'), findsOneWidget);
-      final btn = tester.widget<IconButton>(
+      final btn = tester.widget<M3EIconButton>(
         find.ancestor(
           of: find.byTooltip('下一页'),
-          matching: find.byType(IconButton),
+          matching: find.byType(M3EIconButton),
         ),
       );
       expect(btn.onPressed, isNull);

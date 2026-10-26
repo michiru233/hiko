@@ -14,6 +14,8 @@ library;
 
 import 'package:flutter/material.dart';
 
+import '../m3e/m3e.dart';
+
 import '../theme.dart';
 
 /// 一类胶囊的底色 / 字色（+ 是否加粗）
@@ -119,8 +121,8 @@ OnlinePillColors onlinePillColors(
   }
 }
 
-/// 元数据胶囊的基准字号。命中 [OnlinePill.scale]（在线卡片文字倍率）
-const double kOnlinePillFontSize = 10;
+/// 元数据胶囊的基准字号（1.99.45：10 → 11，与 `labelSmall` 同档）。
+const double kOnlinePillFontSize = 11;
 
 /// 卡面元数据胶囊：艺术家 / 社团 / RJ号 / 时长 / 下载量。
 ///
@@ -153,10 +155,11 @@ class OnlinePill extends StatelessWidget {
       scheme: theme.colorScheme,
     );
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: colors.bg,
-        borderRadius: BorderRadius.circular(6),
+        // 1.99.45：6dp → 4dp（`M3EShape.xs`，与 `HikoTagChip` 同一档）
+        borderRadius: BorderRadius.circular(M3EShape.xs),
       ),
       child: Text(
         text,

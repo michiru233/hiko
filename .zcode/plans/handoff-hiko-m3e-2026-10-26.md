@@ -8,11 +8,12 @@
 > 本文只写「怎么接、已经做了什么、下一步做什么」；逐条差距的完整证据见
 > `.zcode/plans/audit-hiko-m3e-coverage.md`（下称「审计」）。
 
-> **状态更新（1.99.44 发版后，2026-10-26）**：当前 `1.99.44+157`。
-> `M3EMenu`、`M3EDialog`、设置页内容层、移动详情 parity（M-04）与在线详情
-> 内容层均已完成；详情面板两端统一 **420**、动作集合统一 5 个；
-> 基线 **834 passed / 2 skipped**、analyze **42 条 0 error**。
-> 下一步是 **1.99.45 在线三面（浏览 / 收藏 / 卡片 / 分页）**。
+> **状态更新（1.99.45 发版后，2026-10-26）**：当前 `1.99.45+158`。
+> `M3EMenu`、`M3EDialog`、设置页内容层、详情两端统一、在线三面
+> （卡片 / 工具栏 / 搜索 / 分页 / 收藏 chip）均已完成；
+> 基线 **840 passed / 2 skipped**、analyze **42 条 0 error**。
+> 下一步是 **1.99.46 播放页尾部 + 歌词**（音量 `M3ESlider`、曲目 sheet、
+> 歌词字阶与去发光）。
 > 下面 §1–§3 仍是 1.99.39 视角的清单，逐版状态以
 > `plan-hiko-flutter-rewrite.md` 末尾章节为准。
 > 1.99.40 四条裁决：①B（一版接完六处 + 顺带在线账号菜单）；②A（分级开关用
@@ -30,6 +31,9 @@
 > 1.99.44：详情两端统一（宽度 420、动作 5 个、信息行/曲目行同一组件）；
 > 旧 `HikoTrackRow` / `HikoInfoRow` / `HikoSegmentedTabs` / `HikoTabButton`
 > 已删，锁在 `test/ui/detail_kit_lock_test.dart`。
+> 1.99.45：在线三面完成（`M3ESearchBar` 新建；在线卡 = 本地卡同一件 `M3ECard`；
+> 分页条未用 `M3EToolbar`，因为它是贴底固定条而不是浮动条）；
+> 在线面 `hintColor` 22 → 0，锁在 `test/ui/online_surfaces_lock_test.dart`。
 
 ---
 
