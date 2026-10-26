@@ -10,6 +10,7 @@ import '../../data/online/online_favorites.dart';
 import '../../data/online/online_models.dart';
 import '../../data/online/online_provider.dart';
 import 'confirm_dialog.dart';
+import '../m3e/m3e.dart';
 import 'toast.dart';
 
 /// asmr.one 网页版（注册只能去这里 —— 裁决 Q11=A：Hiko 不做注册）
@@ -70,19 +71,21 @@ class _LoginDialogState extends ConsumerState<_LoginDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return AlertDialog(
-      title: const Text('登录 asmr.one', style: TextStyle(fontSize: 15)),
-      content: SizedBox(
-        width: 320,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+    final theme = M3ETheme.of(context);
+    return M3EDialog(
+      maxWidth: 420,
+      title: '登录 asmr.one',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
             Text(
               '登录后才能收藏作品、管理歌单。Hiko 只保存登录令牌（有效期 30 天），'
               '不会上传任何本地数据。',
-              style: TextStyle(fontSize: 11, height: 1.6, color: theme.hintColor),
+              style: theme.type.bodySmall.copyWith(
+                height: 1.6,
+                color: theme.colors.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 14),
             TextField(
@@ -114,45 +117,35 @@ class _LoginDialogState extends ConsumerState<_LoginDialog> {
               const SizedBox(height: 12),
               Text(
                 _error!,
-                style: const TextStyle(fontSize: 11, color: Color(0xFFD34C44)),
+                style: theme.type.bodySmall.copyWith(color: theme.colors.error),
               ),
             ],
             const SizedBox(height: 10),
             Align(
               alignment: Alignment.centerLeft,
-              child: TextButton(
+              child: M3EButton(
+                label: '还没有账号？去官网注册 →',
+                variant: M3EButtonVariant.text,
+                size: M3EButtonSize.small,
                 onPressed: () => unawaited(
                   launchUrl(
                     Uri.parse(_asmrSite),
                     mode: LaunchMode.externalApplication,
                   ),
                 ),
-                style: TextButton.styleFrom(
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(0, 26),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: const Text('还没有账号？去官网注册 →',
-                    style: TextStyle(fontSize: 11)),
               ),
             ),
-          ],
-        ),
+        ],
       ),
-      actions: [
-        TextButton(
+      actions: <Widget>[
+        M3EButton(
+          label: '取消',
+          variant: M3EButtonVariant.text,
           onPressed: _busy ? null : () => Navigator.of(context).pop(false),
-          child: const Text('取消', style: TextStyle(fontSize: 12)),
         ),
-        FilledButton(
+        M3EButton(
+          label: _busy ? '登录中…' : '登录',
           onPressed: _busy ? null : () => unawaited(_submit()),
-          child: _busy
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('登录', style: TextStyle(fontSize: 12)),
         ),
       ],
     );
@@ -167,25 +160,27 @@ Future<void> showLoginRequiredDialog(
   final ok = await showDialog<bool>(
     context: context,
     builder: (dialogContext) {
-      final theme = Theme.of(dialogContext);
-      return AlertDialog(
-        title: const Text('需要登录', style: TextStyle(fontSize: 15)),
-        content: SizedBox(
-          width: 300,
-          child: Text(
-            '$action需要 asmr.one 账号。登录后收藏会同步到你的网页版账号，'
-            '在手机、网页上打开都是同一份收藏。',
-            style: TextStyle(fontSize: 12, height: 1.7, color: theme.hintColor),
+      final theme = M3ETheme.of(dialogContext);
+      return M3EDialog(
+        maxWidth: 420,
+        title: '需要登录',
+        content: Text(
+          '$action需要 asmr.one 账号。登录后收藏会同步到你的网页版账号，'
+          '在手机、网页上打开都是同一份收藏。',
+          style: theme.type.bodyMedium.copyWith(
+            height: 1.7,
+            color: theme.colors.onSurfaceVariant,
           ),
         ),
-        actions: [
-          TextButton(
+        actions: <Widget>[
+          M3EButton(
+            label: '暂不',
+            variant: M3EButtonVariant.text,
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('暂不', style: TextStyle(fontSize: 12)),
           ),
-          FilledButton(
+          M3EButton(
+            label: '去登录',
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('去登录', style: TextStyle(fontSize: 12)),
           ),
         ],
       );
@@ -347,32 +342,28 @@ class _PlaylistPickerDialogState extends ConsumerState<_PlaylistPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return AlertDialog(
-      titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 4),
-      contentPadding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('收藏到歌单', style: TextStyle(fontSize: 15)),
-          const SizedBox(height: 4),
-          Text(
-            widget.work.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 11, color: theme.hintColor),
-          ),
-        ],
-      ),
-      content: SizedBox(
-        width: 340,
-        child: ConstrainedBox(
-          // 安卓竖屏高度有限：列表自己在框内滚，对话框不顶到天花板
-          constraints: const BoxConstraints(maxHeight: 320),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+    final theme = M3ETheme.of(context);
+    return M3EDialog(
+      maxWidth: 460,
+      title: '收藏到歌单',
+      // 副标题（作品名）挂在正文第一行，标题只留动作名
+      scrollable: false,
+      contentPadding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                child: Text(
+                  widget.work.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.type.bodySmall.copyWith(
+                    color: theme.colors.onSurfaceVariant,
+                  ),
+                ),
+              ),
               SizedBox(
                 height: 2,
                 child: _loading ? const LinearProgressIndicator(minHeight: 2) : null,
@@ -389,7 +380,9 @@ class _PlaylistPickerDialogState extends ConsumerState<_PlaylistPickerDialog> {
                               vertical: 16, horizontal: 8),
                           child: Text(
                             '还没有歌单，先新建一个吧',
-                            style: TextStyle(fontSize: 11, color: theme.hintColor),
+                            style: theme.type.bodySmall.copyWith(
+                              color: theme.colors.onSurfaceVariant,
+                            ),
                           ),
                         ),
                       for (final playlist in _playlists)
@@ -410,52 +403,28 @@ class _PlaylistPickerDialogState extends ConsumerState<_PlaylistPickerDialog> {
                   ),
                 ),
               ),
-              Divider(height: 1, color: theme.dividerColor),
-              InkWell(
-                onTap: _busy ? null : () => unawaited(_createPlaylist()),
-                mouseCursor: SystemMouseCursors.click,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 11),
-                  child: Row(
-                    children: [
-                      Icon(Icons.add_rounded, size: 16, color: theme.colorScheme.primary),
-                      const SizedBox(width: 10),
-                      Text(
-                        '新建歌单',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '默认私享',
-                        style: TextStyle(fontSize: 10, color: theme.hintColor),
-                      ),
-                    ],
-                  ),
+              M3EMenuDivider(),
+              M3EListItem(
+                title: '新建歌单',
+                subtitle: '默认私享',
+                leading: Icon(
+                  Icons.add_rounded,
+                  color: theme.colors.primary,
                 ),
+                enabled: !_busy,
+                onTap: () => unawaited(_createPlaylist()),
               ),
-            ],
-          ),
+          ],
         ),
-      ),
-      actions: [
-        TextButton(
+      actions: <Widget>[
+        M3EButton(
+          label: '取消',
+          variant: M3EButtonVariant.text,
           onPressed: _busy ? null : () => Navigator.of(context).pop(),
-          child: Text('取消', style: TextStyle(fontSize: 12, color: theme.hintColor)),
         ),
-        FilledButton(
+        M3EButton(
+          label: _busy ? '保存中…' : '确定',
           onPressed: _busy ? null : () => unawaited(_confirm()),
-          child: _busy
-              ? const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('确定', style: TextStyle(fontSize: 12)),
         ),
       ],
     );
@@ -477,42 +446,32 @@ class _PlaylistCheckRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return InkWell(
-      onTap: enabled ? () => onChanged(!checked) : null,
-      mouseCursor: SystemMouseCursors.click,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        child: Row(
-          children: [
-            Checkbox(
-              value: checked,
-              visualDensity: VisualDensity.compact,
-              onChanged: enabled ? (v) => onChanged(v ?? false) : null,
-            ),
-            Expanded(
-              child: Text(
-                playlist.displayName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
-            if (playlist.isSystem) ...[
-              const SizedBox(width: 6),
-              Tooltip(
-                message: playlist.isLiked ? '系统歌单（网页版爱心收藏落在里）' : '系统歌单',
-                child: Icon(Icons.lock_outline_rounded, size: 12, color: theme.hintColor),
-              ),
-            ],
-            const SizedBox(width: 8),
-            Text(
-              '${playlist.worksCount}',
-              style: TextStyle(fontSize: 10, color: theme.hintColor),
-            ),
-          ],
-        ),
+    final theme = M3ETheme.of(context);
+    return M3EListItem(
+      title: playlist.displayName,
+      // 作品数原来挤在行尾；M3E 列表用副标题承载这类计数
+      subtitle: '${playlist.worksCount} 个作品',
+      selected: checked,
+      enabled: enabled,
+      leading: Icon(
+        checked ? Icons.check_box_rounded : Icons.check_box_outline_blank,
+        size: 20,
+        color: checked
+            ? theme.colors.primary
+            : theme.colors.onSurfaceVariant,
       ),
+      trailing: playlist.isSystem
+          ? Tooltip(
+              message:
+                  playlist.isLiked ? '系统歌单（网页版爱心收藏落在里）' : '系统歌单',
+              child: Icon(
+                Icons.lock_outline_rounded,
+                size: 14,
+                color: theme.colors.onSurfaceVariant,
+              ),
+            )
+          : null,
+      onTap: enabled ? () => onChanged(!checked) : null,
     );
   }
 }
@@ -529,18 +488,17 @@ Future<String?> showPlaylistNameDialog(
   final result = await showDialog<String>(
     context: context,
     builder: (dialogContext) {
-      final theme = Theme.of(dialogContext);
+      final theme = M3ETheme.of(dialogContext);
       void submit() {
         final name = controller.text.trim();
         if (name.isEmpty) return;
         Navigator.of(dialogContext).pop(name);
       }
 
-      return AlertDialog(
-        title: Text(title, style: const TextStyle(fontSize: 15)),
-        content: SizedBox(
-          width: 300,
-          child: Column(
+      return M3EDialog(
+        maxWidth: 420,
+        title: title,
+        content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -558,20 +516,20 @@ Future<String?> showPlaylistNameDialog(
               ),
               Text(
                 '新建的歌单默认「私享」，只有你自己看得到。',
-                style: TextStyle(fontSize: 10.5, height: 1.5, color: theme.hintColor),
+                style: theme.type.bodySmall.copyWith(
+                  height: 1.5,
+                  color: theme.colors.onSurfaceVariant,
+                ),
               ),
             ],
-          ),
         ),
-        actions: [
-          TextButton(
+        actions: <Widget>[
+          M3EButton(
+            label: '取消',
+            variant: M3EButtonVariant.text,
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('取消', style: TextStyle(fontSize: 12)),
           ),
-          FilledButton(
-            onPressed: submit,
-            child: const Text('确定', style: TextStyle(fontSize: 12)),
-          ),
+          M3EButton(label: '确定', onPressed: submit),
         ],
       );
     },

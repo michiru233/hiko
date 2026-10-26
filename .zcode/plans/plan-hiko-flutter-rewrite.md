@@ -4195,3 +4195,41 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 ### 交付
 - 版本 `1.99.41+154`；Release：`hiko-v1.99.41-macos.zip` + `hiko-v1.99.41-android.apk`。
 - 下一项：`1.99.42 M3EDialog`（B2）—— 版本号从 M3EDialog 起整体后移一位。
+
+## 1.99.42（2026-10-26）：M3EDialog 落地 + 21 处对话框收口（B2 前半）
+
+### 可见变化
+- 新增 `M3EDialog`（`components/surfaces/m3e_dialog.dart`）：圆角 28、`surfaceContainerHigh`、
+  海拔 `level3`、去 surfaceTint、`insetPadding` 24（M3 默认 40 在 360dp 上只剩 280）、
+  标题 `headlineSmall`（24，可带前导色点/图标）、正文统一 24 边距 + 可滚动、
+  按钮 `M3EButton` 右对齐、窄屏自动换行；`scrollable: false` 留给正文自带滚动的列表型对话框。
+- `M3EButton` 新增 `destructive` 变体（error 底 + onError 字），对话框的「删除」不再写死 `#D34C44`。
+- **顺带修一个真 bug**：`M3EButton` 的 `Container(alignment: center)` 会吃掉父级宽度，
+  按钮在 `Wrap`/`Row` 里变成整行宽（详情页三个动作键此前各自占满一行）。去掉 `alignment`
+  后宽度由内容决定，`expand: true` 仍撑满。
+- 21 处 `AlertDialog` 全部换成 `M3EDialog`：确认框、星级、分类新建/编辑、分类选择、
+  离线下载、在线黑名单、登录、需要登录、收藏到歌单、歌单名、在线外观、文本查看、
+  删除离线内容、歌词字号、睡眠定时、音频增益、播放倍速、导入备份、重置数据库、
+  标签筛选、编辑作品信息。
+- 对话框内的 Material 控件同批替换：`CheckboxListTile` → `M3EListItem`（离线下载、
+  收藏到歌单）、`RadioListTile` → `M3EListItem`（歌词字号、每行卡片数）、
+  `TextButton`/`FilledButton`/`ElevatedButton`/`OutlinedButton` → `M3EButton`、
+  黑名单行内 `IconButton` → `M3EIconButton`。
+- `category_dialog` 的 **14 圆角覆写**随组件替换消失（审计 C-10 点名的绕过）。
+- 明确保留（下一批）：`TextField`（等输入主题）、带档位的 `Slider`
+  （`M3ESlider` 不支持 `divisions`，随 1.99.46 的滑杆批次）、设置页内容控件
+  （`DropdownButton` ×2、字号/`hintColor`），**设置页顺延到 1.99.43**。
+
+### 验证
+- `flutter test`：**817 passed / 2 skipped**（807 + 6 条 M3EDialog 组件测试 +
+  3 条 `showConfirmDialog` 端到端 + 1 条源码锁）。
+- `flutter analyze`：**42 条、0 error**（基线 44；去掉 2 条 `RadioListTile` 弃用告警）。
+- 新增 `test/ui/m3e/m3e_dialog_test.dart`：面板五值、标题字阶、按钮右对齐/换行、
+  长正文限高可滚、destructive 配色、360dp × 1.3 字号不溢出。
+- 新增 `test/ui/confirm_dialog_test.dart`：取消/确认/点遮罩的返回值语义 + 红色确认键。
+- 新增 `test/ui/no_material_dialogs_test.dart`（源码锁）：`lib/ui`（除 `m3e/`）再出现
+  `AlertDialog(` / `CheckboxListTile(` / `RadioListTile(` 即失败。
+
+### 交付
+- 版本 `1.99.42+155`；Release：`hiko-v1.99.42-macos.zip` + `hiko-v1.99.42-android.apk`。
+- 下一项：`1.99.43` 设置页内容层（含 `M3ESwitch`/`M3ECheckbox`、`M3ESlider` 加 `divisions`）。

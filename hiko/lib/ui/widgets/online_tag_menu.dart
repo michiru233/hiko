@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/online/online_blacklist.dart';
 import '../../data/online/online_models.dart';
 import '../../data/online/online_provider.dart';
+import '../m3e/m3e.dart';
 import '../../data/settings_store.dart';
 import 'confirm_dialog.dart';
 import 'context_menu.dart';
@@ -148,54 +149,50 @@ class _BlacklistDialog extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
+    final theme = M3ETheme.of(context);
     final blocked = ref.watch(settingsProvider).blockedTags;
     final blockedCreators = ref.watch(settingsProvider).blockedCreators;
     final hasAny = blocked.isNotEmpty || blockedCreators.isNotEmpty;
 
-    return AlertDialog(
-      title: Row(
-        children: [
-          Icon(Icons.block_rounded, size: 17, color: theme.colorScheme.primary),
-          const SizedBox(width: 8),
-          const Text('在线黑名单', style: TextStyle(fontSize: 15)),
-        ],
+    return M3EDialog(
+      maxWidth: 560,
+      leading: Icon(
+        Icons.block_rounded,
+        size: 24,
+        color: theme.colors.primary,
       ),
-      content: SizedBox(
-        width: 420,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(context).height * 0.46,
-          ),
-          child: !hasAny
-              ? _emptyHint(theme)
-              : _buildList(context, ref, blocked, blockedCreators),
-        ),
-      ),
-      actions: [
+      title: '在线黑名单',
+      scrollable: false,
+      contentPadding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      content: !hasAny
+          ? _emptyHint(theme)
+          : _buildList(context, ref, blocked, blockedCreators),
+      actions: <Widget>[
         if (hasAny)
-          TextButton(
+          M3EButton(
+            label: '全部清空',
+            variant: M3EButtonVariant.destructive,
             onPressed: () => unawaited(_clearAll(context, ref)),
-            child: Text(
-              '全部清空',
-              style: TextStyle(fontSize: 12, color: hikoFavoriteColor),
-            ),
           ),
-        TextButton(
+        M3EButton(
+          label: '关闭',
+          variant: M3EButtonVariant.text,
           onPressed: () => Navigator.pop(context),
-          child: const Text('关闭', style: TextStyle(fontSize: 12)),
         ),
       ],
     );
   }
 
-  Widget _emptyHint(ThemeData theme) => Padding(
+  Widget _emptyHint(M3EThemeData theme) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 18),
         child: Text(
           '还没有屏蔽任何标签或声优 / 社团。\n'
           '在在线作品的标签、声优、社团胶囊上右键（触屏长按）就能加入黑名单。',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 12, height: 1.8, color: theme.hintColor),
+          style: theme.type.bodyMedium.copyWith(
+            height: 1.8,
+            color: theme.colors.onSurfaceVariant,
+          ),
         ),
       );
 
@@ -205,7 +202,7 @@ class _BlacklistDialog extends ConsumerWidget {
     List<OnlineTag> blocked,
     List<OnlineCreatorBlock> blockedCreators,
   ) {
-    final theme = Theme.of(context);
+    final theme = M3ETheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -229,21 +226,20 @@ class _BlacklistDialog extends ConsumerWidget {
                       if (tag.id > 0)
                         Text(
                           '#${tag.id}',
-                          style: TextStyle(fontSize: 10, color: theme.hintColor),
+                          style: theme.type.labelSmall.copyWith(
+                            color: theme.colors.onSurfaceVariant,
+                          ),
                         ),
                       const Spacer(),
-                      IconButton(
+                      M3EIconButton(
+                        icon: Icons.close_rounded,
                         tooltip: '移出黑名单',
+                        size: M3EIconButtonSize.small,
                         onPressed: () => unawaited(
                           ref
                               .read(settingsProvider.notifier)
                               .removeBlockedTag(tag.id),
                         ),
-                        icon: const Icon(Icons.close_rounded, size: 15),
-                        visualDensity: VisualDensity.compact,
-                        constraints:
-                            const BoxConstraints(minWidth: 28, minHeight: 28),
-                        padding: EdgeInsets.zero,
                       ),
                     ],
                   ),
@@ -254,10 +250,8 @@ class _BlacklistDialog extends ConsumerWidget {
                   padding: const EdgeInsets.only(bottom: 2),
                   child: Text(
                     '声优 / 社团',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: theme.hintColor,
+                    style: theme.type.labelMedium.copyWith(
+                      color: theme.colors.onSurfaceVariant,
                     ),
                   ),
                 ),
@@ -270,18 +264,15 @@ class _BlacklistDialog extends ConsumerWidget {
                         // 黑名单条目刻意灰化，与标签的 blocked 形态一致）
                         HikoTagChip(tag: '${block.isVa ? '声优' : '社团'}：${block.name}', blocked: true),
                         const Spacer(),
-                        IconButton(
+                        M3EIconButton(
+                          icon: Icons.close_rounded,
                           tooltip: '移出黑名单',
+                          size: M3EIconButtonSize.small,
                           onPressed: () => unawaited(
                             ref
                                 .read(settingsProvider.notifier)
                                 .removeBlockedCreator(block),
                           ),
-                          icon: const Icon(Icons.close_rounded, size: 15),
-                          visualDensity: VisualDensity.compact,
-                          constraints: const BoxConstraints(
-                              minWidth: 28, minHeight: 28),
-                          padding: EdgeInsets.zero,
                         ),
                       ],
                     ),
@@ -297,7 +288,10 @@ class _BlacklistDialog extends ConsumerWidget {
           '只作用于在线内容，本地音声库完全不受影响。\n'
           '服务端只回过滤后的总数，所以只能说「屏蔽了几项」，'
           '说不出「隐藏了多少件作品」。',
-          style: TextStyle(fontSize: 10.5, height: 1.6, color: theme.hintColor),
+          style: theme.type.bodySmall.copyWith(
+            height: 1.6,
+            color: theme.colors.onSurfaceVariant,
+          ),
         ),
       ],
     );

@@ -224,32 +224,20 @@ class OnlineAppearanceDialog extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
+    final theme = M3ETheme.of(context);
     final settings = ref.watch(settingsProvider);
     final notifier = ref.read(settingsProvider.notifier);
 
-    return AlertDialog(
-      title: Row(
-        children: [
-          Icon(
-            Icons.text_fields_rounded,
-            size: 17,
-            color: theme.colorScheme.primary,
-          ),
-          const SizedBox(width: 8),
-          const Text('在线外观', style: TextStyle(fontSize: 15)),
-        ],
+    return M3EDialog(
+      maxWidth: 460,
+      leading: Icon(
+        Icons.text_fields_rounded,
+        size: 24,
+        color: theme.colors.primary,
       ),
-      contentPadding: const EdgeInsets.fromLTRB(6, 4, 6, 0),
-      content: SizedBox(
-        width: 360,
-        child: ConstrainedBox(
-          // 五组竖排会很高，矮屏要能滚 —— 与黑名单对话框同一套做法
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(context).height * 0.62,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
+      title: '在线外观',
+      contentPadding: const EdgeInsets.fromLTRB(6, 8, 6, 0),
+      content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -303,14 +291,12 @@ class OnlineAppearanceDialog extends ConsumerWidget {
                 ),
                 const SizedBox(height: 6),
               ],
-            ),
-          ),
-        ),
       ),
-      actions: [
-        TextButton(
+      actions: <Widget>[
+        M3EButton(
+          label: '关闭',
+          variant: M3EButtonVariant.text,
           onPressed: () => Navigator.pop(context),
-          child: const Text('关闭', style: TextStyle(fontSize: 12)),
         ),
       ],
     );
@@ -319,8 +305,8 @@ class OnlineAppearanceDialog extends ConsumerWidget {
 
 /// 一组档位：标题 + 说明 + 竖排单选（列数专用 —— 列数是整数，滑杆没有意义）。
 ///
-/// 用 `RadioGroup` 而不是老的 `RadioListTile(groupValue:, onChanged:)` ——
-/// 后者在 3.32 之后已废弃，继续用会给 `flutter analyze` 添两条 lint。
+/// 1.99.42 从 `RadioGroup` + `RadioListTile` 换成 `M3EListItem`：
+/// 单选在 M3E 里就是「列表行 + 选中态」，不需要 Material 的单选框。
 Widget _choiceGroup<T>({
   required BuildContext context,
   required String title,
@@ -329,43 +315,38 @@ Widget _choiceGroup<T>({
   required T value,
   required ValueChanged<T> onChanged,
 }) {
-  final theme = Theme.of(context);
+  final theme = M3ETheme.of(context);
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
+    children: <Widget>[
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 2),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+          children: <Widget>[
             Text(
               title,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              style: theme.type.labelLarge,
             ),
             const SizedBox(height: 2),
-            Text(hint, style: TextStyle(fontSize: 10.5, color: theme.hintColor)),
+            Text(
+              hint,
+              style: theme.type.bodySmall.copyWith(
+                color: theme.colors.onSurfaceVariant,
+              ),
+            ),
           ],
         ),
       ),
-      RadioGroup<T>(
-        groupValue: value,
-        onChanged: (v) {
-          if (v != null) onChanged(v);
-        },
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final (optionValue, label) in choices)
-              RadioListTile<T>(
-                value: optionValue,
-                dense: true,
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                title: Text(label, style: const TextStyle(fontSize: 12)),
-              ),
-          ],
-        ),
+      M3EList(
+        children: <Widget>[
+          for (final (optionValue, label) in choices)
+            M3EListItem(
+              title: label,
+              selected: optionValue == value,
+              onTap: () => onChanged(optionValue),
+            ),
+        ],
       ),
     ],
   );

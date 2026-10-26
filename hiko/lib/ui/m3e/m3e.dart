@@ -22,6 +22,7 @@ export 'components/menus/m3e_menu.dart';
 export 'components/motion/m3e_pressable.dart';
 export 'components/progress/m3e_loading_indicator.dart';
 export 'components/surfaces/m3e_card.dart';
+export 'components/surfaces/m3e_dialog.dart';
 export 'components/surfaces/m3e_sheet.dart';
 export 'components/surfaces/m3e_toolbar.dart';
 export 'components/selection/m3e_chip.dart';

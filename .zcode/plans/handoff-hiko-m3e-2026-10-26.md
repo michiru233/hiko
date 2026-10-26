@@ -8,10 +8,11 @@
 > 本文只写「怎么接、已经做了什么、下一步做什么」；逐条差距的完整证据见
 > `.zcode/plans/audit-hiko-m3e-coverage.md`（下称「审计」）。
 
-> **状态更新（1.99.41 发版后，2026-10-26）**：当前 `1.99.41+154`，`M3EMenu`
-> 已落地并接线六处（在线排序 / Aa / 每页条数 / 歌单管理 / 播放模式 / 桌面歌词 /
-> 在线账号）；基线 **807 passed / 2 skipped**、analyze **44 条 0 error**。
-> 下一步是 §4 的 `M3EDialog`（版本号从它起整体后移一位：1.99.42）。
+> **状态更新（1.99.42 发版后，2026-10-26）**：当前 `1.99.42+155`。
+> `M3EMenu`（六处 + 在线账号）与 `M3EDialog`（21 处对话框全部收口）已落地；
+> 基线 **817 passed / 2 skipped**、analyze **42 条 0 error**。
+> 下一步是 **1.99.43 设置页内容层**（`M3ESwitch`/`M3ECheckbox`、`M3ESlider` 加
+> `divisions`、`DropdownButton` → `M3EMenu`），M3EDialog 那半已提前做完。
 > 下面 §1–§3 仍是 1.99.39 视角的清单，逐版状态以
 > `plan-hiko-flutter-rewrite.md` 末尾章节为准。
 > 1.99.40 四条裁决：①B（一版接完六处 + 顺带在线账号菜单）；②A（分级开关用
@@ -20,6 +21,9 @@
 > 1.99.41 补丁：排序胶囊去掉「排序：」前缀并加回 swap_vert 图标 —— 裁决 ④A
 > 的原方案在 360dp × 1.3 字号下溢出 8.3dp，已修并由
 > `test/ui/online_toolbar_narrow_test.dart` 上锁。
+> 1.99.42：新增源码锁 `test/ui/no_material_dialogs_test.dart`，
+> `lib/ui`（除 `m3e/`）再出现 `AlertDialog(` / `CheckboxListTile(` /
+> `RadioListTile(` 即失败。
 
 ---
 

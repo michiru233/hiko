@@ -1916,94 +1916,86 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
-        final theme = Theme.of(context);
-        return AlertDialog(
-          title: const Text('按标签筛选', style: TextStyle(fontSize: 16)),
-          content: SizedBox(
-            width: 320,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
+        final theme = M3ETheme.of(context);
+        final filtered = tags
+            .where(
+              (e) =>
+                  search.isEmpty ||
+                  e.$1.toLowerCase().contains(search.toLowerCase()),
+            )
+            .take(30)
+            .toList();
+        return M3EDialog(
+          maxWidth: 420,
+          title: '按标签筛选',
+          scrollable: false,
+          contentPadding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: TextField(
                   autofocus: true,
                   decoration: const InputDecoration(
                     isDense: true,
                     hintText: '搜索标签',
                     prefixIcon: Icon(Icons.search, size: 16),
                   ),
-                  style: const TextStyle(fontSize: 12),
                   onChanged: (v) => setDialogState(() => search = v),
                 ),
-                const SizedBox(height: 8),
-                Flexible(
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: [
-                      if (_tagFilter != null)
-                        ListTile(
-                          dense: true,
-                          leading: Icon(Icons.close,
-                              size: 16, color: theme.colorScheme.error),
-                          title: Text('清除标签筛选（当前：$_tagFilter）',
-                              style: const TextStyle(fontSize: 12)),
-                          onTap: () {
-                            setState(() => _tagFilter = null);
-                            Navigator.pop(context);
-                          },
+              ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: <Widget>[
+                    if (_tagFilter != null)
+                      M3EListItem(
+                        title: '清除标签筛选（当前：$_tagFilter）',
+                        leading: Icon(
+                          Icons.close_rounded,
+                          size: 20,
+                          color: theme.colors.error,
                         ),
-                      for (final (name, count) in tags
-                          .where((e) =>
-                              search.isEmpty ||
-                              e.$1.toLowerCase().contains(search.toLowerCase()))
-                          .take(30))
-                        ListTile(
-                          dense: true,
-                          visualDensity: VisualDensity.compact,
-                          title: Text(name,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: name == _tagFilter
-                                    ? FontWeight.w700
-                                    : FontWeight.w400,
-                                color: name == _tagFilter
-                                    ? theme.colorScheme.primary
-                                    : null,
-                              )),
-                          trailing: Text('$count',
-                              style: TextStyle(
-                                  fontSize: 11, color: theme.hintColor)),
-                          onTap: () {
-                            setState(() => _tagFilter = name);
-                            Navigator.pop(context);
-                          },
-                        ),
-                      if (tags.where((e) =>
-                              search.isEmpty ||
-                              e.$1
-                                  .toLowerCase()
-                                  .contains(search.toLowerCase()))
-                          .isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Text(
-                            albums.any((a) => a.tags.isNotEmpty)
-                                ? '没有匹配的标签'
-                                : '当前库还没有刮削标签',
-                            style: TextStyle(
-                                fontSize: 12, color: theme.hintColor),
-                            textAlign: TextAlign.center,
+                        onTap: () {
+                          setState(() => _tagFilter = null);
+                          Navigator.pop(context);
+                        },
+                      ),
+                    for (final (name, count) in filtered)
+                      M3EListItem(
+                        title: name,
+                        subtitle: '$count 张',
+                        selected: name == _tagFilter,
+                        onTap: () {
+                          setState(() => _tagFilter = name);
+                          Navigator.pop(context);
+                        },
+                      ),
+                    if (filtered.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          albums.any((a) => a.tags.isNotEmpty)
+                              ? '没有匹配的标签'
+                              : '当前库还没有刮削标签',
+                          textAlign: TextAlign.center,
+                          style: theme.type.bodyMedium.copyWith(
+                            color: theme.colors.onSurfaceVariant,
                           ),
                         ),
-                    ],
-                  ),
+                      ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
+          actions: <Widget>[
+            M3EButton(
+              label: '关闭',
+              variant: M3EButtonVariant.text,
               onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
             ),
           ],
         );
@@ -2019,37 +2011,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final circleController = TextEditingController(text: album.albumArtist);
     final saved = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('编辑作品信息', style: TextStyle(fontSize: 16)),
+      builder: (context) => M3EDialog(
+        maxWidth: 420,
+        title: '编辑作品信息',
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          children: [
+          children: <Widget>[
             TextField(
               controller: titleController,
               autofocus: true,
               decoration: const InputDecoration(labelText: '标题'),
-              style: const TextStyle(fontSize: 14),
             ),
             TextField(
               controller: artistController,
               decoration: const InputDecoration(labelText: '声优'),
-              style: const TextStyle(fontSize: 14),
             ),
             TextField(
               controller: circleController,
               decoration: const InputDecoration(labelText: '社团（专辑艺术家）'),
-              style: const TextStyle(fontSize: 14),
             ),
           ],
         ),
-        actions: [
-          TextButton(
+        actions: <Widget>[
+          M3EButton(
+            label: '取消',
+            variant: M3EButtonVariant.text,
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
           ),
-          ElevatedButton(
+          M3EButton(
+            label: '保存',
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('保存'),
           ),
         ],
       ),

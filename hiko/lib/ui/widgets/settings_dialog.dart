@@ -157,31 +157,36 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       return;
     }
 
-    final theme = Theme.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认导入备份'),
-        content: Text(
-          '备份包含 ${backup.albums.length} 张专辑'
-          '（${backup.createdAt.toString().substring(0, 10)} 导出）。\n\n'
-          '导入将覆盖当前的全部专辑记录、分类与设置（不删除源文件），'
-          '无法撤销。确认继续？',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              '确认导入',
-              style: TextStyle(color: theme.colorScheme.error),
+      builder: (ctx) {
+        final theme = M3ETheme.of(ctx);
+        return M3EDialog(
+          title: '确认导入备份',
+          content: Text(
+            '备份包含 ${backup.albums.length} 张专辑'
+            '（${backup.createdAt.toString().substring(0, 10)} 导出）。\n\n'
+            '导入将覆盖当前的全部专辑记录、分类与设置（不删除源文件），'
+            '无法撤销。确认继续？',
+            style: theme.type.bodyMedium.copyWith(
+              color: theme.colors.onSurfaceVariant,
+              height: 1.6,
             ),
           ),
-        ],
-      ),
+          actions: <Widget>[
+            M3EButton(
+              label: '取消',
+              variant: M3EButtonVariant.text,
+              onPressed: () => Navigator.pop(ctx, false),
+            ),
+            M3EButton(
+              label: '确认导入',
+              variant: M3EButtonVariant.destructive,
+              onPressed: () => Navigator.pop(ctx, true),
+            ),
+          ],
+        );
+      },
     );
     if (confirmed != true || !mounted) return;
 
@@ -1261,28 +1266,34 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               // 二次确认对话框
               final confirmed = await showDialog<bool>(
                 context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('确认重置数据库'),
-                  content: const Text(
-                    '将清空所有专辑记录，但不会删除源文件。\n'
-                    '您的设置（主题、增益、音乐目录）将保留。\n\n'
-                    '清空后需重新导入文件夹恢复专辑。\n\n'
-                    '此操作无法撤销，确认继续？',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('取消'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: Text(
-                        '确认清空',
-                        style: TextStyle(color: theme.colorScheme.error),
+                builder: (ctx) {
+                  final dialogTheme = M3ETheme.of(ctx);
+                  return M3EDialog(
+                    title: '确认重置数据库',
+                    content: Text(
+                      '将清空所有专辑记录，但不会删除源文件。\n'
+                      '您的设置（主题、增益、音乐目录）将保留。\n\n'
+                      '清空后需重新导入文件夹恢复专辑。\n\n'
+                      '此操作无法撤销，确认继续？',
+                      style: dialogTheme.type.bodyMedium.copyWith(
+                        color: dialogTheme.colors.onSurfaceVariant,
+                        height: 1.6,
                       ),
                     ),
-                  ],
-                ),
+                    actions: <Widget>[
+                      M3EButton(
+                        label: '取消',
+                        variant: M3EButtonVariant.text,
+                        onPressed: () => Navigator.pop(ctx, false),
+                      ),
+                      M3EButton(
+                        label: '确认清空',
+                        variant: M3EButtonVariant.destructive,
+                        onPressed: () => Navigator.pop(ctx, true),
+                      ),
+                    ],
+                  );
+                },
               );
 
               if (confirmed == true) {

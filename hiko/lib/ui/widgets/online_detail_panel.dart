@@ -769,25 +769,29 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     }
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          onlineTrackDisplayName(track.title),
-          style: const TextStyle(fontSize: 14),
-        ),
-        content: SizedBox(
-          width: 420,
-          height: 360,
-          child: SingleChildScrollView(
-            child: SelectableText(text, style: const TextStyle(fontSize: 12)),
+      builder: (ctx) {
+        final theme = M3ETheme.of(ctx);
+        return M3EDialog(
+          maxWidth: 520,
+          title: onlineTrackDisplayName(track.title),
+          content: SizedBox(
+            height: 360,
+            child: SingleChildScrollView(
+              child: SelectableText(
+                text,
+                style: theme.type.bodyMedium,
+              ),
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('关闭'),
-          ),
-        ],
-      ),
+          actions: <Widget>[
+            M3EButton(
+              label: '关闭',
+              variant: M3EButtonVariant.text,
+              onPressed: () => Navigator.pop(ctx),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -1479,7 +1483,6 @@ class _OfflineActionButton extends ConsumerWidget {
     final downloadState = ref.watch(offlineDownloadProvider)[work.id];
     final offlineWorks = ref.watch(offlineIndexListProvider);
     final isOffline = offlineWorks.any((e) => e.workId == work.id);
-    final theme = Theme.of(context);
 
     final (label, icon, onPressed_) = switch (downloadState) {
       DownloadRunning(:final done, :final total) => (
@@ -1502,7 +1505,7 @@ class _OfflineActionButton extends ConsumerWidget {
       _ when isOffline => (
           '已离线',
           Icons.download_done_rounded,
-          () => unawaited(_confirmRemove(context, ref, theme)),
+          () => unawaited(_confirmRemove(context, ref)),
         ),
       _ => (
           '离线下载',
@@ -1521,27 +1524,34 @@ class _OfflineActionButton extends ConsumerWidget {
     );
   }
 
-  Future<void> _confirmRemove(
-      BuildContext context, WidgetRef ref, ThemeData theme) async {
+  Future<void> _confirmRemove(BuildContext context, WidgetRef ref) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('删除离线内容'),
-        content: const Text(
-          '将删除该作品已下载的音轨、字幕与封面缓存，'
-          '再次收听需要重新联网。确认删除？',
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('删除',
-                style: TextStyle(color: theme.colorScheme.error)),
+      builder: (ctx) {
+        final theme = M3ETheme.of(ctx);
+        return M3EDialog(
+          title: '删除离线内容',
+          content: Text(
+            '将删除该作品已下载的音轨、字幕与封面缓存，'
+            '再次收听需要重新联网。确认删除？',
+            style: theme.type.bodyMedium.copyWith(
+              color: theme.colors.onSurfaceVariant,
+            ),
           ),
-        ],
-      ),
+          actions: <Widget>[
+            M3EButton(
+              label: '取消',
+              variant: M3EButtonVariant.text,
+              onPressed: () => Navigator.pop(ctx, false),
+            ),
+            M3EButton(
+              label: '删除',
+              variant: M3EButtonVariant.destructive,
+              onPressed: () => Navigator.pop(ctx, true),
+            ),
+          ],
+        );
+      },
     );
     if (confirmed != true) return;
     await ref.read(onlineAudioCacheProvider).removeWork(work.id);

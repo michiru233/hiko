@@ -17,6 +17,10 @@ enum M3EButtonVariant {
 
   /// 文字：无底无描边
   text,
+
+  /// 危险主操作：error 底（删除/清空/登出这类不可撤销动作）。
+  /// 1.99.42 新增：对话框的「删除」不再写死 `#D34C44`。
+  destructive,
 }
 
 /// 按钮尺寸。高度与左右内边距照 Compose token（32/40/56）。
@@ -86,6 +90,11 @@ class M3EButton extends StatelessWidget {
           colors.primary,
           null,
         ),
+      M3EButtonVariant.destructive => (
+          colors.error,
+          colors.onError,
+          null,
+        ),
     };
 
     // 禁用态：容器 12% onSurface、文字 38% onSurface（M3 规范值）。
@@ -99,9 +108,10 @@ class M3EButton extends StatelessWidget {
         : colors.onSurface.withValues(alpha: 0.38);
 
     final textStyle =
-        (variant == M3EButtonVariant.filled
-                ? theme.type.labelLargeEmphasized
-                : theme.type.labelLarge)
+        (variant == M3EButtonVariant.filled ||
+                variant == M3EButtonVariant.destructive
+            ? theme.type.labelLargeEmphasized
+            : theme.type.labelLarge)
             .copyWith(color: effectiveForeground);
 
     final content = Row(
@@ -140,7 +150,9 @@ class M3EButton extends StatelessWidget {
                     : colors.onSurface.withValues(alpha: 0.12),
               ),
       ),
-      alignment: Alignment.center,
+      // 不加 `alignment:`：那会让 Align 吃掉父级宽度，按钮在 Wrap/Row 里
+      // 变成整行宽（1.99.42 在对话框按钮区发现）。宽度由内容决定，
+      // 需要撑满时走 `expand: true`。
       child: content,
     );
 

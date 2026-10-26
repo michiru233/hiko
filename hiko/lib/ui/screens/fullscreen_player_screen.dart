@@ -427,7 +427,7 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                   tooltip: '调整歌词字号',
                   isDark: isDark,
                   onPressed: () =>
-                      _showLyricsFontScaleDialog(settings, theme, isDark),
+                      _showLyricsFontScaleDialog(settings),
                 ),
               ],
             ),
@@ -638,14 +638,14 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
             icon: Icons.bedtime_outlined,
             tooltip: '睡眠定时',
             active: state.sleepMode != SleepTimerMode.off,
-            onTap: () => _showSleepTimerDialog(theme, isDark),
+            onTap: () => _showSleepTimerDialog(),
           ),
           // 音频增益
           _ToolbarAction(
             icon: Icons.graphic_eq_rounded,
             tooltip: '音频增益',
             active: settings.audioGain > 1.0,
-            onTap: () => _showGainDialog(settings, theme, isDark),
+            onTap: () => _showGainDialog(settings),
           ),
           // 音量（桌面：播放条音量键 1.99.29 移入此处）
           if (isDesktop) _buildVolumeToolbarButton(settings, theme),
@@ -657,7 +657,7 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
               icon: Icons.speed_outlined,
               tooltip: '播放倍速 ${settings.playbackRate.toStringAsFixed(1)}x',
               active: settings.playbackRate != 1.0,
-              onTap: () => _showRateDialog(settings, theme, isDark),
+              onTap: () => _showRateDialog(settings),
             ),
           // 播放模式
           _buildPlayModeToolbarButton(state.mode),
@@ -868,12 +868,8 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     );
   }
 
-  /// 歌词字号调节对话框
-  Future<void> _showLyricsFontScaleDialog(
-    AppSettings settings,
-    ThemeData theme,
-    bool isDark,
-  ) async {
+  /// 歌词字号调节对话框（1.99.42：RadioListTile → M3EListItem）
+  Future<void> _showLyricsFontScaleDialog(AppSettings settings) async {
     final scales = [
       (0.85, '小'),
       (1.0, '标准'),
@@ -882,327 +878,356 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
       (1.50, '巨大'),
     ];
 
-    await showDialog(
+    await showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('歌词字号', style: TextStyle(fontSize: 16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final (scale, label) in scales)
-              RadioListTile<double>(
-                title: Text(label),
-                value: scale,
-                groupValue: settings.lyricsFontScale,
-                onChanged: (value) {
-                  if (value != null) {
-                    ref
-                        .read(settingsProvider.notifier)
-                        .setLyricsFontScale(value);
-                    Navigator.pop(context);
+      builder: (dialogContext) {
+        return M3EDialog(
+          maxWidth: 420,
+          title: '歌词字号',
+          scrollable: false,
+          contentPadding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          content: M3EList(
+            children: <Widget>[
+              for (final (scale, label) in scales)
+                M3EListItem(
+                  title: label,
+                  subtitle: '×${scale.toStringAsFixed(2)}',
+                  selected: settings.lyricsFontScale == scale,
+                  onTap: () {
+                    ref.read(settingsProvider.notifier).setLyricsFontScale(scale);
+                    Navigator.pop(dialogContext);
                     showHikoToast(context, '歌词字号已设为 $label');
-                  }
-                },
-              ),
+                  },
+                ),
+            ],
+          ),
+          actions: <Widget>[
+            M3EButton(
+              label: '取消',
+              variant: M3EButtonVariant.text,
+              onPressed: () => Navigator.pop(dialogContext),
+            ),
           ],
-        ),
-      ),
+        );
+      },
     );
   }
 
   /// 睡眠定时对话框：预设档 + 自定义分钟滑杆（松手生效）+ 曲终/专辑终停
-  Future<void> _showSleepTimerDialog(ThemeData theme, bool isDark) async {
+  Future<void> _showSleepTimerDialog() async {
     final state = ref.read(playbackProvider);
     final sleepMode = state.sleepMode;
     final sleepRemaining = state.sleepRemaining;
     int customMin = 30;
 
-    await showDialog(
+    await showDialog<void>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('睡眠定时', style: TextStyle(fontSize: 16)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (sleepMode == SleepTimerMode.timed && sleepRemaining != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Text(
-                    '剩余 ${(sleepRemaining.inMinutes + 1)} 分钟',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: theme.colorScheme.primary,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final theme = M3ETheme.of(context);
+          final colors = theme.colors;
+          return M3EDialog(
+            title: '睡眠定时',
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                if (sleepMode == SleepTimerMode.timed && sleepRemaining != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Text(
+                      '剩余 ${(sleepRemaining.inMinutes + 1)} 分钟',
+                      style: theme.type.titleSmall.copyWith(color: colors.primary),
                     ),
                   ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: <Widget>[
+                    for (final min in const [5, 10, 15, 30, 45, 60])
+                      M3EButton(
+                        label: '$min 分钟',
+                        variant: M3EButtonVariant.tonal,
+                        size: M3EButtonSize.small,
+                        onPressed: () {
+                          ref
+                              .read(playbackProvider.notifier)
+                              .setSleepMinutes(min);
+                          Navigator.pop(dialogContext);
+                          showHikoToast(this.context, '已设置 $min 分钟后停止播放');
+                        },
+                      ),
+                  ],
                 ),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final min in const [5, 10, 15, 30, 45, 60])
-                    ElevatedButton(
-                      onPressed: () {
-                        ref.read(playbackProvider.notifier).setSleepMinutes(min);
-                        Navigator.pop(context);
-                        showHikoToast(context, '已设置 $min 分钟后停止播放');
-                      },
-                      child: Text('$min 分钟'),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Text(
-                '自定义：$customMin 分钟',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: theme.colorScheme.primary,
+                const SizedBox(height: 12),
+                Text(
+                  '自定义：$customMin 分钟',
+                  style: theme.type.labelLarge.copyWith(color: colors.primary),
                 ),
-              ),
-              Slider(
-                value: customMin.toDouble(),
-                min: 5,
-                max: 240,
-                divisions: 47,
-                label: '$customMin 分钟',
-                onChanged: (v) => setDialogState(() => customMin = v.round()),
-                onChangeEnd: (v) {
-                  ref
-                      .read(playbackProvider.notifier)
-                      .setSleepMinutes(v.round());
-                  Navigator.pop(context);
-                  showHikoToast(context, '已设置 ${v.round()} 分钟后停止播放');
-                },
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  TextButton(
-                    onPressed: () {
-                      ref.read(playbackProvider.notifier).setSleepEndOfTrack();
-                      Navigator.pop(context);
-                      showHikoToast(context, '将在播完当前曲后停止');
-                    },
-                    child: const Text('播完当前曲'),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      ref.read(playbackProvider.notifier).setSleepEndOfAlbum();
-                      Navigator.pop(context);
-                      showHikoToast(context, '将在播完当前专辑后停止');
-                    },
-                    child: const Text('播完当前专辑'),
-                  ),
-                ],
-              ),
-              if (sleepMode != SleepTimerMode.off) ...[
-                TextButton(
-                  onPressed: () {
-                    ref.read(playbackProvider.notifier).setSleepOff();
-                    Navigator.pop(context);
-                    showHikoToast(context, '已取消定时');
+                Slider(
+                  value: customMin.toDouble(),
+                  min: 5,
+                  max: 240,
+                  divisions: 47,
+                  label: '$customMin 分钟',
+                  onChanged: (v) => setDialogState(() => customMin = v.round()),
+                  onChangeEnd: (v) {
+                    ref
+                        .read(playbackProvider.notifier)
+                        .setSleepMinutes(v.round());
+                    Navigator.pop(dialogContext);
+                    showHikoToast(
+                        this.context, '已设置 ${v.round()} 分钟后停止播放');
                   },
-                  child: const Text('取消定时'),
                 ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: <Widget>[
+                    M3EButton(
+                      label: '播完当前曲',
+                      variant: M3EButtonVariant.text,
+                      size: M3EButtonSize.small,
+                      onPressed: () {
+                        ref
+                            .read(playbackProvider.notifier)
+                            .setSleepEndOfTrack();
+                        Navigator.pop(dialogContext);
+                        showHikoToast(this.context, '将在播完当前曲后停止');
+                      },
+                    ),
+                    M3EButton(
+                      label: '播完当前专辑',
+                      variant: M3EButtonVariant.text,
+                      size: M3EButtonSize.small,
+                      onPressed: () {
+                        ref
+                            .read(playbackProvider.notifier)
+                            .setSleepEndOfAlbum();
+                        Navigator.pop(dialogContext);
+                        showHikoToast(this.context, '将在播完当前专辑后停止');
+                      },
+                    ),
+                  ],
+                ),
+                if (sleepMode != SleepTimerMode.off)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: M3EButton(
+                      label: '取消定时',
+                      variant: M3EButtonVariant.text,
+                      size: M3EButtonSize.small,
+                      onPressed: () {
+                        ref.read(playbackProvider.notifier).setSleepOff();
+                        Navigator.pop(dialogContext);
+                        showHikoToast(this.context, '已取消定时');
+                      },
+                    ),
+                  ),
               ],
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
 
   /// 音频增益对话框。1.99.15：当前为本地专辑时写「按专辑记忆」，全局设置不动。
-  Future<void> _showGainDialog(
-    AppSettings settings,
-    ThemeData theme,
-    bool isDark,
-  ) async {
+  Future<void> _showGainDialog(AppSettings settings) async {
     final album = ref.read(playbackProvider).album;
     final albumScoped = album != null && !album.isOnline;
     double tempGain = album?.gainOverride ?? settings.audioGain;
 
-    await showDialog(
+    await showDialog<void>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('音频增益', style: TextStyle(fontSize: 16)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'x${tempGain.toStringAsFixed(1)}',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (albumScoped)
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final theme = M3ETheme.of(context);
+          final colors = theme.colors;
+          return M3EDialog(
+            title: '音频增益',
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
                 Text(
-                  album.gainOverride != null
-                      ? '将记忆到本专辑（当前 x${album.gainOverride!.toStringAsFixed(1)}）'
-                      : '将记忆到本专辑（全局 x${settings.audioGain.toStringAsFixed(1)} 不受影响）',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+                  'x${tempGain.toStringAsFixed(1)}',
+                  style: theme.type.headlineSmall.copyWith(color: colors.primary),
+                ),
+                const SizedBox(height: 16),
+                if (albumScoped) ...<Widget>[
+                  Text(
+                    album.gainOverride != null
+                        ? '将记忆到本专辑（当前 x${album.gainOverride!.toStringAsFixed(1)}）'
+                        : '将记忆到本专辑（全局 x${settings.audioGain.toStringAsFixed(1)} 不受影响）',
+                    textAlign: TextAlign.center,
+                    style: theme.type.bodySmall.copyWith(
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                // 带档位的滑杆等 M3ESlider 支持 divisions 后再换（1.99.46）
+                Slider(
+                  value: tempGain,
+                  min: 1.0,
+                  max: desktopGainCap(),
+                  divisions: desktopGainCap() > 1.3 ? 30 : 3,
+                  label: 'x${tempGain.toStringAsFixed(1)}',
+                  onChanged: (v) {
+                    setDialogState(() => tempGain = v);
+                  },
+                ),
+                Text(
+                  '调节后立即生效，范围 1.0x ~ ${desktopGainCap().toStringAsFixed(1)}x',
+                  textAlign: TextAlign.center,
+                  style: theme.type.bodySmall.copyWith(
+                    color: colors.onSurfaceVariant,
                   ),
                 ),
-              Slider(
-                value: tempGain,
-                min: 1.0,
-                max: desktopGainCap(),
-                divisions: desktopGainCap() > 1.3 ? 30 : 3,
-                label: 'x${tempGain.toStringAsFixed(1)}',
-                onChanged: (v) {
-                  setDialogState(() => tempGain = v);
-                },
-              ),
-              Text(
-                '调节后立即生效，范围 1.0x ~ ${desktopGainCap().toStringAsFixed(1)}x',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+              ],
+            ),
+            actions: <Widget>[
+              if (albumScoped && album.gainOverride != null)
+                M3EButton(
+                  label: '清除专辑记忆',
+                  variant: M3EButtonVariant.text,
+                  onPressed: () {
+                    ref
+                        .read(playbackProvider.notifier)
+                        .clearAlbumPlaybackMemory();
+                    Navigator.pop(dialogContext);
+                    showHikoToast(context, '已清除本专辑增益记忆');
+                  },
                 ),
-                textAlign: TextAlign.center,
+              M3EButton(
+                label: '取消',
+                variant: M3EButtonVariant.text,
+                onPressed: () => Navigator.pop(dialogContext),
+              ),
+              M3EButton(
+                label: '确定',
+                onPressed: () {
+                  final controller = ref.read(playbackProvider.notifier);
+                  if (albumScoped) {
+                    controller.setAlbumGain(tempGain);
+                  } else {
+                    ref.read(settingsProvider.notifier).setAudioGain(tempGain);
+                    controller.setAudioGain(tempGain);
+                  }
+                  Navigator.pop(dialogContext);
+                  showHikoToast(
+                      context, '增益已设为 x${tempGain.toStringAsFixed(1)}');
+                },
               ),
             ],
-          ),
-          actions: [
-            if (albumScoped && album.gainOverride != null)
-              TextButton(
-                onPressed: () {
-                  ref.read(playbackProvider.notifier).clearAlbumPlaybackMemory();
-                  Navigator.pop(context);
-                  showHikoToast(context, '已清除本专辑增益记忆');
-                },
-                child: const Text('清除专辑记忆'),
-              ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final controller = ref.read(playbackProvider.notifier);
-                if (albumScoped) {
-                  controller.setAlbumGain(tempGain);
-                } else {
-                  ref.read(settingsProvider.notifier).setAudioGain(tempGain);
-                  controller.setAudioGain(tempGain);
-                }
-                Navigator.pop(context);
-                showHikoToast(context, '增益已设为 x${tempGain.toStringAsFixed(1)}');
-              },
-              child: const Text('确定'),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 
   /// 倍速对话框（仅 Android，1.99.7）：0.5~2.0 步进 0.1，拖动松手即生效。
   /// 1.99.15：当前为本地专辑时写「按专辑记忆」，全局设置不动；有记忆时显示清除入口。
-  Future<void> _showRateDialog(
-    AppSettings settings,
-    ThemeData theme,
-    bool isDark,
-  ) async {
+  Future<void> _showRateDialog(AppSettings settings) async {
     final album = ref.read(playbackProvider).album;
     final albumScoped = album != null && !album.isOnline;
-    final initial =
-        album?.playbackRateOverride ?? settings.playbackRate;
+    final initial = album?.playbackRateOverride ?? settings.playbackRate;
     double tempRate = initial;
 
-    await showDialog(
+    await showDialog<void>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('播放倍速', style: TextStyle(fontSize: 16)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'x${tempRate.toStringAsFixed(1)}',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-              if (albumScoped)
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final theme = M3ETheme.of(context);
+          final colors = theme.colors;
+          return M3EDialog(
+            title: '播放倍速',
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
                 Text(
-                  album.playbackRateOverride != null
-                      ? '将记忆到本专辑（当前 x${album.playbackRateOverride!.toStringAsFixed(1)}）'
-                      : '将记忆到本专辑（全局 x${settings.playbackRate.toStringAsFixed(1)} 不受影响）',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
-                  ),
+                  'x${tempRate.toStringAsFixed(1)}',
+                  style: theme.type.headlineSmall.copyWith(color: colors.primary),
                 ),
-              Slider(
-                min: 0.5,
-                max: 2.0,
-                divisions: 15,
-                value: tempRate.clamp(0.5, 2.0),
-                label: 'x${tempRate.toStringAsFixed(1)}',
-                onChanged: (v) =>
-                    setDialogState(() => tempRate = (v * 10).round() / 10),
-                onChangeEnd: (v) {
-                  final r = (v * 10).round() / 10;
-                  final controller = ref.read(playbackProvider.notifier);
-                  if (albumScoped) {
-                    controller.setAlbumPlaybackRate(r);
-                  } else {
-                    // setPlaybackRate 内部落设置持久化
-                    controller.setPlaybackRate(r);
-                  }
-                },
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('0.5x', style: TextStyle(fontSize: 11)),
-                  if (albumScoped && album.playbackRateOverride != null)
-                    TextButton(
-                      onPressed: () {
-                        setDialogState(() => tempRate = settings.playbackRate);
-                        ref
-                            .read(playbackProvider.notifier)
-                            .clearAlbumPlaybackMemory();
-                      },
-                      child: const Text('清除专辑记忆'),
-                    )
-                  else
-                    TextButton(
-                      onPressed: () {
-                        setDialogState(() => tempRate = 1.0);
-                        if (albumScoped) {
-                          ref
-                              .read(playbackProvider.notifier)
-                              .setAlbumPlaybackRate(1.0);
-                        } else {
-                          ref
-                              .read(playbackProvider.notifier)
-                              .setPlaybackRate(1.0);
-                        }
-                      },
-                      child: const Text('恢复 1.0x'),
+                if (albumScoped) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Text(
+                    album.playbackRateOverride != null
+                        ? '将记忆到本专辑（当前 x${album.playbackRateOverride!.toStringAsFixed(1)}）'
+                        : '将记忆到本专辑（全局 x${settings.playbackRate.toStringAsFixed(1)} 不受影响）',
+                    textAlign: TextAlign.center,
+                    style: theme.type.bodySmall.copyWith(
+                      color: colors.onSurfaceVariant,
                     ),
-                  const Text('2.0x', style: TextStyle(fontSize: 11)),
+                  ),
                 ],
+                // 带档位的滑杆等 M3ESlider 支持 divisions 后再换（1.99.46）
+                Slider(
+                  min: 0.5,
+                  max: 2.0,
+                  divisions: 15,
+                  value: tempRate.clamp(0.5, 2.0),
+                  label: 'x${tempRate.toStringAsFixed(1)}',
+                  onChanged: (v) =>
+                      setDialogState(() => tempRate = (v * 10).round() / 10),
+                  onChangeEnd: (v) {
+                    final r = (v * 10).round() / 10;
+                    final controller = ref.read(playbackProvider.notifier);
+                    if (albumScoped) {
+                      controller.setAlbumPlaybackRate(r);
+                    } else {
+                      // setPlaybackRate 内部落设置持久化
+                      controller.setPlaybackRate(r);
+                    }
+                  },
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: <Widget>[
+                    Text('0.5x', style: theme.type.labelSmall),
+                    if (albumScoped && album.playbackRateOverride != null)
+                      M3EButton(
+                        label: '清除专辑记忆',
+                        variant: M3EButtonVariant.text,
+                        size: M3EButtonSize.small,
+                        onPressed: () {
+                          setDialogState(
+                              () => tempRate = settings.playbackRate);
+                          ref
+                              .read(playbackProvider.notifier)
+                              .clearAlbumPlaybackMemory();
+                        },
+                      )
+                    else
+                      M3EButton(
+                        label: '恢复 1.0x',
+                        variant: M3EButtonVariant.text,
+                        size: M3EButtonSize.small,
+                        onPressed: () {
+                          setDialogState(() => tempRate = 1.0);
+                          if (albumScoped) {
+                            ref
+                                .read(playbackProvider.notifier)
+                                .setAlbumPlaybackRate(1.0);
+                          } else {
+                            ref
+                                .read(playbackProvider.notifier)
+                                .setPlaybackRate(1.0);
+                          }
+                        },
+                      ),
+                    Text('2.0x', style: theme.type.labelSmall),
+                  ],
+                ),
+              ],
+            ),
+            actions: <Widget>[
+              M3EButton(
+                label: '关闭',
+                variant: M3EButtonVariant.text,
+                onPressed: () => Navigator.pop(dialogContext),
               ),
             ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('关闭'),
-            ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

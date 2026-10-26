@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 
-/// 确认对话框（对应旧版 confirm-overlay）
+import '../m3e/m3e.dart';
+
+/// 确认对话框（对应旧版 confirm-overlay）。
+///
+/// 1.99.42 换 `M3EDialog`：标题 `headlineSmall`、正文 `bodyMedium`、
+/// 按钮 `M3EButton`（取消 = text，确认 = destructive）。原来两处写死的
+/// `fontSize: 12` 与 `#D34C44` 一并清掉。
 Future<bool> showConfirmDialog(
   BuildContext context, {
   required String title,
@@ -11,22 +17,25 @@ Future<bool> showConfirmDialog(
     context: context,
     barrierDismissible: true,
     builder: (context) {
-      final theme = Theme.of(context);
-      return AlertDialog(
-        title: Text(title, style: const TextStyle(fontSize: 15)),
+      final theme = M3ETheme.of(context);
+      return M3EDialog(
+        title: title,
         content: Text(
           message,
-          style: TextStyle(fontSize: 12, height: 1.7, color: theme.hintColor),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('取消', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurface)),
+          style: theme.type.bodyMedium.copyWith(
+            color: theme.colors.onSurfaceVariant,
           ),
-          FilledButton(
+        ),
+        actions: <Widget>[
+          M3EButton(
+            label: '取消',
+            variant: M3EButtonVariant.text,
+            onPressed: () => Navigator.pop(context, false),
+          ),
+          M3EButton(
+            label: okLabel,
+            variant: M3EButtonVariant.destructive,
             onPressed: () => Navigator.pop(context, true),
-            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFD34C44)),
-            child: Text(okLabel, style: const TextStyle(fontSize: 12)),
           ),
         ],
       );
