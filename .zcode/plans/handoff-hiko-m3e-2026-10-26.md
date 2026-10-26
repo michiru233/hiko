@@ -8,11 +8,13 @@
 > 本文只写「怎么接、已经做了什么、下一步做什么」；逐条差距的完整证据见
 > `.zcode/plans/audit-hiko-m3e-coverage.md`（下称「审计」）。
 
-> **状态更新（1.99.46 发版后，2026-10-26）**：当前 `1.99.46+159`。
-> `M3EMenu`、`M3EDialog`、设置页、详情两端、在线三面、播放页尾部与歌词
-> 均已完成；基线 **845 passed / 2 skipped**、analyze **42 条 0 error**。
-> 下一步是 **1.99.47 首页次要区 + 桌面收尾**（rail 品牌区 / 面包屑 / 导入按钮 /
-> 多选条 / 续播卡 / 空态）。
+> **状态更新（1.99.47 发版后，2026-10-26）**：当前 `1.99.47+160`。
+> `M3EMenu`、`M3EDialog`、设置页、详情两端、在线三面、播放页尾部与歌词、
+> 首页次要区与桌面收尾均已完成；基线 **847 passed / 2 skipped**、analyze **42 条 0 error**。
+> 下一步是 **1.99.48 清账**（`HikoColors` / `hintColor` / 字面 hex / 数字圆角 /
+> 裸 `Duration`·`Curve`、删旧组件与 `DM Sans`、补 grep 锁与业务面样式锁）。
+> 全量交接书见 `.zcode/plans/handover-hiko-project-2026-10-26.md`，
+> 可直接粘给新 agent 的提示词见 `.zcode/plans/prompt-hiko-next-agent-2026-10-26.md`。
 > 下面 §1–§3 仍是 1.99.39 视角的清单，逐版状态以
 > `plan-hiko-flutter-rewrite.md` 末尾章节为准。
 > 1.99.40 四条裁决：①B（一版接完六处 + 顺带在线账号菜单）；②A（分级开关用
@@ -35,6 +37,10 @@
 > 在线面 `hintColor` 22 → 0，锁在 `test/ui/online_surfaces_lock_test.dart`。
 > 1.99.46：播放页 HikoColors 11 → 0；音量菜单 / 曲目 sheet / 歌词行全部 M3E，
 > 歌词字号仍是承重 metrics（`45 × lyricsFontScale`），18 条歌词锁全绿。
+> 1.99.47：首页次要区 + 桌面收尾（rail 品牌区 / 面包屑 / 导入 / 续播卡 / 多选条 /
+> 结果行 / 分色标记 / 空态 / 排序入口换 `M3EChip` + `M3EMenu`）；
+> 首页 `hintColor` 8 → 0、字面 `fontSize` 22 → 0，锁在
+> `test/ui/home_sort_menu_test.dart`。
 
 ---
 

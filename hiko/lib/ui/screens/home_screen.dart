@@ -764,21 +764,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
 
   Widget _railHeader() {
-    final theme = Theme.of(context);
+    // 1.99.47（D-02）：全站最后一个写死字号与色值的导航块收进 M3E。
+    // 品牌 mark 用 `primary` 圆角块 + `onPrimary` 字；`Hiko` 走 titleSmall，
+    // 副标走 labelSmall + onSurfaceVariant（不再是 #888B92）。
+    final theme = M3ETheme.of(context);
     final logo = Container(
       width: 32,
       height: 32,
       decoration: BoxDecoration(
-        color: theme.colorScheme.primary,
-        borderRadius: BorderRadius.circular(10),
+        color: theme.colors.primary,
+        borderRadius: BorderRadius.circular(M3EShape.sm),
       ),
-      child: const Center(
+      child: Center(
         child: Text(
           'K',
-          style: TextStyle(
-            color: Colors.white,
+          style: theme.type.titleMedium.copyWith(
+            color: theme.colors.onPrimary,
             fontWeight: FontWeight.w700,
-            fontSize: 18,
           ),
         ),
       ),
@@ -788,11 +790,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       children: <Widget>[
         logo,
         const SizedBox(width: 11),
-        const Column(
+        Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text('Hiko', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-            Text('音声收藏室', style: TextStyle(fontSize: 10, color: Color(0xFF888B92))),
+            Text(
+              'Hiko',
+              style: theme.type.titleSmall.copyWith(
+                fontWeight: FontWeight.w700,
+                color: theme.colors.onSurface,
+              ),
+            ),
+            Text(
+              '音声收藏室',
+              style: theme.type.labelSmall.copyWith(
+                color: theme.colors.onSurfaceVariant,
+              ),
+            ),
           ],
         ),
       ],
@@ -1153,69 +1166,65 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         isMobile ? 16 : 48,
         12,
       ),
-      child: Material(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: () {
-            ref
-                .read(playbackProvider.notifier)
-                .playAlbum(
-                  candidate,
-                  index: candidate.resumeTrackIndex,
-                  startPosition: candidate.resumePosition,
-                );
-            _showToast('已从上次断点继续播放');
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: SizedBox(
-                    width: 40,
-                    height: 40,
-                    child: AlbumCover(album: candidate),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '继续收听',
-                        style: TextStyle(
-                          fontSize: 10,
+      child: M3ECard(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        onTap: () {
+          ref
+              .read(playbackProvider.notifier)
+              .playAlbum(
+                candidate,
+                index: candidate.resumeTrackIndex,
+                startPosition: candidate.resumePosition,
+              );
+          _showToast('已从上次断点继续播放');
+        },
+        semanticLabel: '继续收听 ${candidate.title}',
+        child: Row(
+          children: <Widget>[
+            ClipRRect(
+              // 卡片 16 圆角、内边距 8，按 inner = outer − padding 应取 8；
+              // 封面只有 40dp，8 偏方，沿用详情卡的 md(12) 与本地/在线卡一致。
+              borderRadius: BorderRadius.circular(M3EShape.md),
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: AlbumCover(album: candidate),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    '继续收听',
+                    style: M3ETheme.of(context).type.labelSmall.copyWith(
                           letterSpacing: 1.2,
                           fontWeight: FontWeight.w700,
-                          color: theme.colorScheme.primary,
+                          color: M3ETheme.of(context).colors.primary,
                         ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${candidate.title} · 上次听到第 $trackNo 轨 ${formatTime(candidate.resumePosition)}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close_rounded, size: 16),
-                  tooltip: '关闭',
-                  onPressed: () =>
-                      setState(() => _resumeDismissed.add(candidate.id)),
-                ),
-              ],
+                  const SizedBox(height: 2),
+                  Text(
+                    '${candidate.title} · 上次听到第 $trackNo 轨 ${formatTime(candidate.resumePosition)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: M3ETheme.of(context).type.titleSmall.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: M3ETheme.of(context).colors.onSurface,
+                        ),
+                  ),
+                ],
+              ),
             ),
-          ),
+            M3EIconButton(
+              icon: Icons.close_rounded,
+              tooltip: '关闭',
+              size: M3EIconButtonSize.small,
+              onPressed: () =>
+                  setState(() => _resumeDismissed.add(candidate.id)),
+            ),
+          ],
         ),
       ),
     );
@@ -1392,10 +1401,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // 桌面端保留原有的导入按钮
       if (!isMobile) ...[
         const SizedBox(width: 4),
-        FilledButton.tonalIcon(
+        M3EButton(
+          label: '导入',
+          variant: M3EButtonVariant.tonal,
+          size: M3EButtonSize.small,
+          icon: const Icon(Icons.upload),
           onPressed: _importFolder,
-          icon: const Icon(Icons.upload, size: 16),
-          label: const Text('导入'),
         ),
       ],
     ];
@@ -1404,18 +1415,30 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // 1.99.31 M3EAppBar.small：64dp，面包屑为中轴标题（plan §8.1）
       return M3EAppBar.small(
         title: Row(
-          children: [
-            Text('音声库', style: TextStyle(fontSize: 13, color: theme.hintColor)),
+          children: <Widget>[
+            Text(
+              '音声库',
+              style: M3ETheme.of(context).type.labelLarge.copyWith(
+                    color: M3ETheme.of(context).colors.onSurfaceVariant,
+                  ),
+            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Text(
                 '/',
-                style: TextStyle(color: theme.hintColor.withValues(alpha: 0.5)),
+                style: M3ETheme.of(context).type.labelLarge.copyWith(
+                      color: M3ETheme.of(context)
+                          .colors
+                          .onSurfaceVariant
+                          .withValues(alpha: 0.5),
+                    ),
               ),
             ),
             Text(
               _view,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+              style: M3ETheme.of(context).type.labelLargeEmphasized.copyWith(
+                    color: M3ETheme.of(context).colors.onSurface,
+                  ),
             ),
           ],
         ),
@@ -1602,60 +1625,70 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 children: [
                   Text(
                     '已选 ${_multiIds.length} 张',
-                    style: TextStyle(fontSize: 12, color: theme.hintColor),
+                    style: M3ETheme.of(context).type.bodyMedium.copyWith(
+                          color: M3ETheme.of(context).colors.onSurfaceVariant,
+                        ),
                   ),
                   const SizedBox(width: 4),
-                  OutlinedButton(
+                  M3EButton(
+                    label: '全选',
+                    variant: M3EButtonVariant.outlined,
+                    size: M3EButtonSize.small,
                     onPressed: () {
                       setState(
                         () => _multiIds.addAll(filtered.map((a) => a.id)),
                       );
                     },
-                    child: const Text('全选', style: TextStyle(fontSize: 11)),
                   ),
-                  FilledButton.tonal(
+                  M3EButton(
+                    label: '设置分类',
+                    variant: M3EButtonVariant.tonal,
+                    size: M3EButtonSize.small,
                     onPressed: _multiIds.isEmpty
                         ? null
                         : () => _setCategoryForSelected(Set.of(_multiIds)),
-                    child: const Text('设置分类', style: TextStyle(fontSize: 11)),
                   ),
-                  FilledButton.tonal(
+                  M3EButton(
+                    label: '刮削标签',
+                    variant: M3EButtonVariant.tonal,
+                    size: M3EButtonSize.small,
                     onPressed: _multiIds.isEmpty
                         ? null
                         : () =>
                               _scrapeSelected(Set.of(_multiIds), force: false),
-                    child: const Text('刮削标签', style: TextStyle(fontSize: 11)),
                   ),
-                  FilledButton.tonal(
+                  M3EButton(
+                    label: '设置星级',
+                    variant: M3EButtonVariant.tonal,
+                    size: M3EButtonSize.small,
                     onPressed: _multiIds.isEmpty
                         ? null
                         : () => _setRatingForSelected(Set.of(_multiIds)),
-                    child: const Text('设置星级', style: TextStyle(fontSize: 11)),
                   ),
-                  FilledButton.tonal(
+                  M3EButton(
+                    label: '删除所选',
+                    variant: M3EButtonVariant.tonal,
+                    size: M3EButtonSize.small,
                     onPressed: _multiIds.isEmpty
                         ? null
                         : () => _deleteSelected(false),
-                    child: const Text('删除所选', style: TextStyle(fontSize: 11)),
                   ),
-                  FilledButton.tonal(
+                  M3EButton(
+                    label: '删除所选及源文件',
+                    variant: M3EButtonVariant.destructive,
+                    size: M3EButtonSize.small,
                     onPressed: _multiIds.isEmpty
                         ? null
                         : () => _deleteSelected(true),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFFD34C44),
-                    ),
-                    child: const Text(
-                      '删除所选及源文件',
-                      style: TextStyle(fontSize: 11),
-                    ),
                   ),
-                  TextButton(
+                  M3EButton(
+                    label: '取消',
+                    variant: M3EButtonVariant.text,
+                    size: M3EButtonSize.small,
                     onPressed: () => setState(() {
                       _multiMode = false;
                       _multiIds.clear();
                     }),
-                    child: const Text('取消', style: TextStyle(fontSize: 11)),
                   ),
                 ],
               ),
@@ -1678,18 +1711,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ],
           Text(
             '显示 $count 张专辑',
-            style: TextStyle(fontSize: 11, color: theme.hintColor),
+            style: M3ETheme.of(context).type.labelMedium.copyWith(
+                  color: M3ETheme.of(context).colors.onSurfaceVariant,
+                ),
           ),
           const Spacer(),
           if (hasFilter || hasPersonFilter)
-            TextButton(
+            M3EButton(
+              label: '清除筛选',
+              variant: M3EButtonVariant.text,
+              size: M3EButtonSize.small,
               onPressed: () => setState(() {
                 _filter = 'all';
                 _view = '本地音声';
                 _personFilterKind = null;
                 _personFilterName = null;
               }),
-              child: const Text('清除筛选', style: TextStyle(fontSize: 11)),
             ),
         ],
       ),
@@ -1697,33 +1734,39 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   /// 1.77 详情页胶囊回传筛选的可关闭标记（社团紫 / 声优蓝）
+  ///
+  /// 1.99.47：色值改用 `hikoCircleColor` / `hikoVoiceColor`（页面里不再有字面 hex），
+  /// 形状收到全圆 + `labelMedium`；关闭钮走 `M3EPressable`（原来是自己套 InkWell）。
   Widget _buildPersonFilterChip(ThemeData theme) {
     final isCircle = _personFilterKind == 'circle';
-    final color = isCircle ? const Color(0xFFB39DDB) : const Color(0xFF90CAF9);
+    final color = isCircle ? hikoCircleColor : hikoVoiceColor;
+    final m3e = M3ETheme.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(M3EShape.full),
         border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
-        children: [
+        children: <Widget>[
           Text(
             '${isCircle ? "社团" : "声优"}：$_personFilterName',
-            style: TextStyle(fontSize: 11, color: color),
+            style: m3e.type.labelMedium.copyWith(color: color),
           ),
-          const SizedBox(width: 4),
-          InkWell(
+          const SizedBox(width: 2),
+          M3EPressable(
             onTap: () => setState(() {
               _personFilterKind = null;
               _personFilterName = null;
             }),
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(M3EShape.full),
+            pressScale: 0.9,
+            semanticLabel: '清除人物筛选',
             child: Padding(
               padding: const EdgeInsets.all(4),
-              child: Icon(Icons.close, size: 14, color: color),
+              child: Icon(Icons.close_rounded, size: 14, color: color),
             ),
           ),
         ],
@@ -1804,16 +1847,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       children: [
         Text(
           empty ? '还没有导入任何音声' : '没有找到匹配的音声',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: theme.hintColor,
-          ),
+          style: M3ETheme.of(context).type.titleSmall.copyWith(
+                color: M3ETheme.of(context).colors.onSurfaceVariant,
+              ),
         ),
         const SizedBox(height: 8),
         Text(
           empty ? '点击右上角「导入」按钮，选择你的音声文件夹' : '试试其他关键词或清除筛选条件',
-          style: TextStyle(fontSize: 12, color: theme.hintColor),
+          style: M3ETheme.of(context).type.bodySmall.copyWith(
+                color: M3ETheme.of(context).colors.onSurfaceVariant,
+              ),
         ),
       ],
     );
@@ -2314,76 +2357,28 @@ class _SortSelector extends StatelessWidget {
     }
   }
 
-  void _openSortMenu(BuildContext context) {
-    final renderBox = context.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
-    final offset = renderBox.localToGlobal(Offset.zero);
-    final size = renderBox.size;
-    final position = Offset(offset.dx, offset.dy + size.height + 4);
-
-    showHikoContextMenu<String>(
-      context: context,
-      position: position,
-      items: [
-        for (final opt in _sortOptions)
-          HikoContextMenuItem(value: opt.$1, label: opt.$2, icon: opt.$3),
-      ],
-    ).then((val) {
-      if (val != null && val != currentSort) {
-        onSelected(val);
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return InkWell(
-      onTap: () => _openSortMenu(context),
-      mouseCursor: SystemMouseCursors.click,
-      borderRadius: BorderRadius.circular(10),
-      // 1.99.30 M3E：色调胶囊（去玻璃），与标签/多选入口同层
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: M3ETheme.of(context).colors.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: M3ETheme.of(context).colors.outlineVariant),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-          child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (!isMobile) ...[
-              Text(
-                '排序',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: theme.hintColor,
-                ),
-              ),
-              const SizedBox(width: 6),
-            ],
-            Text(
-              _currentLabel,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: theme.colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Icon(
-              Icons.keyboard_arrow_down_rounded,
-              size: 15,
-              color: theme.hintColor,
-            ),
-          ],
-          ),
-        ),
+    // 1.99.47：自绘胶囊 + `showHikoContextMenu` → `M3EChip` + `M3EMenu`，
+    // 与在线排序入口同一件菜单/同一套选中勾（C-09 的「三种 chip」再少一种）。
+    return M3EMenu(
+      maxWidth: 260,
+      builder: (context, controller, child) => M3EChip(
+        label: isMobile ? _currentLabel : '排序 · $_currentLabel',
+        leading: const Icon(Icons.swap_vert_rounded, size: 16),
+        onTap: () => controller.isOpen ? controller.close() : controller.open(),
       ),
+      children: <Widget>[
+        for (final opt in _sortOptions)
+          M3EMenuAction(
+            label: opt.$2,
+            leadingIcon: opt.$3,
+            selected: opt.$1 == currentSort,
+            onPressed: () {
+              if (opt.$1 != currentSort) onSelected(opt.$1);
+            },
+          ),
+      ],
     );
   }
 }

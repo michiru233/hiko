@@ -4387,3 +4387,52 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 ### 交付
 - 版本 `1.99.46+159`；Release：`hiko-v1.99.46-macos.zip` + `hiko-v1.99.46-android.apk`。
 - 下一项：`1.99.47` 首页次要区 + 桌面收尾（rail 品牌区 / 面包屑 / 导入按钮）。
+
+## 1.99.47（2026-10-26）：首页次要区 + 桌面收尾（D-01 / D-02）
+
+### 可见变化
+- **桌面 rail 品牌区**：写死的 10 / 15 / 18sp 与 `Color(0xFF888B92)` 全部换掉 ——
+  品牌 mark 用 `primary` 底 + `onPrimary` 的 `titleMedium`，圆角从手写 10 收到
+  `M3EShape.sm`；「Hiko」走 `titleSmall`、「音声收藏室」走 `labelSmall` +
+  `onSurfaceVariant`。这是全站最后一个写死字号与色值的导航块。
+- **面包屑**（`M3EAppBar.small` 的中轴标题）：13sp + `hintColor` →
+  `labelLarge` + `onSurfaceVariant`，分隔符 `onSurfaceVariant@50%`，
+  当前视图 `labelLargeEmphasized` + `onSurface`。层级靠字重与色阶，不靠字号。
+- **导入按钮**：`FilledButton.tonalIcon` → `M3EButton.tonal.small`（图标 18，不再手写 16）。
+- **续播卡**：`Material` + `InkWell` + 手写 10 圆角 + 10/13sp 两行字 + Material
+  `IconButton` → `M3ECard`（零阴影、行内 12/8 内边距、可点）+ `labelSmall`「继续收听」/
+  `titleSmall` 曲目行 + `M3EIconButton.small`；封面圆角 6 → `M3EShape.md`。
+- **多选条**：`OutlinedButton` + 5 个 `FilledButton.tonal` + `TextButton` →
+  6 个 `M3EButton.small`；「删除所选及源文件」用 `destructive` 变体（错误色底），
+  和普通「删除所选」在颜色上分开；计数换 `bodyMedium` + `onSurfaceVariant`。
+- **结果行**：12sp + `hintColor` → `labelMedium`；「清除筛选」→ `M3EButton.text.small`。
+- **分色筛选标记**：手写 20 圆角 + 11sp → `hikoCircleColor` / `hikoVoiceColor`
+  两个共用色 + `M3EShape.full` + `labelMedium`；关闭钮从裸 `InkWell` 换
+  `M3EPressable(pressScale: 0.9)`。
+- **空态**：13/12sp 两行 → `titleSmall` / `bodySmall` + `onSurfaceVariant`。
+- **排序入口**：自绘胶囊 + `showHikoContextMenu` 路由 → `M3EChip` + `M3EMenu`。
+  8 条排序项都是 `M3EMenuAction`（带前导图标 + 选中勾），与在线排序入口同一件
+  菜单、同一套勾（审计 C-09 的「三种 chip」再少一种）。宽屏文案 `排序 · X`，
+  移动端只留 `X`（沿用 1.99.41 的经验：360dp 下前缀会挤爆工具栏）。
+- 首页 `hintColor` **8 → 0**、字面 `fontSize` **22 → 0**。
+
+### 刻意没动
+- **网格与专辑卡本体**不在本版：它们早在 1.99.2x 就是 `M3ECard` + `M3EChip`。
+- **`context_menu.dart` 保留**：专辑右键菜单、播放列表长按还在用它，属于
+  「浮层菜单」而非「选择菜单」，等 `M3EMenu` 的锚点方案覆盖到任意位置再迁。
+- 桌面滚动条 / Tooltip 主题没做：`theme.dart` 里缺 `scrollbarTheme` /
+  `tooltipTheme`（审计 D-08），归到 1.99.48 清账批次一起补。
+
+### 验证
+- `flutter test`：**847 passed / 2 skipped**（845 + 2 条首页排序锁）。
+- `flutter analyze`：**42 条、0 error**。
+- 新增 `test/ui/home_sort_menu_test.dart`：
+  ① 桌面端入口必须是 `M3EChip`（不是 Material `Chip`、也不是自绘胶囊），
+  点开 8 条排序项、选中勾唯一，点「评分优先」后 `settingsProvider.albumSort`
+  真的变成 `rating_desc`、入口文案跟着更新、菜单已关闭；
+  ② 移动 360dp 入口不带「排序 · 」前缀，展开菜单不产生溢出。
+
+### 交付
+- 版本 `1.99.47+160`；Release：`hiko-v1.99.47-macos.zip` + `hiko-v1.99.47-android.apk`。
+- 下一项：`1.99.48` 清账（`HikoColors` / `hintColor` / 字面 hex / 数字圆角 /
+  裸 `Duration`·`Curve`、删旧组件与 `DM Sans`、补 grep 锁与业务面样式锁）。
