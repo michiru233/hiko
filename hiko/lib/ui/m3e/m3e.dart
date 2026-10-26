@@ -18,6 +18,7 @@ export 'components/actions/m3e_button_group.dart';
 export 'components/actions/m3e_fab.dart';
 export 'components/actions/m3e_icon_button.dart';
 export 'components/inputs/m3e_slider.dart';
+export 'components/menus/m3e_menu.dart';
 export 'components/motion/m3e_pressable.dart';
 export 'components/progress/m3e_loading_indicator.dart';
 export 'components/surfaces/m3e_card.dart';

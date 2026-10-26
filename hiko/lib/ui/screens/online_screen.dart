@@ -929,7 +929,6 @@ class _OnlineAccountEntry extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final account = ref.watch(onlineAccountProvider);
 
     if (account.restoring) {
@@ -969,50 +968,53 @@ class _OnlineAccountEntry extends ConsumerWidget {
       );
     }
 
-    return PopupMenuButton<_AccountAction>(
-      tooltip: compact ? account.displayName : '在线账号',
-      onSelected: (action) => unawaited(_handle(ref, context, action)),
-      itemBuilder: (_) => [
-        PopupMenuItem(
-          enabled: false,
-          height: 32,
-          child: Text(
-            '已登录：${account.displayName}',
-            style: TextStyle(fontSize: 11, color: theme.hintColor),
-          ),
+    // 1.99.40：菜单换 M3EMenu；触发器保持原样（这一排还混着预设 chip，
+    // 统一到 M3EChip 属 1.99.45 的在线工具栏整批，不在这里提前分叉）。
+    final trigger = compact
+        ? const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6),
+            child: Icon(Icons.account_circle_rounded, size: 22),
+          )
+        : Chip(
+            avatar: const Icon(Icons.account_circle_rounded, size: 14),
+            label: Text(
+              account.displayName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11),
+            ),
+            visualDensity: VisualDensity.compact,
+          );
+
+    return M3EMenu(
+      maxWidth: 260,
+      builder: (context, controller, child) => M3EPressable(
+        onTap: () => controller.isOpen ? controller.close() : controller.open(),
+        borderRadius: BorderRadius.circular(M3EShape.full),
+        pressScale: 0.97,
+        semanticLabel: compact ? '在线账号' : account.displayName,
+        child: trigger,
+      ),
+      children: <Widget>[
+        // 原来是「禁用 PopupMenuItem」当标题：会被读成「已禁用」并按 38% 灰压淡
+        M3EMenuHeader(label: '已登录：${account.displayName}'),
+        const M3EMenuDivider(),
+        M3EMenuAction(
+          label: '在线收藏',
+          leadingIcon: Icons.bookmark_outline_rounded,
+          onPressed: () => unawaited(_handle(ref, context, _AccountAction.favorites)),
         ),
-        const PopupMenuDivider(height: 1),
-        const PopupMenuItem(
-          value: _AccountAction.favorites,
-          height: 36,
-          child: Text('在线收藏', style: TextStyle(fontSize: 12)),
+        M3EMenuAction(
+          label: '刷新收藏',
+          leadingIcon: Icons.refresh_rounded,
+          onPressed: () => unawaited(_handle(ref, context, _AccountAction.refresh)),
         ),
-        const PopupMenuItem(
-          value: _AccountAction.refresh,
-          height: 36,
-          child: Text('刷新收藏', style: TextStyle(fontSize: 12)),
-        ),
-        const PopupMenuItem(
-          value: _AccountAction.logout,
-          height: 36,
-          child: Text('退出登录', style: TextStyle(fontSize: 12)),
+        M3EMenuAction(
+          label: '退出登录',
+          leadingIcon: Icons.logout_rounded,
+          onPressed: () => unawaited(_handle(ref, context, _AccountAction.logout)),
         ),
       ],
-      child: compact
-          ? const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 6),
-              child: Icon(Icons.account_circle_rounded, size: 22),
-            )
-          : Chip(
-              avatar: const Icon(Icons.account_circle_rounded, size: 14),
-              label: Text(
-                account.displayName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11),
-              ),
-              visualDensity: VisualDensity.compact,
-            ),
     );
   }
 

@@ -4134,3 +4134,42 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 
 ### 交付
 - 版本 `1.99.39+152`；Release：`hiko-v1.99.39-macos.zip` + `hiko-v1.99.39-android.apk`。
+
+## 1.99.40（2026-10-26）：M3EMenu 落地 + 六处菜单统一（B1 第二件）
+
+### 可见变化
+- 新增 `M3EMenu`（`lib/ui/m3e/components/menus/m3e_menu.dart`）：基于
+  `MenuAnchor`，面板 `surfaceContainerHigh` + 圆角 4（`M3EShape.xs`）+
+  海拔 `level3` + 去 surfaceTint + 纵向 8dp，高度 `min(400, 屏高 × 0.45)`。
+  行高 48（双行 56）、`labelLarge`、左右 12dp、状态层走 `M3EPressable`。
+  五类行：`M3EMenuAction`（leading / 选中勾 / destructive / 副标题）、
+  `M3EMenuToggle`（**不关菜单** + `didUpdateWidget` 同步外部 value）、
+  `M3EMenuHeader`、`M3EMenuDivider`、`M3EMenuCustom`。
+  不用 `MenuItemButton`：它默认 `closeOnActivate`，keep-open 只能靠子类覆写。
+- 在线浏览：排序菜单（8 排序 + 3 分级开关 + 「分级」分区标题）、Aa 三合一
+  （在线外观 / 防社死 / 外观切换）、每页条数，全部换 `M3EMenu`；
+  三处入口的 `Chip` → `M3EChip`。
+- 在线收藏：歌单管理（重命名 / 删除，删除走 `destructive`），触发钮换
+  `M3EIconButton`。播放页：播放模式（4 项，带一行说明）、桌面歌词右键菜单
+  （锁定 / 关闭）。在线账号菜单：原来的「禁用 `PopupMenuItem` 当标题」换成
+  `M3EMenuHeader` + 3 个动作。
+- 分级开关的指示器从 Material `Checkbox` 换成菜单行右侧勾（裁决 ②=A）；
+  选中项只加勾、不铺底色（裁决 ③=A）；菜单行不再出现 Material 菜单控件。
+- 行为不变：排序项 / 歌单管理 / 播放模式 / 账号动作点完就关；分级 / 防社死 /
+  外观切换点完不关菜单。音量菜单按计划不动（等 `M3ESlider` 批次）；
+  在线详情声优/社团胶囊的 `showMenu` 留在 1.99.44。
+
+### 验证
+- `flutter test`：**806 passed / 2 skipped**（基线 797 + 9 条 M3EMenu 组件测试：
+  面板色/圆角/海拔、48 行高 + labelLarge + 12 内边距、动作关闭、选中勾、
+  destructive/禁用、开关不关、外部 value 同步、header/divider/custom、限高滚动）。
+- `flutter analyze`：**44 条、0 error**（与基线同数）。
+- macOS Release 77.4MB，实跑启动正常（无 AVD，菜单视觉由组件测试锁尺寸/颜色）。
+- APK 71.3MB；apksigner 后签 v1+v2+v3，`META-INF/HIKO.SF`/`HIKO.RSA` 在位；
+  aapt2 `153 / 1.99.40`；minSdk 24。
+- 排序菜单在桌面窗口下也需滚动（48dp × 11 行 + 标题约 577 > 400 上限）；
+  长按/滚动路径无弹簧，符合 §7.4。
+
+### 交付
+- 版本 `1.99.40+153`；Release：`hiko-v1.99.40-macos.zip` + `hiko-v1.99.40-android.apk`。
+- 下一项：`1.99.41 M3EDialog`（B2），替换 21 个 `AlertDialog` + 设置页内容控件。

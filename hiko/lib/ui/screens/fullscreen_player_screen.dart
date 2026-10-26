@@ -660,7 +660,7 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
               onTap: () => _showRateDialog(settings, theme, isDark),
             ),
           // 播放模式
-          _buildPlayModeToolbarButton(state.mode, theme),
+          _buildPlayModeToolbarButton(state.mode),
           // 音轨列表
           _ToolbarAction(
             icon: Icons.queue_music_outlined,
@@ -742,7 +742,8 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     final isShowing = status.isShowing;
     final isLocked = status.isLocked;
 
-    return MenuAnchor(
+    return M3EMenu(
+      maxWidth: 280,
       builder: (context, controller, child) => GestureDetector(
         onSecondaryTapDown: (details) {
           if (isShowing) controller.open(position: details.localPosition);
@@ -775,12 +776,10 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
           },
         ),
       ),
-      menuChildren: [
-        MenuItemButton(
-          leadingIcon: Icon(
-            isLocked ? Icons.lock_open_rounded : Icons.lock_rounded,
-            size: 16,
-          ),
+      children: <Widget>[
+        M3EMenuAction(
+          label: isLocked ? '解除悬浮窗锁定' : '锁定悬浮窗（穿透鼠标）',
+          leadingIcon: isLocked ? Icons.lock_open_rounded : Icons.lock_rounded,
           onPressed: () async {
             await notifier.setLocked(!isLocked);
             if (mounted) {
@@ -789,13 +788,10 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                   duration: const Duration(seconds: 1));
             }
           },
-          child: Text(
-            isLocked ? '解除悬浮窗锁定' : '锁定悬浮窗（穿透鼠标）',
-            style: const TextStyle(fontSize: 12),
-          ),
         ),
-        MenuItemButton(
-          leadingIcon: const Icon(Icons.close_rounded, size: 16),
+        M3EMenuAction(
+          label: '关闭桌面歌词',
+          leadingIcon: Icons.close_rounded,
           onPressed: () async {
             await notifier.hide();
             if (mounted) {
@@ -803,17 +799,13 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                   duration: const Duration(seconds: 1));
             }
           },
-          child: const Text('关闭桌面歌词', style: TextStyle(fontSize: 12)),
         ),
       ],
     );
   }
 
-  /// 播放模式按钮（图标态 + 菜单）
-  Widget _buildPlayModeToolbarButton(
-    PlaybackMode currentMode,
-    ThemeData theme,
-  ) {
+  /// 播放模式按钮（图标态 + M3E 菜单）
+  Widget _buildPlayModeToolbarButton(PlaybackMode currentMode) {
     final modeInfo = playModes.firstWhere((m) => m.key == currentMode.key);
     final IconData icon = switch (currentMode) {
       PlaybackMode.list => Icons.repeat_outlined,
@@ -822,50 +814,31 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
       PlaybackMode.album => Icons.album,
     };
 
-    return MenuAnchor(
-      style: MenuStyle(
-        backgroundColor:
-            WidgetStatePropertyAll(M3ETheme.of(context).colors.surfaceContainerHigh),
-        shape: WidgetStatePropertyAll(
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      ),
+    return M3EMenu(
+      maxWidth: 280,
       builder: (context, controller, child) => _ToolbarAction(
         icon: icon,
         tooltip: '播放模式：${modeInfo.label}',
         onTap: () => controller.isOpen ? controller.close() : controller.open(),
       ),
-      menuChildren: [
-        // 菜单标题
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: Text(
-            '播放模式',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        const Divider(height: 1),
+      children: <Widget>[
+        const M3EMenuHeader(label: '播放模式'),
+        const M3EMenuDivider(),
         // 四种播放模式选项
         for (final mode in PlaybackMode.values)
-          _buildPlayModeMenuItem(mode, currentMode, theme),
+          _buildPlayModeMenuItem(mode, currentMode),
       ],
     );
   }
 
-  /// 单个播放模式菜单项
+  /// 单个播放模式菜单项（名称 + 一行说明 + 选中勾）
   Widget _buildPlayModeMenuItem(
     PlaybackMode mode,
     PlaybackMode currentMode,
-    ThemeData theme,
   ) {
     final info = playModes.firstWhere((m) => m.key == mode.key);
     final isSelected = mode == currentMode;
 
-    // 图标
     final IconData leadingIcon;
     switch (mode) {
       case PlaybackMode.list:
@@ -882,42 +855,16 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
         break;
     }
 
-    return MenuItemButton(
-      leadingIcon: Icon(leadingIcon, size: 20),
-      trailingIcon: isSelected ? const Icon(Icons.check, size: 20) : null,
-      style: ButtonStyle(
-        backgroundColor: WidgetStateProperty.all(
-          isSelected
-              ? theme.colorScheme.primaryContainer.withValues(alpha: 0.3)
-              : null,
-        ),
-      ),
+    return M3EMenuAction(
+      label: info.name,
+      subtitle: info.desc,
+      leadingIcon: leadingIcon,
+      selected: isSelected,
       onPressed: () async {
         HapticFeedback.selectionClick();
         await ref.read(playbackProvider.notifier).setMode(mode);
         await ref.read(settingsProvider.notifier).setPlayMode(mode.key);
       },
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(
-            info.name,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            info.desc,
-            style: TextStyle(
-              fontSize: 11,
-              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
-            ),
-          ),
-        ],
-      ),
     );
   }
 

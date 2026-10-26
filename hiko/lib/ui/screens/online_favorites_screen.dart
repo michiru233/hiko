@@ -329,34 +329,33 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
               ),
               const SizedBox(width: 8),
               // 歌单管理：只在选中具体歌单、且它可改名/可删时出现
+              // 1.99.40：PopupMenuButton → M3EMenu；触发钮换 M3EIconButton。
               if (selected != null && selected.editable)
-                PopupMenuButton<String>(
-                  tooltip: '管理歌单',
-                  onSelected: (action) => unawaited(
-                    action == 'rename'
-                        ? renamePlaylistFlow(context, ref, selected)
-                        : deletePlaylistFlow(context, ref, selected),
+                M3EMenu(
+                  maxWidth: 200,
+                  builder: (context, controller, child) => M3EIconButton(
+                    icon: Icons.more_horiz_rounded,
+                    tooltip: '管理歌单',
+                    size: M3EIconButtonSize.small,
+                    onPressed: () => controller.isOpen
+                        ? controller.close()
+                        : controller.open(),
                   ),
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(
-                      value: 'rename',
-                      height: 36,
-                      child: Text('重命名', style: TextStyle(fontSize: 12)),
+                  children: <Widget>[
+                    M3EMenuAction(
+                      label: '重命名',
+                      leadingIcon: Icons.drive_file_rename_outline_rounded,
+                      onPressed: () =>
+                          unawaited(renamePlaylistFlow(context, ref, selected)),
                     ),
-                    PopupMenuItem(
-                      value: 'delete',
-                      height: 36,
-                      child: Text(
-                        '删除歌单',
-                        style: TextStyle(fontSize: 12, color: Color(0xFFD34C44)),
-                      ),
+                    M3EMenuAction(
+                      label: '删除歌单',
+                      leadingIcon: Icons.delete_outline_rounded,
+                      destructive: true,
+                      onPressed: () =>
+                          unawaited(deletePlaylistFlow(context, ref, selected)),
                     ),
                   ],
-                  child: Icon(
-                    Icons.more_horiz_rounded,
-                    size: 20,
-                    color: theme.hintColor,
-                  ),
                 ),
               IconButton(
                 tooltip: '新建歌单',

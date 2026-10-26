@@ -6,6 +6,7 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../../data/online/online_models.dart';
 import '../../data/online/online_provider.dart';
 import '../../data/settings_store.dart';
+import '../m3e/m3e.dart';
 import '../screens/online_screen.dart';
 
 // ------------------------------------------------------------ 卡面尺寸常量
@@ -352,6 +353,9 @@ List<int> mobilePageItems(int page, int total) => [
     ]..sort();
 
 /// 每页条数选择（20 / 60 / 100；实测服务端支持到 500）
+///
+/// 1.99.40：`PopupMenuButton` → `M3EMenu`。入口仍是 chip（这一行混着预设 chip，
+/// 统一换 `M3EChip` 留给 1.99.45 的在线工具栏整批），选了就收起菜单。
 class _PageSizeButton extends StatelessWidget {
   const _PageSizeButton({required this.pageSize, required this.onSelected});
 
@@ -360,20 +364,20 @@ class _PageSizeButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<int>(
-      tooltip: '每页条数',
-      onSelected: onSelected,
-      itemBuilder: (_) => [
+    return M3EMenu(
+      maxWidth: 220,
+      builder: (context, controller, child) => M3EChip(
+        label: '每页 $pageSize 条',
+        onTap: () => controller.isOpen ? controller.close() : controller.open(),
+      ),
+      children: <Widget>[
         for (final size in OnlineBrowseNotifier.pageSizeOptions)
-          PopupMenuItem(
-            value: size,
-            child: Text('每页 $size 条', style: const TextStyle(fontSize: 12)),
+          M3EMenuAction(
+            label: '每页 $size 条',
+            selected: size == pageSize,
+            onPressed: () => onSelected(size),
           ),
       ],
-      child: Chip(
-        label: Text('每页 $pageSize 条', style: const TextStyle(fontSize: 11)),
-        visualDensity: VisualDensity.compact,
-      ),
     );
   }
 }

@@ -17,6 +17,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/settings_store.dart';
 import '../../lyrics/desktop_lyrics_service.dart';
+import '../m3e/m3e.dart';
 
 /// 在线网格每行卡片数。0 = 自动（按窗口宽度算），桌面与移动端共用这一个值。
 /// 列数保持离散档位（列数天然是整数，滑杆没有意义）。
@@ -74,166 +75,70 @@ void togglePrivacyBlur(WidgetRef ref) {
 /// 桌面端顶栏图标照旧保留（那排不占地），于是桌面上这两项有两个入口 ——
 /// 接受（裁决 Q4=A），换来的是菜单两端完全一致、不需要分叉。
 ///
-/// 「不关菜单」的做法与 [OnlineSortMenu] 的分级条目同源：
-/// `PopupMenuItem` 子类只覆写 `handleTap`（见 [_AaMenuToggleItemState]）。
+/// 1.99.40：`PopupMenuButton` + 两个 `PopupMenuItem` 子类 → `M3EMenu`。
+/// 「不关菜单」现在由 `M3EMenuToggle` 承担（它不调 `MenuController.close()`），
+/// 不再需要覆写 `handleTap`；两个开关的状态分别由 `ValueListenableBuilder`
+/// 与 `Consumer` 提供，菜单开着时切换能立刻刷新。
 class OnlineAaMenu extends ConsumerWidget {
   const OnlineAaMenu({super.key});
 
-  /// min(320, 屏高 × 0.45)：三个条目其实很矮，但小屏仍按比例缩，别顶到天花板。
-  /// 上限取 320（不是排序菜单的 400）—— 这里只有三项，不需要那么多。
-  static double _menuMaxHeight(BuildContext context) {
-    final screen = MediaQuery.sizeOf(context).height;
-    final scaled = screen * 0.45;
-    return scaled < 320 ? scaled : 320;
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return PopupMenuButton<Object>(
-      tooltip: '在线外观 · 外观切换 · 防社死',
-      constraints: BoxConstraints(
-        minWidth: 200,
-        maxWidth: 300,
-        maxHeight: _menuMaxHeight(context),
+    return M3EMenu(
+      // 三个条目里最长的「外观切换」+ 状态 + 勾，300 足够
+      maxWidth: 300,
+      builder: (context, controller, child) => M3EChip(
+        label: 'Aa',
+        onTap: () => controller.isOpen ? controller.close() : controller.open(),
       ),
-      onSelected: (value) {
-        if (value == 'appearance') {
-          unawaited(showOnlineAppearanceDialog(context));
-        }
-      },
-      itemBuilder: (_) => [
-        const PopupMenuItem<Object>(
-          value: 'appearance',
-          height: 42,
-          child: SizedBox(
-            width: 180,
-            child: Row(
-              children: [
-                Icon(Icons.text_fields_rounded, size: 16),
-                SizedBox(width: 10),
-                Expanded(
-                  child: Text('在线外观', style: TextStyle(fontSize: 12)),
-                ),
-              ],
-            ),
-          ),
+      children: <Widget>[
+        M3EMenuAction(
+          label: '在线外观',
+          leadingIcon: Icons.text_fields_rounded,
+          onPressed: () => unawaited(showOnlineAppearanceDialog(context)),
         ),
-        const PopupMenuDivider(),
+        const M3EMenuDivider(),
         // 捕获本次 build 的 ref：条目被点掉时 OnlineAaMenu 仍挂在树上，
         // 所以拿它读 notifier 是安全的（与「菜单不关」是同一前提）。
-        _AaMenuToggleItem(
-          onToggle: () => togglePrivacyBlur(ref),
-          content: (context) => ValueListenableBuilder<bool>(
-            valueListenable: privacyBlur,
-            builder: (context, blurred, _) => _AaRow(
-              icon: blurred
-                  ? Icons.visibility_off_outlined
-                  : Icons.visibility_outlined,
-              label: '防社死',
-              status: blurred ? '已开启' : '已关闭',
-              on: blurred,
-            ),
+        ValueListenableBuilder<bool>(
+          valueListenable: privacyBlur,
+          builder: (context, blurred, _) => M3EMenuToggle(
+            label: '防社死',
+            leadingIcon: blurred
+                ? Icons.visibility_off_outlined
+                : Icons.visibility_outlined,
+            statusLabel: blurred ? '已开启' : '已关闭',
+            value: blurred,
+            onChanged: (_) => togglePrivacyBlur(ref),
           ),
         ),
-        _AaMenuToggleItem(
-          onToggle: () {
-            final theme = ref.read(settingsProvider).theme;
-            unawaited(
-              ref
-                  .read(settingsProvider.notifier)
-                  .setTheme(theme == 'dark' ? 'light' : 'dark'),
+        Consumer(
+          builder: (context, innerRef, _) {
+            final dark = innerRef.watch(
+              settingsProvider.select((s) => s.theme == 'dark'),
+            );
+            return M3EMenuToggle(
+              label: '外观切换',
+              leadingIcon: dark
+                  ? Icons.dark_mode_outlined
+                  : Icons.light_mode_outlined,
+              statusLabel: dark ? '深色' : '浅色',
+              value: dark,
+              // 切换是「读当前主题再取反」，不是直接写 onChanged 的新值
+              onChanged: (_) {
+                final theme = ref.read(settingsProvider).theme;
+                unawaited(
+                  ref
+                      .read(settingsProvider.notifier)
+                      .setTheme(theme == 'dark' ? 'light' : 'dark'),
+                );
+              },
             );
           },
-          content: (context) => Consumer(
-            builder: (context, innerRef, _) {
-              final dark = innerRef.watch(
-                settingsProvider.select((s) => s.theme == 'dark'),
-              );
-              return _AaRow(
-                icon: dark
-                    ? Icons.dark_mode_outlined
-                    : Icons.light_mode_outlined,
-                label: '外观切换',
-                status: dark ? '深色' : '浅色',
-                on: dark,
-              );
-            },
-          ),
         ),
-      ],
-      child: const Chip(
-        label: Text(
-          'Aa',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-        ),
-        visualDensity: VisualDensity.compact,
-      ),
-    );
-  }
-}
-
-/// Aa 菜单里的一行「图标 + 名称 + 当前状态」。
-class _AaRow extends StatelessWidget {
-  const _AaRow({
-    required this.icon,
-    required this.label,
-    required this.status,
-    required this.on,
-  });
-
-  final IconData icon;
-  final String label;
-  final String status;
-  final bool on;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final accent = on ? theme.colorScheme.primary : theme.hintColor;
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: accent),
-        const SizedBox(width: 10),
-        Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
-        Text(status, style: TextStyle(fontSize: 11, color: accent)),
       ],
     );
   }
-}
-
-/// Aa 菜单里的**开关式**条目：`handleTap` **不 pop**，菜单保持打开（裁决 Q3=A）。
-///
-/// 与 [OnlineSortMenu] 的分级条目（`_AgeFilterItem`）同一套做法 ——
-/// 覆写 `handleTap` 而不是用 `PopupMenuItem(enabled: false)`：
-/// 后者在 M3 下会把文字压成 onSurface@38% 灰并套 `Semantics(enabled: false)`，
-/// 而这两个开关明明是可用的。
-///
-/// 内容由 `content` 回调提供（里面各自挂 `ValueListenableBuilder` / `Consumer`），
-/// 所以**菜单开着的时候切换能立刻把状态刷出来**，不用重开菜单。
-class _AaMenuToggleItem extends PopupMenuItem<Object> {
-  const _AaMenuToggleItem({required this.content, required this.onToggle})
-      // child 是父类的必填参数，内容由 buildChild() 覆写提供，这里给个占位
-      : super(value: null, height: 42, child: const SizedBox.shrink());
-
-  final WidgetBuilder content;
-  final VoidCallback onToggle;
-
-  @override
-  PopupMenuItemState<Object, PopupMenuItem<Object>> createState() =>
-      _AaMenuToggleItemState();
-}
-
-class _AaMenuToggleItemState
-    extends PopupMenuItemState<Object, _AaMenuToggleItem> {
-  @override
-  void handleTap() {
-    // 刻意不 Navigator.pop：菜单不关，能连着把两个开关都调完
-    widget.onToggle();
-  }
-
-  @override
-  Widget? buildChild() =>
-      SizedBox(width: 180, child: widget.content(context));
 }
 
 /// 与设置页共用的滑杆行：标题 + 当前值 + 重置 + 说明 + 滑杆本体。
