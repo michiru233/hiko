@@ -23,7 +23,6 @@ import '../covers/cover_color.dart';
 import '../detail_jump_requests.dart';
 import '../lyrics/lyrics_auto_scroll.dart';
 import '../m3e/m3e.dart';
-import '../theme.dart';
 import '../widgets/detail_kit.dart' show hikoFavoriteColor;
 import '../widgets/online_account_dialogs.dart';
 import '../widgets/toast.dart';
@@ -304,9 +303,8 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
             children: [
               Text(
                 '暂无歌词',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+                style: context.m3eType.titleMedium.copyWith(
+                  color: context.m3eColors.onSurfaceVariant,
                 ),
               ),
               // 宽屏并排模式下没有"返回唱片"概念，提示文案随之隐藏
@@ -314,11 +312,8 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                 const SizedBox(height: 8),
                 Text(
                   '点击返回唱片',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: (isDark
-                            ? HikoColors.darkMuted
-                            : HikoColors.lightMuted)
+                  style: context.m3eType.bodySmall.copyWith(
+                    color: context.m3eColors.onSurfaceVariant
                         .withValues(alpha: 0.6),
                   ),
                 ),
@@ -382,18 +377,18 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                       child: Text(
                         line.text,
                         textAlign: TextAlign.center,
+                        // 歌词字号**故意不用 type 角色**：它和
+                        // `lyricsEstimatedLineHeight = 45 × lyricsFontScale`
+                        // 是一对承重 metrics（居中/自动滚动按它粗定位）。
+                        // 换角色就得同步改估算行高，否则远跳会多滚半屏。
                         style: TextStyle(
                           fontSize: (isCurrent ? 18 : 15) * lyricsFontScale,
                           fontWeight: isCurrent
                               ? FontWeight.w600
                               : FontWeight.w400,
                           color: isCurrent
-                              ? (isDark
-                                    ? HikoColors.darkInk
-                                    : HikoColors.lightInk)
-                              : (isDark
-                                    ? HikoColors.darkMuted
-                                    : HikoColors.lightMuted),
+                              ? context.m3eColors.onSurface
+                              : context.m3eColors.onSurfaceVariant,
                           height: 1.8,
                         ),
                       ),
@@ -414,7 +409,6 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                   _buildLyricsOverlayButton(
                     icon: Icons.vertical_align_center_rounded,
                     tooltip: '回到当前句',
-                    isDark: isDark,
                     onPressed: () {
                       ref.read(lyricsProvider.notifier).resumeAutoScroll();
                       revealLyricsLine(currentIndex);
@@ -425,7 +419,6 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                 _buildLyricsOverlayButton(
                   icon: Icons.text_fields,
                   tooltip: '调整歌词字号',
-                  isDark: isDark,
                   onPressed: () =>
                       _showLyricsFontScaleDialog(settings),
                 ),
@@ -450,10 +443,8 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
         children: [
           Text(
             track?.name ?? album.title,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: isDark ? HikoColors.darkInk : HikoColors.lightInk,
+            style: context.m3eType.titleLargeEmphasized.copyWith(
+              color: context.m3eColors.onSurface,
             ),
             textAlign: TextAlign.center,
             maxLines: 2,
@@ -462,9 +453,8 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
           const SizedBox(height: 6),
           Text(
             album.artist,
-            style: TextStyle(
-              fontSize: 15,
-              color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
+            style: context.m3eType.bodyMedium.copyWith(
+              color: context.m3eColors.onSurfaceVariant,
             ),
             textAlign: TextAlign.center,
             maxLines: 1,
@@ -479,25 +469,16 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
   Widget _buildLyricsOverlayButton({
     required IconData icon,
     required String tooltip,
-    required bool isDark,
     required VoidCallback onPressed,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.black.withValues(alpha: 0.5)
-            : Colors.white.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: IconButton(
-        icon: Icon(
-          icon,
-          color: isDark ? HikoColors.darkMuted : HikoColors.lightMuted,
-          size: 20,
-        ),
-        onPressed: onPressed,
-        tooltip: tooltip,
-      ),
+    // 1.99.46：自绘黑白半透明胶囊 + Material IconButton → M3EIconButton.tonal
+    // （压在歌词上，用 tonal 底色保证任何封面配色下都读得出来）
+    return M3EIconButton(
+      icon: icon,
+      tooltip: tooltip,
+      size: M3EIconButtonSize.small,
+      variant: M3EIconButtonVariant.tonal,
+      onPressed: onPressed,
     );
   }
 
@@ -540,20 +521,16 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
               children: [
                 Text(
                   formatTime(displayPosition),
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: isDark
-                        ? HikoColors.darkMuted
-                        : HikoColors.lightMuted,
+                  style: context.m3eType.labelMedium.copyWith(
+                    color: context.m3eColors.onSurfaceVariant,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
                 Text(
                   formatTime(duration),
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: isDark
-                        ? HikoColors.darkMuted
-                        : HikoColors.lightMuted,
+                  style: context.m3eType.labelMedium.copyWith(
+                    color: context.m3eColors.onSurfaceVariant,
+                    fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
               ],
@@ -675,15 +652,11 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
 
   /// 音量弹出菜单（音量滑杆；增益有自己的对话框，不在这里混）
   Widget _buildVolumeToolbarButton(AppSettings settings, ThemeData theme) {
-    return MenuAnchor(
+    // 1.99.46：`MenuAnchor` + Material `Slider` → `M3EMenu` + `M3EMenuCustom`
+    // + `M3ESlider`。滑杆行不给 onTap，拖动时菜单不会关。
+    return M3EMenu(
+      maxWidth: 220,
       alignmentOffset: const Offset(0, -12),
-      style: MenuStyle(
-        backgroundColor:
-            WidgetStatePropertyAll(M3ETheme.of(context).colors.surfaceContainerHigh),
-        shape: WidgetStatePropertyAll(
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
-      ),
       builder: (context, controller, child) => _ToolbarAction(
         icon: settings.volume == 0
             ? Icons.volume_off_rounded
@@ -693,42 +666,30 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
         tooltip: '音量 ${(settings.volume * 100).round()}%',
         onTap: () => controller.isOpen ? controller.close() : controller.open(),
       ),
-      menuChildren: [
-        SizedBox(
-          width: 180,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '${(settings.volume * 100).round()}%',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: theme.colorScheme.primary,
-                  ),
+      children: <Widget>[
+        M3EMenuCustom(
+          minHeight: 76,
+          padding: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+          // 不给 onTap：拖滑杆时菜单保持打开
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                '${(settings.volume * 100).round()}%',
+                style: context.m3eType.labelLarge.copyWith(
+                  color: context.m3eColors.primary,
                 ),
-                const SizedBox(height: 4),
-                SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: 4,
-                    thumbShape:
-                        const RoundSliderThumbShape(enabledThumbRadius: 6),
-                    overlayShape:
-                        const RoundSliderOverlayShape(overlayRadius: 12),
-                  ),
-                  child: Slider(
-                    key: const ValueKey('volume-slider'),
-                    value: settings.volume,
-                    onChanged: (v) {
-                      ref.read(settingsProvider.notifier).setVolume(v);
-                      ref.read(playbackProvider.notifier).setVolume(v);
-                    },
-                  ),
-                ),
-              ],
-            ),
+              ),
+              M3ESlider(
+                key: const ValueKey('volume-slider'),
+                value: settings.volume,
+                max: 1,
+                onChanged: (v) {
+                  ref.read(settingsProvider.notifier).setVolume(v);
+                  ref.read(playbackProvider.notifier).setVolume(v);
+                },
+              ),
+            ],
           ),
         ),
       ],
@@ -1258,146 +1219,95 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
   Future<void> _showTrackListSheet(Album? album, int currentIndex) async {
     if (album == null) return;
 
-    await showModalBottomSheet(
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (context) {
-        final theme = Theme.of(context);
-        final isDark = theme.brightness == Brightness.dark;
-
-        return DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          maxChildSize: 0.9,
-          minChildSize: 0.4,
-          expand: false,
-          builder: (context, scrollController) {
-            return Container(
-              decoration: BoxDecoration(
-                color: isDark ? HikoColors.darkCard : HikoColors.lightCard,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(20),
+      // 底色交给 M3ESheet（色调面 + 28 顶角 + 海拔），这里只负责路由与手势
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        minChildSize: 0.4,
+        expand: false,
+        builder: (context, scrollController) {
+          final colors = context.m3eColors;
+          final type = context.m3eType;
+          return M3ESheet(
+            variant: M3ESheetVariant.bottom,
+            child: Column(
+              children: <Widget>[
+                const SizedBox(height: 12),
+                // 拖拽把手
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: colors.onSurfaceVariant.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-              child: Column(
-                children: [
-                  const SizedBox(height: 12),
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? Colors.white.withValues(alpha: 0.2)
-                          : Colors.black.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+                const SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: <Widget>[
+                      Text('播放列表', style: type.titleMedium),
+                      const Spacer(),
+                      Text(
+                        '共 ${album.tracks.length} 首',
+                        style: type.bodySmall.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Row(
-                      children: [
-                        Text(
-                          '播放列表',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: isDark
-                                ? HikoColors.darkInk
-                                : HikoColors.lightInk,
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: album.tracks.length,
+                    // 优化滚动性能
+                    cacheExtent: 500,
+                    addAutomaticKeepAlives: true,
+                    addRepaintBoundaries: true,
+                    itemBuilder: (context, index) {
+                      final track = album.tracks[index];
+                      final isCurrent = index == currentIndex;
+                      return M3EListItem(
+                        title: track.name,
+                        selected: isCurrent,
+                        leading: isCurrent
+                            ? Icon(Icons.volume_up_rounded, color: colors.primary)
+                            : Text(
+                                '${index + 1}',
+                                textAlign: TextAlign.center,
+                                style: type.labelMedium.copyWith(
+                                  color: colors.onSurfaceVariant,
+                                ),
+                              ),
+                        trailing: Text(
+                          formatTime(track.duration),
+                          style: type.labelMedium.copyWith(
+                            color: colors.onSurfaceVariant,
                           ),
                         ),
-                        const Spacer(),
-                        Text(
-                          '共 ${album.tracks.length} 首',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isDark
-                                ? HikoColors.darkMuted
-                                : HikoColors.lightMuted,
-                          ),
-                        ),
-                      ],
-                    ),
+                        onTap: () {
+                          ref
+                              .read(playbackProvider.notifier)
+                              .playAlbum(album, index: index);
+                          Navigator.pop(context);
+                        },
+                      );
+                    },
                   ),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: ListView.builder(
-                      controller: scrollController,
-                      itemCount: album.tracks.length,
-                      // 优化滚动性能
-                      cacheExtent: 500,
-                      addAutomaticKeepAlives: true,
-                      addRepaintBoundaries: true,
-                      itemBuilder: (context, index) {
-                        final track = album.tracks[index];
-                        final isCurrent = index == currentIndex;
-                        return Material(
-                          color: isCurrent
-                              ? theme.colorScheme.primary.withValues(alpha: 0.1)
-                              : Colors.transparent,
-                          child: ListTile(
-                            dense: true,
-                            leading: SizedBox(
-                              width: 32,
-                              child: isCurrent
-                                  ? Icon(
-                                      Icons.volume_up,
-                                      size: 18,
-                                      color: theme.colorScheme.primary,
-                                    )
-                                  : Text(
-                                      '${index + 1}',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: isDark
-                                            ? HikoColors.darkMuted
-                                            : HikoColors.lightMuted,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                            ),
-                            title: Text(
-                              track.name,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: isCurrent
-                                    ? FontWeight.w600
-                                    : FontWeight.w400,
-                                color: isCurrent
-                                    ? theme.colorScheme.primary
-                                    : (isDark
-                                          ? HikoColors.darkInk
-                                          : HikoColors.lightInk),
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            trailing: Text(
-                              formatTime(track.duration),
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: isDark
-                                    ? HikoColors.darkMuted
-                                    : HikoColors.lightMuted,
-                              ),
-                            ),
-                            onTap: () {
-                              ref
-                                  .read(playbackProvider.notifier)
-                                  .playAlbum(album, index: index);
-                              Navigator.pop(context);
-                            },
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
@@ -1656,13 +1566,23 @@ class _ToolbarAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = M3ETheme.of(context).colors;
-    return IconButton(
-      onPressed: onTap,
+    // 1.99.46：Material 图标钮 → M3EIconButton（选中态 = secondaryContainer 底 +
+    // primary 图标；以前只有图标换色，看不出「这个开关现在是开的」）
+    return M3EIconButton(
+      icon: icon,
       tooltip: tooltip,
-      iconSize: 24,
-      color: active ? colors.primary : colors.onSurfaceVariant,
-      icon: Icon(icon),
+      onPressed: onTap,
+      selected: active,
     );
   }
+}
+
+/// 播放页的 M3E 取值口（1.99.46）。
+///
+/// 这一页的文字压在封面渐变上，以前靠 `HikoColors.darkInk/lightInk` 之类的
+/// 旧 token 手挑颜色；收口后一律 `onSurface` / `onSurfaceVariant`
+/// （渐变底已经由 `surface` 色罩压暗，对比度由色阶保证）。
+extension _PlayerTheme on BuildContext {
+  M3EColors get m3eColors => M3ETheme.of(this).colors;
+  M3EType get m3eType => M3ETheme.of(this).type;
 }

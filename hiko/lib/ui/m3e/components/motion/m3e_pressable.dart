@@ -27,6 +27,7 @@ class M3EPressable extends StatefulWidget {
     this.borderRadius,
     this.stateLayerColor,
     this.semanticLabel,
+    this.onHoverChanged,
   });
 
   final Widget child;
@@ -50,6 +51,10 @@ class M3EPressable extends StatefulWidget {
   final Color? stateLayerColor;
 
   final String? semanticLabel;
+
+  /// 悬停状态回调（1.99.46）：少数行需要在 hover 时**换内容**而不是叠状态层，
+  /// 例如歌词行的「时间点 / 播放小图标」。状态层照旧由本组件负责。
+  final ValueChanged<bool>? onHoverChanged;
 
   @override
   State<M3EPressable> createState() => _M3EPressableState();
@@ -139,10 +144,16 @@ class _M3EPressableState extends State<M3EPressable>
       child: MouseRegion(
         cursor: _interactive ? SystemMouseCursors.click : MouseCursor.defer,
         onEnter: (_) {
-          if (_interactive && !_hovered) setState(() => _hovered = true);
+          if (_interactive && !_hovered) {
+            setState(() => _hovered = true);
+            widget.onHoverChanged?.call(true);
+          }
         },
         onExit: (_) {
-          if (_hovered) setState(() => _hovered = false);
+          if (_hovered) {
+            setState(() => _hovered = false);
+            widget.onHoverChanged?.call(false);
+          }
         },
         child: Focus(
           canRequestFocus: _interactive,

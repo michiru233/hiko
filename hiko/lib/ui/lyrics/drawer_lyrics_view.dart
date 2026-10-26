@@ -40,8 +40,8 @@ class _DrawerLyricsViewState extends ConsumerState<DrawerLyricsView>
   @override
   Widget build(BuildContext context) {
     final lyricsState = ref.watch(lyricsProvider);
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final theme = M3ETheme.of(context);
+    final colors = theme.colors;
 
     // 监听高亮行变化并在允许自动滚动时触发丝滑平移
     if (lyricsState.autoScrollEnabled &&
@@ -58,9 +58,7 @@ class _DrawerLyricsViewState extends ConsumerState<DrawerLyricsView>
     if (lyricsState.isLoading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 48),
-        child: Center(
-          child: M3ELoadingIndicator(size: 24)
-        ),
+        child: Center(child: M3ELoadingIndicator(size: 24)),
       );
     }
 
@@ -74,25 +72,22 @@ class _DrawerLyricsViewState extends ConsumerState<DrawerLyricsView>
               Icon(
                 Icons.subtitles_off_outlined,
                 size: 40,
-                color: isDark ? Colors.white24 : Colors.black26,
+                color: colors.onSurfaceVariant.withValues(alpha: 0.5),
               ),
               const SizedBox(height: 12),
               Text(
                 '暂未检测到同名歌词/字幕',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: isDark ? Colors.white54 : Colors.black45,
+                style: theme.type.titleSmall.copyWith(
+                  color: colors.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 6),
               Text(
                 '将 .lrc 或 .vtt 文件放入音频同级目录\n或 lyrics/、subtitles/ 子目录即可自动同步',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 11,
+                style: theme.type.bodySmall.copyWith(
                   height: 1.4,
-                  color: isDark ? Colors.white30 : Colors.black26,
+                  color: colors.onSurfaceVariant.withValues(alpha: 0.7),
                 ),
               ),
             ],
@@ -144,16 +139,15 @@ class _DrawerLyricsViewState extends ConsumerState<DrawerLyricsView>
             Positioned(
               right: 16,
               bottom: 16,
-              child: FloatingActionButton.small(
+              child: M3EFab(
+                size: 40,
+                radius: M3EShape.lg,
+                semanticLabel: '回到当前播放行',
                 onPressed: () {
                   ref.read(lyricsProvider.notifier).resumeAutoScroll();
                   revealLyricsLine(lyricsState.activeIndex);
                 },
-                backgroundColor: theme.colorScheme.primary,
-                foregroundColor: Colors.white,
-                elevation: 3,
-                tooltip: '回到当前播放行',
-                child: const Icon(Icons.vertical_align_center_rounded, size: 18),
+                child: const Icon(Icons.vertical_align_center_rounded),
               ),
             ),
         ],
@@ -183,131 +177,120 @@ class _LyricLineWidgetState extends State<_LyricLineWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final primaryColor = theme.colorScheme.primary;
+    final theme = M3ETheme.of(context);
+    final colors = theme.colors;
 
+    // 1.99.46：行高/字号仍是承重 metrics（45 × lyricsFontScale 的估算行高），
+    // 只把颜色与状态层换成 M3E 语义色；发光指示条已删除（审计 C-05）。
     final textColor = widget.isActive
-        ? (isDark ? Colors.white : Colors.black87)
-        : (isDark ? Colors.white.withValues(alpha: 0.45) : Colors.black45);
-
+        ? colors.onSurface
+        : colors.onSurfaceVariant;
     final fontWeight = widget.isActive ? FontWeight.w700 : FontWeight.w500;
     final fontSize = widget.isActive ? 15.5 : 13.5;
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: widget.isActive
-                  ? primaryColor.withValues(alpha: isDark ? 0.16 : 0.08)
-                  : (_isHovered
-                      ? (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.03))
-                      : Colors.transparent),
-              borderRadius: BorderRadius.circular(8),
-              border: widget.isActive
-                  ? Border.all(
-                      color: primaryColor.withValues(alpha: 0.35),
-                      width: 1,
-                    )
-                  : null,
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 活跃呼吸微光指示条 / 悬停播放小图标
-                Container(
-                  width: 18,
-                  alignment: Alignment.topLeft,
-                  padding: const EdgeInsets.only(top: 2),
-                  child: widget.isActive
-                      ? Container(
-                          width: 4,
-                          height: 16,
-                          decoration: BoxDecoration(
-                            color: primaryColor,
-                            borderRadius: BorderRadius.circular(2),
-                            boxShadow: [
-                              BoxShadow(
-                                color: primaryColor.withValues(alpha: 0.6),
-                                blurRadius: 4,
-                                spreadRadius: 1,
-                              ),
-                            ],
-                          ),
-                        )
-                      : (_isHovered
+    final radius = BorderRadius.circular(M3EShape.sm);
+    return M3EPressable(
+      onTap: widget.onTap,
+      borderRadius: radius,
+      pressScale: 0.99,
+      onHoverChanged: (hovered) => setState(() => _isHovered = hovered),
+      child: AnimatedContainer(
+        duration: theme.motion.stateLayerDuration,
+        curve: Curves.easeOut,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: widget.isActive
+              ? colors.secondaryContainer
+              : Colors.transparent,
+          borderRadius: radius,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            // 活跃指示条 / 悬停播放小图标（无发光）
+            SizedBox(
+              width: 18,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: widget.isActive
+                    ? Container(
+                        width: 4,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: colors.primary,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      )
+                    : (_isHovered
                           ? Icon(
                               Icons.play_arrow_rounded,
                               size: 14,
-                              color: primaryColor.withValues(alpha: 0.8),
+                              color: colors.primary.withValues(alpha: 0.8),
                             )
                           : const SizedBox(width: 4)),
-                ),
-                const SizedBox(width: 4),
+              ),
+            ),
+            const SizedBox(width: 4),
 
-                // 歌词正文 & 角色 Badge
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (widget.line.speaker != null && widget.line.speaker!.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
-                            decoration: BoxDecoration(
-                              color: primaryColor.withValues(alpha: widget.isActive ? 0.2 : 0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              widget.line.speaker!,
-                              style: TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w600,
-                                color: primaryColor,
-                              ),
-                            ),
+            // 歌词正文 & 角色 Badge
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  if (widget.line.speaker != null &&
+                      widget.line.speaker!.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 1.5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: widget.isActive
+                              ? colors.secondaryContainer
+                              : colors.surfaceContainerHigh,
+                          borderRadius: BorderRadius.circular(M3EShape.xs),
+                        ),
+                        child: Text(
+                          widget.line.speaker!,
+                          style: theme.type.labelSmall.copyWith(
+                            color: widget.isActive
+                                ? colors.onSecondaryContainer
+                                : colors.onSurfaceVariant,
                           ),
                         ),
-                      Text(
-                        widget.line.text,
-                        style: TextStyle(
-                          fontSize: fontSize,
-                          fontWeight: fontWeight,
-                          height: 1.45,
-                          color: textColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // 右侧时间点指示（悬停或活跃时展示）
-                if (_isHovered || widget.isActive)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 6, top: 2),
-                    child: Text(
-                      formatTime(widget.line.startTime.inMilliseconds / 1000.0),
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                        color: widget.isActive ? primaryColor : (isDark ? Colors.white38 : Colors.black38),
                       ),
                     ),
+                  Text(
+                    widget.line.text,
+                    style: theme.type.bodyMedium.copyWith(
+                      fontSize: fontSize,
+                      fontWeight: fontWeight,
+                      height: 1.45,
+                      color: textColor,
+                    ),
                   ),
-              ],
+                ],
+              ),
             ),
-          ),
+
+            // 右侧时间点（悬停或活跃时展示）
+            if (_isHovered || widget.isActive)
+              Padding(
+                padding: const EdgeInsets.only(left: 6, top: 2),
+                child: Text(
+                  formatTime(widget.line.startTime.inMilliseconds / 1000.0),
+                  style: theme.type.labelSmall.copyWith(
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    color: widget.isActive
+                        ? colors.primary
+                        : colors.onSurfaceVariant,
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

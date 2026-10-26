@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:hiko/playback/playback_controller.dart';
+import 'package:hiko/ui/m3e/m3e.dart';
 import 'package:hiko/ui/screens/fullscreen_player_screen.dart';
 
 import 'lyrics_fixture.dart';
@@ -22,8 +23,10 @@ void main() {
 
     final container = ProviderContainer();
     addTearDown(container.dispose);
-    container.read(playbackProvider.notifier).state =
-        playingAt(lyricsAlbum(), 0.5);
+    container.read(playbackProvider.notifier).state = playingAt(
+      lyricsAlbum(),
+      0.5,
+    );
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
@@ -54,12 +57,35 @@ void main() {
 
   testWidgets('封面点按进歌词层（交互语义不变）', (tester) async {
     await pumpPlayer(tester);
-    final area = tester.getRect(find.byKey(const ValueKey('player-central-switcher')));
+    final area = tester.getRect(
+      find.byKey(const ValueKey('player-central-switcher')),
+    );
     // 取距顶 40px 处：在中央区内、封面之外，只有铺满整片的切换手势收得到
     await tester.tapAt(Offset(area.center.dx, area.top + 40));
     // 交叉淡入 220ms 推完
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.byTooltip('显示封面'), findsOneWidget,
-        reason: '进入歌词层后 AppBar 图标变为「显示封面」');
+    expect(
+      find.byTooltip('显示封面'),
+      findsOneWidget,
+      reason: '进入歌词层后 AppBar 图标变为「显示封面」',
+    );
+  });
+
+  testWidgets('音量菜单：M3EMenu + M3ESlider（不再嵌 Material Slider 样式）', (
+    tester,
+  ) async {
+    await pumpPlayer(tester);
+
+    // 默认音量 1.0 → 图标是 volume_up
+    await tester.tap(find.byTooltip(RegExp(r'^音量')));
+    await tester.pumpAndSettle();
+
+    // key 挂在 M3ESlider 上（拖动/回归测试的锚点）
+    final slider = tester.widget<M3ESlider>(
+      find.byKey(const ValueKey('volume-slider')),
+    );
+    expect(slider.value, isNotNull);
+    // 播放页现在有三处 M3EMenu：音量 / 播放模式 / 桌面歌词
+    expect(find.byType(M3EMenu), findsWidgets);
   });
 }

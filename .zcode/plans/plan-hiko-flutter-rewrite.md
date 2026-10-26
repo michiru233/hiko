@@ -4344,3 +4344,46 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 ### 交付
 - 版本 `1.99.45+158`；Release：`hiko-v1.99.45-macos.zip` + `hiko-v1.99.45-android.apk`。
 - 下一项：`1.99.46` 播放页尾部 + 歌词（音量 `M3ESlider`、曲目 sheet、歌词字阶）。
+
+## 1.99.46（2026-10-26）：播放页尾部 + 歌词（D-06 / C-11 前半）
+
+### 可见变化
+- **音量菜单**：`MenuAnchor` + Material `Slider` → `M3EMenu` + `M3EMenuCustom`
+  + `M3ESlider`；滑杆行不给 `onTap`，拖动时菜单不关。
+- **曲目 sheet**：`showModalBottomSheet` + 自配色 Container（20 圆角）→
+  `M3ESheet.bottom`（28 顶角 + 色调面 + 海拔）+ `M3EListItem`；
+  当前曲目 `selected`（`secondaryContainer`），序号/时长用 `labelMedium`。
+- **播放页文字**：曲名 18/w700 → `titleLargeEmphasized`；艺术家 15 →
+  `bodyMedium`；时间 14 → `labelMedium` + 等宽数字；`HikoColors` **11 → 0**
+  （`theme.dart` 的 import 也随之删掉）。
+- 歌词浮层按钮（回到当前句 / 调字号）：自绘黑白半透明胶囊 + Material
+  `IconButton` → `M3EIconButton.tonal`。
+- 辅助工具条 7 个动作：Material `IconButton` → `M3EIconButton`，
+  **选中态变成 `secondaryContainer` 底 + primary 图标**（以前只换图标颜色，
+  看不出开关是开的）。
+- **抽屉歌词**：`FloatingActionButton.small` → `M3EFab(40, 角 16)`；
+  活跃行的发光指示条删除（审计 C-05）；行本体 `Material`+`InkWell` →
+  `M3EPressable`（统一 hover/focus/press 状态层，hover 时仍显示时间点与播放小图标）；
+  活跃行底 `primary@8%` → `secondaryContainer`；`speaker` 徽标与时间戳收进
+  `labelSmall`；黑白 alpha 全部换成 `onSurface` / `onSurfaceVariant`。
+- 歌词**字号保持 15.5/13.5（×`lyricsFontScale`）**，没有换成 type 角色：
+  它与 `lyricsEstimatedLineHeight = 45 × lyricsFontScale` 是一对承重 metrics
+  （居中/自动滚动靠它粗定位），换角色必须同时改估算行高，容易把 18 条既有
+  歌词锁弄红。已在代码注释与本节显式记录。
+- `M3EPressable` 新增可选 `onHoverChanged`：少数行需要 hover 时**换内容**
+  （歌词行的「时间点 / 播放小图标」），状态层仍由组件自己负责。
+
+### 验证
+- `flutter test`：**845 passed / 2 skipped**（840 + 音量菜单 1 + 播放页/歌词源码锁 4）。
+- `flutter analyze`：**42 条、0 error**。
+- 18 条既有歌词锁（居中扫描 / 抽屉居中 / 拖动跟随 / 回到当前句 / 空白点击回唱片）
+  在改字体颜色、去发光、换行实现之后**全绿**——改动没有碰到承重几何。
+- 新增 `test/ui/player_lyrics_lock_test.dart`：播放页不得出现 `HikoColors` /
+  `FloatingActionButton`；sheet 必须 `M3ESheet.bottom`；抽屉歌词不得出现
+  `BoxShadow` / `FloatingActionButton` / `IconButton(` / 黑白字面色；
+  两个视图都必须保留 `lyricsFontScale`。
+- `fullscreen_player_style_test` 增加音量菜单用例（`M3EMenu` + `M3ESlider` 锚点）。
+
+### 交付
+- 版本 `1.99.46+159`；Release：`hiko-v1.99.46-macos.zip` + `hiko-v1.99.46-android.apk`。
+- 下一项：`1.99.47` 首页次要区 + 桌面收尾（rail 品牌区 / 面包屑 / 导入按钮）。
