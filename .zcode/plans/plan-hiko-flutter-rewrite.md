@@ -4627,3 +4627,56 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 
 ### 交付
 - 版本 `1.99.50+163`；Release：`hiko-v1.99.50-macos.zip` + `hiko-v1.99.50-android.apk`。
+
+## 1.99.51（2026-10-27）：在线文件浏览改为逐层进入（M3E 重排）
+
+> 用户先要「文件夹体系按 M3E 重构」，看过树形/嵌套卡片两版示意后澄清：
+> 要的是**逐层进入**——一次只显示当前层，上方路径可点回跳。
+> 裁决：整块不嵌套卡片；行高统一 56；目录图标走主题语义色；
+> 正在播放用顶部胶囊跳转；返回键逐层退；同层按类型分组排序。
+
+### 可见变化
+- **目录树 → 逐层进入**：一次只渲染当前层，目录行点击 = 进入；顶部路径条
+  「全部文件 › … › 当前层」可点回跳，非根层左侧有「上一级」。
+- **行节奏统一 56dp**：目录 = 32dp `tertiaryContainer` 图标 + 标题 +
+  「N 项 · 时长」+ 常驻播放键 + 进入箭头；文件 = 32dp 图标/缩略图 + 标题 +
+  体积 + 动作；音频沿用 `HikoTrackRowM3E`（indent 归零）。
+  **目录不再借评分金**（那是评分的语义），改用主题的 tertiary 角色 ——
+  也避开 `secondaryContainer`（已被选中/播放中占用）。
+- **正在播放胶囊**：曲目不在当前层时出现在路径条右侧，点一下切到它的父目录
+  并滚动定位；在当前层时不重复显示（下面已经有高亮行）。
+- **同层排序**：目录 → 音频 → 图片 → 文本/视频，组内保持服务端顺序。
+- **换层淡入 200ms**：用路径做 key，只让新层从 0 淡到 1；不用 `AnimatedSwitcher`
+  ——它会叠两层、高度先跳再落。
+- **返回键逐层退**：移动端全屏页传 `interceptBack`，非根层 `PopScope.canPop=false`
+  → 先回上一层；根层才关详情。顶栏返回钮走同一条 `maybePop`，行为一致。
+- **删除**「展开全部 / 折叠全部」按钮及 `_expanded` 一整套状态。
+
+### 实现
+- `online_models.dart`：删 `folderKeysIn` / `pathToHash`（展开机制下线），
+  新增 `sortLevel`（分组排序）与 `folderChainTo`（播放曲目的目录链）。
+- `online_detail_panel.dart`：`_path` 目录栈替代 `_expanded`；
+  `_buildPathBar` / `_enterFolder` / `_goUp` / `_jumpToLevel` / `_jumpToPlaying`；
+  `_FolderRow`（无状态）/`_FileRow` 重写；`_maybeRevealPlaying` 删除；
+  `OnlineDetailBody.interceptBack` + `PopScope`。
+
+### 刻意没动
+- 面板上半部分（封面 / 标题 / 胶囊 / 标签 / 操作行 / 歌词 tab）不动。
+- 「播放全部」仍是**整部作品**的队列；目录行右侧的播放键才是该目录。
+- 服务端没给层级时的平铺兜底保留，但同样走新排序。
+
+### 验证
+- `flutter test`：**902 passed / 2 skipped**。
+- `flutter analyze`：**42 条、0 error**。
+- 新增 `test/ui/online_detail_browse_test.dart`（8 条）：根层只显示第一层 /
+  进入目录 / 点路径回根 / 「上一级」逐层退 / 返回键不退详情 /
+  正在播放胶囊跳转并定位 / 360dp 混排不溢出 / 同层排序。
+- 数据层：`sortLevel`（分组 + 幂等）与 `folderChainTo`（深层链 / 直属 / 根级空）
+  共 5 条，替换掉 `folderKeysIn` / `pathToHash` 的旧用例。
+- 删除 `test/ui/online_detail_fold_test.dart`（Q9/Q1/Q2 的展开语义随模型作废）。
+- 更新：`online_file_rows_test`（目录计数文案 `1 个项目` → `1 项`）、
+  `business_surface_style_lock_test`（目录图标断言改为 tertiary 角色，
+  并锁死「不得再出现 M3ESemantic.rating」）。
+
+### 交付
+- 版本 `1.99.51+164`；Release：`hiko-v1.99.51-macos.zip` + `hiko-v1.99.51-android.apk`。

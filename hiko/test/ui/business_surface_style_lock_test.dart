@@ -76,13 +76,26 @@ void main() {
       ]);
     });
 
-    test('详情里的社团 / 声优 / 收藏 / 评分都接语义色', () {
+    test('详情里的社团 / 声优 / 收藏都接语义色', () {
       expectHas('lib/ui/widgets/online_detail_panel.dart', [
         'M3ESemantic.circleTint',
         'M3ESemantic.voiceTint',
         'M3ESemantic.favorite',
-        'M3ESemantic.rating',
       ]);
+    });
+
+    test('目录图标走主题语义色，不再借评分金（1.99.51）', () {
+      expectHas('lib/ui/widgets/online_detail_panel.dart', [
+        'colors.tertiaryContainer',
+        'colors.onTertiaryContainer',
+      ]);
+      expect(
+        File('lib/ui/widgets/online_detail_panel.dart')
+            .readAsStringSync()
+            .contains('M3ESemantic.rating'),
+        isFalse,
+        reason: '琥珀金是评分语义，目录不该再用它',
+      );
     });
 
     test('在线面不得再出现裸菜单 API（1.99.48 收口）', () {

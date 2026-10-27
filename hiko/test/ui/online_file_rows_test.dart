@@ -84,8 +84,8 @@ void main() {
     expect(find.text('244 KB'), findsOneWidget);
     expect(find.text('説明書'), findsOneWidget);
     expect(find.text('イラスト'), findsOneWidget, reason: '纯图片目录不再隐藏');
-    expect(find.text('1 个项目'), findsOneWidget, reason: '目录计数=全部文件数');
-    // 折叠状态下子文件不出现
+    expect(find.text('1 项'), findsOneWidget, reason: '目录计数=全部文件数');
+    // 逐层进入：根层不显示子目录里的文件
     expect(find.text('イメージ2'), findsNothing);
   });
 

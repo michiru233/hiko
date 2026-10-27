@@ -135,6 +135,7 @@ class OnlineDetailScreen extends StatelessWidget {
         onSelectTag: onSelectTag,
         onSelectCreator: onSelectCreator,
         onOpenWork: onOpenWork,
+        interceptBack: true,
       ),
     );
   }
@@ -151,9 +152,15 @@ class OnlineDetailBody extends ConsumerStatefulWidget {
     this.onSelectTag,
     this.onSelectCreator,
     this.onOpenWork,
+    this.interceptBack = false,
   });
 
   final int workId;
+
+  /// 在非根层时截获系统返回键 / `maybePop`，先退回上一层（1.99.51）。
+  ///
+  /// 只有移动端全屏页传 true：桌面面板不是一条路由，注册 PopScope 会去管
+  /// 宿主路由的 popDisposition，容易误伤。
   /// 点详情页的标签 → 按该标签筛选。
   /// 1.94.0 起直接传 [OnlineTag]（响应里本来就带 `id`），不再需要标签表反查
   final ValueChanged<OnlineTag>? onSelectTag;
@@ -164,6 +171,9 @@ class OnlineDetailBody extends ConsumerStatefulWidget {
   /// 点语言版本胶囊 → 打开该版本的详情（1.99.2）。null 时胶囊只展示不可点。
   final ValueChanged<int>? onOpenWork;
 
+  /// 见 [OnlineDetailBody.interceptBack]
+  final bool interceptBack;
+
   @override
   ConsumerState<OnlineDetailBody> createState() => _OnlineDetailBodyState();
 }
@@ -172,19 +182,14 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
   /// 0: 曲目列表, 1: 歌词字幕（裁决 Q12=A）
   int _tabIndex = 0;
 
-  /// **已展开**的目录路径键。初始为空集 = 全部折叠（裁决 Q9 改判）。
+  /// 当前所在目录栈（1.99.51 裁决：逐层进入，不再渲染整棵树）。
   ///
-  /// 1.91.0 用的是「已折叠」集合 + 默认全展开；1.92.0 反过来 ——
-  /// 展开这个动作交给用户，比替他猜「哪个目录值得开」更省事，
-  /// 也顺带消掉了「第一个目录没有直属音频」那条边角规则。
-  final Set<String> _expanded = <String>{};
+  /// 空 = 作品根层。面包屑、返回键、「跳到正在播放」三处都以它为准；
+  /// 换层时整个列表重建（走 AnimatedSwitcher 的淡入），不做层级嵌套。
+  final List<OnlineFolderNode> _path = <OnlineFolderNode>[];
 
-  /// 正在播放的那一行，供自动滚动定位
+  /// 正在播放的那一行，供「跳到正在播放」之后定位
   final GlobalKey _activeRowKey = GlobalKey();
-
-  /// 已经自动展开过的曲目 hash。两重作用：
-  /// ① 同一首不会反复触发；② 用户手动把它折回去后，下一帧不会被强行再打开。
-  String? _revealedHash;
 
   @override
   Widget build(BuildContext context) {
@@ -192,7 +197,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     // `detail_kit` 里的共用件从它取值 —— 本地详情抽屉不套这层，于是不受影响。
     // 注意作用域只有**后代**读得到：本 State 自己的 `context` 在它之上，
     // 所以面板自有的文字走下面的 `_textScale` getter。
-    return HikoDetailTextScale(
+    final body = HikoDetailTextScale(
       scale: _textScale,
       child: ref.watch(onlineDetailProvider(widget.workId)).when(
             loading: () => const Center(
@@ -209,6 +214,16 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
             ),
             data: (detail) => _buildContent(context, detail),
           ),
+    );
+    if (!widget.interceptBack) return body;
+    return PopScope(
+      // 根层放行（关闭详情页），非根层拦截 → 退回上一层
+      canPop: _path.isEmpty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_path.isNotEmpty) setState(() => _path.removeLast());
+      },
+      child: body,
     );
   }
 
@@ -246,20 +261,6 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     // 用 hash 而非数组下标定位当前行：在线有三种播放范围（整部 / 目录 / 叶子目录），
     // 下标互不对齐
     final currentHash = _hashOf(currentUrl);
-
-    final folderKeys = folderKeysIn(detail.tree);
-    // 用 every 而不是比长度：`_expanded` 里理论上不会留文件夹之外的键，
-    // 但「长度相等 ≠ 全展开」这种不变量没必要靠约定维持。
-    final allExpanded =
-        folderKeys.isNotEmpty && folderKeys.every(_expanded.contains);
-
-    // 裁决 Q2：正在播的那一行必须看得见。默认全折叠之后这条更必要 ——
-    // 切歌切进别的目录，当前行会彻底隐形。
-    _maybeRevealPlaying(
-      detail: detail,
-      isCurrentWork: isCurrentWork,
-      hash: currentHash,
-    );
 
     return SelectionArea(
       child: SingleChildScrollView(
@@ -353,7 +354,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
               ),
             ],
             const SizedBox(height: 20),
-            _buildActions(context, detail, folderKeys, allExpanded),
+            _buildActions(context, detail),
             const SizedBox(height: 20),
             M3ECard(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -422,15 +423,41 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
               selectedIndex: _tabIndex,
               onSelected: (index) => setState(() => _tabIndex = index),
             ),
-            const SizedBox(height: 14),
-            if (_tabIndex == 0)
-              ..._buildTrackList(
-                detail: detail,
+            const SizedBox(height: 12),
+            if (_tabIndex == 0) ...[
+              _buildPathBar(
+                detail,
                 currentHash: currentHash,
                 isCurrentWork: isCurrentWork,
-                isPlaying: isPlaying,
-              )
-            else
+              ),
+              const SizedBox(height: 2),
+              // 换层淡入（1.99.51）：用路径做 key，只让**新的这一层**淡入。
+              // 不用 AnimatedSwitcher：它会把进出两层叠在一起，高度先跳再落；
+              // 这里旧层直接消失、新层从 0 淡到 1，没有重叠。
+              TweenAnimationBuilder<double>(
+                key: ValueKey<String>(
+                  '${widget.workId}/${_path.map((n) => n.title).join('/')}',
+                ),
+                tween: Tween<double>(begin: 0, end: 1),
+                duration: M3ETheme.of(context).motion.duration(
+                  M3ESpringType.effects,
+                  M3ESpringSpeed.normal,
+                ),
+                builder: (context, t, child) => Opacity(
+                  opacity: t,
+                  child: child,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: _buildTrackList(
+                    detail: detail,
+                    currentHash: currentHash,
+                    isCurrentWork: isCurrentWork,
+                    isPlaying: isPlaying,
+                  ),
+                ),
+              ),
+            ] else
               const SizedBox(height: 380, child: DrawerLyricsView()),
           ],
         ),
@@ -440,12 +467,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
 
   // ---------------------------------------------------------------- 操作行
 
-  Widget _buildActions(
-    BuildContext context,
-    OnlineDetail detail,
-    List<String> folderKeys,
-    bool allExpanded,
-  ) {
+  Widget _buildActions(BuildContext context, OnlineDetail detail) {
     final work = detail.work;
     final audio = detail.audioTracks;
 
@@ -476,30 +498,197 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
               ? null
               : () => unawaited(_copyRj(work.rjCode!)),
         ),
-        if (folderKeys.isNotEmpty)
-          M3EButton(
-            variant: M3EButtonVariant.outlined,
-            label: allExpanded ? '折叠全部' : '展开全部',
-            icon: Icon(
-              allExpanded
-                  ? Icons.unfold_less_rounded
-                  : Icons.unfold_more_rounded,
-            ),
-            onPressed: () => setState(() {
-              if (allExpanded) {
-                _expanded.clear();
-              } else {
-                _expanded
-                  ..clear()
-                  ..addAll(folderKeys);
-              }
-            }),
-          ),
       ],
     );
   }
 
   // ---------------------------------------------------------------- 曲目树
+
+  /// 当前层的节点（根层 = 作品树；进入目录后 = 该目录的 children）。
+  List<OnlineNode> _currentNodes(OnlineDetail detail) =>
+      _path.isEmpty ? detail.tree : _path.last.children;
+
+  /// 同层有序列表：目录 → 音频 → 图片 → 文本/视频（见 [sortLevel]）。
+  /// 空目录（fileCount == 0）不参与渲染 —— 点进去只会看到空。
+  List<OnlineNode> _orderedLevel(OnlineDetail detail) => sortLevel(<OnlineNode>[
+        for (final node in _currentNodes(detail))
+          if (node is! OnlineFolderNode || node.fileCount > 0) node,
+      ]);
+
+  void _enterFolder(OnlineFolderNode node) {
+    setState(() => _path.add(node));
+  }
+
+  void _goUp() {
+    if (_path.isEmpty) return;
+    setState(() => _path.removeLast());
+  }
+
+  /// 路径条第 [index] 段（0 = 根）→ 截断到那一层。
+  void _jumpToLevel(int index) {
+    if (index >= _path.length) return;
+    setState(() => _path.removeRange(index, _path.length));
+  }
+
+  /// 「正在播放」胶囊：把路径栈换成目标曲目所在的目录链，再滚动定位。
+  void _jumpToPlaying(OnlineDetail detail, String hash) {
+    final chain = folderChainTo(detail.tree, hash);
+    setState(() {
+      _path
+        ..clear()
+        ..addAll(chain);
+    });
+    // 换层要等下一帧 build + layout 才生效，目标行那时才有 RenderObject
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scrollToActiveRow();
+    });
+  }
+
+  OnlineTrack? _trackWithHash(OnlineDetail detail, String hash) {
+    for (final track in detail.tracks) {
+      if (track.hash == hash) return track;
+    }
+    return null;
+  }
+
+  /// 路径条（1.99.51）：返回箭头 +「全部文件 › … › 当前层」+ 正在播放胶囊。
+  ///
+  /// 路径过长时**反向滚动**（`reverse: true`）—— 溢出时保住的是右端（当前层），
+  /// 而不是把用户丢回「全部文件」。
+  Widget _buildPathBar(
+    OnlineDetail detail, {
+    required String? currentHash,
+    required bool isCurrentWork,
+  }) {
+    final colors = M3ETheme.of(context).colors;
+    final type = M3ETheme.of(context).type;
+    final scale = _textScale;
+
+    final playing =
+        isCurrentWork && currentHash != null
+            ? _trackWithHash(detail, currentHash)
+            : null;
+    // 胶囊只在「歌不在当前层」时出现：在当前层时它就在下面高亮着，没必要重复
+    final playingHere = currentHash != null &&
+        _currentNodes(detail).any(
+          (node) => node is OnlineFileNode && node.track.hash == currentHash,
+        );
+
+    TextStyle segStyle(bool current) =>
+        type.scaled(M3ETypeRole.labelMedium, scale).copyWith(
+              color: current ? colors.onSurface : colors.onSurfaceVariant,
+              fontWeight: current ? FontWeight.w600 : FontWeight.w400,
+            );
+
+    return SizedBox(
+      height: 36,
+      child: Row(
+        children: [
+          if (_path.isNotEmpty)
+            M3EIconButton(
+              icon: Icons.arrow_back_rounded,
+              tooltip: '上一级',
+              size: M3EIconButtonSize.small,
+              onPressed: _goUp,
+            ),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              reverse: true,
+              child: Row(
+                children: [
+                  _pathChip(
+                    label: '全部文件',
+                    style: segStyle(_path.isEmpty),
+                    onTap: _path.isEmpty ? null : () => _jumpToLevel(0),
+                  ),
+                  for (var i = 0; i < _path.length; i++) ...[
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 14,
+                      color: colors.outline,
+                    ),
+                    _pathChip(
+                      label: _path[i].title,
+                      style: segStyle(i == _path.length - 1),
+                      onTap: i == _path.length - 1
+                          ? null
+                          : () => _jumpToLevel(i + 1),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          if (playing != null && !playingHere)
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: M3EPressable(
+                onTap: () => _jumpToPlaying(detail, currentHash!),
+                borderRadius: M3EShape.radius(M3EShape.full),
+                pressScale: 0.97,
+                semanticLabel: '跳到正在播放的曲目',
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: colors.secondaryContainer,
+                    borderRadius: M3EShape.radius(M3EShape.full),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.play_arrow_rounded,
+                        size: 14,
+                        color: colors.onSecondaryContainer,
+                      ),
+                      const SizedBox(width: 4),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 150),
+                        child: Text(
+                          '正在播放 · ${onlineTrackDisplayName(playing.title)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              type.scaled(M3ETypeRole.labelSmall, scale).copyWith(
+                                    color: colors.onSecondaryContainer,
+                                  ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pathChip({
+    required String label,
+    required TextStyle style,
+    required VoidCallback? onTap,
+  }) {
+    return M3EPressable(
+      onTap: onTap,
+      borderRadius: M3EShape.radius(M3EShape.sm),
+      pressScale: 0.98,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 220),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: style,
+          ),
+        ),
+      ),
+    );
+  }
 
   List<Widget> _buildTrackList({
     required OnlineDetail detail,
@@ -507,12 +696,19 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     required bool isCurrentWork,
     required bool isPlaying,
   }) {
-    if (detail.tracks.isEmpty) {
+    // 服务端没给层级时退化成单层列表（1.99.18 的兜底），仍按同一套排序
+    final level = detail.tree.isEmpty
+        ? sortLevel(<OnlineNode>[
+            for (final track in detail.tracks) OnlineFileNode(track),
+          ])
+        : _orderedLevel(detail);
+
+    if (level.isEmpty) {
       return [
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 16),
           child: Text(
-            '服务器未返回文件',
+            _path.isEmpty ? '服务器未返回文件' : '这个目录是空的',
             style: M3ETheme.of(context)
                 .type
                 .scaled(M3ETypeRole.bodySmall, _textScale)
@@ -523,134 +719,53 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
         ),
       ];
     }
+
     final out = <Widget>[];
-    if (detail.tree.isEmpty) {
-      // 兜底：服务端没给层级时，按 relativePath 分组顺序编号（含非音频文件）
-      _buildFlat(detail, currentHash, isCurrentWork, isPlaying, out);
-    } else {
-      _walkNodes(
-        detail,
-        detail.tree,
-        depth: 0,
-        parentPath: '',
-        currentHash: currentHash,
-        isCurrentWork: isCurrentWork,
-        isPlaying: isPlaying,
-        out: out,
-      );
+    // 序号按**当前层**的音频重新计数：进入「本編」后从 01 开始，
+    // 与这一层的播放队列（groupOf）同一套编号
+    var seq = 0;
+    for (final node in level) {
+      switch (node) {
+        case OnlineFolderNode():
+          final playable = playableIn(node);
+          out.add(
+            _FolderRow(
+              title: node.title,
+              itemCount: node.fileCount,
+              totalSeconds: node.totalSeconds,
+              onOpen: () => _enterFolder(node),
+              onPlay: playable.isEmpty
+                  ? null
+                  : () => unawaited(
+                        _playFrom(detail: detail, queue: playable),
+                      ),
+            ),
+          );
+        case OnlineFileNode(:final track):
+          if (track.playable) {
+            seq++;
+            out.add(
+              _trackRow(
+                detail,
+                track,
+                index: seq,
+                currentHash: currentHash,
+                isCurrentWork: isCurrentWork,
+                isPlaying: isPlaying,
+              ),
+            );
+          } else {
+            out.add(_fileRow(track));
+          }
+      }
     }
     return out;
-  }
-
-  /// 递归渲染目录树，**不限深度**（裁决 Q3）。
-  ///
-  /// - 音频行可播；图片 / 文本 / 视频行按类型分流查看（1.99.18，对齐 asmr.one）
-  /// - 只隐藏「完全没有任何文件」的目录；纯图片目录照常显示
-  void _walkNodes(
-    OnlineDetail detail,
-    List<OnlineNode> nodes, {
-    required int depth,
-    required String parentPath,
-    required String? currentHash,
-    required bool isCurrentWork,
-    required bool isPlaying,
-    required List<Widget> out,
-  }) {
-    var seq = 0;
-    for (final node in nodes) {
-      if (node is OnlineFolderNode) {
-        if (node.fileCount == 0) continue;
-        final path =
-            parentPath.isEmpty ? node.title : '$parentPath/${node.title}';
-        final collapsed = !_expanded.contains(path);
-        final playable = playableIn(node);
-        out.add(_FolderRow(
-          title: node.title,
-          itemCount: node.fileCount,
-          totalSeconds: node.totalSeconds,
-          depth: depth,
-          collapsed: collapsed,
-          onToggle: () => setState(() {
-            // 与 1.91.0 同样的「先试着删，删不掉就加」写法，只是集合反了过来
-            if (!_expanded.remove(path)) _expanded.add(path);
-          }),
-          onPlay: playable.isEmpty
-              ? null
-              : () => unawaited(
-                    _playFrom(detail: detail, queue: playable),
-                  ),
-        ));
-        if (!collapsed) {
-          _walkNodes(
-            detail,
-            node.children,
-            depth: depth + 1,
-            parentPath: path,
-            currentHash: currentHash,
-            isCurrentWork: isCurrentWork,
-            isPlaying: isPlaying,
-            out: out,
-          );
-        }
-        continue;
-      }
-      if (node is OnlineFileNode) {
-        final track = node.track;
-        if (track.playable) {
-          seq++;
-          out.add(_trackRow(
-            detail,
-            track,
-            index: seq,
-            depth: depth,
-            currentHash: currentHash,
-            isCurrentWork: isCurrentWork,
-            isPlaying: isPlaying,
-          ));
-        } else {
-          out.add(_fileRow(track, depth: depth));
-        }
-      }
-    }
-  }
-
-  /// 无层级数据时的兜底：按 `relativePath` 顺序编号（含非音频文件，1.99.18）
-  void _buildFlat(
-    OnlineDetail detail,
-    String? currentHash,
-    bool isCurrentWork,
-    bool isPlaying,
-    List<Widget> out,
-  ) {
-    var seq = 0;
-    var lastPath = '';
-    for (final track in detail.tracks) {
-      if (track.relativePath != lastPath) {
-        lastPath = track.relativePath;
-        seq = 0;
-      }
-      if (track.playable) {
-        seq++;
-        out.add(_trackRow(
-          detail,
-          track,
-          index: seq,
-          depth: 0,
-          currentHash: currentHash,
-          isCurrentWork: isCurrentWork,
-          isPlaying: isPlaying,
-        ));
-      } else {
-        out.add(_fileRow(track, depth: 0));
-      }
-    }
   }
 
   Widget _trackRow(
     OnlineDetail detail,
     OnlineTrack track, {
     required int index,
-    required int depth,
     required String? currentHash,
     required bool isCurrentWork,
     required bool isPlaying,
@@ -665,7 +780,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
       durationSeconds: track.duration,
       active: active,
       playing: active && isPlaying,
-      indent: depth * 14.0,
+      indent: 0,
       // 曲目标题独立字号（1.97.0）：绝对值，不乘详情倍率 —— 见 HikoTrackRow 注释
       titleFontSize: _trackTitleFontSize,
       trailing: track.lyricsHash == null
@@ -691,10 +806,9 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
 
   /// 图片 / 文本 / 视频行（1.99.18，对齐 asmr.one 的文件树）。
   /// 点击按类型分流：图片 → 应用内预览；文本 → 查看对话框；视频 → 跳浏览器。
-  Widget _fileRow(OnlineTrack track, {required int depth}) {
+  Widget _fileRow(OnlineTrack track) {
     return _FileRow(
       track: track,
-      depth: depth,
       onTap: () {
         if (track.isImage) {
           unawaited(_showImageViewer(track));
@@ -785,45 +899,6 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     } catch (e) {
       messenger?.showSnackBar(SnackBar(content: Text('无法打开浏览器：$e')));
     }
-  }
-
-  // ---------------------------------------------------------------- 自动展开
-
-  /// 裁决 Q2：正在播放的那一行必须看得见。
-  ///
-  /// 默认全折叠（Q9）之后这条从「锦上添花」变成必需品 —— 切歌切进别的目录时，
-  /// 当前行会彻底隐形，用户根本不知道播的是哪一首。
-  ///
-  /// 只在**当前曲目 hash 变化**时动手（靠 `_revealedHash` 去重），因此：
-  /// ① 同一首不会每帧重复触发；② 用户手动把它折回去后，下一帧不会被强行再打开。
-  /// 展开只**增不减** —— 用户自己开过的目录不会被顺手关掉。
-  void _maybeRevealPlaying({
-    required OnlineDetail detail,
-    required bool isCurrentWork,
-    required String? hash,
-  }) {
-    if (!isCurrentWork || hash == null || _revealedHash == hash) return;
-    // 歌词页时曲目行根本没构建，等用户切回曲目页再说：
-    // 那次 setState 会重新走一遍 build，这里仍会被调用。
-    if (_tabIndex != 0) return;
-    // 先记账再调度：同一帧内 build 可能被调用多次，避免重复排回调
-    _revealedHash = hash;
-
-    final chain = pathToHash(detail.tree, hash);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (chain.isEmpty) {
-        // 文件就躺在作品根下，本来就渲染了，当前帧即可滚动
-        _scrollToActiveRow();
-        return;
-      }
-      setState(() => _expanded.addAll(chain));
-      // 展开要等下一帧 build + layout 才生效，届时目标行才有 RenderObject，
-      // 所以滚动必须再挂一次 post-frame。
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _scrollToActiveRow();
-      });
-    });
   }
 
   /// 把当前播放行滚进视野（停在视口上三分之一处，上下都留出上下文）。
@@ -1149,144 +1224,115 @@ class _EditionChip extends StatelessWidget {
   }
 }
 
-class _FolderRow extends StatefulWidget {
+/// 目录行（1.99.51）：点击 = 进入该目录；右侧常驻「播放全部」+ 进入箭头。
+///
+/// 行高 56，与音频行同一节奏。图标装进 32dp 的 `tertiaryContainer` 方块 ——
+/// 目录是**结构**不是状态：`secondaryContainer` 已经被「选中 / 播放中」占用，
+/// 而 1.99.48 之前借的琥珀金是「评分」的语义。
+class _FolderRow extends StatelessWidget {
   const _FolderRow({
     required this.title,
     required this.itemCount,
     required this.totalSeconds,
-    required this.depth,
-    required this.collapsed,
-    required this.onToggle,
+    required this.onOpen,
     this.onPlay,
   });
 
   final String title;
-
-  /// 全部文件条数（1.99.18 起含图片/文本/视频，对齐 asmr.one）
   final int itemCount;
   final double totalSeconds;
-  final int depth;
-  final bool collapsed;
-  final VoidCallback onToggle;
+  final VoidCallback onOpen;
 
-  /// 子树内没有可播放音频时为 null（纯图片目录），hover 不出播放键
+  /// 子树里没有可播放音频时为 null（纯图片目录），不出播放键
   final VoidCallback? onPlay;
 
   @override
-  State<_FolderRow> createState() => _FolderRowState();
-}
-
-class _FolderRowState extends State<_FolderRow> {
-  bool _hovered = false;
-
-  @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final textScale = HikoDetailTextScale.of(context);
+    final m3e = M3ETheme.of(context);
+    final colors = m3e.colors;
+    final type = m3e.type;
+    final scale = HikoDetailTextScale.of(context);
+    final meta = '$itemCount 项'
+        '${totalSeconds > 0 ? ' · ${formatDuration(totalSeconds)}' : ''}';
 
-    return Padding(
-      padding: EdgeInsets.only(left: widget.depth * 14.0),
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        child: InkWell(
-          onTap: widget.onToggle,
-          mouseCursor: SystemMouseCursors.click,
-          borderRadius: M3EShape.radius(M3EShape.md),
-          child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 2),
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-            decoration: BoxDecoration(
-              color: _hovered
-                  ? (isDark
-                      ? Colors.white.withValues(alpha: 0.05)
-                      : Colors.black.withValues(alpha: 0.03))
-                  : Colors.transparent,
-              borderRadius: M3EShape.radius(M3EShape.md),
+    return M3EPressable(
+      onTap: onOpen,
+      borderRadius: M3EShape.radius(M3EShape.md),
+      pressScale: 0.99,
+      semanticLabel: '进入目录 $title',
+      child: SizedBox(
+        height: 56,
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: colors.tertiaryContainer,
+                borderRadius: M3EShape.radius(M3EShape.sm),
+              ),
+              child: Icon(
+                Icons.folder_rounded,
+                size: 18,
+                color: colors.onTertiaryContainer,
+              ),
             ),
-            child: Row(
-              children: [
-                AnimatedRotation(
-                  // 0.25 圈 = 90°：展开时朝下，折叠时朝右
-                  turns: widget.collapsed ? 0 : 0.25,
-                  duration: M3ETheme.of(context)
-                      .motion
-                      .duration(M3ESpringType.spatial, M3ESpringSpeed.fast),
-                  child: Icon(
-                    Icons.keyboard_arrow_right_rounded,
-                    size: 16,
-                    color: M3ETheme.of(context).colors.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(width: 2),
-                const Icon(Icons.folder_rounded, size: 15, color: M3ESemantic.rating),
-                const SizedBox(width: 8),
-                Expanded(
-                  // 两行（1.99.12）：目录名与曲名同样会被挤截断
-                  child: Text(
-                    widget.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: M3ETheme.of(context)
-                        .type
-                        .scaled(M3ETypeRole.labelMedium, textScale)
-                        .copyWith(fontWeight: FontWeight.w600),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                if (_hovered && widget.onPlay != null)
-                  Tooltip(
-                    message: '播放该目录',
-                    child: InkWell(
-                      onTap: widget.onPlay,
-                      mouseCursor: SystemMouseCursors.click,
-                      borderRadius: M3EShape.radius(M3EShape.full),
-                      child: Padding(
-                        padding: const EdgeInsets.all(2),
-                        child: Icon(
-                          Icons.play_circle_outline_rounded,
-                          size: 18,
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                  )
-                else
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    '${widget.itemCount} 个项目'
-                    '${widget.totalSeconds > 0
-                        ? ' · ${formatDuration(widget.totalSeconds)}'
-                        : ''}',
-                    style: M3ETheme.of(context)
-                        .type
-                        .scaled(M3ETypeRole.labelSmall, textScale)
-                        .copyWith(
-                          color: M3ETheme.of(context).colors.onSurfaceVariant,
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: type.scaled(M3ETypeRole.labelLarge, scale).copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: colors.onSurface,
+                        ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    meta,
+                    maxLines: 1,
+                    style: type.scaled(M3ETypeRole.labelSmall, scale).copyWith(
+                          color: colors.onSurfaceVariant,
                           fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                   ),
-              ],
+                ],
+              ),
             ),
-          ),
+            if (onPlay != null)
+              M3EIconButton(
+                icon: Icons.play_circle_outline_rounded,
+                tooltip: '播放该目录',
+                size: M3EIconButtonSize.small,
+                onPressed: onPlay,
+              ),
+            Padding(
+              padding: const EdgeInsets.only(left: 2, right: 2),
+              child: Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: colors.onSurfaceVariant,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-/// 非音频文件行（1.99.18）：图片带缩略图（`streamUrl(hash)` + 封面缓存管线），
-/// 文本 / 视频带类型图标；尾部显示文件体积。缩略图沿用 [OnlineCover] 的
-/// 防社手模糊行为 —— 隐私模式开着时同样糊掉。
+/// 非音频文件行（1.99.18 起，1.99.51 对齐 56dp）：图片带缩略图
+/// （`streamUrl(hash)` + 封面缓存管线），文本 / 视频带类型图标；尾部显示体积
+/// 与动作。缩略图沿用 [OnlineCover] 的防社手模糊行为 —— 隐私模式开着时同样糊掉。
 class _FileRow extends ConsumerWidget {
-  const _FileRow({
-    required this.track,
-    required this.depth,
-    required this.onTap,
-  });
+  const _FileRow({required this.track, required this.onTap});
 
   final OnlineTrack track;
-  final int depth;
   final VoidCallback onTap;
 
   static String _sizeLabel(int b) {
@@ -1297,83 +1343,78 @@ class _FileRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final textScale = HikoDetailTextScale.of(context);
+    final m3e = M3ETheme.of(context);
+    final colors = m3e.colors;
+    final type = m3e.type;
+    final scale = HikoDetailTextScale.of(context);
     final size = _sizeLabel(track.size);
 
     final Widget leading = track.isImage
         ? ClipRRect(
             borderRadius: M3EShape.radius(M3EShape.sm),
             child: SizedBox(
-              width: 40,
-              height: 40,
+              width: 32,
+              height: 32,
               child: OnlineCover(
                 url: ref.watch(onlineClientProvider).streamUrl(track.hash),
               ),
             ),
           )
-        : SizedBox(
-            width: 40,
-            height: 40,
-            child: Center(
-              child: Icon(
-                track.isText
-                    ? Icons.description_rounded
-                    : Icons.movie_rounded,
-                size: 20,
-                color: M3ETheme.of(context).colors.onSurfaceVariant,
-              ),
+        : Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: colors.surfaceContainerHighest,
+              borderRadius: M3EShape.radius(M3EShape.sm),
+            ),
+            child: Icon(
+              track.isText ? Icons.description_rounded : Icons.movie_rounded,
+              size: 16,
+              color: colors.onSurfaceVariant,
             ),
           );
 
-    return Padding(
-      padding: EdgeInsets.only(left: depth * 14.0),
-      child: InkWell(
-        onTap: onTap,
-        mouseCursor: SystemMouseCursors.click,
-        borderRadius: M3EShape.radius(M3EShape.md),
-        child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 2),
-          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-          child: Row(
-            children: [
-              leading,
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  onlineTrackDisplayName(track.title),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: M3ETheme.of(context)
-                      .type
-                      .scaled(M3ETypeRole.bodySmall, textScale)
-                      .copyWith(fontWeight: FontWeight.w500),
-                ),
+    return M3EPressable(
+      onTap: onTap,
+      borderRadius: M3EShape.radius(M3EShape.md),
+      pressScale: 0.99,
+      child: SizedBox(
+        height: 56,
+        child: Row(
+          children: [
+            leading,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                onlineTrackDisplayName(track.title),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: type.scaled(M3ETypeRole.bodyMedium, scale).copyWith(
+                      color: colors.onSurface,
+                    ),
               ),
-              if (size.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                Text(
-                  size,
-                  style: M3ETheme.of(context)
-                      .type
-                      .scaled(M3ETypeRole.labelSmall, textScale)
-                      .copyWith(
-                        color: M3ETheme.of(context).colors.onSurfaceVariant,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                ),
-              ],
-              const SizedBox(width: 4),
-              Icon(
-                track.isImage
-                    ? Icons.image_outlined
-                    : track.isText
-                        ? Icons.notes_rounded
-                        : Icons.open_in_new_rounded,
-                size: 13,
-                color: M3ETheme.of(context).colors.onSurfaceVariant,
+            ),
+            if (size.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Text(
+                size,
+                style: type.scaled(M3ETypeRole.labelSmall, scale).copyWith(
+                      color: colors.onSurfaceVariant,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
               ),
             ],
-          ),
+            const SizedBox(width: 10),
+            Icon(
+              track.isImage
+                  ? Icons.image_outlined
+                  : track.isText
+                      ? Icons.notes_rounded
+                      : Icons.open_in_new_rounded,
+              size: 16,
+              color: colors.onSurfaceVariant,
+            ),
+          ],
         ),
       ),
     );

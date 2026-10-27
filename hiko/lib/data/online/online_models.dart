@@ -697,20 +697,40 @@ List<OnlineTrack> playableIn(OnlineNode node) => switch (node) {
         ],
     };
 
-/// 递归收集节点树里所有目录的路径键（与 [OnlineTrack.relativePath] 同一套拼法），
-/// 供「折叠全部 / 展开全部」用。
+/// 同层排序（1.99.51 裁决）：**目录 → 音频 → 图片 → 文本/视频**。
 ///
-/// 与详情树同一口径（1.99.18 起）：**含任何文件**的目录都算——纯图片目录
-/// 会被渲染，「全部已折叠」的状态才对得上。
-List<String> folderKeysIn(List<OnlineNode> nodes, [String parent = '']) {
-  final out = <String>[];
+/// 逐层进入之后，同一层里可能同时有子目录、音频、封面图和 readme。
+/// 只做「分组重排」，组内保留服务端返回的顺序 —— 音频是一层里的主内容，
+/// 不能被一张 jpg 从中间切断；目录永远在最先，它是结构而不是内容。
+List<OnlineNode> sortLevel(List<OnlineNode> nodes) {
+  int rank(OnlineNode node) => switch (node) {
+        OnlineFolderNode() => 0,
+        OnlineFileNode(:final track) =>
+          track.playable ? 1 : (track.isImage ? 2 : 3),
+      };
+  final indexed = nodes.indexed.toList()
+    ..sort((a, b) {
+      final byRank = rank(a.$2).compareTo(rank(b.$2));
+      return byRank != 0 ? byRank : a.$1.compareTo(b.$1);
+    });
+  return [for (final (_, node) in indexed) node];
+}
+
+/// 从根到「包含 [hash] 的目录」的节点链；文件就躺在根层时返回空列表。
+///
+/// 逐层进入之后，这条链是「跳到正在播放」用的：把路径栈直接换成它，
+/// 目标行就在当前层里了。空列表不是错误 —— 根级文件本来就可见。
+List<OnlineFolderNode> folderChainTo(List<OnlineNode> nodes, String hash) {
   for (final node in nodes) {
-    if (node is! OnlineFolderNode || node.fileCount == 0) continue;
-    final path = parent.isEmpty ? node.title : '$parent/${node.title}';
-    out.add(path);
-    out.addAll(folderKeysIn(node.children, path));
+    if (node is! OnlineFolderNode) continue;
+    final here = node.children.any(
+      (child) => child is OnlineFileNode && child.track.hash == hash,
+    );
+    if (here) return [node];
+    final deeper = folderChainTo(node.children, hash);
+    if (deeper.isNotEmpty) return [node, ...deeper];
   }
-  return out;
+  return const [];
 }
 
 /// 分页条的页码序列：`[1, null, 4, 5, 6, null, 3123]`。
@@ -815,25 +835,6 @@ enum OnlineSort {
 /// 供详情页「把正在播放的那一行展开出来」用（裁决 Q2）。两种「无事可做」都返回
 /// 空列表：文件不在任何目录里（直接在作品根下，本来就可见），以及 hash 不在树里。
 ///
-/// 路径键与 [OnlineTrack.relativePath] / [folderKeysIn] 同一套拼法。
-List<String> pathToHash(List<OnlineNode> nodes, String hash, [String parent = '']) {
-  for (final node in nodes) {
-    switch (node) {
-      case OnlineFolderNode(:final title, :final children):
-        final path = parent.isEmpty ? title : '$parent/$title';
-        // 文件直接躺在这一层
-        final here = children.any(
-          (child) => child is OnlineFileNode && child.track.hash == hash,
-        );
-        if (here) return [path];
-        final deeper = pathToHash(children, hash, path);
-        if (deeper.isNotEmpty) return [path, ...deeper];
-      case OnlineFileNode():
-        break; // 根级文件无目录可展开
-    }
-  }
-  return const [];
-}
 
 /// 音轨标题展示：剥掉扩展名。在线作品的标题一律带 `.mp3` / `.wav` 这类后缀
 /// （asmr.one 网页也照原样显示），但 Hiko 播放器里的曲目名是不带的，

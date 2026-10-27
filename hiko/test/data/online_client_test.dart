@@ -510,41 +510,59 @@ void main() {
       expect(playableIn(l1).map((t) => t.hash), ['1/2']);
     });
 
-    test('folderKeysIn 与详情树同口径：含任何文件的目录都收（1.99.18）', () {
-      final nodes = deepNodes();
-      final tree = KikoeruClient.parseTrackNodes(
-          nodes, KikoeruClient.parseTrackTree(nodes));
-
-      expect(folderKeysIn(tree), ['L1', 'L1/L2', 'L1/L2/L3', '只有字幕']);
-    });
-
-    test('纯字幕目录也收进折叠键（1.99.18 起文件全貌展示）', () {
-      final nodes = [
+    test('sortLevel：目录 → 音频 → 图片 → 文本/视频，组内保持原序', () {
+      final nodes = <Map<String, dynamic>>[
+        {'type': 'text', 'title': 'readme.txt', 'hash': 'r/1', 'size': 100},
+        {'type': 'image', 'title': 'cover.jpg', 'hash': 'r/2', 'size': 200},
+        {'type': 'audio', 'title': '02.mp3', 'hash': 'r/3', 'duration': 10},
         {
           'type': 'folder',
-          'title': 'A',
+          'title': 'Disc',
           'children': [
-            {
-              'type': 'folder',
-              'title': 'B',
-              'children': [
-                {'type': 'text', 'title': 'x.lrc', 'hash': '1/1'},
-              ],
-            },
+            {'type': 'audio', 'title': 'a.mp3', 'hash': 'r/4', 'duration': 5},
           ],
         },
+        {'type': 'audio', 'title': '01.mp3', 'hash': 'r/5', 'duration': 10},
       ];
       final tree = KikoeruClient.parseTrackNodes(
-          nodes, KikoeruClient.parseTrackTree(nodes));
-      expect(folderKeysIn(tree), ['A', 'A/B']);
+        nodes,
+        KikoeruClient.parseTrackTree(nodes),
+      );
+
+      String titleOf(OnlineNode node) => switch (node) {
+            OnlineFolderNode(:final title) => title,
+            OnlineFileNode(:final track) => track.title,
+          };
+
+      expect(sortLevel(tree).map(titleOf).toList(), [
+        'Disc',
+        '02.mp3',
+        '01.mp3',
+        'cover.jpg',
+        'readme.txt',
+      ], reason: '目录最前；音频内部保持服务端顺序，图片与文本排在最后');
+    });
+
+    test('sortLevel 对已经有序的输入是幂等的', () {
+      final nodes = <Map<String, dynamic>>[
+        {'type': 'audio', 'title': 'a.mp3', 'hash': '1/1', 'duration': 5},
+        {'type': 'audio', 'title': 'b.mp3', 'hash': '1/2', 'duration': 5},
+      ];
+      final tree = KikoeruClient.parseTrackNodes(
+        nodes,
+        KikoeruClient.parseTrackTree(nodes),
+      );
+      final once = sortLevel(tree);
+      expect(sortLevel(once), once);
+      expect(sortLevel(const []), isEmpty);
     });
   });
 
-  group('pathToHash（自动展开正在播放的那一行）', () {
+  group('folderChainTo（跳到正在播放所在的目录）', () {
     // L1 下既有直属音频（a.mp3）又有更深的目录链，用来区分
     // 「命中直属子文件」与「命中深层文件」两种返回形态
     List<OnlineNode> buildTree() {
-      final nodes = [
+      final nodes = <Map<String, dynamic>>[
         {'type': 'audio', 'title': 'root.mp3', 'hash': '1/1', 'duration': 10},
         {
           'type': 'folder',
@@ -579,33 +597,28 @@ void main() {
     }
 
     test('深层文件返回由浅到深的完整目录链', () {
-      // 第一版实现「先递归再检查 children」，深层命中时把上层路径丢了，
-      // 只返回 L1/L2/L3，于是展开集合里缺了父级、目标行照样看不见。
-      expect(pathToHash(buildTree(), '1/3'), ['L1', 'L1/L2', 'L1/L2/L3']);
+      // 第一版实现「先递归再检查 children」，深层命中时把上层丢了，
+      // 只返回 L3，于是逐层进入后落在一层没有目标的目录里。
+      expect(folderChainTo(buildTree(), '1/3').map((f) => f.title).toList(), [
+        'L1',
+        'L2',
+        'L3',
+      ]);
     });
 
     test('文件直属该目录时只返回这一层', () {
-      expect(pathToHash(buildTree(), '1/2'), ['L1']);
+      expect(folderChainTo(buildTree(), '1/2').map((f) => f.title).toList(), [
+        'L1',
+      ]);
     });
 
     test('根级文件与不在树里的 hash 都返回空', () {
-      // 根级文件本来就可见，没有目录要展开 —— 空列表不是错误
-      expect(pathToHash(buildTree(), '1/1'), isEmpty);
-      expect(pathToHash(buildTree(), '1657200/1937305'), isEmpty);
-      expect(pathToHash(const [], '1/3'), isEmpty);
-    });
-
-    test('返回的路径键与 folderKeysIn 同一套拼法', () {
-      // 两者拼法一旦漂移，「展开全部」的判定和自动展开就会各说各话
-      final tree = buildTree();
-      final keys = folderKeysIn(tree).toSet();
-      expect(pathToHash(tree, '1/3'), isNotEmpty);
-      for (final path in pathToHash(tree, '1/3')) {
-        expect(keys, contains(path));
-      }
+      // 根级文件本来就可见，没有目录要进 —— 空列表不是错误
+      expect(folderChainTo(buildTree(), '1/1'), isEmpty);
+      expect(folderChainTo(buildTree(), '1657200/1937305'), isEmpty);
+      expect(folderChainTo(const [], '1/3'), isEmpty);
     });
   });
-
   group('OnlineSort（asmr.one 形态的扁平排序菜单）', () {
     test('5 项、顺序固定、方向写进条目名', () {
       // 方向写进名字是 1.92.0 的关键取舍：菜单里没有「再点一次反转」
