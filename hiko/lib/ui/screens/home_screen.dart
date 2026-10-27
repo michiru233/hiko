@@ -103,6 +103,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   // Scrollable.ensureVisible 精确校正（见 _jumpToLocatedCard）。
   final _localHeaderMeasureKey = GlobalKey();
   double? _localHeaderExtent;
+
+  // 1.99.50 桌面端本地视图：头部（hero + 分类/筛选行 + 结果行 + 续播横幅）
+  // 滚走即收起，**只有滚回最顶**才重新展开。
+  //
+  // 为什么不用移动端那套 `M3EFloatingHeader`：那是「上滑跟手就回来」的
+  // floating 语义。桌面用鼠标滚轮，往回滚一格就把整块头部顶回来，阅读时
+  // 很烦；这里按用户裁决做更硬的规则：滚走 = 收起，offset 归零 = 展开。
+  //
+  // `_desktopHeaderExtent` 只服务于「收起后还剩多少可滚」这个护栏：
+  // 内容本来就短（网格只比视口高一点）时不能收，否则视口变高会让
+  // offset 被夹回 0 → 展开 → 又能滚 → 来回抖。
+  final _desktopHeaderKey = GlobalKey();
+  double _desktopHeaderExtent = 0;
+  bool _desktopHeaderCollapsed = false;
+
   final _locateCardKey = GlobalKey();
   String? _locateTargetId; // 需要定位的专辑 id（定位完成后清除）
   String? _highlightedAlbumId; // 高亮中的专辑 id
@@ -172,11 +187,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   void _onGridScroll() {
-    if (!_isMobileLocalView) return;
-    final scrolled = _gridScrollController.hasClients &&
-        _gridScrollController.offset > 120;
-    if (scrolled != _mobileTopbarTitle) {
-      setState(() => _mobileTopbarTitle = scrolled);
+    if (!_gridScrollController.hasClients) return;
+    final position = _gridScrollController.position;
+    if (_isMobileLocalView) {
+      final scrolled = position.pixels > 120;
+      if (scrolled != _mobileTopbarTitle) {
+        setState(() => _mobileTopbarTitle = scrolled);
+      }
+      return;
+    }
+    if (!_isDesktopLocalView) return;
+    if (_desktopHeaderCollapsed) {
+      // 裁决（1.99.50）：**只有回到最顶**才展开 —— 往上滚一格不算
+      if (position.pixels <= 0) {
+        setState(() => _desktopHeaderCollapsed = false);
+      }
+      return;
+    }
+    // 护栏：头部还没量到高度、或收起后压根没得滚（内容几乎不超一屏）时
+    // 保持展开，避免「收起 → 视口变高 → offset 夹回 0 → 展开」的死循环
+    if (_desktopHeaderExtent > 0 &&
+        position.pixels > 0 &&
+        position.maxScrollExtent > _desktopHeaderExtent + 24) {
+      setState(() => _desktopHeaderCollapsed = true);
     }
   }
 
@@ -188,6 +221,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ? MediaQuery.sizeOf(context).width <= 1000
             : false);
     return isMobile && !_isOnlineView && _view != '统计';
+  }
+
+  /// 桌面端本地内容视图（与 [_isMobileLocalView] 同源的另一半）。
+  ///
+  /// 只在这类视图上启用「头部滚走即收起」：在线/收藏有自己的滚动体，
+  /// 统计页的内容本来就要跟头部一起看（图表高度依赖可视区）。
+  bool get _isDesktopLocalView {
+    final isMobile = widget.debugMobileLayout ??
+        (Platform.isAndroid
+            ? MediaQuery.sizeOf(context).width <= 1000
+            : false);
+    return !isMobile && !_isOnlineView && _view != '统计';
   }
 
   void _openSettings(BuildContext context, {bool autoCheckUpdate = false}) {
@@ -1029,10 +1074,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildTopbar(theme, isMobile),
-        _buildHero(theme, filtered.length, isMobile),
-        _buildToolbar(theme, isMobile, filtered, currentSort),
-        _buildResultsLine(theme, filtered.length),
-        _buildResumeBanner(theme, isMobile),
+        _buildDesktopHeader(theme, filtered, currentSort),
         Expanded(
           child: _view == '统计'
               ? StatsView(
@@ -1050,6 +1092,55 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               : _buildGrid(filtered, theme, isMobile),
         ),
       ],
+    );
+  }
+
+  /// 桌面端可收起头部（1.99.50）。
+  ///
+  /// 结构：`AnimatedSize[ hero, 分类行, 筛选行, 结果行, 续播横幅 ]` ——
+  /// 收起时把整块替换成零高（[AnimatedSize] 默认裁剪，文字不会溢出），
+  /// 网格通过外层 `Expanded` 自然接管让出的高度。
+  ///
+  /// 为什么不做成滚动体里的 sliver：裁决是「只有回到最顶才重新出现」，
+  /// 而 sliver 的出现与否永远绑在滚动位置上 —— 滚到一半往回滚就会露头，
+  /// 那正是被否掉的 floating 语义。放在滚动体外面才能把「展开」的条件
+  /// 收窄到 `offset == 0`。
+  Widget _buildDesktopHeader(
+    ThemeData theme,
+    List<Album> filtered,
+    String currentSort,
+  ) {
+    // 每帧量一次自然高度（只给收起护栏用，不驱动布局，所以不用 setState）
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final h = _desktopHeaderKey.currentContext?.size?.height;
+      if (h != null && h > 0 && (h - _desktopHeaderExtent).abs() > 0.5) {
+        _desktopHeaderExtent = h;
+      }
+    });
+
+    final motion = M3ETheme.of(context).motion;
+    // 统计 / 在线视图不参与收起：从别处带着 collapsed=true 切过来时，
+    // 头部必须照常显示（否则统计页没有 hero 也没有任何入口）
+    final collapsed = _desktopHeaderCollapsed && _isDesktopLocalView;
+    return AnimatedSize(
+      duration: motion.duration(M3ESpringType.spatial, M3ESpringSpeed.fast),
+      curve: motion.fallbackCurve,
+      alignment: Alignment.topCenter,
+      child: collapsed
+          ? const SizedBox(width: double.infinity, height: 0)
+          : KeyedSubtree(
+              key: _desktopHeaderKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildHero(theme, filtered.length, false),
+                  _buildToolbar(theme, false, filtered, currentSort),
+                  _buildResultsLine(theme, filtered.length),
+                  _buildResumeBanner(theme, false),
+                ],
+              ),
+            ),
     );
   }
 

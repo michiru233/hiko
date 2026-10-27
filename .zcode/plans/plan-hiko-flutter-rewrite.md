@@ -4582,3 +4582,48 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
   `M3ETextField` 收口 11 处输入框、两处 `showModalBottomSheet` → `M3ESheet.bottom`、
   移动统计页布局、`context_menu` 归并、Windows 实机验收（Q6）、
   Android 系统栏 edge-to-edge（M-09）。
+
+## 1.99.50（2026-10-27）：桌面端头部随滚动收起（只到顶才展开）
+
+> 用户提出：桌面端往下滑时，顶部那块（品牌区 + 分类行 + 筛选行 + 结果行）
+> 应该自动隐藏。裁决两条：**整块跟滚**、**只有回到最顶才重新出现**。
+
+### 可见变化
+- **桌面本地视图的头部整块可收起**：`hero（PERSONAL LIBRARY / 标题 / 副标题 /
+  收藏数）+ 分类 chips + 筛选行（全部/未听完/已收藏/标签/排序/多选）+ 结果行 +
+  「继续收听」卡` 一起收起，网格通过外层 `Expanded` 接管让出的高度。
+  收起/展开走 `AnimatedSize`（`motion.duration(spatial, fast)` = 200ms、
+  `fallbackCurve`），默认裁剪，文字不会溢出。
+- **展开条件收窄到 `offset == 0`**：这版刻意**没有**复用移动端的
+  `M3EFloatingHeader`（floating = 上滑跟手就回来）。桌面用鼠标滚轮，
+  往回滚一格就把整块头部顶回来很干扰阅读，所以规则是「滚走即收，
+  归零才开」—— 往回滚但没到顶，头部**不出现**。
+- **护栏**：头部自然高度还没量到、或内容本来就几乎不超一屏时**不收起**。
+  否则会出现「收起 → 视口变高 → offset 被夹回 0 → 展开 → 又能滚」的抖动。
+- 统计 / 在线 / 在线收藏视图不参与收起（它们的滚动体与内容结构不同；
+  且带着 `collapsed=true` 切过去时必须照常显示头部）。
+- 顶部面包屑栏（`音声库 / 当前视图` + 4 个动作 + 导入）保持固定，不跟滚。
+
+### 实现要点
+- `_buildDesktopHeader`：`AnimatedSize[ KeyedSubtree(量高) [四块] ]`，
+  收起时替换成零高 `SizedBox`；高度用 post-frame 读取（只服务护栏，不驱动布局）。
+- `_onGridScroll` 扩展成双端：移动端仍按 `pixels > 120` 出顶栏小标题；
+  桌面端按「收起/展开」两态切换，收起态只有 `pixels <= 0` 才复位。
+- 新增 `_isDesktopLocalView`，与 `_isMobileLocalView` 同源（Android 宽度断点 +
+  调试开关），避免第二处 isMobile 口径。
+
+### 验证
+- `flutter test`：**899 passed / 2 skipped**（896 + 3 条新锁）。
+- `flutter analyze`：**42 条、0 error**。
+- 新增 `test/ui/desktop_header_collapse_test.dart`：
+  ① 滚下去 → 头部整块消失（`PERSONAL LIBRARY` 从树里消失，不是淡出）；
+  ② 往回滚到 120 但没到顶 → 仍然不出现（与 floating 的分水岭）；
+  ③ `offset == 0` → 展开；
+  ④ 收起后连续小步下滚不闪头部；
+  ⑤ 3 张卡的短内容不触发收起（防「收起↔展开」抖动）。
+- macOS 实机截图核对顶部状态：面包屑 / hero / 分类 / 筛选 / 续播卡 / 网格
+  间距正常，无空白块与裁字。收起态因系统未授权合成滚轮事件，未做截图验证，
+  由上述组件测试覆盖。
+
+### 交付
+- 版本 `1.99.50+163`；Release：`hiko-v1.99.50-macos.zip` + `hiko-v1.99.50-android.apk`。
