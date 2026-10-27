@@ -14,7 +14,7 @@
 > 删 `DM Sans`、补滚动条 / Tooltip 主题）；1.99.49 清形状与动效
 > （76 处圆角走 `M3EShape`、48 处字号走字阶、5 处裸曲线与 8 处交互动画走
 > `M3EMotion`、12 处非动效时长具名化）。
-> 基线 **902 passed / 2 skipped**、analyze **42 条 0 error**（1.99.52 只改了曲目行，测试数不变）。
+> 基线 **908 passed / 2 skipped**、analyze **42 条 0 error**。
 > 1.99.50 另做了一条体验改动：桌面端本地视图的头部（hero + 分类/筛选行 + 结果行 +
 > 续播卡）**滚走即整块收起、只有回到最顶才展开**（刻意不复用移动端 floating 语义），
 > 锁在 `test/ui/desktop_header_collapse_test.dart`。

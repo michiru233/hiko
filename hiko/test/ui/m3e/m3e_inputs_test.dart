@@ -90,6 +90,47 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets('indeterminate：画横杠不画勾，点击仍按二态回调（1.99.53）', (tester) async {
+      bool? changed;
+      await tester.pumpWidget(
+        wrapM3E(
+          Center(
+            child: M3ECheckbox(
+              value: false,
+              indeterminate: true,
+              onChanged: (v) => changed = v,
+            ),
+          ),
+        ),
+      );
+
+      expect(
+        find.descendant(
+          of: find.byType(M3ECheckbox),
+          matching: find.byIcon(Icons.check),
+        ),
+        findsNothing,
+        reason: '部分选中不该画勾',
+      );
+      // 横杠：M3ECheckbox 内部唯一的 8×2 Container
+      expect(
+        find.descendant(
+          of: find.byType(M3ECheckbox),
+          matching: find.byWidgetPredicate(
+            (w) =>
+                w is Container &&
+                w.constraints?.maxWidth == 8 &&
+                w.constraints?.maxHeight == 2,
+          ),
+        ),
+        findsOneWidget,
+        reason: '部分选中要画一条横杠',
+      );
+
+      await tester.tap(find.byType(M3ECheckbox));
+      expect(changed, isTrue, reason: '点击语义仍是「部分 → 全选」');
+    });
   });
 
   group('M3ESelect', () {
