@@ -108,23 +108,6 @@ class _HikoPillInteractionState extends State<HikoPillInteraction> {
   }
 }
 
-/// 悬停/按下时的描边。**始终非空**（不活跃时是透明边）——
-/// `AnimatedContainer` 只在对应字段非空时才建 tween，给 `null` 会让「亮起来」
-/// 这一步没有过渡、只有「灭掉」有，看起来像闪一下。
-/// 透明边不占布局，所以引不进尺寸变化。
-BoxDecoration hikoPillHoverOutline({
-  required bool active,
-  required Color color,
-  required BorderRadius borderRadius,
-}) =>
-    BoxDecoration(
-      borderRadius: borderRadius,
-      border: Border.all(
-        color: active ? color.withValues(alpha: 0.55) : Colors.transparent,
-        width: 1,
-      ),
-    );
-
 // --------------------------------------------------------- 文字缩放（1.96.0）
 //
 // 三组可调外观：标签胶囊的**绝对字号**（走 [HikoTagFontScope]，全局生效），
@@ -371,12 +354,15 @@ class HikoTagChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colors = M3ETheme.of(context).colors;
     final fontSize = HikoTagFontScope.of(context);
     final dim = muted || blocked;
+    // 1.99.56（裁决 B）：标签不再染色，统一中性 —— 一屏里标签数量最多，
+    // 它的色相会决定整页的情绪基调；青绿在中文语境里又容易被读成「成功/在线」。
+    // 可点感交给常驻的 1px 描边（静息 outlineVariant，悬停 onSurfaceVariant）。
     final fg = dim
-        ? M3ETheme.of(context).colors.onSurfaceVariant
-        : M3ESemantic.tagForeground(isDark);
+        ? colors.onSurfaceVariant.withValues(alpha: 0.7)
+        : colors.onSurfaceVariant;
     final radius = M3EShape.radius(M3EShape.xs);
 
     return HikoPillInteraction(
@@ -394,20 +380,16 @@ class HikoTagChip extends StatelessWidget {
           // 悬停/按下时「底色加深」：同一支底色抬高 alpha，不换色相，
           // 免得一排标签在指针扫过时闪成另一种颜色
           color: dim
-              ? (isDark
-                  ? Colors.white.withValues(alpha: active ? 0.13 : 0.06)
-                  : Colors.black.withValues(alpha: active ? 0.09 : 0.04))
-              : M3ESemantic.tagBackground.withValues(
-                  alpha: active
-                      ? (isDark ? 0.36 : 0.95)
-                      : (isDark ? 0.2 : 0.8),
-                ),
+              ? colors.surfaceContainerHigh
+              : colors.surfaceContainerHighest,
           borderRadius: radius,
         ),
-        foregroundDecoration: hikoPillHoverOutline(
-          active: active,
-          color: fg,
+        foregroundDecoration: BoxDecoration(
           borderRadius: radius,
+          border: Border.all(
+            color: active ? colors.onSurfaceVariant : colors.outlineVariant,
+            width: 1,
+          ),
         ),
         child: Text(
           tag,

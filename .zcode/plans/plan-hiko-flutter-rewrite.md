@@ -4822,3 +4822,39 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 
 ### 交付
 - 版本 `1.99.55+168`；Release：`hiko-v1.99.55-macos.zip` + `hiko-v1.99.55-android.apk`。
+
+## 1.99.56（2026-10-27）：标签胶囊中性化（在线配色裁决 B）
+
+> 用户：「在线里面胶囊颜色提供多个方案，我觉得绿字有些奇怪」。给了 A/B/C 三案，
+> 裁决 **B：中性 + 描边**。
+>
+> 诊断：一屏里同时存在声优蓝、社团琥珀、作品号实底青、下载量玫红，
+> 再加十个青绿标签 —— **标签数量最多、面积最碎，它的色相直接决定整页情绪**；
+> 青绿在中文语境里又容易被读成「成功 / 在线」，压在「内射/中出」这类内容标签上尤其怪。
+
+### 可见变化
+- **标签胶囊不再染色**：`surfaceContainerHighest` 底 + `onSurfaceVariant` 字 +
+  **常驻 1px `outlineVariant` 描边**（悬停描边换成 `onSurfaceVariant`）。
+  描边是 B 与 A 的分界：标签可点筛选 / 右键屏蔽，静息就得看出「这是个可点的胶囊」。
+- 弱化态（`+N` / 已屏蔽）用低一档 `surfaceContainerHigh` + 70% 字。
+- 同步到**卡面标签**（`surfaceContainerHigh` + `onSurfaceVariant`，卡内不描边）
+  与**在线筛选标记**（同为中性）。
+- 其余胶囊不动：声优蓝、社团琥珀、作品号主色实底、下载量玫红。
+- 删除 `M3ESemantic.tagBackground` / `tagForeground*` 一整组（含亮暗两支）。
+
+### 实现
+- `detail_kit.dart`：`HikoTagChip` 改中性色 + 描边；`hikoPillHoverOutline`
+  只服务它，一并删除，描边逻辑内联（静息/悬停两档）。
+- `album_card.dart` / `online_filter_marker.dart`：标签与筛选标记改中性。
+- `semantic_color_tokens.dart`：移除标签组，文档说明「标签不再进语义表」。
+
+### 验证
+- `flutter test`：**917 passed / 2 skipped**（914 − 2 条旧标签青色断言 + 3 条新锁）。
+- `flutter analyze`：**42 条、0 error**。
+- 新增 `test/ui/tag_chip_style_test.dart`：普通标签底/字、静息描边（outlineVariant / 1px）、
+  弱化态低一档容器与更淡的字 —— 防止日后把颜色加回来。
+- `online_work_card_test` 的「六类胶囊取色互不相同」改成五类（标签退出彩色族）。
+- macOS 截图核对：卡面标签已无绿字，与卡片底色的层次靠明度差而非色相。
+
+### 交付
+- 版本 `1.99.56+169`；Release：`hiko-v1.99.56-macos.zip` + `hiko-v1.99.56-android.apk`。

@@ -161,16 +161,14 @@ class AlbumCard extends ConsumerWidget {
                         for (final tag in album.tags.take(3))
                           _MetaPill(
                             text: tag,
-                            background: M3ESemantic.tagBackground
-                                .withValues(alpha: colors.isDark ? 0.28 : 0.9),
-                            foreground: M3ESemantic.tagForeground(colors.isDark),
+                            background: colors.surfaceContainerHigh,
+                            foreground: colors.onSurfaceVariant,
                           ),
                       if (showScrapedTags && album.tags.length > 3)
                         _MetaPill(
                           text: '+${album.tags.length - 3}',
-                          background: M3ESemantic.tagBackground
-                              .withValues(alpha: colors.isDark ? 0.28 : 0.9),
-                          foreground: M3ESemantic.tagForeground(colors.isDark),
+                          background: colors.surfaceContainerHigh,
+                          foreground: colors.onSurfaceVariant,
                         ),
                     ],
                   ),

@@ -46,12 +46,12 @@ class OnlineTagFilterMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final fg = M3ESemantic.tagForeground(isDark);
+    final scheme = Theme.of(context).colorScheme;
+    final fg = scheme.onSurfaceVariant;
     return Container(
       padding: const EdgeInsets.only(left: 4, right: 0),
       decoration: BoxDecoration(
-        color: M3ESemantic.tagBackground.withValues(alpha: isDark ? 0.2 : 0.8),
+        color: scheme.surfaceContainerHigh,
         borderRadius: M3EShape.radius(M3EShape.md),
       ),
       child: Row(

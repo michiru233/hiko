@@ -44,32 +44,6 @@ void main() {
     });
   });
 
-  group('DLsite 标签', () {
-    test('亮暗两套字色不同，且暗色那支更亮（深底可读）', () {
-      expect(
-        M3ESemantic.tagForegroundLight,
-        isNot(M3ESemantic.tagForegroundDark),
-      );
-      expect(
-        M3ESemantic.tagForegroundDark.computeLuminance(),
-        greaterThan(M3ESemantic.tagForegroundLight.computeLuminance()),
-        reason: '暗色主题的标签字必须提亮，否则 0xFF2E8A8F 在深底上看不清',
-      );
-      expect(M3ESemantic.tagForeground(false), M3ESemantic.tagForegroundLight);
-      expect(M3ESemantic.tagForeground(true), M3ESemantic.tagForegroundDark);
-    });
-
-    test('标签底与字可比（≥ 3:1）', () {
-      // 实测 3.58:1 —— 未达小字 AA 的 4.5，但这是 1.77 以来的既有配色，
-      // 本版只做「色值收口」不改观感（深一点就会让整屏标签变重）。
-      // 真正想提对比度时，改这里的同时把断言抬到 4.5，别只改色值。
-      expect(
-        contrast(M3ESemantic.tagBackground, M3ESemantic.tagForegroundLight),
-        greaterThan(3.0),
-      );
-    });
-  });
-
   group('在线元数据胶囊', () {
     final pairs = <String, M3ETintPair Function(bool)>{
       'artist': M3ESemantic.artistPill,

@@ -656,15 +656,14 @@ void main() {
       );
     });
 
-    test('六类胶囊（含标签）的取色互不相同，浅色 / 深色各一遍', () {
+    test('五类胶囊的取色互不相同，浅色 / 深色各一遍', () {
       for (final theme in ['light', 'dark']) {
         final isDark = theme == 'dark';
         final scheme = buildHikoTheme(AppSettings(theme: theme)).colorScheme;
+        // 1.99.56 起标签胶囊不再染色（中性 + 描边），所以这里只锁五类元数据胶囊
         final fgs = <Color>[
           for (final kind in OnlinePillKind.values)
             onlinePillColors(kind, isDark: isDark, scheme: scheme).fg,
-          // 第六类：标签胶囊的青色
-          M3ESemantic.tagForeground(isDark),
         ];
         expect(
           fgs.toSet().length,

@@ -20,8 +20,11 @@ class M3ETintPair {
 /// 否则「靠色相区分声优 / 社团 / 下载量」这条读卡规则当场失效。
 /// 把它们塞进 `ColorScheme` 的任何一档，都会在换种子色时被一起算掉。
 ///
-/// 也因此这里全是 `static const`：调色板不随主题变（除了两处明确按明暗分叉的：
-/// [tagForeground] 与三个胶囊对），不需要 `context`，也就不必进 [M3EThemeData]。
+/// 也因此这里全是 `static const`：调色板不随主题变（除了三对胶囊按明暗分叉），
+/// 不需要 `context`，也就不必进 [M3EThemeData]。
+///
+/// **标签（DLsite tag）不在语义表里**（1.99.56 裁决 B）：标签统一走中性的
+/// `surfaceContainerHighest` + `onSurfaceVariant` + 描边，不再有专属色相。
 ///
 /// **业务代码不得再写字面色值**（`style_ledger_lock` 会拦）：
 /// 需要哪一支就从这里取。新增一支前先问「它是不是其实该用
@@ -62,21 +65,6 @@ abstract final class M3ESemantic {
 
   /// 未听
   static const Color statUnplayed = Color(0xFF9A8FC2);
-
-  // ------------------------------------------------------------ DLsite 标签
-
-  /// 标签底（青）：暗色主题下靠 alpha 降下来，见 [HikoTagChip] 的用法
-  static const Color tagBackground = Color(0xFFE3F4F2);
-
-  /// 标签字（亮色主题）
-  static const Color tagForegroundLight = Color(0xFF2E8A8F);
-
-  /// 标签字（暗色主题）：同一色相提亮，保证深底可读
-  static const Color tagForegroundDark = Color(0xFF8FDDE2);
-
-  /// 标签字色随主题取亮 / 暗
-  static Color tagForeground(bool isDark) =>
-      isDark ? tagForegroundDark : tagForegroundLight;
 
   // ------------------------------------------------------ 在线元数据胶囊
   //
