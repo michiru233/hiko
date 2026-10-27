@@ -480,7 +480,6 @@ class _ExpandableTrackTitleState extends State<_ExpandableTrackTitle> {
 class HikoTrackRowM3E extends StatelessWidget {
   const HikoTrackRowM3E({
     super.key,
-    required this.index,
     required this.name,
     required this.durationSeconds,
     required this.active,
@@ -491,7 +490,6 @@ class HikoTrackRowM3E extends StatelessWidget {
     this.titleFontSize,
   });
 
-  final int index;
   final String name;
   final double durationSeconds;
   final bool active;
@@ -538,17 +536,6 @@ class HikoTrackRowM3E extends StatelessWidget {
                     : Icons.play_arrow_rounded,
                 size: 22,
                 color: active ? onActive : colors.onSurfaceVariant,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                index.toString().padLeft(2, '0'),
-                style: type.labelMedium.copyWith(
-                  color: active ? onActive : colors.onSurfaceVariant,
-                  fontSize: type.labelMedium.fontSize != null
-                      ? type.labelMedium.fontSize! * textScale
-                      : null,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                ),
               ),
               const SizedBox(width: 12),
               Expanded(

@@ -76,8 +76,9 @@ void main() {
     expect(find.text('总时长'), findsOneWidget);
     expect(find.text('完成进度'), findsOneWidget);
     expect(find.text('25%'), findsOneWidget, reason: '1200/4800=25%');
-    // 曲目行（懒构建视口内至少第一首）
-    expect(find.text('01'), findsWidgets);
+    // 曲目行（懒构建视口内至少第一首）：标题在，补零序号不再占一列
+    expect(find.text('トラック1'), findsWidgets);
+    expect(find.text('01'), findsNothing, reason: '标题自带序号，行首不再重复');
   });
 
   testWidgets('桌面详情：5 个动作 + 信息项 + 标签行（M-04 对齐后）', (tester) async {

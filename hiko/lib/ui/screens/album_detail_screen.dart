@@ -365,7 +365,6 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
     // RepaintBoundary 隔离每个列表项的重绘；行本体为 M3E 版（1.99.34）
     return RepaintBoundary(
       child: HikoTrackRowM3E(
-        index: index + 1,
         name: track.name,
         durationSeconds: realDuration,
         active: isCurrent,

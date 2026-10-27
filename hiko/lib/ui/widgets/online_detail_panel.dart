@@ -721,9 +721,6 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     }
 
     final out = <Widget>[];
-    // 序号按**当前层**的音频重新计数：进入「本編」后从 01 开始，
-    // 与这一层的播放队列（groupOf）同一套编号
-    var seq = 0;
     for (final node in level) {
       switch (node) {
         case OnlineFolderNode():
@@ -743,12 +740,10 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
           );
         case OnlineFileNode(:final track):
           if (track.playable) {
-            seq++;
             out.add(
               _trackRow(
                 detail,
                 track,
-                index: seq,
                 currentHash: currentHash,
                 isCurrentWork: isCurrentWork,
                 isPlaying: isPlaying,
@@ -765,7 +760,6 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
   Widget _trackRow(
     OnlineDetail detail,
     OnlineTrack track, {
-    required int index,
     required String? currentHash,
     required bool isCurrentWork,
     required bool isPlaying,
@@ -775,7 +769,6 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
       // 当前行挂全局 key，供「自动滚到正在播放的那一行」定位（裁决 Q2）。
       // 同一时刻只可能有一行 active，所以这个 key 不会撞。
       key: active ? _activeRowKey : null,
-      index: index,
       name: onlineTrackDisplayName(track.title),
       durationSeconds: track.duration,
       active: active,

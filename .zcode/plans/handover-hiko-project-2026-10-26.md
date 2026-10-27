@@ -4,7 +4,7 @@
 > 适用对象：接手本项目的开发者 / 下一个 AI agent
 > 仓库：<https://github.com/michiru233/hiko>
 > 本地工作区：`/Users/chenjh/Documents/ChatGPT/New project`（Flutter 主线在 `hiko/`）
-> 当前已发布版本：`1.99.51+164`（Release `v1.99.51`）
+> 当前已发布版本：`1.99.52+165`（Release `v1.99.52`）
 > 当前进行中版本：无（M3E 清账已收口）
 > 本文是**全量交接**；逐条 UI 差距证据见 `.zcode/plans/audit-hiko-m3e-coverage.md`，
 > 每版实施记录见 `.zcode/plans/plan-hiko-flutter-rewrite.md` 末尾章节。

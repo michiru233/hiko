@@ -341,7 +341,6 @@ class _DetailDrawerState extends ConsumerState<DetailDrawer> {
                     if (_selectedTabIndex == 0) ...[
                       for (var i = 0; i < album.tracks.length; i++)
                         HikoTrackRowM3E(
-                          index: i + 1,
                           name: album.tracks[i].name,
                           durationSeconds: album.tracks[i].duration,
                           active: isCurrentAlbum && currentIndex == i,
