@@ -4792,3 +4792,33 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 
 ### 交付
 - 版本 `1.99.54+167`；Release：`hiko-v1.99.54-macos.zip` + `hiko-v1.99.54-android.apk`。
+
+## 1.99.55（2026-10-27）：下载对话框里已下载的文件禁选
+
+> 用户接着上一版：做「下载对话框里把已下载的文件禁选」；暂停/继续先不做。
+
+### 可见变化
+- **已下载的行**：勾选框换成 `download_done` 图标（primary），标题转次要色，
+  右侧显示「已下载」，**整行不可点**（M3EPressable 的 onTap 传 null）。
+- **摘要分母只算「还能勾的」**：`已选 2 / 2 轨`；如果整部作品都已下载，
+  显示「全部 N 个文件已下载」，全选与组勾选都禁用。
+- **组头**：本组有已下载文件时写成 `N 轨 · 体积 · K 已下载`；
+  整组都已下载时组勾选禁用。
+- 底部体积只累加**新选**的文件，不重复计算已下载那份。
+
+### 实现
+- 对话框 `ref.watch(offlineIndexListProvider)` 取该作品的文件 hash 集合；
+  新增 `_selectable`（排除已下载），全选 / 组三态 / 摘要全部基于它。
+- `_FilePickRow` 增加 `downloaded` 与可空 `onTap`；`_GroupHeader`、
+  `_SelectAllBar` 的 `onToggle` 改为可空，并在禁用时把 `M3ECheckbox.enabled` 置 false。
+- 已下载行保留体积（占用信息有用），时长位置让给「已下载」标签。
+
+### 验证
+- `flutter test`：**916 passed / 2 skipped**（915 + 1 条新用例）。
+- `flutter analyze`：**42 条、0 error**。
+- 新用例：行标「已下载」、点它不进选择集、全选只选剩下的、体积不含已下载。
+- 现有用例的 harness 补了 `offlineIndexListProvider` 覆盖（默认空索引），
+  避免走真实的 path_provider 初始化。
+
+### 交付
+- 版本 `1.99.55+168`；Release：`hiko-v1.99.55-macos.zip` + `hiko-v1.99.55-android.apk`。

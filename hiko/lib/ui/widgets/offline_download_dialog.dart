@@ -57,6 +57,18 @@ class OfflineDownloadDialog extends ConsumerStatefulWidget {
 class _OfflineDownloadDialogState extends ConsumerState<OfflineDownloadDialog> {
   final _selected = <String>{};
 
+  /// 已在离线索引里的文件（1.99.55）：禁止再勾选，行上标「已下载」。
+  ///
+  /// 正常情况下「整部作品已离线」时详情页给的是「删除离线」、这个对话框根本
+  /// 打不开；但索引在、文件被外部删掉一部分时仍会走到这里 —— 与其让用户
+  /// 重复勾一遍再被缓存命中静默跳过，不如直接标出来并禁选。
+  Set<String> get _downloadedHashes {
+    for (final w in ref.watch(offlineIndexListProvider)) {
+      if (w.workId == widget.work.id) return w.files.keys.toSet();
+    }
+    return const <String>{};
+  }
+
   /// relativePath → 该组音轨（保持服务端顺序）
   Map<String, List<OnlineTrack>> get _groups {
     final out = <String, List<OnlineTrack>>{};
@@ -73,10 +85,18 @@ class _OfflineDownloadDialogState extends ConsumerState<OfflineDownloadDialog> {
 
   String get _sizeLabel => _formatBytes(_selectedBytes);
 
-  bool get _allSelected =>
-      widget.audio.isNotEmpty && _selected.length == widget.audio.length;
+  /// 还能勾的曲目：排除已下载的
+  List<OnlineTrack> get _selectable => <OnlineTrack>[
+    for (final t in widget.audio)
+      if (!_downloadedHashes.contains(t.hash)) t,
+  ];
 
-  bool get _someSelected => _selected.isNotEmpty && !_allSelected;
+  bool get _allSelected =>
+      _selectable.isNotEmpty &&
+      _selectable.every((t) => _selected.contains(t.hash));
+
+  bool get _someSelected =>
+      _selectable.any((t) => _selected.contains(t.hash)) && !_allSelected;
 
   void _toggleGroup(List<OnlineTrack> tracks, bool value) {
     setState(() {
@@ -86,7 +106,7 @@ class _OfflineDownloadDialogState extends ConsumerState<OfflineDownloadDialog> {
     });
   }
 
-  void _toggleAll(bool value) => _toggleGroup(widget.audio, value);
+  void _toggleAll(bool value) => _toggleGroup(_selectable, value);
 
   void _submit() {
     final chosen = widget.audio
@@ -116,6 +136,7 @@ class _OfflineDownloadDialogState extends ConsumerState<OfflineDownloadDialog> {
     final colors = m3e.colors;
     final type = m3e.type;
     final groups = _groups.entries.toList();
+    final downloaded = _downloadedHashes;
     // 列表最多吃掉半个屏高：32 条轨也不会把对话框顶出屏幕
     final listMaxHeight = (MediaQuery.sizeOf(context).height * 0.5).clamp(
       180.0,
@@ -148,10 +169,12 @@ class _OfflineDownloadDialogState extends ConsumerState<OfflineDownloadDialog> {
           _SelectAllBar(
             allSelected: _allSelected,
             someSelected: _someSelected,
-            summary:
-                '已选 ${_selected.length} / ${widget.audio.length} 轨'
-                '${_selected.isEmpty ? '' : ' · $_sizeLabel'}',
-            onToggle: _toggleAll,
+            // 分母只算「还能勾的」：已下载的永远进不了选择集
+            summary: downloaded.isNotEmpty && _selectable.isEmpty
+                ? '全部 ${downloaded.length} 个文件已下载'
+                : '已选 ${_selected.length} / ${_selectable.length} 轨'
+                      '${_selected.isEmpty ? '' : ' · $_sizeLabel'}',
+            onToggle: _selectable.isEmpty ? null : _toggleAll,
           ),
           Divider(height: 1, thickness: 1, color: colors.outlineVariant),
           const SizedBox(height: 4),
@@ -173,34 +196,51 @@ class _OfflineDownloadDialogState extends ConsumerState<OfflineDownloadDialog> {
                 children: <Widget>[
                   for (final entry in groups) ...<Widget>[
                     if (entry.key.isNotEmpty && entry.value.length > 1)
-                      _GroupHeader(
-                        path: entry.key,
-                        count: entry.value.length,
-                        sizeLabel: _formatBytes(_sum(entry.value)),
-                        allSelected: entry.value.every(
-                          (t) => _selected.contains(t.hash),
-                        ),
-                        someSelected:
-                            entry.value.any(
-                              (t) => _selected.contains(t.hash),
-                            ) &&
-                            !entry.value.every(
-                              (t) => _selected.contains(t.hash),
-                            ),
-                        onToggle: () => _toggleGroup(
-                          entry.value,
-                          !entry.value.every((t) => _selected.contains(t.hash)),
-                        ),
+                      Builder(
+                        builder: (context) {
+                          final selectable = <OnlineTrack>[
+                            for (final t in entry.value)
+                              if (!downloaded.contains(t.hash)) t,
+                          ];
+                          final all =
+                              selectable.isNotEmpty &&
+                              selectable.every(
+                                (t) => _selected.contains(t.hash),
+                              );
+                          final some =
+                              selectable.any(
+                                (t) => _selected.contains(t.hash),
+                              ) &&
+                              !all;
+                          final doneHere =
+                              entry.value.length - selectable.length;
+                          return _GroupHeader(
+                            path: entry.key,
+                            count: entry.value.length,
+                            sizeLabel: _formatBytes(_sum(entry.value)),
+                            downloadedLabel: doneHere > 0
+                                ? '$doneHere 已下载'
+                                : null,
+                            allSelected: all,
+                            someSelected: some,
+                            onToggle: selectable.isEmpty
+                                ? null
+                                : () => _toggleGroup(selectable, !all),
+                          );
+                        },
                       ),
                     for (final t in entry.value)
                       _FilePickRow(
                         track: t,
                         selected: _selected.contains(t.hash),
-                        onTap: () => setState(() {
-                          _selected.contains(t.hash)
-                              ? _selected.remove(t.hash)
-                              : _selected.add(t.hash);
-                        }),
+                        downloaded: downloaded.contains(t.hash),
+                        onTap: downloaded.contains(t.hash)
+                            ? null
+                            : () => setState(() {
+                                _selected.contains(t.hash)
+                                    ? _selected.remove(t.hash)
+                                    : _selected.add(t.hash);
+                              }),
                       ),
                   ],
                 ],
@@ -237,7 +277,9 @@ class _SelectAllBar extends StatelessWidget {
   final bool allSelected;
   final bool someSelected;
   final String summary;
-  final ValueChanged<bool> onToggle;
+
+  /// null = 全部已下载，没有可勾的
+  final ValueChanged<bool>? onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -251,7 +293,7 @@ class _SelectAllBar extends StatelessWidget {
             child: Align(
               alignment: Alignment.centerLeft,
               child: M3EPressable(
-                onTap: () => onToggle(!allSelected),
+                onTap: onToggle == null ? null : () => onToggle!(!allSelected),
                 borderRadius: M3EShape.radius(M3EShape.sm),
                 pressScale: 0.99,
                 child: Row(
@@ -260,6 +302,7 @@ class _SelectAllBar extends StatelessWidget {
                     M3ECheckbox(
                       value: allSelected,
                       indeterminate: someSelected,
+                      enabled: onToggle != null,
                       semanticLabel: '全选',
                       onChanged: onToggle,
                     ),
@@ -294,6 +337,7 @@ class _GroupHeader extends StatelessWidget {
     required this.path,
     required this.count,
     required this.sizeLabel,
+    this.downloadedLabel,
     required this.allSelected,
     required this.someSelected,
     required this.onToggle,
@@ -302,9 +346,14 @@ class _GroupHeader extends StatelessWidget {
   final String path;
   final int count;
   final String sizeLabel;
+
+  /// 本组内已下载的条数文案；null = 没有已下载的
+  final String? downloadedLabel;
   final bool allSelected;
   final bool someSelected;
-  final VoidCallback onToggle;
+
+  /// null = 本组全部已下载，没有可勾的
+  final VoidCallback? onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -360,7 +409,9 @@ class _GroupHeader extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                '$count 轨 · $sizeLabel',
+                downloadedLabel == null
+                    ? '$count 轨 · $sizeLabel'
+                    : '$count 轨 · $sizeLabel · $downloadedLabel',
                 style: type.labelSmall.copyWith(
                   color: colors.onSurfaceVariant,
                   fontFeatures: const [FontFeature.tabularFigures()],
@@ -369,8 +420,9 @@ class _GroupHeader extends StatelessWidget {
               M3ECheckbox(
                 value: allSelected,
                 indeterminate: someSelected,
+                enabled: onToggle != null,
                 semanticLabel: '全选 $name',
-                onChanged: (_) => onToggle(),
+                onChanged: onToggle == null ? null : (_) => onToggle!(),
               ),
             ],
           ),
@@ -388,12 +440,16 @@ class _FilePickRow extends StatelessWidget {
   const _FilePickRow({
     required this.track,
     required this.selected,
+    this.downloaded = false,
     required this.onTap,
   });
 
   final OnlineTrack track;
   final bool selected;
-  final VoidCallback onTap;
+
+  /// 已在离线索引里：禁选，行上标「已下载」
+  final bool downloaded;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -418,11 +474,22 @@ class _FilePickRow extends StatelessWidget {
         ),
         child: Row(
           children: <Widget>[
-            M3ECheckbox(
-              value: selected,
-              semanticLabel: track.title,
-              onChanged: (_) => onTap(),
-            ),
+            if (downloaded)
+              SizedBox(
+                width: 40,
+                height: 40,
+                child: Icon(
+                  Icons.download_done_rounded,
+                  size: 18,
+                  color: colors.primary,
+                ),
+              )
+            else
+              M3ECheckbox(
+                value: selected,
+                semanticLabel: track.title,
+                onChanged: onTap == null ? null : (_) => onTap!(),
+              ),
             Expanded(
               child: Tooltip(
                 message: track.title,
@@ -431,7 +498,9 @@ class _FilePickRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: type.bodyMedium.copyWith(
-                    color: selected
+                    color: downloaded
+                        ? colors.onSurfaceVariant
+                        : selected
                         ? colors.onSecondaryContainer
                         : colors.onSurface,
                     fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
@@ -440,10 +509,11 @@ class _FilePickRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
+            // 已下载的不再显示时长（那行位置让给「已下载」），体积照留
             SizedBox(
               width: 48,
               child: Text(
-                _durationLabel(track.duration),
+                downloaded ? '' : _durationLabel(track.duration),
                 textAlign: TextAlign.right,
                 style: type.labelMedium.copyWith(
                   color: selected
@@ -467,6 +537,13 @@ class _FilePickRow extends StatelessWidget {
                 ),
               ),
             ),
+            if (downloaded) ...[
+              const SizedBox(width: 8),
+              Text(
+                '已下载',
+                style: type.labelSmall.copyWith(color: colors.primary),
+              ),
+            ],
           ],
         ),
       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hiko/data/online/kikoeru_client.dart';
+import 'package:hiko/data/online/offline_downloads.dart';
 import 'package:hiko/data/online/online_models.dart';
 import 'package:hiko/data/online/online_provider.dart';
 import 'package:hiko/ui/m3e/m3e.dart';
@@ -61,6 +62,7 @@ void main() {
     WidgetTester tester, {
     Size surface = const Size(800, 700),
     List<Map<String, dynamic>>? source,
+    List<OfflineWorkEntry> offline = const [],
   }) async {
     tester.view.physicalSize = surface;
     tester.view.devicePixelRatio = 1.0;
@@ -71,6 +73,9 @@ void main() {
         overrides: [
           onlineClientProvider.overrideWith(
             (ref) => KikoeruClient(baseUrl: 'https://api.asmr.one'),
+          ),
+          offlineIndexListProvider.overrideWith(
+            (ref) => _SeededOffline(offline),
           ),
         ],
         child: MaterialApp(
@@ -148,6 +153,44 @@ void main() {
     expect(downloadButton(tester).onPressed, isNotNull);
   });
 
+  testWidgets('已下载的文件标「已下载」并禁选，全选只选剩下的', (tester) async {
+    await pumpDialog(
+      tester,
+      offline: [
+        OfflineWorkEntry(
+          workId: 1,
+          title: work.title,
+          circleName: '',
+          coverUrl: '',
+          addedAt: DateTime(2026),
+          files: const {
+            '1/1': OfflineFileEntry(
+              kind: 'audio',
+              size: 3774874,
+              title: 'Track1 プロローグ SEなし.mp3',
+            ),
+          },
+        ),
+      ],
+    );
+
+    // 行上标「已下载」，且点它不会进选择集
+    expect(find.text('已下载'), findsOneWidget);
+    await tester.tap(find.textContaining('Track1 プロローグ'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('已选 0 / 2 轨'), findsOneWidget);
+
+    // 全选只作用于剩下两条
+    await tester.tap(find.text('全选'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('已选 2 / 2 轨'), findsOneWidget);
+    expect(
+      find.textContaining('已选 2 / 2 轨 · 40.6 MB'),
+      findsOneWidget,
+      reason: '体积只算新选的，已下载那份不重复计',
+    );
+  });
+
   testWidgets('360×640 小屏：列表限高、整体不溢出', (tester) async {
     await pumpDialog(tester, surface: const Size(360, 640));
 
@@ -160,4 +203,10 @@ void main() {
       reason: '列表高度应被 50% 屏高（此处 320）封顶',
     );
   });
+}
+
+class _SeededOffline extends OfflineIndexNotifier {
+  _SeededOffline(List<OfflineWorkEntry> works) : super(OfflineIndex()) {
+    state = works;
+  }
 }
