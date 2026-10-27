@@ -17,6 +17,7 @@ import '../../data/library_reorganizer.dart';
 import '../../data/music_folder_scanner.dart';
 import '../../data/online/online_account.dart';
 import '../../data/online/online_favorites.dart';
+import '../../data/online/offline_downloads.dart';
 import '../../data/online/online_provider.dart';
 import '../../data/settings_store.dart';
 import '../../data/stats.dart';
@@ -47,6 +48,7 @@ import '../detail_jump_requests.dart';
 import '../widgets/rating_dialog.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/stats_view.dart';
+import 'downloads_screen.dart';
 import 'album_detail_screen.dart';
 import 'online_favorites_screen.dart';
 import 'online_screen.dart';
@@ -220,7 +222,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         (Platform.isAndroid
             ? MediaQuery.sizeOf(context).width <= 1000
             : false);
-    return isMobile && !_isOnlineView && _view != '统计';
+    return isMobile && !_isOnlineView && _view != '统计' && _view != '下载';
   }
 
   /// 桌面端本地内容视图（与 [_isMobileLocalView] 同源的另一半）。
@@ -232,7 +234,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         (Platform.isAndroid
             ? MediaQuery.sizeOf(context).width <= 1000
             : false);
-    return !isMobile && !_isOnlineView && _view != '统计';
+    return !isMobile && !_isOnlineView && _view != '统计' && _view != '下载';
   }
 
   void _openSettings(BuildContext context, {bool autoCheckUpdate = false}) {
@@ -796,6 +798,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             '收藏夹' => favoriteCount,
             '最近播放' => playedCount,
             '在线收藏' => onlineLoggedIn ? onlineFavoriteCount : null,
+            // 1.99.54：下载项显示「进行中（排队 + 下载）」的数量
+            '下载' => ref
+                .watch(offlineDownloadProvider)
+                .values
+                .where((s) => s is DownloadQueued || s is DownloadRunning)
+                .length,
             _ => null,
           },
         ),
@@ -1022,6 +1030,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   ) {
     // 在线视图（1.90）：复用顶栏（面包屑/主题/隐私模糊等），
     // 中间区域完全交给在线页自己管理（入口切换 + 搜索 + 结果网格）。
+    // 下载中心（1.99.54）：自己的滚动体，不吃本地视图的头部与空态
+    if (_view == '下载') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildTopbar(theme, isMobile),
+          Expanded(child: DownloadsScreen(isMobile: isMobile)),
+        ],
+      );
+    }
     if (_view == '在线') {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

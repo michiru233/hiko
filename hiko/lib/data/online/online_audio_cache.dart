@@ -46,6 +46,15 @@ class OnlineAudioCache {
   /// 正在播放中的 hash：淘汰时跳过，避免删掉正在读的文件
   final _pinned = <String>{};
 
+  /// 索引变更版本号（1.99.54）。
+  ///
+  /// 曲目行的「已缓存」标记要在后台预热完成、LRU 淘汰、清理之后跟着变，
+  /// 但 [isCached] 是同步查询、没有通知。这里只暴露一个**版本号**：
+  /// UI `ValueListenableBuilder` 监听它，重建时再同步查一次 isCached。
+  final ValueNotifier<int> revision = ValueNotifier<int>(0);
+
+  void _bump() => revision.value++;
+
   int get limitBytes => _limitBytes;
   bool get isReady => _inited;
 
@@ -72,6 +81,7 @@ class OnlineAudioCache {
 
   void _reindex() {
     _index.clear();
+    _bump();
     final dir = _dir;
     if (dir == null) return;
     for (final entity in dir.listSync()) {
@@ -79,6 +89,7 @@ class OnlineAudioCache {
       final hash = _hashFromFileName(p.basename(entity.path));
       if (hash != null) _index[hash] = entity;
     }
+    _bump();
   }
 
   /// 已完整缓存的文件路径；未命中返回 null
@@ -182,6 +193,7 @@ class OnlineAudioCache {
       final target = File(p.join(dir.path, fileName));
       await part.rename(target.path);
       _index[hash] = target;
+      _bump();
       await enforceLimit();
       return true;
     } catch (e) {
@@ -263,6 +275,7 @@ class OnlineAudioCache {
       await _deleteQuietly(f);
     }
     _index.clear();
+    _bump();
   }
 
   /// 按作品分组的缓存占用（workId → 字节数，1.99.3 设置页「按作品清理」用）。
@@ -297,6 +310,7 @@ class OnlineAudioCache {
       final hash = _hashFromFileName(name);
       if (hash != null) _index.remove(hash);
     }
+    if (removed) _bump();
     return removed;
   }
 

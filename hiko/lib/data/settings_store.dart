@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -155,6 +156,9 @@ class AppSettings {
   /// 播放页」，由安卓底栏的**固定格**承载（用户关不掉，见 `_MobileBottomNav`），
   /// 不再是一级导航项。存量配置里的 `'正在播放'` 会被 [_normalizeNavViewList]
   /// 静默丢弃 —— 这正是「删项即自动迁移」的实现方式。
+  /// 一次性迁移标记：1.99.54 新增「下载」导航项，给老配置补一次
+  static const _kNavDownloadAdded = 'hiko-nav-download-added';
+
   static const navViewsAll = [
     navViewHome, // 本地音声
     '最近添加',
@@ -162,6 +166,7 @@ class AppSettings {
     '收藏夹',
     '在线',
     '在线收藏',
+    '下载',
     '统计',
   ];
 
@@ -569,6 +574,24 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     return out;
   }
 
+  /// 1.99.54：新增「下载」一级项后的**一次性迁移**。
+  ///
+  /// `navViews` 是持久化白名单，光把「下载」加进 [navViewsAll] 只表示「允许」，
+  /// 老用户不会自动看到它。这里在第一次启动时把「下载」插到「统计」之前并落盘；
+  /// 之后用户手动隐藏它，标记键已是 true，不会被再加回来。
+  static List<String> _migrateNavViews(SharedPreferences prefs) {
+    final views = _decodeNavViews(prefs.getString(_kNavViews)).toList();
+    if (prefs.getBool(AppSettings._kNavDownloadAdded) == true) {
+      return List.unmodifiable(views);
+    }
+    unawaited(prefs.setBool(AppSettings._kNavDownloadAdded, true));
+    if (views.contains('下载')) return List.unmodifiable(views);
+    final statsIndex = views.indexOf('统计');
+    views.insert(statsIndex < 0 ? views.length : statsIndex, '下载');
+    unawaited(prefs.setString(_kNavViews, jsonEncode(views)));
+    return List.unmodifiable(views);
+  }
+
   static List<String> _decodeNavViews(String? raw) {
     if (raw == null || raw.trim().isEmpty) {
       return List.unmodifiable(AppSettings.navViewsAll);
@@ -630,7 +653,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       blockedTags: _decodeBlockedTags(prefs.getString(_kBlockedTags)),
       blockedCreators:
           _decodeBlockedCreators(prefs.getString(_kBlockedCreators)),
-      navViews: _decodeNavViews(prefs.getString(_kNavViews)),
+      navViews: _migrateNavViews(prefs),
     );
   }
 

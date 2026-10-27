@@ -298,27 +298,114 @@ sealed class WorkDownloadState {
 }
 
 class DownloadQueued extends WorkDownloadState {
-  const DownloadQueued();
+  const DownloadQueued({
+    required this.title,
+    required this.coverUrl,
+    required this.trackCount,
+  });
+
+  /// 状态自带标题与封面（1.99.54）：下载中心不依赖服务内部的 job 表，
+  /// 也让「暂停/恢复/重排」之后卡片标题仍然对得上。
+  final String title;
+  final String coverUrl;
+  final int trackCount;
+}
+
+/// 单个文件的下载阶段（1.99.54：下载中心要逐文件显示状态）
+enum FileDownloadPhase { pending, running, done, failed }
+
+/// 单个文件的可观察进度。
+///
+/// [size] 未知时（字幕/封面没给长度）先按 0，等 `onProgress` 报回
+/// `contentLength` 再补 —— 这样总进度不会因为这两类文件少算。
+@immutable
+class FileDownloadProgress {
+  const FileDownloadProgress({
+    required this.hash,
+    required this.title,
+    required this.size,
+    this.phase = FileDownloadPhase.pending,
+    this.received = 0,
+  });
+
+  final String hash;
+  final String title;
+  final int size;
+  final FileDownloadPhase phase;
+  final int received;
+
+  FileDownloadProgress copyWith({
+    FileDownloadPhase? phase,
+    int? received,
+    int? size,
+  }) =>
+      FileDownloadProgress(
+        hash: hash,
+        title: title,
+        size: size ?? this.size,
+        phase: phase ?? this.phase,
+        received: received ?? this.received,
+      );
 }
 
 class DownloadRunning extends WorkDownloadState {
-  const DownloadRunning({required this.done, required this.total});
+  const DownloadRunning({
+    required this.title,
+    required this.coverUrl,
+    required this.files,
+  });
 
-  final int done;
-  final int total;
+  final String title;
+  final String coverUrl;
+
+  /// 本任务的全部文件（音频 + 字幕 + 封面），顺序即下载顺序
+  final List<FileDownloadProgress> files;
+
+  int get total => files.length;
+
+  int get done =>
+      files.where((f) => f.phase == FileDownloadPhase.done).length;
+
+  int get failed =>
+      files.where((f) => f.phase == FileDownloadPhase.failed).length;
+
+  /// 已完成文件的整份体积 + 当前文件已收字节
+  int get receivedBytes => files.fold(
+        0,
+        (sum, f) => sum +
+            (f.phase == FileDownloadPhase.done ? f.size : f.received),
+      );
+
+  int get totalBytes => files.fold(0, (sum, f) => sum + f.size);
+
+  FileDownloadProgress? get current {
+    for (final f in files) {
+      if (f.phase == FileDownloadPhase.running) return f;
+    }
+    return null;
+  }
 }
 
 class DownloadDone extends WorkDownloadState {
-  const DownloadDone({required this.fileCount, this.failedCount = 0});
+  const DownloadDone({
+    required this.fileCount,
+    this.failedCount = 0,
+    this.totalBytes = 0,
+  });
 
   final int fileCount;
   final int failedCount;
+  final int totalBytes;
 }
 
 class DownloadFailed extends WorkDownloadState {
-  const DownloadFailed(this.message);
+  const DownloadFailed(this.message, {this.title = '', this.coverUrl = ''});
 
   final String message;
+
+  /// 与 [DownloadQueued] 同理：卡片不依赖服务内部的 job 表
+  final String title;
+  final String coverUrl;
 }
 
 /// 下载队列：作品级 FIFO、单并发顺序执行；同作品重复 enqueue 忽略。
@@ -327,6 +414,10 @@ class OfflineDownloadService extends StateNotifier<Map<int, WorkDownloadState>> 
 
   final Ref _ref;
   final List<OfflineDownloadJob> _queue = [];
+
+  /// workId → 最近一次提交的任务载荷。失败后「重试」直接拿它重排，
+  /// 不用让 UI 重新走一遍勾选对话框。
+  final Map<int, OfflineDownloadJob> _jobs = {};
   Future<void>? _pumpFuture;
   final _cancelled = <int>{};
 
@@ -343,8 +434,16 @@ class OfflineDownloadService extends StateNotifier<Map<int, WorkDownloadState>> 
         _ref.read(offlineIndexProvider).containsWork(job.workId)) {
       return;
     }
+    _jobs[job.workId] = job;
     _queue.add(job);
-    state = {...state, job.workId: const DownloadQueued()};
+    state = {
+      ...state,
+      job.workId: DownloadQueued(
+        title: job.title,
+        coverUrl: job.coverUrl,
+        trackCount: job.tracks.length,
+      ),
+    };
     unawaited(_pump());
   }
 
@@ -363,6 +462,29 @@ class OfflineDownloadService extends StateNotifier<Map<int, WorkDownloadState>> 
   void _clearState(int workId) {
     final next = {...state}..remove(workId);
     state = next;
+  }
+
+  /// 失败后重试：清掉失败态、把同一个载荷重新排队（已下载的文件会被跳过）。
+  void retry(int workId) {
+    final job = _jobs[workId];
+    if (job == null || isEnqueued(workId)) return;
+    _clearState(workId);
+    _queue.add(job);
+    state = {
+      ...state,
+      workId: DownloadQueued(
+        title: job.title,
+        coverUrl: job.coverUrl,
+        trackCount: job.tracks.length,
+      ),
+    };
+    unawaited(_pump());
+  }
+
+  /// 已完成作品的「删除」只在索引层做（连同文件），这里顺手清掉历史态。
+  void forget(int workId) {
+    _jobs.remove(workId);
+    if (state.containsKey(workId)) _clearState(workId);
   }
 
   Future<void> _pump() {
@@ -390,62 +512,130 @@ class OfflineDownloadService extends StateNotifier<Map<int, WorkDownloadState>> 
     if (cache.limitBytes <= 0) {
       state = {
         ...state,
-        job.workId: const DownloadFailed('在线缓存已关闭（设置 → 在线账号 → 缓存）'),
+        job.workId: DownloadFailed(
+          '在线缓存已关闭（设置 → 在线账号 → 缓存）',
+          title: job.title,
+          coverUrl: job.coverUrl,
+        ),
       };
       return;
     }
     final client = _ref.read(onlineClientProvider);
 
-    // 下载清单：每条音频 + 其字幕 + 封面（kind 用于 fallback 扩展名）
-    final items = <(String, Uri, int?, String, String)>[
-      for (final t in job.tracks) ...[
-        (t.hash, Uri.parse(client.streamUrl(t.hash)), t.size, t.title, 'mp3'),
+    // 下载清单：每条音频 + 其字幕 + 封面（ext 用于 fallback 扩展名）
+    final items = <({FileDownloadProgress file, Uri uri, String ext})>[
+      for (final t in job.tracks) ...<({FileDownloadProgress file, Uri uri, String ext})>[
+        (
+          file: FileDownloadProgress(hash: t.hash, title: t.title, size: t.size),
+          uri: Uri.parse(client.streamUrl(t.hash)),
+          ext: 'mp3',
+        ),
         if (t.lyricsHash != null)
           (
-            t.lyricsHash!,
-            Uri.parse(client.streamUrl(t.lyricsHash!)),
-            null,
-            '${t.title}（字幕）',
-            'txt',
+            file: FileDownloadProgress(
+              hash: t.lyricsHash!,
+              title: '${t.title}（字幕）',
+              size: 0,
+            ),
+            uri: Uri.parse(client.streamUrl(t.lyricsHash!)),
+            ext: 'txt',
           ),
       ],
-      (client.coverHash(job.workId), Uri.parse(client.coverMainUrl(job.workId)), null, '封面', 'jpg'),
+      (
+        file: FileDownloadProgress(
+          hash: client.coverHash(job.workId),
+          title: '封面',
+          size: 0,
+        ),
+        uri: Uri.parse(client.coverMainUrl(job.workId)),
+        ext: 'jpg',
+      ),
     ];
 
-    var done = 0;
-    var failed = 0;
-    state = {...state, job.workId: DownloadRunning(done: done, total: items.length)};
+    state = {
+      ...state,
+      job.workId: DownloadRunning(
+        title: job.title,
+        coverUrl: job.coverUrl,
+        files: [for (final it in items) it.file],
+      ),
+    };
 
-    for (final (hash, uri, expectedSize, title, ext) in items) {
+    // 单个文件的阶段推进。每次都从**当前 state** 取基底再替换一格，
+    // 避免 onProgress 的异步回调把别的文件的进度覆盖回去。
+    void patch(int index, FileDownloadProgress Function(FileDownloadProgress) f) {
+      final cur = state[job.workId];
+      if (cur is! DownloadRunning || index >= cur.files.length) return;
+      final list = List<FileDownloadProgress>.of(cur.files);
+      list[index] = f(list[index]);
+      if (mounted) {
+        state = {
+          ...state,
+          job.workId: DownloadRunning(
+            title: cur.title,
+            coverUrl: cur.coverUrl,
+            files: list,
+          ),
+        };
+      }
+    }
+
+    for (var i = 0; i < items.length; i++) {
       if (_cancelled.remove(job.workId)) {
         await cache.removeWork(job.workId); // 清掉 .part 残留
         _clearState(job.workId);
         return;
       }
-      final current = state[job.workId];
-      if (current is! DownloadRunning) return; // 状态被外部清掉（登出等）
+      // 状态被外部清掉（登出等）→ 收工
+      if (state[job.workId] is! DownloadRunning) return;
 
-      if (cache.isCached(hash)) {
-        done++;
-      } else {
-        // 每文件一个短连接 client（带浏览器伪装，官方实例有 Cloudflare）
-        final dl = client.newDownloadClient();
-        final ok = await cache.download(hash, uri,
-            expectedSize: expectedSize, fallbackExtension: ext, client: dl);
-        dl.close(force: true);
-        if (ok) {
-          done++;
-        } else {
-          failed++;
-          debugPrint('[offline] 下载失败: $hash ($title)');
-        }
+      final item = items[i];
+      patch(i, (f) => f.copyWith(phase: FileDownloadPhase.running, received: 0));
+
+      if (cache.isCached(item.file.hash)) {
+        patch(
+          i,
+          (f) => f.copyWith(
+            phase: FileDownloadPhase.done,
+            received: f.size,
+          ),
+        );
+        continue;
       }
-      if (mounted) {
-        state = {
-          ...state,
-          job.workId: DownloadRunning(done: done, total: items.length),
-        };
-      }
+
+      // 每文件一个短连接 client（带浏览器伪装，官方实例有 Cloudflare）
+      final dl = client.newDownloadClient();
+      var lastEmit = 0;
+      final ok = await cache.download(
+        item.file.hash,
+        item.uri,
+        expectedSize: item.file.size > 0 ? item.file.size : null,
+        fallbackExtension: item.ext,
+        client: dl,
+        onProgress: (received, total) {
+          // 逐块回调太密（一个文件上千次），120ms 一次足够驱动进度条
+          final now = DateTime.now().millisecondsSinceEpoch;
+          if (now - lastEmit < 120) return;
+          lastEmit = now;
+          patch(
+            i,
+            (f) => f.copyWith(
+              received: received,
+              size: total > 0 ? total : f.size,
+              phase: FileDownloadPhase.running,
+            ),
+          );
+        },
+      );
+      dl.close(force: true);
+
+      patch(
+        i,
+        (f) => ok
+            ? f.copyWith(phase: FileDownloadPhase.done, received: f.size)
+            : f.copyWith(phase: FileDownloadPhase.failed),
+      );
+      if (!ok) debugPrint('[offline] 下载失败: ${item.file.hash}（${item.file.title}）');
     }
 
     if (_cancelled.remove(job.workId)) {
@@ -455,8 +645,20 @@ class OfflineDownloadService extends StateNotifier<Map<int, WorkDownloadState>> 
     }
 
     if (!mounted) return;
+    final finished = state[job.workId];
+    final failed =
+        finished is DownloadRunning ? finished.failed : 0;
+    final totalBytes =
+        finished is DownloadRunning ? finished.totalBytes : 0;
     if (failed == items.length) {
-      state = {...state, job.workId: const DownloadFailed('全部文件下载失败，请检查网络')};
+      state = {
+        ...state,
+        job.workId: DownloadFailed(
+          '全部文件下载失败，请检查网络',
+          title: job.title,
+          coverUrl: job.coverUrl,
+        ),
+      };
       return;
     }
 
@@ -486,8 +688,11 @@ class OfflineDownloadService extends StateNotifier<Map<int, WorkDownloadState>> 
     if (mounted) {
       state = {
         ...state,
-        job.workId:
-            DownloadDone(fileCount: items.length - failed, failedCount: failed),
+        job.workId: DownloadDone(
+          fileCount: items.length - failed,
+          failedCount: failed,
+          totalBytes: totalBytes,
+        ),
       };
     }
   }

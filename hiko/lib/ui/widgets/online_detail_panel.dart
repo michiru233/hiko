@@ -20,6 +20,7 @@ import 'detail_kit.dart';
 import '../m3e/m3e.dart';
 import 'offline_download_dialog.dart';
 import '../../data/online/offline_downloads.dart';
+import '../../data/online/online_audio_cache.dart';
 import 'online_account_dialogs.dart';
 import 'online_cover.dart';
 import 'online_tag_menu.dart';
@@ -258,6 +259,18 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     final hasLiveLyrics = ref.watch(lyricsProvider.select((l) => l.hasLyrics));
 
     final isCurrentWork = albumId == work.albumId;
+
+    // 离线状态（1.99.54）：作品级记录 + 本作品的离线文件 hash 集合
+    OfflineWorkEntry? offlineEntry;
+    for (final w in ref.watch(offlineIndexListProvider)) {
+      if (w.workId == work.id) {
+        offlineEntry = w;
+        break;
+      }
+    }
+    final offlineHashes = offlineEntry?.files.keys.toSet() ?? const <String>{};
+    final downloadState = ref.watch(offlineDownloadProvider)[work.id];
+    final audioCache = ref.watch(onlineAudioCacheProvider);
     // 用 hash 而非数组下标定位当前行：在线有三种播放范围（整部 / 目录 / 叶子目录），
     // 下标互不对齐
     final currentHash = _hashOf(currentUrl);
@@ -313,6 +326,21 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
                     color: M3ETheme.of(context).colors.onSurfaceVariant,
                   ),
             ),
+            // 离线状态胶囊（1.99.54）：已离线 / 下载中 x% / 排队中 / 失败
+            if (_offlineStatusLabel(offlineEntry, downloadState) != null) ...[
+              const SizedBox(height: 8),
+              _OfflineStatusChip(
+                label: _offlineStatusLabel(offlineEntry, downloadState)!,
+                icon: downloadState is DownloadFailed
+                    ? Icons.error_outline_rounded
+                    : downloadState is DownloadRunning ||
+                            downloadState is DownloadQueued
+                        ? Icons.downloading_rounded
+                        : Icons.download_done_rounded,
+                failed: downloadState is DownloadFailed,
+                scale: textScale,
+              ),
+            ],
             // 社团（紫）/ 声优（蓝）胶囊：1.97.0 起可点 → 弹「按此筛选 / 复制名字」
             // （1.91 的裁决 Q9=A「纯展示不可点」被 1.97 的筛选需求推翻）
             if (work.circleName.isNotEmpty || work.vas.isNotEmpty) ...[
@@ -447,13 +475,18 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
                   opacity: t,
                   child: child,
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: _buildTrackList(
-                    detail: detail,
-                    currentHash: currentHash,
-                    isCurrentWork: isCurrentWork,
-                    isPlaying: isPlaying,
+                child: ValueListenableBuilder<int>(
+                  valueListenable: audioCache.revision,
+                  builder: (context, _, _) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: _buildTrackList(
+                      detail: detail,
+                      currentHash: currentHash,
+                      isCurrentWork: isCurrentWork,
+                      isPlaying: isPlaying,
+                      offlineHashes: offlineHashes,
+                      cache: audioCache,
+                    ),
                   ),
                 ),
               ),
@@ -695,6 +728,8 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     required String? currentHash,
     required bool isCurrentWork,
     required bool isPlaying,
+    required Set<String> offlineHashes,
+    required OnlineAudioCache cache,
   }) {
     // 服务端没给层级时退化成单层列表（1.99.18 的兜底），仍按同一套排序
     final level = detail.tree.isEmpty
@@ -747,6 +782,8 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
                 currentHash: currentHash,
                 isCurrentWork: isCurrentWork,
                 isPlaying: isPlaying,
+                offline: offlineHashes.contains(track.hash),
+                cached: cache.isCached(track.hash),
               ),
             );
           } else {
@@ -757,12 +794,91 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     return out;
   }
 
+  /// 离线状态文案（1.99.54）。没有离线记录也没有进行中的任务时返回 null。
+  String? _offlineStatusLabel(
+    OfflineWorkEntry? entry,
+    WorkDownloadState? state,
+  ) {
+    if (state is DownloadRunning) {
+      final total = state.total;
+      final done = state.done;
+      final pct = state.totalBytes > 0
+          ? (state.receivedBytes * 100 / state.totalBytes).clamp(0, 100).round()
+          : (total > 0 ? (done * 100 / total).round() : 0);
+      return '下载中 $pct% · $done/$total 文件';
+    }
+    if (state is DownloadQueued) return '排队中';
+    if (state is DownloadFailed) return '下载失败';
+    if (entry != null) {
+      final audio = entry.files.values.where((f) => f.kind == 'audio').length;
+      return '已离线 · $audio 轨 · ${_bytesLabel(entry.totalBytes)}';
+    }
+    return null;
+  }
+
+  /// 曲目行尾的角标：已离线（primary）> 已缓存（中性）> 有字幕。
+  ///
+  /// 两个状态互斥：离线文件同样在缓存目录里（isCached 也为 true），
+  /// 所以判序必须**先离线、再缓存**，否则「永不会被清」会被标成「可能被清」。
+  Widget? _trackBadges(
+    OnlineTrack track, {
+    required bool offline,
+    required bool cached,
+  }) {
+    final colors = M3ETheme.of(context).colors;
+    final badges = <Widget>[
+      if (offline)
+        Tooltip(
+          message: '已离线下载（不会被自动清理）',
+          child: Icon(
+            Icons.download_done_rounded,
+            size: 15,
+            color: colors.primary,
+          ),
+        ),
+      if (!offline && cached)
+        Tooltip(
+          message: '已缓存（空间不足时可能被清理）',
+          child: Icon(
+            Icons.cached_rounded,
+            size: 15,
+            color: colors.onSurfaceVariant,
+          ),
+        ),
+      if (track.lyricsHash != null)
+        Icon(Icons.subtitles_outlined, size: 13, color: colors.primary),
+    ];
+    if (badges.isEmpty) return null;
+    return Padding(
+      padding: const EdgeInsets.only(left: 6, right: 8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          for (var i = 0; i < badges.length; i++) ...<Widget>[
+            if (i > 0) const SizedBox(width: 4),
+            badges[i],
+          ],
+        ],
+      ),
+    );
+  }
+
+  static String _bytesLabel(int b) {
+    if (b >= 1024 * 1024 * 1024) {
+      return '${(b / 1024 / 1024 / 1024).toStringAsFixed(1)} GB';
+    }
+    if (b >= 1024 * 1024) return '${(b / 1024 / 1024).toStringAsFixed(1)} MB';
+    return '${(b / 1024).toStringAsFixed(0)} KB';
+  }
+
   Widget _trackRow(
     OnlineDetail detail,
     OnlineTrack track, {
     required String? currentHash,
     required bool isCurrentWork,
     required bool isPlaying,
+    required bool offline,
+    required bool cached,
   }) {
     final active = isCurrentWork && currentHash == track.hash;
     return HikoTrackRowM3E(
@@ -776,16 +892,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
       indent: 0,
       // 曲目标题独立字号（1.97.0）：绝对值，不乘详情倍率 —— 见 HikoTrackRow 注释
       titleFontSize: _trackTitleFontSize,
-      trailing: track.lyricsHash == null
-          ? null
-          : Padding(
-              padding: const EdgeInsets.only(left: 6, right: 8),
-              child: Icon(
-                Icons.subtitles_outlined,
-                size: 13,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
+      trailing: _trackBadges(track, offline: offline, cached: cached),
       onTap: () => _onTrackTap(
         detail,
         track,
@@ -1471,27 +1578,23 @@ class _OfflineActionButton extends ConsumerWidget {
     final offlineWorks = ref.watch(offlineIndexListProvider);
     final isOffline = offlineWorks.any((e) => e.workId == work.id);
 
+    // 状态文案归胶囊（标题下方），按钮只表达**动作**（1.99.54）：
+    // 否则「已离线」「下载中 8/16」在按钮和胶囊上各说一遍
     final (label, icon, onPressed_) = switch (downloadState) {
-      DownloadRunning(:final done, :final total) => (
-          '下载中 $done/$total',
-          Icons.downloading_rounded,
+      DownloadRunning() || DownloadQueued() => (
+          '取消下载',
+          Icons.close_rounded,
           () => unawaited(
               ref.read(offlineDownloadProvider.notifier).cancel(work.id)),
         ),
-      DownloadQueued() => (
-          '排队中',
-          Icons.schedule_rounded,
-          () => unawaited(
-              ref.read(offlineDownloadProvider.notifier).cancel(work.id)),
-        ),
-      DownloadFailed(:final message) => (
-          '下载失败',
-          Icons.error_outline_rounded,
-          () => showHikoToast(context, message),
+      DownloadFailed() => (
+          '重试下载',
+          Icons.refresh_rounded,
+          () => ref.read(offlineDownloadProvider.notifier).retry(work.id),
         ),
       _ when isOffline => (
-          '已离线',
-          Icons.download_done_rounded,
+          '删除离线',
+          Icons.delete_outline_rounded,
           () => unawaited(_confirmRemove(context, ref)),
         ),
       _ => (
@@ -1544,5 +1647,54 @@ class _OfflineActionButton extends ConsumerWidget {
     await ref.read(onlineAudioCacheProvider).removeWork(work.id);
     await ref.read(offlineIndexListProvider.notifier).remove(work.id);
     if (context.mounted) showHikoToast(context, '已删除离线内容');
+  }
+}
+
+/// 详情页的离线状态胶囊（1.99.54）。
+///
+/// 只做展示，不带动作：「取消 / 重试 / 删除」留在操作行的按钮里，
+/// 免得同一颗胶囊在不同状态下含义跳变。
+class _OfflineStatusChip extends StatelessWidget {
+  const _OfflineStatusChip({
+    required this.label,
+    required this.icon,
+    required this.failed,
+    required this.scale,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool failed;
+  final double scale;
+
+  @override
+  Widget build(BuildContext context) {
+    final m3e = M3ETheme.of(context);
+    final colors = m3e.colors;
+    final bg = failed ? colors.errorContainer : colors.secondaryContainer;
+    final fg = failed ? colors.onErrorContainer : colors.onSecondaryContainer;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: M3EShape.radius(M3EShape.full),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(icon, size: 13, color: fg),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: m3e.type
+                  .scaled(M3ETypeRole.labelSmall, scale)
+                  .copyWith(color: fg),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

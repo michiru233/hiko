@@ -504,10 +504,25 @@ void main() {
     await migrated.load();
     expect(
       migrated.state.navViews,
-      ['本地音声', '统计'],
-      reason: '1.99.6 起「正在播放」不再是导航项，白名单外的项由归一化静默丢弃',
+      ['本地音声', '下载', '统计'],
+      reason: '1.99.6 起「正在播放」不再是导航项；1.99.54 的迁移再把「下载」插到统计前',
     );
     expect(AppSettings.navViewsAll, isNot(contains('正在播放')));
-    expect(AppSettings.navViewsAll.length, 7);
+    expect(AppSettings.navViewsAll.length, 8, reason: '1.99.54 加了「下载」一级项');
+  });
+
+  test('1.99.54 「下载」只补一次：用户隐藏之后不能再回来', () async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('hiko-nav-views', '["本地音声","统计"]');
+    // 已经迁移过（用户是在迁移之后手动关掉「下载」的）
+    await prefs.setBool('hiko-nav-download-added', true);
+
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(
+      notifier.state.navViews,
+      ['本地音声', '统计'],
+      reason: '迁移标记已置位时不能再强行插回，否则用户的隐藏操作会被每次启动推翻',
+    );
   });
 }

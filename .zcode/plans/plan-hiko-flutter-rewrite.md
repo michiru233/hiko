@@ -4742,3 +4742,53 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 
 ### 交付
 - 版本 `1.99.53+166`；Release：`hiko-v1.99.53-macos.zip` + `hiko-v1.99.53-android.apk`。
+
+## 1.99.54（2026-10-27）：下载中心 + 离线标示
+
+> 用户：下载时看不到进度；要「能查看进入的入口」、最好专门界面；详情页要有标示；
+> 已缓存的歌也要标记。先出示意再定。
+> 四条裁决：侧栏一级项 / 字节级进度 / 曲目行两图标两色 / 取消·重试·删除（不做暂停）。
+
+### 可见变化
+- **新增「下载」一级导航**（桌面 rail / 移动导航与「更多」），带**进行中数量角标**。
+  老用户的 `navViews` 是持久化白名单 —— 只加进 `navViewsAll` 不会出现，
+  所以配了一次性迁移（标记键 `hiko-nav-download-added`，插在「统计」之前；
+  用户之后手动隐藏不会被再加回来）。
+- **下载中心**三段固定顺序：
+  - 进行中：封面 + 标题 + **字节级总进度**（`348 MB / 1.2 GB`）+ 百分比，
+    下面逐文件列出 `✓ 完成 / ↓ 72% / ○ 等待`，当前文件带 2dp 细条；
+    底部「取消下载」。
+  - 失败：错误文案 + 「重试」/「移除」。
+  - 已完成：`已完成 · N 轨 · 体积` + 「打开」（切在线视图并弹详情）/「删除」（二次确认）。
+- **详情页状态胶囊**（标题下）：`已离线 · 32 轨 · 1.2 GB` / `下载中 45% · 12/32 文件` /
+  `排队中` / `下载失败`。动作按钮从此**只表达动作**：离线下载 / 取消下载 /
+  重试下载 / 删除离线，不再和胶囊各说一遍状态。
+- **曲目行尾部标记**：已离线 = `download_done`（primary，永不被清）；
+  已缓存 = `cached`（中性，LRU 可能清）；两者互斥，判序**先离线再缓存**
+  （离线文件同样落在缓存目录里）。tooltip 区分语义。
+- **缓存版本号**：`OnlineAudioCache.revision` 在索引变化（预热完成 / 淘汰 / 清理）时
+  bump，曲目列表用 `ValueListenableBuilder` 监听，标记能实时出现与消失。
+
+### 实现要点
+- 数据层：`FileDownloadPhase` + `FileDownloadProgress`；`DownloadRunning` 带
+  `title/coverUrl/files`（总进度按字节，未知长度的字幕/封面用 `onProgress` 回报的
+  `contentLength` 补）；`DownloadDone` 带 `totalBytes`；`DownloadQueued/Failed`
+  也自带标题与封面 —— **卡片不依赖服务内部的 job 表**。
+- 进度回调节流 120ms（一个文件上千次回调，逐次 setState 会拖垮 UI）。
+- 新增 `retry()` / `forget()`；`offline_downloads` 保留 `_jobs` 供重试复用载荷。
+- 新页面 `lib/ui/screens/downloads_screen.dart`；导航表 + 设置白名单同步加「下载」。
+
+### 刻意没做
+- **暂停 / 继续**（用户裁决）：需要保留 `.part` 并依赖服务端 Range，成本与不确定性都高。
+- 下载对话框里已下载文件仍可勾选（会按缓存命中跳过）；要不要禁选留到下一版。
+
+### 验证
+- `flutter test`：**915 passed / 2 skipped**（908 + 4 下载中心 + 2 离线标记 + 1 迁移）。
+- `flutter analyze`：**42 条、0 error**。
+- 新增 `test/ui/downloads_screen_test.dart`（空态 / 进行中逐文件 / 失败重试 /
+  已完成二次确认）、`test/ui/offline_marks_test.dart`（胶囊文案、两态标记互斥、
+  动作按钮不重复状态）、`settings_store_test` 补迁移「只补一次」。
+- 实机截图核对：rail 已出现「下载」，位于「在线收藏」与「统计」之间。
+
+### 交付
+- 版本 `1.99.54+167`；Release：`hiko-v1.99.54-macos.zip` + `hiko-v1.99.54-android.apk`。

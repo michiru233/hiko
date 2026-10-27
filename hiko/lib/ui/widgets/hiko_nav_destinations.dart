@@ -11,6 +11,7 @@ const Map<String, IconData> hikoNavIcons = <String, IconData>{
   '收藏夹': Icons.favorite_border,
   '在线': Icons.cloud_outlined,
   '在线收藏': Icons.cloud_done_outlined,
+  '下载': Icons.download_outlined,
   '统计': Icons.bar_chart_outlined,
 };
 
@@ -22,6 +23,7 @@ const Map<String, IconData> hikoNavSelectedIcons = <String, IconData>{
   '收藏夹': Icons.favorite,
   '在线': Icons.cloud,
   '在线收藏': Icons.cloud_done,
+  '下载': Icons.download_rounded,
   '统计': Icons.bar_chart_rounded,
 };
 
