@@ -366,7 +366,7 @@ class _PlaylistPickerDialogState extends ConsumerState<_PlaylistPickerDialog> {
               ),
               SizedBox(
                 height: 2,
-                child: _loading ? const LinearProgressIndicator(minHeight: 2) : null,
+                child: _loading ? const M3EProgress.thin() : null,
               ),
               const SizedBox(height: 4),
               Flexible(

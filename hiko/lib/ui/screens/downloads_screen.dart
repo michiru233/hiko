@@ -268,12 +268,11 @@ class _JobCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          _ProgressBar(value: percent / 100),
+          M3EProgress(value: percent / 100),
           if (running != null) ...<Widget>[
             const SizedBox(height: 8),
             for (final file in running.files) _FileProgressRow(file: file),
-          ],
-          Row(
+          ],          Row(
             children: <Widget>[
               const Spacer(),
               M3EButton(
@@ -378,7 +377,7 @@ class _FileProgressRow extends StatelessWidget {
           if (file.phase == FileDownloadPhase.running)
             Padding(
               padding: const EdgeInsets.only(left: 24, top: 3),
-              child: _ProgressBar(value: fraction, height: 2),
+              child: M3EProgress(value: fraction, height: 2),
             ),
         ],
       ),
@@ -525,37 +524,6 @@ class _DoneCard extends StatelessWidget {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _ProgressBar extends StatelessWidget {
-  const _ProgressBar({required this.value, this.height = 4});
-
-  final double value;
-  final double height;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = M3ETheme.of(context).colors;
-    final v = value.isNaN ? 0.0 : value.clamp(0.0, 1.0);
-    return ClipRRect(
-      borderRadius: M3EShape.radius(M3EShape.full),
-      child: SizedBox(
-        height: height,
-        child: Stack(
-          children: <Widget>[
-            Positioned.fill(
-              child: ColoredBox(color: colors.surfaceContainerHighest),
-            ),
-            FractionallySizedBox(
-              widthFactor: v,
-              alignment: Alignment.centerLeft,
-              child: ColoredBox(color: colors.primary),
-            ),
-          ],
-        ),
       ),
     );
   }

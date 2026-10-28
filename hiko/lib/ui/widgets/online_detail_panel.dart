@@ -949,11 +949,11 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
 
   /// 文本文件轻量查看（未配对成字幕的散件：说明 txt、汉化对照等）
   Future<void> _showTextDialog(OnlineTrack track) async {
-    final messenger = ScaffoldMessenger.maybeOf(context);
     final text = await ref.read(onlineClientProvider).fetchText(track.hash);
     if (!mounted) return;
     if (text == null) {
-      messenger?.showSnackBar(const SnackBar(content: Text('无法加载文件内容')));
+      // 1.99.57：提示统一走 showHikoToast，不再用 ScaffoldMessenger
+      showHikoToast(context, '无法加载文件内容');
       return;
     }
     await showDialog<void>(
@@ -986,18 +986,17 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
 
   /// 视频等其余类型：应用内是音频引擎，交给系统浏览器/播放器
   Future<void> _openExternally(OnlineTrack track) async {
-    final messenger = ScaffoldMessenger.maybeOf(context);
     final url = ref.read(onlineClientProvider).streamUrl(track.hash);
     try {
       final ok = await launchUrl(
         Uri.parse(url),
         mode: LaunchMode.externalApplication,
       );
-      if (!ok) {
-        messenger?.showSnackBar(SnackBar(content: Text('无法打开：$url')));
-      }
+      if (!mounted) return;
+      if (!ok) showHikoToast(context, '无法打开：$url');
     } catch (e) {
-      messenger?.showSnackBar(SnackBar(content: Text('无法打开浏览器：$e')));
+      if (!mounted) return;
+      showHikoToast(context, '无法打开浏览器：$e');
     }
   }
 
@@ -1071,8 +1070,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
   Future<void> _copyCreatorName(String name) async {
     await Clipboard.setData(ClipboardData(text: name));
     if (!mounted) return;
-    ScaffoldMessenger.maybeOf(context)
-        ?.showSnackBar(SnackBar(content: Text('已复制 $name')));
+    showHikoToast(context, '已复制 $name');
   }
 
   /// 声优 / 社团黑名单（1.99.3）：与标签黑名单同一套机制，
@@ -1132,7 +1130,6 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
       final found = queue.indexWhere((t) => t.hash == start.hash);
       if (found >= 0) index = found;
     }
-    final messenger = ScaffoldMessenger.maybeOf(context);
     final error = await ref.read(onlinePlaybackProvider).play(
           detail.work,
           queue,
@@ -1140,8 +1137,9 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
           // 在线队列快照：供「专辑循环」跨作品接续时定位相邻作品
           queue: ref.read(onlineBrowseProvider).works,
         );
+    if (!mounted) return;
     if (error != null) {
-      messenger?.showSnackBar(SnackBar(content: Text(error)));
+      showHikoToast(context, error);
       return;
     }
     if (openPlayer) _openPlayer();
@@ -1153,7 +1151,6 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
   }
 
   Future<void> _openInBrowser(OnlineWork work) async {
-    final messenger = ScaffoldMessenger.maybeOf(context);
     // API 域名 ≠ 网页域名（官方实例 api.asmr.one/works/{id} 实测 404）
     final url = ref.read(onlineClientProvider).workPageUrl(work.id);
     try {
@@ -1161,16 +1158,18 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
         Uri.parse(url),
         mode: LaunchMode.externalApplication,
       );
-      if (!ok) messenger?.showSnackBar(SnackBar(content: Text('无法打开：$url')));
+      if (!mounted) return;
+      if (!ok) showHikoToast(context, '无法打开：$url');
     } catch (e) {
-      messenger?.showSnackBar(SnackBar(content: Text('无法打开浏览器：$e')));
+      if (!mounted) return;
+      showHikoToast(context, '无法打开浏览器：$e');
     }
   }
 
   Future<void> _copyRj(String rjCode) async {
-    final messenger = ScaffoldMessenger.maybeOf(context);
     await Clipboard.setData(ClipboardData(text: rjCode));
-    messenger?.showSnackBar(SnackBar(content: Text('已复制 $rjCode')));
+    if (!mounted) return;
+    showHikoToast(context, '已复制 $rjCode');
   }
 
   // ---------------------------------------------------------------- 文案

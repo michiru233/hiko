@@ -159,11 +159,8 @@ ThemeData buildHikoTheme(AppSettings settings) {
       ),
       waitDuration: kTooltipWaitDuration,
     ),
-    snackBarTheme: SnackBarThemeData(
-      backgroundColor: const Color(0xFF292735),
-      contentTextStyle: const M3EType().bodySmall.copyWith(color: Colors.white),
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: M3EShape.radius(M3EShape.sm)),
-    ),
+    // 1.99.57：`snackBarTheme` 删除 —— 全产品不再有 `ScaffoldMessenger.showSnackBar`
+    // 调用（见 test/ui/feedback_single_path_test.dart 的源码锁），提示只走
+    // `M3ESnackbar` + `showHikoToast`。留着这份主题只会让人以为「SnackBar 还能用」。
   );
 }

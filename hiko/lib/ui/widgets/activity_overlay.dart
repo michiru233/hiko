@@ -144,7 +144,6 @@ class _ActivityBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final count = activity.total > 0
         ? ' ${activity.processed} / ${activity.total}'
         : '';
@@ -184,14 +183,9 @@ class _ActivityBanner extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 7),
-                  ClipRRect(
-                    borderRadius: M3EShape.radius(M3EShape.xs),
-                    child: LinearProgressIndicator(
-                      value: activity.progress,
-                      minHeight: 4,
-                      backgroundColor: Colors.white.withValues(alpha: 0.15),
-                      color: theme.colorScheme.primary,
-                    ),
+                  M3EProgress(
+                    value: activity.progress,
+                    trackColor: Colors.white.withValues(alpha: 0.15),
                   ),
                 ],
               ),
@@ -218,29 +212,9 @@ class _ToastBanner extends StatelessWidget {
         child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 520),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-              decoration: BoxDecoration(
-                color: M3ESemantic.toastSurface,
-                borderRadius: M3EShape.radius(M3EShape.sm),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.25),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Text(
-                message,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: M3ETheme.of(context).type.bodySmall.copyWith(
-                  color: M3ESemantic.onToastSurface,
-                  decoration: TextDecoration.none,
-                ),
-              ),
-            ),
+            // 1.99.57：材质交给 M3ESnackbar（与 toast.dart 的 Overlay 路径同一个面）。
+            // 这里只负责「底部 96、居中、最宽 520」这层布局。
+            child: M3ESnackbar(message: message),
           ),
         ),
       ),

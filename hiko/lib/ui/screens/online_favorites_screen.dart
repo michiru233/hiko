@@ -430,7 +430,7 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
         SizedBox(
           height: 2,
           child: favorites.loading && works.isNotEmpty
-              ? const LinearProgressIndicator(minHeight: 2)
+              ? const M3EProgress.thin()
               : null,
         ),
         Expanded(
@@ -652,7 +652,7 @@ class _OnlineFavoritesScreenState extends ConsumerState<OnlineFavoritesScreen> {
         SizedBox(
           height: 2,
           child: favorites.loading
-              ? const LinearProgressIndicator(minHeight: 2)
+              ? const M3EProgress.thin()
               : null,
         ),
         Expanded(

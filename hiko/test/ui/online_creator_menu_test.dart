@@ -172,6 +172,10 @@ void main() {
 
     expect(copied, circleName);
     expect(find.text('已复制 $circleName'), findsOneWidget);
+
+    // toast 自己有 3.2s 的停留计时器；测试结束前让它走完，
+    // 否则 binding 会因为「widget 树销毁时还有 pending timer」报错。
+    await tester.pump(const Duration(milliseconds: 3400));
   });
 
   testWidgets('没有 onSelectCreator 时胶囊不可点、不出菜单', (tester) async {

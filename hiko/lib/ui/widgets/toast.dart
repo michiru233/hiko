@@ -43,8 +43,8 @@ void showHikoToast(
                     .duration(M3ESpringType.effects, M3ESpringSpeed.normal),
                 builder: (_, opacity, child) =>
                     Opacity(opacity: opacity, child: child),
-                // 1.99.30 M3E：inverseSurface 反色面、角 4（plan §8.8 Snackbar）
-                child: _M3EToastSurface(message: message),
+                // 1.99.57：面交给 M3ESnackbar —— 与根通知层那条路径同一材质
+                child: M3ESnackbar(message: message),
               ),
           ),
         ),
@@ -72,50 +72,5 @@ void _dismissActiveToast() {
     try {
       entry.remove();
     } catch (_) {}
-  }
-}
-
-/// toast 材质（1.99.30）：M3E 反色面，角 4；无祖先 M3E 主题时回退 Material 配色。
-class _M3EToastSurface extends StatelessWidget {
-  const _M3EToastSurface({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final m3e = M3ETheme.maybeOf(context);
-    final Color bg;
-    final Color fg;
-    if (m3e != null) {
-      bg = m3e.colors.inverseSurface;
-      fg = m3e.colors.onInverseSurface;
-    } else {
-      final scheme = Theme.of(context).colorScheme;
-      bg = scheme.inverseSurface;
-      fg = scheme.onInverseSurface;
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: M3EShape.radius(M3EShape.xs),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.25),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Text(
-        message,
-        maxLines: 3,
-        overflow: TextOverflow.ellipsis,
-        style: M3ETheme.of(context).type.bodySmall.copyWith(
-          color: fg,
-          decoration: TextDecoration.none,
-        ),
-      ),
-    );
   }
 }

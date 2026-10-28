@@ -743,7 +743,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
         SizedBox(
           height: 2,
           child: state.loading && state.works.isNotEmpty
-              ? const LinearProgressIndicator(minHeight: 2)
+              ? const M3EProgress.thin()
               : null,
         ),
         Expanded(
@@ -843,7 +843,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
         // 翻页请求期间旧页仍在屏上，用一条细进度条说明「正在换页」
         SizedBox(
           height: 2,
-          child: state.loading ? const LinearProgressIndicator(minHeight: 2) : null,
+          child: state.loading ? const M3EProgress.thin() : null,
         ),
         Expanded(child: _buildGrid(state)),
         _buildPager(state),

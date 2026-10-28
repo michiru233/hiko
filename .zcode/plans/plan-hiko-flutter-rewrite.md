@@ -4858,3 +4858,46 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 
 ### 交付
 - 版本 `1.99.56+169`；Release：`hiko-v1.99.56-macos.zip` + `hiko-v1.99.56-android.apk`。
+
+## 1.99.57（2026-10-28）：提示层归一 + 进度条归一
+
+> 上一轮审计（`audit-hiko-m3e-coverage.md` §8 P0）留下的两条：全产品同时存在两套提示层
+> （根 `ActivityOverlayHost` 的 toast / banner 一套，`ScaffoldMessenger` 的 SnackBar 一套），
+> 以及五套各自画一版的进度条。这一版是**纯去重、零视觉变更**，把两条都收进设计系统。
+
+### 可见变化
+- 在线详情的「已复制」「已屏蔽社团」「已加入下载」等 8 处提示，从 SnackBar 改走与本地同一条
+  深色 toast 条，位置不再被底部播放条压住。
+- 下载页、作品完成度、播放进度、在线换页、收藏同步的进度条统一成 `M3EProgress`：
+  4dp 带轨道是默认形态，2dp 无轨道留给「顶部活动细条」。
+- 下载进度在总大小未就绪（`0/0`）时稳定停在 0，不再闪一下。
+- 明暗主题的 toast 都是同一个深色面（D3），与已发布版本观感一致。
+
+### 实现
+- 新增 `lib/ui/m3e/components/progress/m3e_progress.dart`：`M3EProgress` 默认 4dp 带轨道
+  （轨道 `surfaceContainerHighest`、指示 `primary`），`.thin()` 为 2dp 无轨道，NaN 收成 0，
+  越界夹紧；内部包 Material `LinearProgressIndicator`（口径同 `M3ESlider`：组件内可包，
+  业务层不行）。
+- 新增 `lib/ui/m3e/components/surfaces/m3e_snackbar.dart`：`M3ESnackbar` 只画面不含定位，
+  `M3ESemantic.toastSurface (#292735)` + `onToastSurface` + `M3EShape.sm(8)` + 12blur/4y。
+- `activity_overlay.dart` 的 `_ToastBanner` 只留定位、材质换 `M3ESnackbar`；`toast.dart` 删
+  `_M3EToastSurface`；`online_detail_panel.dart` 8 处 `showSnackBar` → `showHikoToast` 并补
+  `if (!mounted) return;`；`theme.dart` 删 `snackBarTheme`（全产品不再有 SnackBar 调用）。
+- 进度条 12 处替换；`downloads_screen.dart` 自绘 `_ProgressBar` 类直接删除（D7）。
+- `m3e.dart` barrel 增加两条导出。
+
+### 验证
+- `flutter test`：**928 passed / 2 skipped**（917 基线 + 11 条新用例；§4.1 两条旧用例红是本轮
+  唯一回归，修法是把 toast 的 3200ms `kToastLinger` 计时器走完）。
+- `flutter analyze`：**42 条、0 error**。
+- 新增 3 个测试文件 11 条：`m3e_progress_test`（5 条：默认 4dp 带轨道 / thin 2dp 无轨道 /
+  颜色覆盖 / NaN→0 / 越界夹紧）、`m3e_snackbar_test`（3 条：面与字色 / 明暗共用一面 / 前导图标）、
+  `feedback_single_path_test`（3 条源码锁：禁 `showSnackBar`·`SnackBar(`·`ScaffoldMessenger.`、
+  禁业务层 `LinearProgressIndicator`、`toastSurface` 只允许出现在 `activity_overlay.dart`）。
+- macOS 包 `Info.plist` = 1.99.57 / 170；APK `apksigner verify --min-sdk-version 21` v1+v2+v3
+  全 true，`META-INF/HIKO.SF` 在，`aapt2` versionCode=170 / versionName=1.99.57。
+
+### 交付
+- 版本 `1.99.57+170`；Release：`hiko-v1.99.57-macos.zip`（34,125,566 B）+
+  `hiko-v1.99.57-android.apk`（70,300,315 B），远端字节数与本地逐一比对一致。
+- https://github.com/michiru233/hiko/releases/tag/v1.99.57

@@ -604,18 +604,9 @@ class HikoDetailInfoRowM3E extends StatelessWidget {
           ),
           if (progress != null) ...[
             const SizedBox(height: 6),
-            ClipRRect(
-              borderRadius: M3EShape.radius(M3EShape.full),
-              child: SizedBox(
-                height: 4,
-                child: LinearProgressIndicator(
-                  value: progress!.clamp(0.0, 1.0),
-                  minHeight: 4,
-                  backgroundColor:
-                      colors.outlineVariant.withValues(alpha: 0.6),
-                  valueColor: AlwaysStoppedAnimation(colors.primary),
-                ),
-              ),
+            M3EProgress(
+              value: progress,
+              trackColor: colors.outlineVariant.withValues(alpha: 0.6),
             ),
           ],
         ],

@@ -83,23 +83,14 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => _openPlayer(album),
-              child: ClipRRect(
-                borderRadius: M3EShape.radius(M3EShape.full),
-                child: SizedBox(
-                  height: 2,
-                  child: LinearProgressIndicator(
-                    key: const ValueKey('player-bar-progress'),
-                    value: pct,
-                    minHeight: 2,
-                    backgroundColor: M3ETheme.of(context)
-                        .colors
-                        .outlineVariant
-                        .withValues(alpha: 0.6),
-                    valueColor: AlwaysStoppedAnimation(
-                      Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                ),
+              child: M3EProgress(
+                key: const ValueKey('player-bar-progress'),
+                value: pct,
+                height: 2,
+                trackColor: M3ETheme.of(context)
+                    .colors
+                    .outlineVariant
+                    .withValues(alpha: 0.6),
               ),
             ),
           ],

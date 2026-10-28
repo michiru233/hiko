@@ -10,7 +10,7 @@ void main() {
     final controller = ActivityOverlayController();
     await tester.pumpWidget(_app(controller));
 
-    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(find.byType(M3EProgress), findsNothing);
   });
 
   testWidgets('任务进度在普通对话框之上显示，完成后清理并显示 Toast', (tester) async {
@@ -20,7 +20,7 @@ void main() {
     controller.start(label: '正在扫描音频文件', processed: 2, total: 4, progress: 0.5);
     await tester.pump();
     expect(find.text('正在扫描音频文件 2 / 4'), findsOneWidget);
-    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.byType(M3EProgress), findsOneWidget);
 
     showDialog<void>(
       context: tester.element(find.byType(Scaffold)),
@@ -34,7 +34,7 @@ void main() {
     controller.showToast('扫描完成');
     await tester.pump();
     expect(find.text('正在扫描音频文件 2 / 4'), findsNothing);
-    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(find.byType(M3EProgress), findsNothing);
     expect(find.text('扫描完成'), findsOneWidget);
   });
 
