@@ -4901,3 +4901,63 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 - 版本 `1.99.57+170`；Release：`hiko-v1.99.57-macos.zip`（34,125,566 B）+
   `hiko-v1.99.57-android.apk`（70,300,315 B），远端字节数与本地逐一比对一致。
 - https://github.com/michiru233/hiko/releases/tag/v1.99.57
+
+---
+
+## 1.99.58（2026-10-29）：设置页抽屉化 + 死设置清账
+
+> 用户需求（m00301）：设置页杂糅了很多「以前写的、已经完全用不到」的功能；要求把功能
+> 分门别类，把「从头画到尾」的单页改成几个抽屉跳转，并且**先出计划书 + 效果图**，
+> 审阅通过后再动代码（`plan-hiko-settings-2026-10-29.md` + `assets/settings-*.png`）。
+> 用户裁决（m00418）：「5 个死字段删」「重复低频功能也删」，尺度为
+> **只删重复入口，功能搬进子页**——在线外观 6 行与「重置音频输出」删，扫描/备份/重置/
+> 整理/清理/代理只搬家不删。
+
+### 可见变化
+- 设置页从「5 组标题、约 55 行、一条道滑到底」改成 **索引页 + 抽屉子页**：索引页 4 组
+  8 格（通用：外观与显示 / 播放与音频 / 主界面；在线：在线账号 / 在线外观；库：库与扫描 /
+  数据与维护；关于：关于），每格一句范围说明，一屏看全。
+- 「导航栏」（拖动排序 + 隐藏入口）从平铺行变成「主界面」页里的一格，进三级页才看到。
+- 在线缓存的「占用统计」与「按作品清理」从在线账号页的长滚动区挪进「在线账号 → 缓存明细」。
+- 「在线外观」不再单开一页：点它直接打开在线页工具栏 Aa 那颗按钮的**同一个**对话框
+  （`showOnlineAppearanceDialog`），两处入口从此写的是同一份设置、用的是同一个组件。
+- 5 个「设置里已经看不见、字段还在读写」的死项删除：全屏播放页样式 / 背景模糊 /
+  背景不透明度 / 侧边栏显示 / 播放模式。旧备份导入不受影响（未知键忽略、缺失走默认）。
+- 「重置音频输出（立即重接）」删除：输出异常时播放器自己重接。
+- 安卓返回键在子页先退回索引页，只在索引页才退出设置。
+
+### 实现
+- `lib/data/settings_store.dart` **920 → 861 行（−59）**：删 5 个字段声明、`const AppSettings`
+  的 4 个默认值、`copyWith` 4 组形参与实现、持久化键 `_kMode`/`_kSidebar`/`_kBackgroundBlur`/
+  `_kBackgroundOpacity`/`_kFullscreenPlayerStyle`、`_validFullscreenPlayerStyles` +
+  `_normalizeFullscreenPlayerStyle`、`load()` 4 处读、5 个 setter。`const playModes`
+  （`PlayModeInfo` 列表）**保留**——播放器 UI 还在用。
+- `lib/ui/screens/fullscreen_player_screen.dart`：删 `setPlayMode(mode.key)` 调用。该字段
+  **写而无人读**（退出重进不恢复播放模式），删除不改变任何观感。
+- `lib/ui/widgets/settings_dialog.dart` **1615 → 1680 行**：新增状态 `String? _route`
+  （null = 索引页）+ `_indexPage` / `_indexTile` / `_routeTitle` / `_routeChildren`；
+  `_sectionHeader` 加 `first:` 收紧首组上边距；`autoCheckUpdate` 直接落 `about` 页
+  （菜单栏「检查更新」不再需要滑到底）；`PopScope(canPop: _route == null)` 接安卓返回键；
+  删 `_onlineAppearancePage`，新增 `_cachePage`。
+- **偏离计划书 §7 第 2 步**：原计划把 9 个 builder 拆到 `lib/ui/settings/`。实际未拆——子页
+  builder 与页面状态强耦合（检查更新 / 增益拖动中间值 / 备份导入二次确认 / 缓存清单刷新
+  都是同一个 `State` 的方法），拆文件等于把同一个 State 的字段和回调在 10 个文件之间搬来搬去，
+  收益是「文件短一点」，代价是 diff 更大、回归面更宽。改为在单文件内按「索引页 / 子页 /
+  公共件」分区并加段落注释，等真有第二个调用方再拆。
+
+### 验证
+- `flutter test`：**942 passed / 2 skipped**（1.99.57 基线 928 + 新增 20 条 − 删除的死字段用例 6 条）。
+- `flutter analyze`：**42 条、0 error**（与基线持平）。
+- 测试改动：`test/ui/settings_layout_test.dart` 重写为「索引页三档宽度 + 七个抽屉子页
+  360dp × 1.3 字号逐个进」的溢出锁（14 条）；新增 `test/ui/settings_navigation_test.dart`
+  （6 条：4 组 8 格、返回落回索引、在线外观开 Aa 对话框、播放页无「重置音频输出」、在线账号
+  6 行已搬走 + 缓存明细可达、主界面 → 导航栏三级页）；`test/ui/activity_overlay_test.dart`
+  改成先点「库与扫描」再点扫描按钮；`test/data/settings_store_test.dart` 删死字段断言、
+  1.84 用例改成「背景种子图：默认未启用 + 路径往返 + 文件丢失回退」。
+- macOS 包 `Info.plist` = 1.99.58 / 171；APK `apksigner verify --min-sdk-version 21`
+  v1+v2+v3 全 true，`META-INF/HIKO.SF` 在，`aapt2` versionCode=171 / versionName=1.99.58。
+
+### 交付
+- 版本 `1.99.58+171`；Release：`hiko-v1.99.58-macos.zip`（34,122,810 B）+
+  `hiko-v1.99.58-android.apk`（70,300,315 B），远端字节数与本地逐一比对一致。
+- https://github.com/michiru233/hiko/releases/tag/v1.99.58

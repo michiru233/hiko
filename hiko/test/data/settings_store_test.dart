@@ -211,22 +211,10 @@ void main() {
     expect(bad.state.mobileGridColumns, 2);
   });
 
-  test('1.84 背景图：默认未启用 + 参数往返与夹取 + 文件丢失回退空路径', () async {
+  test('1.84 背景种子图：默认未启用 + 路径往返 + 文件丢失回退空路径', () async {
     final notifier = SettingsNotifier();
     await notifier.load();
     expect(notifier.state.backgroundPath, '', reason: '默认未启用');
-    expect(notifier.state.backgroundBlur, 12);
-    expect(notifier.state.backgroundOpacity, 0.65);
-
-    // 参数夹取：blur 0-30，opacity 0-1
-    await notifier.setBackgroundBlur(50);
-    expect(notifier.state.backgroundBlur, 30);
-    await notifier.setBackgroundBlur(-1);
-    expect(notifier.state.backgroundBlur, 0);
-    await notifier.setBackgroundOpacity(2.0);
-    expect(notifier.state.backgroundOpacity, 1.0);
-    await notifier.setBackgroundBlur(18);
-    await notifier.setBackgroundOpacity(0.8);
 
     // 真实存在的文件路径可持久化往返
     final tmp = File(
@@ -242,8 +230,6 @@ void main() {
     final reloaded = SettingsNotifier();
     await reloaded.load();
     expect(reloaded.state.backgroundPath, tmp.path);
-    expect(reloaded.state.backgroundBlur, 18);
-    expect(reloaded.state.backgroundOpacity, 0.8);
 
     // 文件已被清理 → load 静默回退空路径（未启用）
     tmp.deleteSync();
@@ -403,22 +389,6 @@ void main() {
       await notifier.setOnlineGridColumns(bad);
       expect(notifier.state.onlineGridColumns, 0, reason: '$bad 不在档位里');
     }
-  });
-
-  test('1.100.0 全屏播放页样式：默认黑胶 + simple 往返 + 非法值回退', () async {
-    final notifier = SettingsNotifier();
-    await notifier.load();
-    expect(notifier.state.fullscreenPlayerStyle, 'vinyl', reason: '默认黑胶');
-
-    await notifier.setFullscreenPlayerStyle('simple');
-    expect(notifier.state.fullscreenPlayerStyle, 'simple');
-
-    final reloaded = SettingsNotifier();
-    await reloaded.load();
-    expect(reloaded.state.fullscreenPlayerStyle, 'simple', reason: '落盘往返');
-
-    await notifier.setFullscreenPlayerStyle('bogus');
-    expect(notifier.state.fullscreenPlayerStyle, 'vinyl', reason: '白名单外回退');
   });
 
   test('1.99.3 声优/社团黑名单：默认空 + 落盘往返 + 去重与坏数据丢弃', () async {

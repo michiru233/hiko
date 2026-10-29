@@ -15,8 +15,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 12.5 → `bodyMedium` 14）。**行是 72dp 的定高双行 + 右侧控件**，
 /// 纵向放大最容易在 360dp × 1.3 字号下把右侧控件挤出屏幕。
 ///
-/// 锁法：三档宽度各 pump 一次真 `SettingsPage`（窗口开得足够高，让 ListView
-/// 把大部分行真的建出来），溢出会以 `FlutterError` 让 pump 直接失败。
+/// 1.99.58 抽屉化之后锁法扩成两段：索引页三档宽度各 pump 一次；再把七个
+/// 子页在 360dp × 1.3 字号下逐个进一遍（宽控件都藏在子页里，长列表摊平时
+/// 反而测不到）。
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -27,8 +28,8 @@ void main() {
           (call) async => <String, dynamic>{
             'appName': 'Hiko',
             'packageName': 'top.voicehub.hiko',
-            'version': '1.99.43',
-            'buildNumber': '156',
+            'version': '1.99.58',
+            'buildNumber': '171',
           },
         );
   });
@@ -40,6 +41,14 @@ void main() {
           null,
         );
   });
+
+  /// 首帧后有版本号 / 几个 FutureBuilder 落地
+  Future<void> settle(WidgetTester tester) async {
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 80));
+    }
+  }
+
 
   Future<void> pumpSettings(
     WidgetTester tester, {
@@ -75,35 +84,61 @@ void main() {
         ),
       ),
     );
-    // 首帧后有版本号 / 几个 FutureBuilder 落地
-    for (var i = 0; i < 6; i++) {
-      await tester.pump(const Duration(milliseconds: 80));
-    }
+    await settle(tester);
   }
 
-  testWidgets('360dp：单列不溢出', (tester) async {
+  testWidgets('360dp：索引页不溢出', (tester) async {
     await pumpSettings(tester, width: 360);
     expect(find.byType(SettingsPage), findsOneWidget);
-    expect(find.text('外观'), findsOneWidget);
+    expect(find.text('外观与显示'), findsOneWidget);
   });
 
-  testWidgets('360dp × 1.3 字号：不溢出', (tester) async {
+  testWidgets('360dp × 1.3 字号：索引页不溢出', (tester) async {
     await pumpSettings(tester, width: 360, textScale: 1.3);
-    expect(find.text('播放'), findsOneWidget);
+    expect(find.text('播放与音频'), findsOneWidget);
   });
 
-  testWidgets('480dp：不溢出', (tester) async {
+  testWidgets('480dp：索引页不溢出', (tester) async {
     await pumpSettings(tester, width: 480);
     expect(find.text('库与扫描'), findsOneWidget);
   });
 
-  testWidgets('720dp：不溢出', (tester) async {
+  testWidgets('720dp：索引页不溢出', (tester) async {
     await pumpSettings(tester, width: 720);
-    expect(find.byType(SettingsPage), findsOneWidget);
-    expect(find.text('外观'), findsOneWidget);
+    expect(find.text('数据与维护'), findsOneWidget);
   });
 
-  testWidgets('设置页不再出现 Material 交互控件', (tester) async {
+  // 七个抽屉子页在 360dp × 1.3 字号下逐个进一遍：溢出会以 FlutterError 直接失败
+  for (final title in const [
+    '外观与显示',
+    '播放与音频',
+    '主界面',
+    '在线账号',
+    '库与扫描',
+    '数据与维护',
+    '关于',
+  ]) {
+    testWidgets('360dp × 1.3 字号：$title 子页不溢出', (tester) async {
+      await pumpSettings(tester, width: 360, textScale: 1.3);
+      // 「关于」既是组标签又是跳转格，取最后一个（列表底部的格子）
+      await tester.tap(find.text(title).last);
+      await settle(tester);
+      // 标题栏换成子页标题（索引页上的那一格已经不在树里了）
+      expect(find.text(title), findsWidgets);
+    });
+  }
+
+  testWidgets('导航栏二级页：主界面 → 导航栏，360dp × 1.3 不溢出', (tester) async {
+    await pumpSettings(tester, width: 360, textScale: 1.3);
+    await tester.tap(find.text('主界面'));
+    await settle(tester);
+    await tester.tap(find.text('导航栏'));
+    await settle(tester);
+    // 导航栏页的可见锚点：顶部那句「决定显示哪些一级入口及顺序」
+    expect(find.textContaining('决定显示哪些一级入口及顺序'), findsOneWidget);
+  });
+
+  testWidgets('索引页不再出现 Material 交互控件', (tester) async {
     await pumpSettings(tester, width: 720, height: 6000);
 
     for (final finder in <Finder>[
@@ -117,13 +152,28 @@ void main() {
     ]) {
       expect(finder, findsNothing);
     }
+    // 索引页整页只有 M3EListItem（换成 Material 的 ListTile 会立刻被上面漏过，这里补一条）
+    expect(find.byType(M3EListItem), findsWidgets);
+    expect(find.byType(ListTile), findsNothing);
+  });
+
+  testWidgets('子页里换上的 M3E 控件确实在场（开关 / 滑杆）', (tester) async {
+    await pumpSettings(tester, width: 720, height: 6000);
+
+    await tester.tap(find.text('主界面'));
+    await settle(tester);
+    expect(find.byType(M3ESwitch), findsWidgets, reason: '显示刮削标签');
+
+    await tester.tap(find.byTooltip('返回设置'));
+    await settle(tester);
+    await tester.tap(find.text('播放与音频'));
+    await settle(tester);
     // M3ESlider 内部本来就包一个 Material Slider（只是换了 theme），
     // 所以「没有裸 Slider」= 两者数量严格相等。
     expect(
       find.byType(Slider).evaluate().length,
       find.byType(M3ESlider).evaluate().length,
     );
-    // 换上的 M3E 控件确实在场（否则「没有 Material」可能只是因为整页没建出来）
-    expect(find.byType(M3ESwitch), findsWidgets);
+    expect(find.byType(M3ESlider), findsWidgets);
   });
 }

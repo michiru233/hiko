@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  :root{
+    --bg:#100E14; --panel:#141218; --surfaceLow:#1D1B20; --surface:#211F26;
+    --surfaceHighest:#36343B;
+    --on:#E6E0E9; --onVar:#A8A2B8;
+    --primary:#C6BFFF; --primaryContainer:#4F3FC9; --secondaryContainer:#332D41;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0A090D;font-family:-apple-system,"PingFang SC","Helvetica Neue",sans-serif;
+       color:var(--on);padding:26px 30px;width:920px;height:900px;overflow:hidden}
+  .stage{display:flex;gap:40px;align-items:flex-start}
+  .cap{font-size:13px;color:#8E88A0;margin-bottom:12px;letter-spacing:.4px}
+  .cap b{color:#C6BFFF;font-weight:600}
+  .wrap{display:flex;flex-direction:column}
+  .phone{width:378px;height:812px;border-radius:36px;background:#1A1720;border:8px solid #26222F;
+         overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.6);display:flex;flex-direction:column}
+  .statusbar{height:30px;display:flex;align-items:center;justify-content:space-between;
+             padding:0 20px;font-size:10.5px;color:var(--onVar);flex:none}
+  .statusbar .r{display:flex;gap:4px;align-items:center}
+  .statusbar .r i{width:9px;height:9px;border-radius:2px;background:#8E88A0;display:block}
+  .appbar{height:50px;display:flex;align-items:center;gap:8px;padding:0 14px;flex:none}
+  .appbar .back{font-size:19px;color:var(--on);width:24px}
+  .appbar .ttl{font-size:16px;font-weight:600}
+  .body{flex:1;overflow:hidden;padding:0 14px 14px}
+  h1{font-size:24px;font-weight:600;margin:2px 0 14px;letter-spacing:-.2px}
+  .grp{margin-bottom:12px}
+  .grp-t{font-size:10px;letter-spacing:1px;color:var(--onVar);font-weight:600;padding:0 4px 6px}
+  .tile{display:flex;align-items:center;gap:11px;background:var(--surfaceLow);border-radius:12px;
+        padding:10px 11px;margin-bottom:6px;border:1px solid #262230}
+  .tile .ico{width:33px;height:33px;border-radius:10px;background:rgba(79,63,201,.35);
+        display:flex;align-items:center;justify-content:center;flex:none}
+  .tile .ico span{width:15px;height:15px;border-radius:4px;background:var(--primary);opacity:.9}
+  .tile .tx{flex:1;min-width:0}
+  .tile .t1{font-size:13px;font-weight:500}
+  .tile .t2{font-size:10px;color:var(--onVar);margin-top:2px;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tile .chev{color:#7A7490;font-size:14px}
+  /* rows */
+  .row{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:58px;
+       border-bottom:1px solid #221E2A;padding:8px 2px}
+  .row:last-child{border-bottom:none}
+  .row .lb{font-size:12.5px}
+  .row .dl{font-size:10px;color:var(--onVar);margin-top:3px;line-height:1.4}
+  .seg{display:flex;background:var(--surfaceHighest);border-radius:999px;padding:2px;gap:1px;flex:none}
+  .seg b{font-size:10px;font-weight:500;color:var(--onVar);padding:4px 8px;border-radius:999px;white-space:nowrap}
+  .seg b.sel{background:var(--primary);color:#20184A;font-weight:600}
+  .drop{display:flex;align-items:center;gap:6px;background:var(--surfaceHighest);border-radius:8px;
+        padding:6px 9px;font-size:10.5px;flex:none}
+  .drop i{font-style:normal;color:var(--onVar);font-size:9px}
+  .dots{display:flex;gap:7px;align-items:center;flex:none}
+  .dots s{width:17px;height:17px;border-radius:50%;display:block}
+  .dots s.on{box-shadow:0 0 0 2px var(--panel),0 0 0 3.5px var(--primary)}
+  .thumb{width:30px;height:30px;border-radius:7px;background:linear-gradient(135deg,#6559D8,#E4A0C8);
+         border:1px solid #3A3546;flex:none}
+  .btn{font-size:10.5px;color:var(--primary);padding:5px 9px;border-radius:999px;border:1px solid #4A4260;flex:none}
+  .slider{display:flex;align-items:center;gap:7px;flex:none}
+  .track{width:96px;height:4px;border-radius:2px;background:var(--surfaceHighest);position:relative}
+  .track i{position:absolute;left:0;top:0;height:4px;width:52%;border-radius:2px;background:var(--primary)}
+  .track u{position:absolute;left:52%;top:-5px;width:14px;height:14px;border-radius:50%;background:var(--primary)}
+  .val{font-size:10px;color:var(--onVar)}
+  .hint{font-size:10px;color:#8E88A0;line-height:1.55;padding:7px 2px 2px}
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <!-- ① 移动索引 -->
+  <div class="wrap">
+    <div class="cap">③ Android · 设置<b>索引页</b></div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span class="r"><i></i><i></i><i></i></span></div>
+      <div class="appbar"><div class="ttl" style="font-size:17px">设置</div></div>
+      <div class="body">
+        <div class="grp">
+          <div class="grp-t">通用</div>
+          <div class="tile"><div class="ico"><span></span></div>
+            <div class="tx"><div class="t1">外观与显示</div>
+              <div class="t2">主题 · 配色 · 对比度 · 动效 · 字号</div></div><div class="chev">›</div></div>
+          <div class="tile"><div class="ico"><span></span></div>
+            <div class="tx"><div class="t1">主界面</div>
+              <div class="t2">每行专辑数 · 刮削标签 · 导航栏</div></div><div class="chev">›</div></div>
+        </div>
+        <div class="grp">
+          <div class="grp-t">在线</div>
+          <div class="tile"><div class="ico"><span></span></div>
+            <div class="tx"><div class="t1">在线账号</div>
+              <div class="t2">登录 · 歌单 · 服务器 · 缓存</div></div><div class="chev">›</div></div>
+          <div class="tile"><div class="ico"><span></span></div>
+            <div class="tx"><div class="t1">在线外观</div>
+              <div class="t2">字号 · 每行卡片数 · 每页条数</div></div><div class="chev">›</div></div>
+        </div>
+        <div class="grp">
+          <div class="grp-t">库</div>
+          <div class="tile"><div class="ico"><span></span></div>
+            <div class="tx"><div class="t1">库与扫描</div>
+              <div class="t2">音乐目录 · 增量 / 全量扫描</div></div><div class="chev">›</div></div>
+          <div class="tile"><div class="ico"><span></span></div>
+            <div class="tx"><div class="t1">数据与维护</div>
+              <div class="t2">导入 · 备份 · 重置 · 刮削代理</div></div><div class="chev">›</div></div>
+        </div>
+        <div class="grp">
+          <div class="grp-t">关于</div>
+          <div class="tile"><div class="ico"><span></span></div>
+            <div class="tx"><div class="t1">关于</div>
+              <div class="t2">版本 1.99.58 · 检查更新</div></div><div class="chev">›</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ② 移动子页 -->
+  <div class="wrap">
+    <div class="cap">④ Android · <b>抽屉子页</b>（带返回，7 行一屏放下）</div>
+    <div class="phone">
+      <div class="statusbar"><span>9:41</span><span class="r"><i></i><i></i><i></i></span></div>
+      <div class="appbar"><div class="back">‹</div><div class="ttl">外观与显示</div></div>
+      <div class="body">
+        <div class="row">
+          <div><div class="lb">主题</div></div>
+          <div class="seg"><b>浅色</b><b class="sel">深色</b><b>跟随</b></div>
+        </div>
+        <div class="row">
+          <div><div class="lb">配色来源</div></div>
+          <div class="drop">默认强调色 <i>▾</i></div>
+        </div>
+        <div class="row">
+          <div><div class="lb">强调色</div></div>
+          <div class="dots">
+            <s style="background:#6559D8" class="on"></s>
+            <s style="background:#2E7D6B"></s>
+            <s style="background:#B4573F"></s>
+            <s style="background:#3F6BB4"></s>
+            <s style="background:#B45A97"></s>
+          </div>
+        </div>
+        <div class="row">
+          <div><div class="lb">对比度</div><div class="dl">提高正文与底色对比</div></div>
+          <div class="seg"><b class="sel">标准</b><b>中</b><b>高</b></div>
+        </div>
+        <div class="row">
+          <div><div class="lb">动效</div><div class="dl">关闭后动画直达终态</div></div>
+          <div class="seg"><b class="sel">完整</b><b>精简</b><b>关闭</b></div>
+        </div>
+        <div class="row">
+          <div><div class="lb">字号大小</div></div>
+          <div class="slider"><div class="track"><i></i><u></u></div><div class="val">1.0×</div></div>
+        </div>
+        <div class="row">
+          <div><div class="lb">自选种子图</div><div class="dl">用图片取色生成配色</div></div>
+          <div style="display:flex;align-items:center;gap:8px"><div class="thumb"></div><div class="btn">更换</div></div>
+        </div>
+        <div class="hint">与桌面端同一份设置、同一批行；移动端上一页是索引，返回键直接回索引。</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

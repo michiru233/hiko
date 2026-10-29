@@ -10,7 +10,7 @@ import 'lyrics_fixture.dart';
 
 /// 1.99.29 黑胶退场锁（裁决 D7，plan §8.5）：
 /// 播放页只剩一种封面形态 —— 320dp 角 28 的大封面（播放态 28↔32 形变）。
-/// 旧 `fullscreenPlayerStyle` 字段仍在设置里，但**不再影响任何 UI**：
+/// 旧 `fullscreenPlayerStyle` 字段已在 1.99.58 随死设置一并删除：
 /// 这条锁防的是「黑胶/样式切换」从任何入口回流。
 void main() {
   Future<ProviderContainer> pumpPlayer(

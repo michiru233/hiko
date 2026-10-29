@@ -1,6 +1,6 @@
-# Hiko 交接文档（2026-10-28，M3E 收口批次 1.99.57）
+# Hiko 交接文档（2026-10-29 更新，M3E 收口 + 设置页抽屉化 1.99.58）
 
-> 读者：接手 Hiko 的 agent。**先读 §0，再读 §5 的 P1 表**——1.99.57 已发版，剩下的都是可选增强。
+> 读者：接手 Hiko 的 agent。**先读 §0，再读 §5 的 P1 表**——1.99.58 已发版，剩下的都是可选增强。
 > 本文档只描述「截至本文写作时的真实状态」，凡是没验证过的都标了「未验证」。
 > 上一个同名前缀的交接文档是 `handoff-hiko-m3e-2026-10-26.md`（基线 797，已过期，只作历史参考）。
 
@@ -11,13 +11,13 @@
 | 项 | 状态 |
 |---|---|
 | 项目 | Hiko，本地优先 DLsite 音声库管理器，Flutter 主线在 `hiko/` |
-| 当前主题 | M3E（Material 3 Expressive）设计系统收口 + 清账 |
-| 最后一个**已发布**版本 | `v1.99.57`（提示层归一 + 进度条归一），tag `v1.99.57`，双资产已上传 |
-| 上一个版本 | `v1.99.56`（标签胶囊中性化），commit `413e990` |
-| 工作区改动 | **无未提交改动**（1.99.57 已提交并 push，见 §3.1/§3.3） |
+| 当前主题 | M3E（Material 3 Expressive）设计系统收口 + 清账（1.99.58 起转 UI 结构整理） |
+| 最后一个**已发布**版本 | `v1.99.58`（设置页抽屉化 + 死设置清账），tag `v1.99.58`，双资产已上传 |
+| 上一个版本 | `v1.99.57`（提示层归一 + 进度条归一），commit `ea608eb` |
+| 工作区改动 | **无未提交改动**（1.99.58 已提交并 push，见 §3.1/§3.3） |
 | analyze | **42 条 / 0 error**（= 基线，未见新增） |
-| test | **928 passed / 2 skipped**（基线 917/2 + 新增 11 条；§4.1 那两条已修好） |
-| 接手第一件事 | 回 §5 挑一项 P1 开 1.99.58，**挑之前先问用户做哪个** |
+| test | **942 passed / 2 skipped**（1.99.57 的 928 + 新增 20 条 − 删掉的死字段用例 6 条） |
+| 接手第一件事 | 回 §5 挑一项 P1 开 1.99.59，**挑之前先问用户做哪个** |
 
 **别做的事**：§4.1 那两条测试是靠 `pump(3400ms)` 让 toast 的 `kToastLinger` 走完收口的，
 不要为了「测试快点」把这行删掉，也不要改回 `ScaffoldMessenger`。
@@ -116,7 +116,33 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 - `test/ui/feedback_single_path_test.dart`（3 条源码锁：禁 `showSnackBar`·`SnackBar(`·`ScaffoldMessenger.`；
   禁业务层 `LinearProgressIndicator`；`toastSurface` 只允许出现在 `activity_overlay.dart`）
 
-### 2.3 关键决策留痕（不要推翻）
+### 2.3 本轮 1.99.58 做了什么（**已发布 v1.99.58**）
+
+主题：**设置页抽屉化 + 死设置清账**。需求来自用户 m00301（设置页杂糅了以前写过、
+现在完全用不到的功能；要分门别类、改抽屉跳转），交付流程是「先计划书 + 效果图，
+审阅通过再动代码」。
+
+- 计划书：`.zcode/plans/plan-hiko-settings-2026-10-29.md`（含 §13 实施记录与偏离说明）。
+- 效果图：`.zcode/plans/assets/settings-desktop.png` / `settings-mobile.png`（源 `mock-*.html`）。
+- 设置页从「5 组、约 55 行、一条道滑到底」改成 **索引页 4 组 8 格 + 抽屉子页**：
+  通用（外观与显示 / 播放与音频 / 主界面）、在线（在线账号 / 在线外观）、库（库与扫描 /
+  数据与维护）、关于（关于）。索引页每格一句范围说明，一屏看全。
+- 结构挪动：「导航栏」→「主界面」页内一格；在线缓存占用 + 按作品清理 →「在线账号 → 缓存明细」；
+  「在线外观」不再单开子页，直接打开在线页 Aa 那颗按钮的同一个对话框。
+- 死字段清账（全仓 `-w` grep 0 命中）：`fullscreenPlayerStyle` / `backgroundBlur` /
+  `backgroundOpacity` / `sidebarShown` / `playMode`。`settings_store.dart` 920 → 861 行。
+  兼容性：`fromJson` 容错（未知键忽略、缺失走默认），旧备份导入不受影响。
+- 「重置音频输出（立即重接）」删除（Q6 改选 B）：输出异常时播放器自己重接。
+- 安卓返回键：子页先退回索引页（`PopScope(canPop: _route == null)`）。
+- 代码规模：`settings_dialog.dart` 1615 → 1680 行（删掉在线外观页 60 行，加索引页/缓存页）。
+  **计划书 §7 第 2 步的「拆文件到 lib/ui/settings/」没做**：子页 builder 与同一个 State
+  强耦合，拆文件只是把 State 在 10 个文件间搬来搬去，收益低、diff 大。理由已写进
+  `plan-hiko-settings-2026-10-29.md` §13。
+- 测试：`settings_layout_test.dart` 重写（索引页三档 + 七个抽屉子页 360dp × 1.3 逐个进），
+  新增 `settings_navigation_test.dart`（6 条导航契约），`activity_overlay_test.dart` 改成
+  先进「库与扫描」再点扫描。
+
+### 2.4 关键决策留痕（不要推翻）
 
 | # | 决策 | 理由 |
 |---|---|---|
@@ -137,9 +163,25 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 
 ### 3.1 工作区状态（**已提交并 push**）
 
-分支 `main`，1.99.57 已提交并推送到 `origin/main`，未提交改动为零。
+分支 `main`，1.99.58 已提交并推送到 `origin/main`，未提交改动为零。
 
-下面这份清单是当时提交进去的 14 改 + 5 新增（留档用）：
+1.99.57 那次的清单留档（14 改 + 5 新增）；1.99.58 的改动见下一条目：
+
+```
+1.99.58（设置页抽屉化 + 死设置清账）：
+  hiko/pubspec.yaml                        （1.99.57+170 → 1.99.58+171）
+  hiko/lib/data/settings_store.dart        （−59 行：5 个死字段）
+  hiko/lib/ui/screens/fullscreen_player_screen.dart（删 setPlayMode 调用）
+  hiko/lib/ui/widgets/settings_dialog.dart （索引页 + 抽屉路由 + 缓存明细页）
+  hiko/test/data/settings_store_test.dart  （删死字段断言）
+  hiko/test/ui/fullscreen_player_style_test.dart（注释）
+  hiko/test/ui/settings_layout_test.dart   （重写）
+  hiko/test/ui/activity_overlay_test.dart  （先点「库与扫描」）
+  hiko/test/ui/settings_navigation_test.dart（新增 6 条）
+  .zcode/plans/…                           （plan / 设置计划书 / 两份交接 / 工作日志）
+```
+
+1.99.57 的清单（留档用）：
 
 ```
 修改 14 个（13 个 hiko 文件 + 1 个工作日志）：
@@ -168,18 +210,20 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 已跟踪文件净变化：**+72 / −174 行**（这一版是纯减法），另有 5 个新文件共 410 行
 （两个组件 156 行 + 三个测试 254 行）。
 
-### 3.2 验证状态
+### 3.2 验证状态（以 1.99.58 为准）
 
 | 项 | 结果 | 说明 |
 |---|---|---|
 | `flutter analyze` | **42 issues / 0 error** | 与基线一致，未新增。含 `unused_import` 之类历史告警 42 条，属已知 |
-| 定向测试 | 26/26 通过 | 7 个受影响文件单独跑过 |
-| `flutter test`（全量） | **928 passed / 2 skipped** | 917 基线 + 11 条新用例；§4.1 两条已修（`pump(3400ms)` 收掉 toast 计时器） |
-| 双端构建 | **已跑** | macOS `Hiko.app` 76.6 MB（Info.plist 1.99.57 / 170）；APK 70.3 MB |
-| APK 后签 | **已签并核验** | `apksigner verify --min-sdk-version 21`：v1/v2/v3 全 true；`META-INF/HIKO.SF` 在；`aapt2` versionCode=170 / versionName=1.99.57 |
-| Release | **已发布** | `v1.99.57`，资产字节数与本地逐一致（zip 34,125,566 / apk 70,300,315） |
+| 定向测试 | 20/20 通过 | `settings_layout_test`（14）+ `settings_navigation_test`（6）+ `activity_overlay_test`（5） |
+| `flutter test`（全量） | **942 passed / 2 skipped** | 1.99.57 的 928 + 新增 20 条 − 删掉的死字段用例 6 条 |
+| 双端构建 | **已跑** | macOS `Hiko.app` 76.6 MB（Info.plist 1.99.58 / 171）；APK 70.3 MB |
+| APK 后签 | **已签并核验** | `apksigner verify --min-sdk-version 21`：v1/v2/v3 全 true；`META-INF/HIKO.SF` 在；`aapt2` versionCode=171 / versionName=1.99.58 |
+| Release | **已发布** | `v1.99.58`，资产字节数与本地逐一致（zip 34,122,810 / apk 70,300,315） |
 
-### 3.3 这一版收尾清单（**全部完成**）
+> 1.99.57 的留档：`928 passed / 2 skipped`、analyze 42/0、zip 34,125,566 / apk 70,300,315。
+
+### 3.3 1.99.57 收尾清单（留档，全部完成）
 
 1. ✅ 修掉 §4.1 的两条测试 → 全量复跑 **928 passed / 2 skipped**。
 2. ✅ `flutter build macos --release` + `flutter build apk --release`。
@@ -268,7 +312,17 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 > 裸 `IconButton`、Material 按钮、`DropdownButton`、裸 `Switch/Checkbox` **全部为 0**，
 > `HikoColors` 只剩 3 处注释。剩下的都是**具体控件缺位**，不再有「成片旧样式」。
 
-### P0（1.99.57，**已完成并发布**）
+### P0（1.99.58，**已完成并发布**）
+
+- ✅ 设置页抽屉化：索引页 4 组 8 格 + 七个子页（`settings_dialog.dart` 1615 → 1680 行）
+- ✅ 死设置清账：5 个字段（`fullscreenPlayerStyle` / `backgroundBlur` / `backgroundOpacity` /
+  `sidebarShown` / `playMode`）连同 setter / 归一 / 持久化键 / 测试断言一并删除
+- ✅ 重复入口收敛：在线外观 6 行并入在线页 Aa 对话框；在线缓存明细独立成「缓存明细」子页；
+  「重置音频输出」删除
+- ✅ 测试：942 passed / 2 skipped，analyze 42/0
+
+### P0（1.99.57，留档）
+
 
 - ✅ 提示层归一（8 处 `showSnackBar` → `showHikoToast`）
 - ✅ 进度条归一（8 处 `LinearProgressIndicator` + 1 个自绘 `_ProgressBar`（2 个调用点）
@@ -411,7 +465,7 @@ fix(m3e): …
 docs(plan): …
 ```
 
-提交正文写「改了什么 + 为什么」，**验证结果写一行**（`928 passed / 2 skipped，analyze 42 条 / 0 error`）+ `版本：1.99.xx+N`。
+提交正文写「改了什么 + 为什么」，**验证结果写一行**（`942 passed / 2 skipped，analyze 42 条 / 0 error`）+ `版本：1.99.xx+N`。
 
 ### 6.5 环境事实（本机）
 
@@ -439,7 +493,11 @@ docs(plan): …
 
 ## 7. 接手建议（一句话版）
 
-1.99.57 已发版（928 passed / 2 skipped，analyze 42 条 / 0 error），工作区干净。
+1.99.58 已发版（942 passed / 2 skipped，analyze 42 条 / 0 error），工作区干净。
 下一版回 **§5 的 P1 表**挑一项：输入框收口（`M3ETextField`，11 处 `TextField(`）、
 菜单收口（`PopupMenuButton` 5 + `MenuAnchor` 1 → `M3EMenu`）、或小件（加载指示器 + 分隔线）。
 **挑之前先问用户做哪一项**；定了之后按 §6.2/§6.3 的封包流程走，硬规则见 §6.4。
+
+另：设置页改造遗留两条可选尾巴——① 计划书 §7 第 2 步「拆文件到 `lib/ui/settings/`」没做
+（理由见 `plan-hiko-settings-2026-10-29.md` §13）；② Q5 的 B 方案「桌面左索引 + 右内容双栏」
+留着，用户没选，要做得先问。

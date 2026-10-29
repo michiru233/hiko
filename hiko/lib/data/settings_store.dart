@@ -29,11 +29,9 @@ class AppSettings {
   final String contrast;
   final double volume; // 0.0 - 1.0
   final double audioGain; // 1.0 - 4.0（音频增益倍率，默认 1.0 即 100% 不放大，最高 4.0x，经 af 链软限幅防破音）
-  final String playMode; // list / single / shuffle / album
   final double playbackRate; // 播放倍速 0.5 - 2.0,步进 0.1,默认 1.0
   final String albumSort; // 专辑排序方式，默认 artist_asc
   final double seekStepSeconds; // 快进/快退步长（秒），白名单 3/5/10/30，默认 3
-  final bool sidebarShown;
   final bool showScrapedTags; // 主界面卡片显示 DLsite 刮削标签，默认关闭（1.43）
   /// 在线卡片显示标签行，默认开启（1.94.0）。
   ///
@@ -48,8 +46,6 @@ class AppSettings {
   final String scrapeProxy;
   final List<String> musicFolders; // 常驻音乐目录（桌面：路径；Android：SAF tree URI）
   final String backgroundPath; // 自定义背景图（已复制进应用数据目录的绝对路径，空=未启用，1.84）
-  final double backgroundBlur; // 背景图模糊度 0-30px，默认 12
-  final double backgroundOpacity; // 背景图不透明度 0-1（叠在主题底色上），默认 0.65
   final String onlineServer; // 在线服务器地址（Kikoeru 兼容，默认 asmr.one 官方实例，1.90）
   final double onlineCacheLimitGb; // 在线音频缓存上限（GB，0 = 不缓存，1.90）
 
@@ -75,10 +71,6 @@ class AppSettings {
   /// **绝对值、不乘详情倍率**（否则详情滑杆一动它就跟着动，独立没有意义）；
   /// 仍随全局 `fontScale` 缩放（那是系统级可访问性，不该被这里绕开）。
   final double onlineTrackTitleFontSize;
-
-  /// 全屏播放页样式（1.100.0）：`vinyl` 黑胶旋转（默认）/ `simple` 简约方封面。
-  /// 只决定中央封面区的形态，曲目信息 / 进度 / 控制键两套共用。
-  final String fullscreenPlayerStyle;
 
   /// 在线列表**每页条数**（1.97.0 起持久化）。
   ///
@@ -115,11 +107,9 @@ class AppSettings {
     this.contrast = 'standard',
     this.volume = 0.8,
     this.audioGain = 1.0,
-    this.playMode = 'list',
     this.playbackRate = 1.0,
     this.albumSort = 'artist_asc',
     this.seekStepSeconds = 3,
-    this.sidebarShown = true,
     this.showScrapedTags = false,
     this.showOnlineTags = true,
     this.gridColumns = 0,
@@ -129,8 +119,6 @@ class AppSettings {
     this.scrapeProxy = '',
     this.musicFolders = const [],
     this.backgroundPath = '',
-    this.backgroundBlur = 12,
-    this.backgroundOpacity = 0.65,
     this.onlineServer = defaultOnlineServer,
     this.onlineCacheLimitGb = 5.0,
     this.tagFontSize = 11,
@@ -138,7 +126,6 @@ class AppSettings {
     this.onlineDetailTextScale = 1.0,
     this.onlineGridColumns = 0,
     this.onlineTrackTitleFontSize = 12,
-    this.fullscreenPlayerStyle = 'vinyl',
     this.onlinePageSize = 20,
     this.blockedTags = const [],
     this.blockedCreators = const [],
@@ -196,11 +183,9 @@ class AppSettings {
     String? contrast,
     double? volume,
     double? audioGain,
-    String? playMode,
     double? playbackRate,
     String? albumSort,
     double? seekStepSeconds,
-    bool? sidebarShown,
     bool? showScrapedTags,
     bool? showOnlineTags,
     double? gridColumns,
@@ -210,8 +195,6 @@ class AppSettings {
     String? scrapeProxy,
     List<String>? musicFolders,
     String? backgroundPath,
-    double? backgroundBlur,
-    double? backgroundOpacity,
     String? onlineServer,
     double? onlineCacheLimitGb,
     double? tagFontSize,
@@ -219,7 +202,6 @@ class AppSettings {
     double? onlineDetailTextScale,
     double? onlineGridColumns,
     double? onlineTrackTitleFontSize,
-    String? fullscreenPlayerStyle,
     double? onlinePageSize,
     List<OnlineTag>? blockedTags,
     List<OnlineCreatorBlock>? blockedCreators,
@@ -233,11 +215,9 @@ class AppSettings {
         contrast: contrast ?? this.contrast,
         volume: volume ?? this.volume,
         audioGain: audioGain ?? this.audioGain,
-        playMode: playMode ?? this.playMode,
         playbackRate: playbackRate ?? this.playbackRate,
         albumSort: albumSort ?? this.albumSort,
         seekStepSeconds: seekStepSeconds ?? this.seekStepSeconds,
-        sidebarShown: sidebarShown ?? this.sidebarShown,
         showScrapedTags: showScrapedTags ?? this.showScrapedTags,
         showOnlineTags: showOnlineTags ?? this.showOnlineTags,
         gridColumns: gridColumns ?? this.gridColumns,
@@ -247,8 +227,6 @@ class AppSettings {
         scrapeProxy: scrapeProxy ?? this.scrapeProxy,
         musicFolders: musicFolders ?? this.musicFolders,
         backgroundPath: backgroundPath ?? this.backgroundPath,
-        backgroundBlur: backgroundBlur ?? this.backgroundBlur,
-        backgroundOpacity: backgroundOpacity ?? this.backgroundOpacity,
         onlineServer: onlineServer ?? this.onlineServer,
         onlineCacheLimitGb: onlineCacheLimitGb ?? this.onlineCacheLimitGb,
         tagFontSize: tagFontSize ?? this.tagFontSize,
@@ -258,8 +236,6 @@ class AppSettings {
         onlineGridColumns: onlineGridColumns ?? this.onlineGridColumns,
         onlineTrackTitleFontSize:
             onlineTrackTitleFontSize ?? this.onlineTrackTitleFontSize,
-        fullscreenPlayerStyle:
-            fullscreenPlayerStyle ?? this.fullscreenPlayerStyle,
         onlinePageSize: onlinePageSize ?? this.onlinePageSize,
         blockedTags: blockedTags ?? this.blockedTags,
         blockedCreators: blockedCreators ?? this.blockedCreators,
@@ -294,11 +270,9 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kAccent = 'hiko-accent';
   static const _kVolume = 'hiko-volume';
   static const _kAudioGain = 'hiko-audio-gain';
-  static const _kMode = 'hiko-mode';
   static const _kPlaybackRate = 'hiko-playback-rate';
   static const _kAlbumSort = 'hiko-album-sort';
   static const _kSeekStep = 'hiko-seek-step';
-  static const _kSidebar = 'hiko-sidebar';
   static const _kShowScrapedTags = 'hiko-show-scraped-tags';
   static const _kShowOnlineTags = 'hiko-online-show-tags';
   static const _kGridColumns = 'hiko-grid-columns';
@@ -308,8 +282,6 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kProxy = 'hiko-scrape-proxy';
   static const _kMusicFolders = 'hiko-music-folders';
   static const _kBackgroundPath = 'hiko-background-path';
-  static const _kBackgroundBlur = 'hiko-background-blur';
-  static const _kBackgroundOpacity = 'hiko-background-opacity';
   static const _kOnlineServer = 'hiko-online-server';
   static const _kOnlineCacheLimit = 'hiko-online-cache-limit';
   static const _kTagFontSize = 'hiko-online-tag-font-size';
@@ -317,7 +289,6 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kOnlineDetailTextScale = 'hiko-online-detail-text-scale';
   static const _kOnlineGridColumns = 'hiko-online-grid-columns';
   static const _kOnlineTrackTitleFontSize = 'hiko-online-track-title-font-size';
-  static const _kFullscreenPlayerStyle = 'hiko-fullscreen-player-style';
   static const _kOnlinePageSize = 'hiko-online-page-size';
   static const _kBlockedTags = 'hiko-online-blocked-tags';
   static const _kBlockedCreators = 'hiko-online-blocked-creators';
@@ -444,12 +415,6 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static double _normalizeTrackTitleFontSize(double? val) => val == null
       ? trackTitleFontSizeDefault
       : val.clamp(trackTitleFontSizeMin, trackTitleFontSizeMax);
-
-  /// 全屏播放页样式白名单：vinyl（黑胶，默认）/ simple（简约方封面）
-  static const _validFullscreenPlayerStyles = {'vinyl', 'simple'};
-
-  static String _normalizeFullscreenPlayerStyle(String? val) =>
-      _validFullscreenPlayerStyles.contains(val) ? val! : 'vinyl';
 
   /// 每页条数档位（1.97.0 起落盘，设置页下拉）。白名单外的值回退 20。
   static const validOnlinePageSizes = [20.0, 60.0, 100.0];
@@ -616,11 +581,9 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       volume: (prefs.getDouble(_kVolume) ?? 0.8).clamp(0.0, 1.0),
       audioGain: (prefs.getDouble(_kAudioGain) ?? 1.0)
           .clamp(1.0, desktopGainCap()),
-      playMode: prefs.getString(_kMode) ?? 'list',
       playbackRate: (prefs.getDouble(_kPlaybackRate) ?? 1.0).clamp(0.5, 2.0),
       albumSort: _normalizeSort(prefs.getString(_kAlbumSort)),
       seekStepSeconds: _normalizeSeekStep(prefs.getDouble(_kSeekStep)),
-      sidebarShown: prefs.getBool(_kSidebar) ?? true,
       showScrapedTags: prefs.getBool(_kShowScrapedTags) ?? false,
       showOnlineTags: prefs.getBool(_kShowOnlineTags) ?? true,
       gridColumns: _normalizeGridColumns(prefs.getDouble(_kGridColumns)),
@@ -632,8 +595,6 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       musicFolders: prefs.getStringList(_kMusicFolders) ?? const [],
       // 背景图文件若已被系统清理/卸载残留则静默回退默认背景
       backgroundPath: await _existingBackground(prefs.getString(_kBackgroundPath) ?? ''),
-      backgroundBlur: (prefs.getDouble(_kBackgroundBlur) ?? 12).clamp(0.0, 30.0),
-      backgroundOpacity: (prefs.getDouble(_kBackgroundOpacity) ?? 0.65).clamp(0.0, 1.0),
       onlineServer: _normalizeOnlineServer(prefs.getString(_kOnlineServer)),
       onlineCacheLimitGb:
           _normalizeOnlineCacheLimit(prefs.getDouble(_kOnlineCacheLimit)),
@@ -646,8 +607,6 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
           _normalizeOnlineGridColumns(prefs.getDouble(_kOnlineGridColumns)),
       onlineTrackTitleFontSize: _normalizeTrackTitleFontSize(
           prefs.getDouble(_kOnlineTrackTitleFontSize)),
-      fullscreenPlayerStyle:
-          _normalizeFullscreenPlayerStyle(prefs.getString(_kFullscreenPlayerStyle)),
       onlinePageSize:
           _normalizeOnlinePageSize(prefs.getDouble(_kOnlinePageSize)),
       blockedTags: _decodeBlockedTags(prefs.getString(_kBlockedTags)),
@@ -667,8 +626,6 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   Future<void> setAudioGain(double gain) =>
       _save(_kAudioGain, gain.clamp(1.0, desktopGainCap()),
           state.copyWith(audioGain: gain.clamp(1.0, desktopGainCap())));
-  Future<void> setPlayMode(String mode) => _save(_kMode, mode, state.copyWith(playMode: mode));
-
   Future<void> setAlbumSort(String sort) {
     final validSort = _normalizeSort(sort);
     return _save(_kAlbumSort, validSort, state.copyWith(albumSort: validSort));
@@ -686,9 +643,6 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
         rate.clamp(0.5, 2.0),
         state.copyWith(playbackRate: rate.clamp(0.5, 2.0)),
       );
-  Future<void> setSidebarShown(bool shown) =>
-      _save(_kSidebar, shown, state.copyWith(sidebarShown: shown));
-
   /// 主界面卡片是否显示刮削标签（1.43）
   Future<void> setShowScrapedTags(bool show) =>
       _save(_kShowScrapedTags, show, state.copyWith(showScrapedTags: show));
@@ -769,13 +723,6 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     final valid = _normalizeTrackTitleFontSize(size);
     return _save(_kOnlineTrackTitleFontSize, valid,
         state.copyWith(onlineTrackTitleFontSize: valid));
-  }
-
-  /// 全屏播放页样式：vinyl / simple，非法值回退黑胶（1.100.0）
-  Future<void> setFullscreenPlayerStyle(String style) {
-    final valid = _normalizeFullscreenPlayerStyle(style);
-    return _save(_kFullscreenPlayerStyle, valid,
-        state.copyWith(fullscreenPlayerStyle: valid));
   }
 
   /// 在线每页条数（1.97.0 起落盘）
@@ -877,12 +824,6 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
 
   Future<void> setBackgroundImage(String path) =>
       _save(_kBackgroundPath, path, state.copyWith(backgroundPath: path));
-  Future<void> setBackgroundBlur(double blur) =>
-      _save(_kBackgroundBlur, blur.clamp(0.0, 30.0),
-          state.copyWith(backgroundBlur: blur.clamp(0.0, 30.0)));
-  Future<void> setBackgroundOpacity(double opacity) =>
-      _save(_kBackgroundOpacity, opacity.clamp(0.0, 1.0),
-          state.copyWith(backgroundOpacity: opacity.clamp(0.0, 1.0)));
 
   /// 添加音乐目录（去重）并持久化
   Future<void> addMusicFolder(String path) {

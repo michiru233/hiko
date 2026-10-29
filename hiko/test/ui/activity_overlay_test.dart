@@ -105,16 +105,14 @@ void main() {
     await tester.tap(find.text('打开设置'));
     await tester.pumpAndSettle();
     expect(find.byType(SettingsPage), findsOneWidget);
-    // 1.99.32 设置壳重做：5 组单页，「库与扫描」组在长页深处；
-    // ListView 懒构建，离屏行没有 element——从列表中部固定点拖动滚动，直到行被构建
-    var rescan0 = find.text('全量扫描');
-    for (var i = 0; i < 20 && rescan0.evaluate().isEmpty; i++) {
-      await tester.dragFrom(
-        tester.getCenter(find.byType(ListView)),
-        const Offset(0, -300),
-      );
-      await tester.pumpAndSettle();
-    }
+    // 1.99.58 抽屉化：扫描按钮收进「库与扫描」子页；小窗口下这一格可能在视口外
+    final libraryTile = find.text('库与扫描');
+    await tester.scrollUntilVisible(
+      libraryTile,
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(libraryTile);
     await tester.pumpAndSettle();
     // 1.99.11：入口拆为「增量扫描/全量扫描」两按钮，两个都要在
     expect(find.text('增量扫描'), findsOneWidget);

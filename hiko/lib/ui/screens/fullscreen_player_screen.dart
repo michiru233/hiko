@@ -836,8 +836,9 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
       selected: isSelected,
       onPressed: () async {
         HapticFeedback.selectionClick();
+        // 1.99.58：原来的 `setPlayMode(mode.key)` 只是往 AppSettings 写一个
+        // **没有任何读取方**的字段（退出重进不会恢复），随死设置一并删除。
         await ref.read(playbackProvider.notifier).setMode(mode);
-        await ref.read(settingsProvider.notifier).setPlayMode(mode.key);
       },
     );
   }

@@ -64,6 +64,9 @@ class SettingsPage extends ConsumerStatefulWidget {
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   double? _gainDrag; // 增益滑动条拖动中的临时值（松手才提交）
 
+  /// 当前子页 id（1.99.58 抽屉化）：null = 索引页，其余见 [_routeTitle]。
+  String? _route;
+
   // ---- 软件更新状态 ----
   String? _appVersion; // PackageInfo 异步加载
   bool _updateChecking = false;
@@ -74,6 +77,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     super.initState();
     _loadVersion();
     if (widget.autoCheckUpdate) {
+      // 菜单栏「检查更新」跳进来时直接落在「关于」页：抽屉化之后结果卡片
+      // 不再能顺手滑到，必须直达（1.99.58）。
+      _route = 'about';
       WidgetsBinding.instance.addPostFrameCallback((_) => _checkUpdate());
     }
   }
@@ -229,72 +235,201 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
-    return Scaffold(
+    final route = _route;
+    final content = Scaffold(
       // 1.99.33：macOS 红绿灯内缩
       body: Padding(
         padding: EdgeInsets.only(top: windowTopInset(context)),
         child: Column(
-        children: [
-          M3EAppBar.small(
-            leading: M3EIconButton(
-              icon: Icons.arrow_back_rounded,
-              tooltip: '返回',
-              onPressed: () => Navigator.of(context).pop(),
+          children: [
+            M3EAppBar.small(
+              leading: M3EIconButton(
+                icon: Icons.arrow_back_rounded,
+                tooltip: route == null ? '返回' : '返回设置',
+                onPressed: () {
+                  if (route == null) {
+                    Navigator.of(context).pop();
+                  } else {
+                    setState(() => _route = null);
+                  }
+                },
+              ),
+              title: Text(route == null ? '设置' : _routeTitle(route)),
+              actions: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: M3EButton(
+                    label: '关闭',
+                    variant: M3EButtonVariant.text,
+                    size: M3EButtonSize.small,
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ),
+              ],
             ),
-            title: const Text('设置'),
-            actions: [
-              Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: M3EButton(
-                  label: '关闭',
-                  variant: M3EButtonVariant.text,
-                  size: M3EButtonSize.small,
-                  onPressed: () => Navigator.of(context).pop(),
+            Expanded(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(24, 4, 24, 32),
+                    children: route == null
+                        ? _indexPage(settings)
+                        : _routeChildren(route, settings),
+                  ),
                 ),
               ),
-            ],
-          ),
-          Expanded(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 720),
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(24, 4, 24, 32),
-                  children: _sections(settings),
-                ),
-              ),
             ),
+          ],
+        ),
+      ),
+    );
+    // 安卓返回键：在子页先退回索引页，只在索引页才真的退出设置（1.99.58）
+    return PopScope(
+      canPop: route == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        setState(() => _route = null);
+      },
+      child: content,
+    );
+  }
+
+  // ---- 索引页（1.99.58 抽屉化）----
+
+  /// 索引页：4 组 7 个入口 + 1 个直达动作。
+  ///
+  /// 1.99.32 那版把 9 个二级页摊成一条 55 行的长列表，滑到底才知道有什么；
+  /// 这里改回两层 —— 索引页只回答「去哪」，每格带一句范围说明。
+  /// 「在线外观」不设独立子页：直接开在线页工具栏那颗 Aa 的同一个对话框
+  /// （`showOnlineAppearanceDialog`），同一份设置不维护第二套 UI。
+  List<Widget> _indexPage(AppSettings settings) {
+    final theme = Theme.of(context);
+    return [
+      _sectionHeader(theme, '通用', first: true),
+      _indexTile(
+        icon: Icons.palette_outlined,
+        title: '外观与显示',
+        subtitle: '主题 · 配色来源 · 强调色 · 对比度 · 动效 · 字号',
+        onTap: () => _open('appearance'),
+      ),
+      _indexTile(
+        icon: Icons.graphic_eq_rounded,
+        title: '播放与音频',
+        subtitle: '默认增益 · 快进/快退秒数',
+        onTap: () => _open('audio'),
+      ),
+      _indexTile(
+        icon: Icons.dashboard_outlined,
+        title: '主界面',
+        subtitle: '每行专辑数 · 刮削标签 · 导航栏配置',
+        onTap: () => _open('home'),
+      ),
+      _sectionHeader(theme, '在线'),
+      _indexTile(
+        icon: Icons.account_circle_outlined,
+        title: '在线账号',
+        subtitle: '登录 · 歌单同步 · 服务器 · 缓存',
+        onTap: () => _open('online'),
+      ),
+      _indexTile(
+        icon: Icons.text_fields_rounded,
+        title: '在线外观',
+        subtitle: '字号滑杆 · 每行卡片数 · 每页条数',
+        onTap: () => showOnlineAppearanceDialog(context),
+      ),
+      _sectionHeader(theme, '库'),
+      _indexTile(
+        icon: Icons.folder_copy_outlined,
+        title: '库与扫描',
+        subtitle: '音乐目录 · 增量扫描 · 全量扫描',
+        onTap: () => _open('library'),
+      ),
+      _indexTile(
+        icon: Icons.storage_rounded,
+        title: '数据与维护',
+        subtitle: '导入 · 整理 · 清理 · 备份 · 重置 · 代理',
+        onTap: () => _open('data'),
+      ),
+      _sectionHeader(theme, '关于'),
+      _indexTile(
+        icon: Icons.info_outline_rounded,
+        title: '关于',
+        subtitle: '版本 · 软件更新',
+        onTap: () => _open('about'),
+      ),
+    ];
+  }
+
+  void _open(String route) => setState(() => _route = route);
+
+  String _routeTitle(String route) => switch (route) {
+        'appearance' => '外观与显示',
+        'audio' => '播放与音频',
+        'home' => '主界面',
+        'nav' => '导航栏',
+        'online' => '在线账号',
+        'cache' => '缓存明细',
+        'library' => '库与扫描',
+        'data' => '数据与维护',
+        'about' => '关于',
+        _ => '设置',
+      };
+
+  /// 子页内容：只换行、不换内容 —— 每页仍是原 `_xxPage` 的那些行。
+  List<Widget> _routeChildren(String route, AppSettings settings) {
+    final theme = Theme.of(context);
+    return switch (route) {
+      'appearance' => _appearancePage(theme, settings),
+      'audio' => _audioPage(theme, settings),
+      'home' => _homePage(theme, settings),
+      'nav' => _navPage(theme, settings),
+      'online' => _onlineAccountPage(theme, settings),
+      'cache' => _cachePage(theme, settings),
+      'library' => _foldersPage(theme, settings),
+      'data' => _dataPage(theme, settings),
+      'about' => _aboutPage(theme, settings),
+      _ => _indexPage(settings),
+    };
+  }
+
+  /// 索引页的一格：72dp 双行 + 图标底 + 右侧箭头（排版交给 M3EListItem）。
+  Widget _indexTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerLow,
+          borderRadius: M3EShape.radius(M3EShape.md),
+        ),
+        child: M3EListItem(
+          title: title,
+          subtitle: subtitle,
+          leading: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: colors.primaryContainer.withValues(alpha: 0.35),
+              borderRadius: M3EShape.radius(M3EShape.sm),
+            ),
+            child: Icon(icon, size: 20, color: colors.primary),
           ),
-        ],
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: onTap,
         ),
       ),
     );
   }
 
-  /// 5 组结构（plan §8.7）：外观 / 播放 / 库与扫描 / 在线 / 关于。
-  /// 原 9 个二级页的内容行全部保留，只按域归组。
-  List<Widget> _sections(AppSettings settings) {
-    final theme = Theme.of(context);
-    return [
-      _sectionHeader(theme, '外观'),
-      ..._appearancePage(theme, settings),
-      _sectionHeader(theme, '播放'),
-      ..._audioPage(theme, settings),
-      _sectionHeader(theme, '库与扫描'),
-      ..._homePage(theme, settings),
-      ..._navPage(theme, settings),
-      ..._foldersPage(theme, settings),
-      ..._dataPage(theme, settings),
-      _sectionHeader(theme, '在线'),
-      ..._onlineAccountPage(theme, settings),
-      ..._onlineAppearancePage(theme, settings),
-      _sectionHeader(theme, '关于'),
-      ..._aboutPage(theme, settings),
-    ];
-  }
-
-  Widget _sectionHeader(ThemeData theme, String title) => Padding(
-        padding: const EdgeInsets.fromLTRB(0, 28, 0, 4),
+  Widget _sectionHeader(ThemeData theme, String title, {bool first = false}) =>
+      Padding(
+        padding: EdgeInsets.fromLTRB(0, first ? 4 : 24, 0, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -313,7 +448,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ],
         ),
       );
-
 
   // ---- 外观 ----
 
@@ -530,23 +664,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             );
           }),
         ),
-        _SettingRow(
-          label: '重置音频输出',
-          trailing: M3EButton(
-            label: '立即重接',
-            variant: M3EButtonVariant.text,
-            size: M3EButtonSize.small,
-            icon: const Icon(Icons.restart_alt),
-            onPressed: () async {
-              await ref.read(playbackProvider.notifier).resetAudioOutput();
-              if (mounted) _toast('已重接音频输出（audio-device=auto）');
-            },
-          ),
-        ),
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Text(
-            '蓝牙耳机断连/切换后若出现「进度在走但没声音」，点此把音频输出重接回当前可用设备；播放中检测到输出异常时也会自动重接。',
+            '蓝牙耳机断连/切换后若出现「进度在走但没声音」，播放器检测到输出异常时会自动重接'
+            '（1.99.58 起不再提供手动「立即重接」按钮）。',
             style: context.hintText,
           ),
         ),
@@ -740,90 +862,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             style: context.hintText,
           ),
         ),
+        const SizedBox(height: 8),
+        _indexTile(
+          icon: Icons.view_sidebar_outlined,
+          title: '导航栏',
+          subtitle: '拖动排序 · 隐藏不需要的入口',
+          onTap: () => _open('nav'),
+        ),
       ];
-
-  // ---- 在线外观（1.96.0；1.97.0 起字号改滑杆）----
-
-  /// 在线外观页：四组字号滑杆 + 网格列数 + 每页条数。
-  ///
-  /// 与在线页工具栏的「Aa」对话框共用同一批范围常量与滑杆组件
-  /// （`online_appearance.dart` 的 `OnlineFontSliderRow`），两条路径写的是
-  /// 同一份设置，不存在同步问题。1.97.0 裁决 Q2：字号从档位下拉改无极滑杆；
-  /// 列数与每页条数保持下拉（都是离散档位）。
-  List<Widget> _onlineAppearancePage(ThemeData theme, AppSettings settings) {
-    final notifier = ref.read(settingsProvider.notifier);
-    return [
-      OnlineFontSliderRow(
-        title: '标签胶囊字号',
-        hint: '全局生效：本地卡面、本地详情、在线卡面与详情一起变',
-        value: settings.tagFontSize,
-        min: SettingsNotifier.tagFontSizeMin,
-        max: SettingsNotifier.tagFontSizeMax,
-        defaultValue: SettingsNotifier.tagFontSizeDefault,
-        format: (v) => '${v.toStringAsFixed(1)} pt',
-        onChanged: notifier.setTagFontSize,
-      ),
-      OnlineFontSliderRow(
-        title: '在线卡片文字',
-        hint: '列表里卡片的标题与副标题；卡片高度会跟着变',
-        value: settings.onlineCardTextScale,
-        min: SettingsNotifier.onlineTextScaleMin,
-        max: SettingsNotifier.onlineTextScaleMax,
-        defaultValue: SettingsNotifier.onlineTextScaleDefault,
-        format: (v) => '${v.toStringAsFixed(2)}×',
-        onChanged: notifier.setOnlineCardTextScale,
-      ),
-      OnlineFontSliderRow(
-        title: '在线详情文字',
-        hint: '详情面板内的全部文字（标题 · 信息行 · 目录 · 曲目）',
-        value: settings.onlineDetailTextScale,
-        min: SettingsNotifier.onlineTextScaleMin,
-        max: SettingsNotifier.onlineTextScaleMax,
-        defaultValue: SettingsNotifier.onlineTextScaleDefault,
-        format: (v) => '${v.toStringAsFixed(2)}×',
-        onChanged: notifier.setOnlineDetailTextScale,
-      ),
-      OnlineFontSliderRow(
-        title: '曲目标题字号',
-        hint: '在线详情页里每首音频的标题基准字号；最终再乘「详情文字」倍率',
-        value: settings.onlineTrackTitleFontSize,
-        min: SettingsNotifier.trackTitleFontSizeMin,
-        max: SettingsNotifier.trackTitleFontSizeMax,
-        defaultValue: SettingsNotifier.trackTitleFontSizeDefault,
-        format: (v) => '${v.toStringAsFixed(1)} pt',
-        onChanged: notifier.setOnlineTrackTitleFontSize,
-      ),
-      _SettingRow(
-        label: '每行卡片数',
-        subtitle: '桌面与移动端共用；「自动」按窗口宽度计算',
-        trailing: _SettingDropdown<double>(
-          value: settings.onlineGridColumns,
-          items: onlineGridColumnsChoices,
-          onChanged: notifier.setOnlineGridColumns,
-        ),
-      ),
-      _SettingRow(
-        label: '每页条数',
-        subtitle: '在线列表一次加载的作品数；选择会记住，重启后仍生效',
-        trailing: _SettingDropdown<double>(
-          value: settings.onlinePageSize,
-          items: [
-            for (final size in OnlineBrowseNotifier.pageSizeOptions)
-              (size.toDouble(), '每页 $size 条'),
-          ],
-          onChanged: notifier.setOnlinePageSize,
-        ),
-      ),
-      Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Text(
-          '这几组缩放都叠在「外观 → 字号」之上：最终字号 = 元素基准字号 × '
-          '这里的倍率 × 全局字号。想整体放大用全局字号，只想放大在线内容才用这里。',
-          style: context.hintText,
-        ),
-      ),
-    ];
-  }
 
   // ---- 在线账号（1.93.0）----
 
@@ -1032,121 +1078,140 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ref.read(settingsProvider.notifier).setOnlineCacheLimit(v),
         ),
       ),
-      _SettingRow(
-        label: '在线缓存占用',
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            FutureBuilder<int>(
-              future: ref.read(onlineAudioCacheProvider).totalBytes(),
-              builder: (context, snap) {
-                final bytes = snap.data;
-                return Text(
-                  bytes == null ? '统计中…' : _formatBytes(bytes),
-                  style: context.hintText,
-                );
-              },
-            ),
-            const SizedBox(width: 8),
-            M3EButton(
-              label: '清理',
-              variant: M3EButtonVariant.outlined,
-              size: M3EButtonSize.small,
-              onPressed: () async {
-                await ref.read(onlineAudioCacheProvider).clear();
-                if (mounted) setState(() {});
-                _toast('在线缓存已清空');
-              },
-            ),
-          ],
-        ),
-      ),
-      // 按作品清理（1.99.3）：LRU 静默淘汰用户无感，列出「谁占了多少」
-      // 并允许单独删除。RJ 段 id 展示成 RJ 号便于对上作品；
-      // 1000000xx 段是 BJ/VJ 等非 RJ 作品，退回 #id 展示。
-      FutureBuilder<Map<int, int>>(
-        future: ref.read(onlineAudioCacheProvider).bytesByWork(),
-        builder: (context, snap) {
-          final entries = (snap.data ?? const <int, int>{}).entries.toList()
-            ..sort((a, b) => b.value.compareTo(a.value));
-          if (entries.isEmpty) return const SizedBox.shrink();
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Text(
-                    '按作品清理',
-                    style: context.hintText,
-                  ),
-                ),
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 200),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: theme.dividerColor),
-                    borderRadius: M3EShape.radius(M3EShape.sm),
-                  ),
-                  child: ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: entries.length,
-                    itemBuilder: (context, index) {
-                      final entry = entries[index];
-                      final id = entry.key;
-                      final label =
-                          (id >= 10000000 && id < 100000000)
-                              ? 'RJ${id.toString().padLeft(8, '0')}'
-                              : '#$id';
-                      return ListTile(
-                        dense: true,
-                        visualDensity: VisualDensity.compact,
-                        title: Text(label,
-                            style: context.m3eTheme.type.bodyMedium),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _formatBytes(entry.value),
-                              style: context.hintText,
-                            ),
-                            M3EIconButton(
-                              tooltip: '清理该作品缓存',
-                              icon: Icons.close_rounded,
-                              size: M3EIconButtonSize.small,
-                              onPressed: () async {
-                                await ref
-                                    .read(onlineAudioCacheProvider)
-                                    .removeWork(id);
-                                // 该作品若已离线，同步移除离线索引（1.99.16 一致性）
-                                await ref
-                                    .read(offlineIndexListProvider.notifier)
-                                    .remove(id);
-                                if (mounted) setState(() {});
-                                _toast('已清理 $label 的缓存');
-                              },
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          );
-        },
+      _indexTile(
+        icon: Icons.cleaning_services_outlined,
+        title: '缓存明细',
+        subtitle: '占用统计 · 按作品清理',
+        onTap: () => _open('cache'),
       ),
       Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Text(
-          '在线播放在超过 20 秒后才开始后台缓存整首音频到本地（避免点开即退白耗流量），'
-          '超出上限时按最久未播放淘汰。缓存独立存放，不写入本地音声库。',
+          '在线播放在超过 20 秒后才开始后台缓存整首音频到本地，超出上限按最久未播放淘汰；'
+          '占用统计与按作品清理在「缓存明细」里。',
           style: context.hintText,
         ),
       ),
     ];
   }
+
+  /// 缓存明细（1.99.58）：原来塞在「在线账号」页里的两块统计挪出来单独成页 ——
+  /// 日常调设置不看它，真要清缓存的时候才进来。
+  List<Widget> _cachePage(ThemeData theme, AppSettings settings) => [
+        _SettingRow(
+          label: '在线缓存占用',
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FutureBuilder<int>(
+                future: ref.read(onlineAudioCacheProvider).totalBytes(),
+                builder: (context, snap) {
+                  final bytes = snap.data;
+                  return Text(
+                    bytes == null ? '统计中…' : _formatBytes(bytes),
+                    style: context.hintText,
+                  );
+                },
+              ),
+              const SizedBox(width: 8),
+              M3EButton(
+                label: '清理',
+                variant: M3EButtonVariant.outlined,
+                size: M3EButtonSize.small,
+                onPressed: () async {
+                  await ref.read(onlineAudioCacheProvider).clear();
+                  if (mounted) setState(() {});
+                  _toast('在线缓存已清空');
+                },
+              ),
+            ],
+          ),
+        ),
+        // 按作品清理（1.99.3）：LRU 静默淘汰用户无感，列出「谁占了多少」
+        // 并允许单独删除。RJ 段 id 展示成 RJ 号便于对上作品；
+        // 1000000xx 段是 BJ/VJ 等非 RJ 作品，退回 #id 展示。
+        FutureBuilder<Map<int, int>>(
+          future: ref.read(onlineAudioCacheProvider).bytesByWork(),
+          builder: (context, snap) {
+            final entries = (snap.data ?? const <int, int>{}).entries.toList()
+              ..sort((a, b) => b.value.compareTo(a.value));
+            if (entries.isEmpty) return const SizedBox.shrink();
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      '按作品清理',
+                      style: context.hintText,
+                    ),
+                  ),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 200),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: theme.dividerColor),
+                      borderRadius: M3EShape.radius(M3EShape.sm),
+                    ),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: entries.length,
+                      itemBuilder: (context, index) {
+                        final entry = entries[index];
+                        final id = entry.key;
+                        final label =
+                            (id >= 10000000 && id < 100000000)
+                                ? 'RJ${id.toString().padLeft(8, '0')}'
+                                : '#$id';
+                        return ListTile(
+                          dense: true,
+                          visualDensity: VisualDensity.compact,
+                          title: Text(label,
+                              style: context.m3eTheme.type.bodyMedium),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _formatBytes(entry.value),
+                                style: context.hintText,
+                              ),
+                              M3EIconButton(
+                                tooltip: '清理该作品缓存',
+                                icon: Icons.close_rounded,
+                                size: M3EIconButtonSize.small,
+                                onPressed: () async {
+                                  await ref
+                                      .read(onlineAudioCacheProvider)
+                                      .removeWork(id);
+                                  // 该作品若已离线，同步移除离线索引（1.99.16 一致性）
+                                  await ref
+                                      .read(offlineIndexListProvider.notifier)
+                                      .remove(id);
+                                  if (mounted) setState(() {});
+                                  _toast('已清理 $label 的缓存');
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            '在线播放在超过 20 秒后才开始后台缓存整首音频到本地（避免点开即退白耗流量），'
+            '超出上限时按最久未播放淘汰。缓存独立存放，不写入本地音声库。',
+            style: context.hintText,
+          ),
+        ),
+      ];
 
   // ---- 数据 ----
 
