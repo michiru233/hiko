@@ -1,0 +1,131 @@
+<!doctype html><meta charset="utf-8">
+<style>
+  :root{
+    --surface:#141218; --low:#1D1B20; --high:#2B2930; --highest:#36343B;
+    --on:#E6E0E9; --onvar:#CAC4D0; --outline:#49454F; --accent:#86D8C6; --accentDark:#0E1513;
+  }
+  *{box-sizing:border-box; -webkit-font-smoothing:antialiased}
+  body{margin:0;background:#0A090C;font-family:"SF Pro Text","Helvetica Neue",system-ui,sans-serif;color:var(--on);padding:22px}
+  .row{margin-bottom:20px}
+  .cap{font-size:12px;letter-spacing:.08em;color:#8C8798;margin:0 0 6px 2px;text-transform:uppercase}
+  .cap b{color:var(--on);letter-spacing:0;text-transform:none;font-size:13px}
+  .win{width:1400px;height:300px;background:var(--surface);border-radius:12px;overflow:hidden;
+       box-shadow:0 0 0 1px #2A2830, 0 18px 40px rgba(0,0,0,.55);display:flex;flex-direction:column;position:relative}
+  .body{flex:1;background:var(--surface);padding:18px 20px;display:flex;gap:10px;align-items:flex-start}
+  .ghost{height:11px;border-radius:6px;background:#242229}
+  .ghost.w1{width:180px}.ghost.w2{width:120px}.ghost.w3{width:88px}
+  .grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;width:100%}
+  .tile{height:96px;border-radius:10px;background:#1E1C22}
+  .dock{padding:0 16px 16px}
+  .bar{height:64px;border-radius:32px;background:var(--high);padding:0 20px;display:flex;align-items:center;gap:14px;
+       box-shadow:0 6px 18px rgba(0,0,0,.45);position:relative;overflow:hidden}
+  .bar.wide{ width:100% }
+  .cover{width:40px;height:40px;border-radius:8px;background:#3A383F;flex:none}
+  .meta{min-width:0;flex:1}
+  .t1{font-size:13px;font-weight:600;line-height:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .t2{font-size:11px;color:var(--onvar);line-height:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ctrl{display:flex;align-items:center;gap:10px;flex:none}
+  .ic{width:24px;height:24px;display:grid;place-items:center;opacity:.75}
+  .play{width:36px;height:36px;border-radius:50%;background:var(--accent);color:var(--accentDark);display:grid;place-items:center}
+  .prog{position:absolute;left:0;right:0;bottom:0;height:2px;background:rgba(255,255,255,.16)}
+  .prog i{display:block;height:100%;width:0;background:var(--accent)}
+  .prog.now i{width:34%}
+  /* B: middle track */
+  .mid{flex:1;min-width:0;display:flex;align-items:center;gap:12px;padding:0 10px}
+  .tc{font-size:11px;color:var(--onvar);font-variant-numeric:tabular-nums;flex:none}
+  .line{flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.18);position:relative}
+  .line i{position:absolute;left:0;top:0;bottom:0;width:34%;border-radius:2px;background:var(--accent)}
+  .line b{position:absolute;left:34%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:var(--accent)}
+  /* C: queue */
+  .queue{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:2px;padding:0 12px;
+         border-left:1px solid #3E3B47}
+  .q-lab{font-size:10px;letter-spacing:.06em;color:#8C8798;text-transform:uppercase}
+  .q-val{font-size:12px;color:var(--onvar);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chip{flex:none;font-size:11px;color:var(--onvar);background:#3A3742;border-radius:999px;padding:4px 10px;font-variant-numeric:tabular-nums}
+  .center{display:flex;justify-content:center}
+</style>
+
+<div class="row">
+  <div class="cap"><b>现在</b> · 通栏 64dp，内容全挤在两端，中间约 2000px 空着</div>
+  <div class="win">
+    <div class="body"><div class="grid">
+      <div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div>
+    </div></div>
+    <div class="dock"><div class="bar wide">
+      <div class="cover"></div>
+      <div class="meta"><div class="t1">未在播放</div><div class="t2">&nbsp;</div></div>
+      <div class="ctrl">
+        <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="#CAC4D0"><path d="M6 5h2v14H6zM20 5v14l-11-7z"/></svg></div>
+        <div class="play"><svg width="16" height="16" viewBox="0 0 24 24" fill="#0E1513"><path d="M8 5v14l11-7z"/></svg></div>
+        <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="#CAC4D0"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></div>
+      </div>
+      <div class="prog now"><i></i></div>
+    </div></div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="cap"><b>方案 A · 居中胶囊</b> · 限宽 880 居中，两侧留白；只改两个数字，不动结构</div>
+  <div class="win">
+    <div class="body"><div class="grid">
+      <div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div>
+    </div></div>
+    <div class="dock center"><div class="bar wide" style="max-width:880px">
+      <div class="cover"></div>
+      <div class="meta"><div class="t1">夜の図書館 · 03</div><div class="t2">あまね · 03_雨の音</div></div>
+      <div class="ctrl">
+        <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="#CAC4D0"><path d="M6 5h2v14H6zM20 5v14l-11-7z"/></svg></div>
+        <div class="play"><svg width="16" height="16" viewBox="0 0 24 24" fill="#0E1513"><path d="M8 5v14l11-7z"/></svg></div>
+        <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="#CAC4D0"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></div>
+      </div>
+      <div class="prog now"><i></i></div>
+    </div></div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="cap"><b>方案 B · 三段式</b> · 中间给可拖动的进度条 + 时间码，把空跑道变成正经播放器</div>
+  <div class="win">
+    <div class="body"><div class="grid">
+      <div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div>
+    </div></div>
+    <div class="dock"><div class="bar wide">
+      <div class="cover"></div>
+      <div class="meta" style="flex:none;width:220px"><div class="t1">夜の図書館 · 03</div><div class="t2">あまね · 03_雨の音</div></div>
+      <div class="mid">
+        <div class="tc">01:23</div>
+        <div class="line"><i></i><b></b></div>
+        <div class="tc">04:56</div>
+      </div>
+      <div class="ctrl">
+        <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="#CAC4D0"><path d="M6 5h2v14H6zM20 5v14l-11-7z"/></svg></div>
+        <div class="play"><svg width="16" height="16" viewBox="0 0 24 24" fill="#0E1513"><path d="M8 5v14l11-7z"/></svg></div>
+        <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="#CAC4D0"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></div>
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="cap"><b>方案 C · 队列预告</b> · 中间显示「下一首 / 队列位置」，不改交互，用信息填满</div>
+  <div class="win">
+    <div class="body"><div class="grid">
+      <div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div><div class="tile"></div>
+    </div></div>
+    <div class="dock"><div class="bar wide">
+      <div class="cover"></div>
+      <div class="meta" style="flex:none;width:220px"><div class="t1">夜の図書館 · 03</div><div class="t2">あまね · 03_雨の音</div></div>
+      <div class="queue">
+        <div class="q-lab">下一首</div>
+        <div class="q-val">04_遠くの汽笛 · あまね</div>
+      </div>
+      <div class="chip">队列 03 / 12</div>
+      <div class="ctrl">
+        <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="#CAC4D0"><path d="M6 5h2v14H6zM20 5v14l-11-7z"/></svg></div>
+        <div class="play"><svg width="16" height="16" viewBox="0 0 24 24" fill="#0E1513"><path d="M8 5v14l11-7z"/></svg></div>
+        <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="#CAC4D0"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></div>
+      </div>
+      <div class="prog now"><i></i></div>
+    </div></div>
+  </div>
+</div>

@@ -4961,3 +4961,46 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 - 版本 `1.99.58+171`；Release：`hiko-v1.99.58-macos.zip`（34,122,810 B）+
   `hiko-v1.99.58-android.apk`（70,300,315 B），远端字节数与本地逐一比对一致。
 - https://github.com/michiru233/hiko/releases/tag/v1.99.58
+
+## 1.99.59（2026-10-29）：桌面播放条改三段式
+
+### 可见变化
+- 桌面端底部播放条不再是「一条通栏 + 内容全挤在两端」的空跑道：封面 + 固定 220dp 的
+  标题区 + 中间「已播时间码 · 可拖进度条 · 总时长」+ 上一首/播放/下一首三键。
+  进度条自带 10dp 圆点，点按/拖动就地 seek（松手才落位）。
+- 移动端（`compact: true`）保持原样：单行 + 2dp 非交互细线，拖动仍去全屏播放页。
+- 未播放时进度条禁用、时间码显示 `0:00 / 0:00`，点它不触发任何 seek。
+
+### 实现
+- 需求来自用户（m00844）：贴了通栏播放条截图问「是不是太丑了，有没有更好的方案」。
+  先出四联效果图（现状 / A 居中胶囊 / B 三段式 / C 队列预告），用户裁决 **B**。
+- `lib/ui/widgets/player_bar.dart` 248 → 442 行：
+  - `build()` 里 `M3EToolbar` 的 child 分成 `_compactBody`（老单行 + 2dp 细线，
+    `ValueKey('player-bar-progress')` 保留）与 `_wideBody`（三段式 Row：
+    封面 40 + 14 + `SizedBox(width: 220)` 标题区 + 18 + `Expanded` 进度段 + 18 + 控制键）。
+  - `_buildSeekRow`：`formatTime(position)` / `Expanded(_SeekBar)` / `formatTime(duration)`，
+    字号走 `type.bodySmall`、颜色 `onSurfaceVariant`、`FontFeature.tabularFigures()` 防抖动。
+  - `_seekTo(fraction)`：`duration <= 0` 直接返回，否则 `playbackProvider.notifier.seek(f × duration)`。
+  - 新增 `_SeekBar`（StatefulWidget）：28dp 命中区 + 10dp 轨道行（3dp 轨道 + 已播填充 +
+    10dp 圆点），`LayoutBuilder` 拿宽度算 `(dx / width).clamp(0,1)`；拖动只写本地
+    `_drag` 预览，`onHorizontalDragEnd` / `onTapUp` 才回调 `onSeek` —— 避免每帧都往
+    just_audio 与断点落盘打一次。圆点/填充 `colors.primary`，轨道
+    `outlineVariant @0.6`（禁用态 @0.3），圆角一律 `M3EShape.radius(M3EShape.full)`
+    （**样式账本锁会拦 `BorderRadius.circular(`**，第一版就是这么被挡下来的）。
+- 桌面标题区从「占满剩余宽度」改成固定 220dp：超长标题照旧省略号，但进度条不再被
+  书名长度推着左右跳。
+
+### 验证
+- `flutter test`：**947 passed / 2 skipped**（1.99.58 基线 942 + 新增 5 条）。
+- `flutter analyze`：**42 条、0 error**（与基线持平）。
+- 新增 `test/ui/player_bar_seek_test.dart`（5 条）：三段式时间码 `0:10`/`1:40` 且底部
+  `LinearProgressIndicator` 消失；点 3/4 处 → seek 75s；拖动中途 `seeks` 为空、松手
+  才落一次且换算到 60s；未播放时双 `0:00` 且点击不 seek；720dp 窄桌面不溢出。
+  假控制器只覆写 `seek`（不碰 just_audio / 断点落盘 / `libraryProvider`），所以
+  `testWidgets` 的 FakeAsync 不会挂死。
+- `test/ui/player_bar_mini_test.dart` 的桌面用例从「细线非交互」改成「三段式：
+  `player-bar-seek` 在场、`LinearProgressIndicator` 为 0」。
+
+### 交付
+- 版本 `1.99.59+172`；Release 上传 `hiko-v1.99.59-macos.zip` + `hiko-v1.99.59-android.apk`。
+- 效果图与源文件：`.zcode/plans/assets/player-bar-options.png`、`assets/mock-player-bar.html`。

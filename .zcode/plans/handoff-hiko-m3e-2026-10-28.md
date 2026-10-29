@@ -1,6 +1,6 @@
-# Hiko 交接文档（2026-10-29 更新，M3E 收口 + 设置页抽屉化 1.99.58）
+# Hiko 交接文档（2026-10-29 更新，M3E 收口 + 桌面播放条三段式 1.99.59）
 
-> 读者：接手 Hiko 的 agent。**先读 §0，再读 §5 的 P1 表**——1.99.58 已发版，剩下的都是可选增强。
+> 读者：接手 Hiko 的 agent。**先读 §0，再读 §5 的 P1 表**——1.99.59 已发版，剩下的都是可选增强。
 > 本文档只描述「截至本文写作时的真实状态」，凡是没验证过的都标了「未验证」。
 > 上一个同名前缀的交接文档是 `handoff-hiko-m3e-2026-10-26.md`（基线 797，已过期，只作历史参考）。
 
@@ -11,13 +11,13 @@
 | 项 | 状态 |
 |---|---|
 | 项目 | Hiko，本地优先 DLsite 音声库管理器，Flutter 主线在 `hiko/` |
-| 当前主题 | M3E（Material 3 Expressive）设计系统收口 + 清账（1.99.58 起转 UI 结构整理） |
-| 最后一个**已发布**版本 | `v1.99.58`（设置页抽屉化 + 死设置清账），tag `v1.99.58`，双资产已上传 |
-| 上一个版本 | `v1.99.57`（提示层归一 + 进度条归一），commit `ea608eb` |
-| 工作区改动 | **无未提交改动**（1.99.58 已提交并 push，见 §3.1/§3.3） |
+| 当前主题 | M3E（Material 3 Expressive）设计系统收口 + 清账（1.99.58 起转 UI 结构与桌面布局整理） |
+| 最后一个**已发布**版本 | `v1.99.59`（桌面播放条改三段式），tag `v1.99.59`，双资产已上传 |
+| 上一个版本 | `v1.99.58`（设置页抽屉化 + 死设置清账），commit `bec1638` |
+| 工作区改动 | **无未提交改动**（1.99.59 已提交并 push，见 §3.1/§3.3） |
 | analyze | **42 条 / 0 error**（= 基线，未见新增） |
-| test | **942 passed / 2 skipped**（1.99.57 的 928 + 新增 20 条 − 删掉的死字段用例 6 条） |
-| 接手第一件事 | 回 §5 挑一项 P1 开 1.99.59，**挑之前先问用户做哪个** |
+| test | **947 passed / 2 skipped**（1.99.58 的 942 + 新增 5 条播放条 seek 契约） |
+| 接手第一件事 | 回 §5 挑一项 P1 开 1.99.60，**挑之前先问用户做哪个** |
 
 **别做的事**：§4.1 那两条测试是靠 `pump(3400ms)` 让 toast 的 `kToastLinger` 走完收口的，
 不要为了「测试快点」把这行删掉，也不要改回 `ScaffoldMessenger`。
@@ -116,7 +116,26 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 - `test/ui/feedback_single_path_test.dart`（3 条源码锁：禁 `showSnackBar`·`SnackBar(`·`ScaffoldMessenger.`；
   禁业务层 `LinearProgressIndicator`；`toastSurface` 只允许出现在 `activity_overlay.dart`）
 
-### 2.3 本轮 1.99.58 做了什么（**已发布 v1.99.58**）
+### 2.3 本轮 1.99.59 做了什么（**已发布 v1.99.59**）
+
+主题：**桌面播放条改三段式**。需求来自用户 m00844（贴了通栏播放条截图：「做成这么
+一个超级长条是不是太丑了」）。流程同样是「先效果图、用户裁决、再动代码」。
+
+- 四联效果图：`.zcode/plans/assets/player-bar-options.png`（源 `assets/mock-player-bar.html`），
+  对比「现状 / A 居中胶囊 / B 三段式 / C 队列预告」，用户裁决 **B**。
+- `lib/ui/widgets/player_bar.dart` 248 → 442 行，`build()` 的 child 分成两支：
+  `_compactBody`（移动端老形态：单行 + 2dp 非交互细线，`ValueKey('player-bar-progress')` 保留）
+  与 `_wideBody`（桌面三段式：封面 40 + 14 + 固定 220dp 标题区 + 18 + `Expanded` 进度段 + 18 + 控制键）。
+- 新增 `_SeekBar`：28dp 命中区、10dp 轨道行（3dp 轨道 + 已播填充 + 10dp 圆点）、
+  `LayoutBuilder` 按 `dx / width` 换算；**拖动只改本地预览，松手才 seek**，避免每帧
+  往 just_audio 与断点落盘打一次。`_seekTo(f)` 在 `duration <= 0` 时直接返回。
+- 时间码走 `formatTime`（`lib/utils/time.dart`）+ `FontFeature.tabularFigures()` 防跳动。
+- 踩坑：第一版用了 `BorderRadius.circular(2)`，被 `test/ui/style_ledger_lock_test.dart`
+  的样式账本锁当场拦下（业务层只准 `M3EShape.radius(...)`），已改 `M3EShape.full`。
+- 新增 `test/ui/player_bar_seek_test.dart`（5 条）；`test/ui/player_bar_mini_test.dart`
+  的桌面用例从「细线非交互」改成「三段式：`player-bar-seek` 在场、`LinearProgressIndicator` 为 0」。
+
+### 2.4 上一轮 1.99.58 做了什么（**已发布 v1.99.58**）
 
 主题：**设置页抽屉化 + 死设置清账**。需求来自用户 m00301（设置页杂糅了以前写过、
 现在完全用不到的功能；要分门别类、改抽屉跳转），交付流程是「先计划书 + 效果图，
@@ -163,11 +182,18 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 
 ### 3.1 工作区状态（**已提交并 push**）
 
-分支 `main`，1.99.58 已提交并推送到 `origin/main`，未提交改动为零。
+分支 `main`，1.99.59 已提交并推送到 `origin/main`，未提交改动为零。
 
-1.99.57 那次的清单留档（14 改 + 5 新增）；1.99.58 的改动见下一条目：
+1.99.57 那次的清单留档（14 改 + 5 新增）；1.99.59 的改动见下一条目，1.99.58 的留档在更下面：
 
 ```
+1.99.59（桌面播放条三段式）：
+  hiko/pubspec.yaml                        （1.99.58+171 → 1.99.59+172）
+  hiko/lib/ui/widgets/player_bar.dart      （248 → 442 行：_compactBody / _wideBody / _SeekBar）
+  hiko/test/ui/player_bar_seek_test.dart   （新增 5 条：时间码 / 点按 seek / 拖动松手才 seek / 未播放禁用 / 720dp 不溢出）
+  hiko/test/ui/player_bar_mini_test.dart   （桌面用例改三段式契约）
+```
+
 1.99.58（设置页抽屉化 + 死设置清账）：
   hiko/pubspec.yaml                        （1.99.57+170 → 1.99.58+171）
   hiko/lib/data/settings_store.dart        （−59 行：5 个死字段）
@@ -210,18 +236,18 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 已跟踪文件净变化：**+72 / −174 行**（这一版是纯减法），另有 5 个新文件共 410 行
 （两个组件 156 行 + 三个测试 254 行）。
 
-### 3.2 验证状态（以 1.99.58 为准）
+### 3.2 验证状态（以 1.99.59 为准）
 
 | 项 | 结果 | 说明 |
 |---|---|---|
 | `flutter analyze` | **42 issues / 0 error** | 与基线一致，未新增。含 `unused_import` 之类历史告警 42 条，属已知 |
-| 定向测试 | 20/20 通过 | `settings_layout_test`（14）+ `settings_navigation_test`（6）+ `activity_overlay_test`（5） |
-| `flutter test`（全量） | **942 passed / 2 skipped** | 1.99.57 的 928 + 新增 20 条 − 删掉的死字段用例 6 条 |
-| 双端构建 | **已跑** | macOS `Hiko.app` 76.6 MB（Info.plist 1.99.58 / 171）；APK 70.3 MB |
-| APK 后签 | **已签并核验** | `apksigner verify --min-sdk-version 21`：v1/v2/v3 全 true；`META-INF/HIKO.SF` 在；`aapt2` versionCode=171 / versionName=1.99.58 |
-| Release | **已发布** | `v1.99.58`，资产字节数与本地逐一致（zip 34,122,810 / apk 70,300,315） |
+| 定向测试 | 10/10 通过 | `player_bar_seek_test`（5）+ `player_bar_mini_test`（3）+ `style_ledger_lock_test`（2） |
+| `flutter test`（全量） | **947 passed / 2 skipped** | 1.99.58 的 942 + 新增 5 条 |
+| 双端构建 | **已跑** | macOS `Hiko.app` 76.6 MB（Info.plist 1.99.59 / 172）；APK 70.3 MB |
+| APK 后签 | **已签并核验** | `apksigner verify --min-sdk-version 21`：v1/v2/v3 全 true；`META-INF/HIKO.SF` 在；`aapt2` versionCode=172 / versionName=1.99.59 |
+| Release | **已发布** | `v1.99.59`，资产字节数与本地逐一致（zip 34,132,125 / apk 70,300,315） |
 
-> 1.99.57 的留档：`928 passed / 2 skipped`、analyze 42/0、zip 34,125,566 / apk 70,300,315。
+> 1.99.58 的留档：`942 passed / 2 skipped`、analyze 42/0、zip 34,122,810 / apk 70,300,315。
 
 ### 3.3 1.99.57 收尾清单（留档，全部完成）
 
@@ -312,7 +338,14 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 > 裸 `IconButton`、Material 按钮、`DropdownButton`、裸 `Switch/Checkbox` **全部为 0**，
 > `HikoColors` 只剩 3 处注释。剩下的都是**具体控件缺位**，不再有「成片旧样式」。
 
-### P0（1.99.58，**已完成并发布**）
+### P0（1.99.59，**已完成并发布**）
+
+- ✅ 桌面播放条三段式：封面 + 固定 220dp 标题 + 时间码/可拖进度条 + 控制键
+  （`player_bar.dart` 248 → 442 行，移动端形态不变）
+- ✅ 进度条可点可拖，拖动只预览、松手才 seek；未播放时禁用
+- ✅ 测试：947 passed / 2 skipped，analyze 42/0
+
+### P0（1.99.58，留档）
 
 - ✅ 设置页抽屉化：索引页 4 组 8 格 + 七个子页（`settings_dialog.dart` 1615 → 1680 行）
 - ✅ 死设置清账：5 个字段（`fullscreenPlayerStyle` / `backgroundBlur` / `backgroundOpacity` /
@@ -465,7 +498,7 @@ fix(m3e): …
 docs(plan): …
 ```
 
-提交正文写「改了什么 + 为什么」，**验证结果写一行**（`942 passed / 2 skipped，analyze 42 条 / 0 error`）+ `版本：1.99.xx+N`。
+提交正文写「改了什么 + 为什么」，**验证结果写一行**（`947 passed / 2 skipped，analyze 42 条 / 0 error`）+ `版本：1.99.xx+N`。
 
 ### 6.5 环境事实（本机）
 
@@ -493,9 +526,11 @@ docs(plan): …
 
 ## 7. 接手建议（一句话版）
 
-1.99.58 已发版（942 passed / 2 skipped，analyze 42 条 / 0 error），工作区干净。
+1.99.59 已发版（947 passed / 2 skipped，analyze 42 条 / 0 error），工作区干净。
 下一版回 **§5 的 P1 表**挑一项：输入框收口（`M3ETextField`，11 处 `TextField(`）、
 菜单收口（`PopupMenuButton` 5 + `MenuAnchor` 1 → `M3EMenu`）、或小件（加载指示器 + 分隔线）。
+另有一项用户已提过、尚未安排：移动端播放条要不要跟着改（现在是单行 + 细线，
+桌面三段式落地后两端观感差异变大，可考虑给移动端也上时间码）。
 **挑之前先问用户做哪一项**；定了之后按 §6.2/§6.3 的封包流程走，硬规则见 §6.4。
 
 另：设置页改造遗留两条可选尾巴——① 计划书 §7 第 2 步「拆文件到 `lib/ui/settings/`」没做

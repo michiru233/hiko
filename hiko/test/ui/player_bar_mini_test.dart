@@ -8,11 +8,13 @@ import 'package:hiko/playback/playback_controller.dart';
 import 'package:hiko/ui/widgets/player_bar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 播放条契约（1.99.7 方案A compact；1.99.29 桌面对齐 + M3EToolbar 材质）：
+/// 播放条契约（1.99.7 方案A compact；1.99.29 桌面对齐 + M3EToolbar 材质；
+/// 1.99.59 桌面改三段式）：
 /// 1. 单行布局在**手机宽度（360dp）**下不溢出；
-/// 2. 进度为 2dp 非交互细线（只显示），任何端都**没有滑杆**；
+/// 2. 移动端进度为 2dp 非交互细线（只显示），没有滑杆；
 /// 3. 点文字区任意处 = 点封面，都回调 `onCoverTap` 进全屏页；
-/// 4. 桌面端（compact: false）同样只有细线 —— 拖动进度收进全屏播放页（plan §8.6）。
+/// 4. 桌面端（compact: false）走三段式：标题区固定 220dp，中间是可拖进度条 +
+///    时间码（细则见 `player_bar_seek_test.dart`），点按/拖动就地 seek。
 class _FakePlayback extends PlaybackController {
   _FakePlayback(super._ref);
 }
@@ -112,11 +114,13 @@ void main() {
     expect(taps, 1);
   });
 
-  testWidgets('桌面端（compact: false）与移动同构：细线非交互，无滑杆', (tester) async {
+  testWidgets('桌面端（compact: false）走三段式：细线让位给可拖进度条', (tester) async {
     await pumpBar(tester, compact: false, size: const Size(900, 1000));
     expect(tester.takeException(), isNull);
     expect(find.byType(Slider), findsNothing,
-        reason: '1.99.29 播放条不再承载 seek，拖动去全屏页');
-    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+        reason: '1.99.59 不用 Material Slider，自己画 3dp 轨道 + 圆点');
+    expect(find.byType(LinearProgressIndicator), findsNothing,
+        reason: '三段式把底部 2dp 细线换成了中间那条可拖进度条');
+    expect(find.byKey(const ValueKey('player-bar-seek')), findsOneWidget);
   });
 }

@@ -3,15 +3,21 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/album.dart';
 import '../../playback/playback_controller.dart';
+import '../../utils/time.dart';
 import '../covers/cover_art.dart';
 import '../m3e/m3e.dart';
 
-/// 底部播放条（M3EToolbar，1.99.29）：64dp 全圆浮动工具条。
+/// 底部播放条（M3EToolbar）：64dp 全圆浮动工具条。
 ///
-/// 内容 = 封面 40（角 8）+ 标题/艺术家 + 上一首/播放/下一首 + 2dp 非交互进度细线
-/// （点细线/封面/文字任意处进全屏播放页拖动，plan §8.6）。播放模式、睡眠定时、
-/// 倍速、音量、歌词入口全部收进全屏播放页辅助区 —— 移动端 1.99.7 已是此形态，
-/// 本版桌面端对齐。
+/// 两种形态：
+/// - **移动端**（`compact: true`，1.99.7 起）：单行 = 封面 40（角 8）+ 标题/艺术家 +
+///   上一首/播放/下一首 + 2dp 非交互进度细线（点细线/封面/文字任意处进全屏页）。
+/// - **桌面端**（`compact: false`，1.99.59 起三段式）：封面 + 固定的 220dp 标题区 +
+///   中间「时间码 · 可拖进度条 · 总时长」（占满剩余宽度，窗口再宽也不留空跑道）+
+///   控制键。拖动/点按进度条直接 seek，松手才落位（1.99.59 裁决：三段式方案 B）。
+///   点标题区/封面仍然进全屏播放页。
+///
+/// 播放模式、睡眠定时、倍速、音量、歌词入口全部收进全屏播放页辅助区。
 class PlayerBar extends ConsumerStatefulWidget {
   const PlayerBar({
     super.key,
@@ -58,43 +64,9 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
         padding: widget.compact
             ? const EdgeInsets.symmetric(horizontal: 12)
             : const EdgeInsets.symmetric(horizontal: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Expanded(
-              child: Row(
-                children: [
-                  _buildCover(album),
-                  SizedBox(width: widget.compact ? 8 : 14),
-                  Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => _openPlayer(album),
-                      child: _buildMeta(state, album),
-                    ),
-                  ),
-                  SizedBox(width: widget.compact ? 8 : 14),
-                  _buildControls(state),
-                ],
-              ),
-            ),
-            const SizedBox(height: 5),
-            // 2dp 非交互进度细线：点按进全屏拖动（plan §8.6）
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _openPlayer(album),
-              child: M3EProgress(
-                key: const ValueKey('player-bar-progress'),
-                value: pct,
-                height: 2,
-                trackColor: M3ETheme.of(context)
-                    .colors
-                    .outlineVariant
-                    .withValues(alpha: 0.6),
-              ),
-            ),
-          ],
-        ),
+        child: widget.compact
+            ? _compactBody(state, album, pct)
+            : _wideBody(state, album, pct),
       ),
     );
 
@@ -129,6 +101,98 @@ class _PlayerBarState extends ConsumerState<PlayerBar> {
       tag: 'bar-cover',
       child: GestureDetector(onTap: () => _openPlayer(album), child: cover),
     );
+  }
+
+  // ---- 移动端：单行 + 2dp 非交互细线 ----
+  Widget _compactBody(PlaybackState state, Album? album, double pct) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Expanded(
+          child: Row(
+            children: [
+              _buildCover(album),
+              const SizedBox(width: 8),
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _openPlayer(album),
+                  child: _buildMeta(state, album),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _buildControls(state),
+            ],
+          ),
+        ),
+        const SizedBox(height: 5),
+        // 2dp 非交互进度细线：点按进全屏拖动（plan §8.6）
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _openPlayer(album),
+          child: M3EProgress(
+            key: const ValueKey('player-bar-progress'),
+            value: pct,
+            height: 2,
+            trackColor:
+                M3ETheme.of(context).colors.outlineVariant.withValues(alpha: 0.6),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---- 桌面端三段式（1.99.59）：封面 + 标题 + 进度（时间码/可拖）+ 控制 ----
+  Widget _wideBody(PlaybackState state, Album? album, double pct) {
+    return Row(
+      children: [
+        _buildCover(album),
+        const SizedBox(width: 14),
+        SizedBox(
+          width: 220,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _openPlayer(album),
+            child: _buildMeta(state, album),
+          ),
+        ),
+        const SizedBox(width: 18),
+        Expanded(child: _buildSeekRow(state, album, pct)),
+        const SizedBox(width: 18),
+        _buildControls(state),
+      ],
+    );
+  }
+
+  Widget _buildSeekRow(PlaybackState state, Album? album, double pct) {
+    final type = M3ETheme.of(context).type;
+    final colors = M3ETheme.of(context).colors;
+    final style = type.bodySmall.copyWith(
+      color: colors.onSurfaceVariant,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    return Row(
+      children: [
+        Text(formatTime(state.position), style: style),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _SeekBar(
+            key: const ValueKey('player-bar-seek'),
+            value: pct,
+            enabled: album != null && state.duration > 0,
+            onSeek: _seekTo,
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(formatTime(state.duration), style: style),
+      ],
+    );
+  }
+
+  void _seekTo(double fraction) {
+    final duration = ref.read(playbackProvider).duration;
+    if (duration <= 0) return;
+    ref.read(playbackProvider.notifier).seek(fraction * duration);
   }
 
   // ---- 元信息：标题（含序号）+ 艺术家 · 曲名 ----
@@ -243,6 +307,136 @@ class _PlayButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 三段式播放条里的进度条（1.99.59）：3dp 轨道 + 10dp 圆点。
+///
+/// 点按与拖动都生效，但**拖动过程只改本地预览**，松手才 seek —— 避免每帧都往
+/// 播放器/落盘链路打一次。轨道颜色与 2dp 细线同源（`outlineVariant@0.6`）。
+class _SeekBar extends StatefulWidget {
+  const _SeekBar({
+    super.key,
+    required this.value,
+    required this.enabled,
+    required this.onSeek,
+  });
+
+  final double value;
+  final bool enabled;
+  final ValueChanged<double> onSeek;
+
+  @override
+  State<_SeekBar> createState() => _SeekBarState();
+}
+
+class _SeekBarState extends State<_SeekBar> {
+  static const double _thumb = 10;
+  double? _drag;
+
+  double _fraction(double dx, double width) {
+    if (width <= 0) return 0;
+    return (dx / width).clamp(0.0, 1.0);
+  }
+
+  void _preview(double dx, double width) {
+    if (!widget.enabled) return;
+    setState(() => _drag = _fraction(dx, width));
+  }
+
+  void _commit() {
+    final v = _drag;
+    if (v == null) return;
+    setState(() => _drag = null);
+    widget.onSeek(v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = M3ETheme.of(context).colors;
+    final value = (_drag ?? widget.value).clamp(0.0, 1.0);
+    final enabled = widget.enabled;
+    final trackTint = colors.outlineVariant.withValues(
+      alpha: enabled ? 0.6 : 0.3,
+    );
+    final fill = enabled ? colors.primary : colors.outline;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final travel = (width - _thumb).clamp(0.0, double.infinity);
+        return Semantics(
+          label: '播放进度',
+          slider: true,
+          value: '${(value * 100).round()}%',
+          child: MouseRegion(
+            cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapDown:
+                  enabled ? (d) => _preview(d.localPosition.dx, width) : null,
+              onTapUp: enabled ? (_) => _commit() : null,
+              onHorizontalDragStart:
+                  enabled ? (d) => _preview(d.localPosition.dx, width) : null,
+              onHorizontalDragUpdate:
+                  enabled ? (d) => _preview(d.localPosition.dx, width) : null,
+              onHorizontalDragEnd: enabled ? (_) => _commit() : null,
+              onHorizontalDragCancel:
+                  enabled ? () => setState(() => _drag = null) : null,
+              child: SizedBox(
+                height: 28,
+                child: Center(
+                  child: SizedBox(
+                    height: _thumb,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          top: (_thumb - 3) / 2,
+                          child: Container(
+                            height: 3,
+                            decoration: BoxDecoration(
+                              color: trackTint,
+                              borderRadius: M3EShape.radius(M3EShape.full),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          left: 0,
+                          top: (_thumb - 3) / 2,
+                          width: value * width,
+                          child: Container(
+                            height: 3,
+                            decoration: BoxDecoration(
+                              color: fill,
+                              borderRadius: M3EShape.radius(M3EShape.full),
+                            ),
+                          ),
+                        ),
+                        Positioned(
+                          left: value * travel,
+                          top: 0,
+                          width: _thumb,
+                          height: _thumb,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: fill,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
