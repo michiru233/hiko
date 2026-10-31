@@ -1,7 +1,7 @@
-# Hiko 交接文档（2026-10-31 更新，M3E 收口 + 输入框收口 1.99.60）
+# Hiko 交接文档（2026-10-31 更新，M3E 收口：1.99.61 弹层与统计页）
 
-> 读者：接手 Hiko 的 agent。**先读 §0，再读 §5 的 P1 表**——1.99.60 已发版，M3E 收口排了四版计划
-> （`.zcode/plans/plan-hiko-m3e-closeout-2026-10-31.md`），1.99.61 菜单收口是下一版。
+> 读者：接手 Hiko 的 agent。**先读 §0，再读 §5 的 P1 表**——1.99.61 已发版，M3E 收口剩「库备份轮转」一版
+> （`.zcode/plans/plan-hiko-m3e-closeout-2026-10-31.md`；原「菜单收口」经实测已在 1.99.40 完成，作废）。
 > 本文档只描述「截至本文写作时的真实状态」，凡是没验证过的都标了「未验证」。
 > 上一个同名前缀的交接文档是 `handoff-hiko-m3e-2026-10-26.md`（基线 797，已过期，只作历史参考）。
 
@@ -13,12 +13,12 @@
 |---|---|
 | 项目 | Hiko，本地优先 DLsite 音声库管理器，Flutter 主线在 `hiko/` |
 | 当前主题 | M3E（Material 3 Expressive）设计系统收口 + 清账（1.99.58 起转 UI 结构与桌面布局整理） |
-| 最后一个**已发布**版本 | `v1.99.60`（输入框收口 + 小件清账），tag `v1.99.60`，双资产已上传 |
-| 上一个版本 | `v1.99.59`（桌面播放条改三段式），commit `43d54b3` |
-| 工作区改动 | **无未提交改动**（1.99.60 已提交并 push，见 §3.1/§3.3） |
+| 最后一个**已发布**版本 | `v1.99.61`（底部弹层材质统一 + 统计页自适应），tag `v1.99.61`，双资产已上传 |
+| 上一个版本 | `v1.99.60`（输入框收口 + 小件清账），commit `68e48e2` |
+| 工作区改动 | **无未提交改动**（1.99.61 已提交并 push，见 §3.1/§3.3） |
 | analyze | **42 条 / 0 error**（= 基线，未见新增） |
-| test | **953 passed / 2 skipped**（1.99.59 的 947 + 新增 6 条 `M3ETextField` 契约） |
-| 接手第一件事 | 按 `plan-hiko-m3e-closeout-2026-10-31.md` 做 **1.99.61 菜单收口**（`PopupMenuButton` 6 + `MenuAnchor` 1 → `M3EMenu`） |
+| test | **957 passed / 2 skipped**（1.99.60 的 953 + 新增 4 条统计页自适应） |
+| 接手第一件事 | 按 `plan-hiko-m3e-closeout-2026-10-31.md` §4 做 **1.99.62 库备份轮转**（`library.json` 滚动快照 + 恢复入口） |
 
 **别做的事**：§4.1 那两条测试是靠 `pump(3400ms)` 让 toast 的 `kToastLinger` 走完收口的，
 不要为了「测试快点」把这行删掉，也不要改回 `ScaffoldMessenger`。
@@ -117,7 +117,27 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 - `test/ui/feedback_single_path_test.dart`（3 条源码锁：禁 `showSnackBar`·`SnackBar(`·`ScaffoldMessenger.`；
   禁业务层 `LinearProgressIndicator`；`toastSurface` 只允许出现在 `activity_overlay.dart`）
 
-### 2.3 本轮 1.99.60 做了什么（**已发布 v1.99.60**）
+### 2.3 本轮 1.99.61 做了什么（**已发布 v1.99.61**）
+
+主题：**底部弹层材质统一 + 统计页自适应**。**原计划的「菜单收口」作废**——动手前实测
+`grep -rn "PopupMenuButton(" hiko/lib` = 0、`showMenu(` = 0、`MenuAnchor(` 只剩
+`m3e_menu.dart:66`（M3EMenu 自己的引擎）、`PopupMenuItem` 只在注释里，仓库已有 12 处
+`M3EMenu(` 调用点，`plan-hiko-flutter-rewrite.md` §1.99.40 记着「M3EMenu 落地 + 六处菜单统一」：
+那一项 1.99.40 就做完了，计划书里的「6 + 1」是把注释算进去的旧计数。剩下的
+`lib/ui/widgets/context_menu.dart`（2 个调用点）行规格已与 M3EMenu 一致，去重属纯重构，不做。
+
+- `home_screen._openMoreSheet`：`backgroundColor: Colors.transparent` +
+  `M3ESheet(variant: M3ESheetVariant.bottom)` 包 `SafeArea(M3EList(...))`，删掉手写的
+  `surfaceContainerLow` + `Radius.circular(M3EShape.xl)`（同一份材质的第三份拷贝）。
+  `fullscreen_player_screen:1236` 的曲目列表本来就是这个写法，未动。
+- `stats_view.dart`：`LayoutBuilder` 按 `maxWidth >= 720` 决定横向边距（48 / 16）与卡片排布
+  （`Row`+`Expanded` / `Column`）；`_statCard` 不再自带 `Expanded`（两种布局共用）；值文本
+  `maxLines: 1` + ellipsis；三颗状态 chip 由固定 `Row` 改 `Wrap(spacing: 8, runSpacing: 8)`。
+  改之前 360dp 手机上 48×2 的边距让三张卡只剩 264dp，「12小时34分钟」会溢出。
+- 验证：**957 passed / 2 skipped**（953 + 新增 4 条）、analyze 42/0、
+  新增 `test/ui/stats_view_test.dart`（360 竖排 / 720 同排 / 999小时59分钟不溢出 / 窄屏边距 16）。
+
+### 2.4 本轮 1.99.60 做了什么（**已发布 v1.99.60**）
 
 主题：**输入框收口 + 小件清账**。需求来自用户 m01356「按顺序来做吧，依旧先写计划书，
 然后再做」；计划书 `.zcode/plans/plan-hiko-m3e-closeout-2026-10-31.md` 定下四版顺序：
@@ -142,7 +162,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 - 验证：`grep -rn 'TextField(' hiko/lib | grep -v lib/ui/m3e/` → 0；953 passed / 2 skipped；
   analyze 42/0；新增 `test/ui/m3e/m3e_text_field_test.dart` 6 条。
 
-### 2.4 本轮 1.99.59 做了什么（**已发布 v1.99.59**）
+### 2.5 本轮 1.99.59 做了什么（**已发布 v1.99.59**）
 
 主题：**桌面播放条改三段式**。需求来自用户 m00844（贴了通栏播放条截图：「做成这么
 一个超级长条是不是太丑了」）。流程同样是「先效果图、用户裁决、再动代码」。
@@ -161,7 +181,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 - 新增 `test/ui/player_bar_seek_test.dart`（5 条）；`test/ui/player_bar_mini_test.dart`
   的桌面用例从「细线非交互」改成「三段式：`player-bar-seek` 在场、`LinearProgressIndicator` 为 0」。
 
-### 2.5 上一轮 1.99.58 做了什么（**已发布 v1.99.58**）
+### 2.6 上一轮 1.99.58 做了什么（**已发布 v1.99.58**）
 
 主题：**设置页抽屉化 + 死设置清账**。需求来自用户 m00301（设置页杂糅了以前写过、
 现在完全用不到的功能；要分门别类、改抽屉跳转），交付流程是「先计划书 + 效果图，
@@ -187,7 +207,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
   新增 `settings_navigation_test.dart`（6 条导航契约），`activity_overlay_test.dart` 改成
   先进「库与扫描」再点扫描。
 
-### 2.6 关键决策留痕（不要推翻）
+### 2.7 关键决策留痕（不要推翻）
 
 | # | 决策 | 理由 |
 |---|---|---|
@@ -208,9 +228,17 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 
 ### 3.1 工作区状态（**已提交并 push**）
 
-分支 `main`，1.99.60 已提交并推送到 `origin/main`，未提交改动为零。
+分支 `main`，1.99.61 已提交并推送到 `origin/main`，未提交改动为零。
 
-1.99.57 那次的清单留档（14 改 + 5 新增）；1.99.60 的改动见下一条目，1.99.59 / 1.99.58 的留档在更下面：
+1.99.57 那次的清单留档（14 改 + 5 新增）；1.99.61 / 1.99.60 / 1.99.59 / 1.99.58 的改动见下面各条目：
+
+```
+1.99.61（底部弹层材质统一 + 统计页自适应）：
+  hiko/pubspec.yaml                        （1.99.60+173 → 1.99.61+174）
+  hiko/lib/ui/screens/home_screen.dart     （_openMoreSheet 改走 M3ESheet(bottom)，删手写材质）
+  hiko/lib/ui/widgets/stats_view.dart      （LayoutBuilder 自适应：边距 48/16、三卡 Row/Column、chip 改 Wrap）
+  hiko/test/ui/stats_view_test.dart        （新增 4 条）
+```
 
 ```
 1.99.60（输入框收口 + 小件清账）：
@@ -279,13 +307,13 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 已跟踪文件净变化：**+72 / −174 行**（这一版是纯减法），另有 5 个新文件共 410 行
 （两个组件 156 行 + 三个测试 254 行）。
 
-### 3.2 验证状态（以 1.99.60 为准）
+### 3.2 验证状态（以 1.99.61 为准）
 
 | 项 | 结果 | 说明 |
 |---|---|---|
 | `flutter analyze` | **42 issues / 0 error** | 与基线一致，未新增。含 `unused_import` 之类历史告警 42 条，属已知 |
-| 定向测试 | 6/6 通过 | 新增 `m3e_text_field_test`（6 条） |
-| `flutter test`（全量） | **953 passed / 2 skipped** | 1.99.59 的 947 + 新增 6 条 |
+| 定向测试 | 4/4 通过 | 新增 `stats_view_test`（4 条：360 竖排 / 720 同排 / 超长时长不溢出 / 边距 16） |
+| `flutter test`（全量） | **957 passed / 2 skipped** | 1.99.60 的 953 + 新增 4 条 |
 | 双端构建 | **已跑** | macOS `Hiko.app` 76.6 MB（Info.plist 1.99.60 / 173）；APK 70.2 MB |
 | APK 后签 | **已签并核验** | `apksigner verify --min-sdk-version 21`：v1/v2/v3 全 true；`META-INF/HIKO.SF` 在；`aapt2` versionCode=173 / versionName=1.99.60 |
 | Release | **已发布** | `v1.99.60`，资产字节数与本地逐一致（zip 34,117,286 / apk 70,202,011） |
@@ -382,7 +410,15 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 > 裸 `IconButton`、Material 按钮、`DropdownButton`、裸 `Switch/Checkbox` **全部为 0**，
 > `HikoColors` 只剩 3 处注释。剩下的都是**具体控件缺位**，不再有「成片旧样式」。
 
-### P0（1.99.60，**已完成并发布**）
+### P0（1.99.61，**已完成并发布**）
+
+- ✅ 「更多」面板改走 `M3ESheet(bottom)`（`home_screen._openMoreSheet`），删掉手写材质
+- ✅ 统计页自适应：边距 48/16、三卡 `Row`/`Column`、值单行省略、状态 chip 改 `Wrap`
+- ✅ **原计划的「菜单收口」作废**：实测 `PopupMenuButton(` / `showMenu(` 全仓 0、12 处 `M3EMenu`，
+  1.99.40 已完成（计划书里的「6 + 1」把注释算进去了）
+- ✅ 测试：957 passed / 2 skipped（新增 `stats_view_test` 4 条），analyze 42/0
+
+### P0（1.99.60，留档）
 
 - ✅ 新增 `M3ETextField`（compact 32 / regular 40，标签在框上方，focus 1.5dp 主色描边，
   错误态自带文案）与 `M3EDivider`，barrel 已导出
@@ -415,13 +451,14 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
   → `M3EProgress`，共 11 个调用点）
 - ✅ 修 2 条测试 → 封包发版 `v1.99.57`
 
-### P1（按 `plan-hiko-m3e-closeout-2026-10-31.md` 的四版顺序推进）
+### P1（按 `plan-hiko-m3e-closeout-2026-10-31.md` 的顺序推进，只剩一版）
 
 | 项 | 实测现状 | 建议 |
 |---|---|---|
 | ✅ `M3ETextField` | 1.99.60 已收口（`TextField(` 0 处） | 完成 |
-| 菜单收口（1.99.61） | `PopupMenuButton` **5** + `MenuAnchor` **1**：`fullscreen_player` 1、`online_favorites` 1、`online_appearance` 1、`online_sort_menu` 2、`online_work_grid` 1 | `M3EMenu` 早已建好，只是没被全量采用。现状是行高/圆角/字号三种规格，**桌面 hover 状态层只有自绘菜单有** |
-| ✅ 小件 | 1.99.60 已收口（`CircularProgressIndicator` 0 处；`context_menu.dart:183` 的 0.6dp 菜单分隔线是菜单语义，保留） | 完成 |
+| ✅ 菜单收口 | `PopupMenuButton(` / `showMenu(` 全仓 **0**，`MenuAnchor(` 只剩 `m3e_menu.dart:66`，12 处 `M3EMenu(` | **1.99.40 已完成**，计划书 §3 作废 |
+| ✅ 小件 / 弹层 / 统计页 | `CircularProgressIndicator` 0 处；`showModalBottomSheet` 2 处均已是 `transparent` + `M3ESheet(bottom)`；统计页自适应 1.99.61 | 完成 |
+| 库备份轮转（1.99.62） | `library_store.save()` 只有原子写，`library.json` 没有历史快照 | 计划书 §4 已有做法：滚动保留最近 5 份 + 危险操作前额外留一份 + 设置页「历史快照」恢复入口 |
 
 ### P2（页面级，看用户要不要）
 
@@ -551,7 +588,7 @@ fix(m3e): …
 docs(plan): …
 ```
 
-提交正文写「改了什么 + 为什么」，**验证结果写一行**（`953 passed / 2 skipped，analyze 42 条 / 0 error`）+ `版本：1.99.xx+N`。
+提交正文写「改了什么 + 为什么」，**验证结果写一行**（`957 passed / 2 skipped，analyze 42 条 / 0 error`）+ `版本：1.99.xx+N`。
 
 ### 6.5 环境事实（本机）
 
@@ -579,12 +616,11 @@ docs(plan): …
 
 ## 7. 接手建议（一句话版）
 
-1.99.60 已发版（953 passed / 2 skipped，analyze 42 条 / 0 error），工作区干净。
-用户已批准按 **`.zcode/plans/plan-hiko-m3e-closeout-2026-10-31.md`** 的四版顺序推进
-（m01356「按顺序来做吧，依旧先写计划书，然后再做」），下一版就是 **1.99.61 菜单收口**
-（`PopupMenuButton` 6 + `MenuAnchor` 1 → `M3EMenu`），计划书 §3 已有做法与风险。
-再往后：1.99.62 移动弹层（`showModalBottomSheet` 2 → `M3ESheet(bottom)` + 统计页重排）、
-1.99.63 库备份轮转（`library.json` 滚动快照 + 恢复入口）。
+1.99.61 已发版（957 passed / 2 skipped，analyze 42 条 / 0 error），工作区干净。
+用户已批准按 **`.zcode/plans/plan-hiko-m3e-closeout-2026-10-31.md`** 的顺序推进
+（m01356「按顺序来做吧，依旧先写计划书，然后再做」）。四版里已完成 1.99.60（输入框 + 小件）、
+1.99.61（弹层 + 统计页）；中间的「菜单收口」经实测 1.99.40 已做完，作废。
+**下一版是 1.99.62 库备份轮转**（`library.json` 滚动快照 + 恢复入口），计划书 §4 有做法与验收。
 路线图没排但用户提过的：移动端播放条要不要也上时间码（桌面三段式落地后两端观感差异变大）。
 封包流程见 §6.2/§6.3，硬规则见 §6.4。
 

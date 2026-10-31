@@ -5058,3 +5058,45 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 - 版本 `1.99.60+173`；Release：`hiko-v1.99.60-macos.zip`（34,117,286 B）+
   `hiko-v1.99.60-android.apk`（70,202,011 B），远端字节数与本地逐一比对一致。
 - https://github.com/michiru233/hiko/releases/tag/v1.99.60
+
+## 1.99.61（2026-10-31）：底部弹层材质统一 + 统计页自适应
+
+### 计划变更（菜单收口作废）
+原计划书把 1.99.61 安排成「菜单收口（`PopupMenuButton` 6 + `MenuAnchor` 1 → `M3EMenu`）」。
+动手前实测：`grep -rn "PopupMenuButton(" hiko/lib` = **0**、`showMenu(` = **0**、
+`MenuAnchor(` 只剩 `m3e_menu.dart:66`（M3EMenu 自己的引擎）、`PopupMenuItem` 只出现在注释里，
+仓库已有 **12 处 `M3EMenu(` 调用点**，并且本文件 §1.99.40 记着「M3EMenu 落地 + 六处菜单统一」。
+那一版在 1.99.40 就做完了，计划书里的 6/1 是把注释算进去的旧计数。
+剩下 `lib/ui/widgets/context_menu.dart`（`showHikoContextMenu`，2 个调用点）行规格
+48dp / `M3EShape.xs` / `labelLarge` 与 `M3EMenu` 已一致 —— 去重属纯重构（界面零变化、
+要自己补 `FocusTraversal`），**不做**，留作将来的 `chore:`。
+于是本版内容改为原 1.99.62 的弹层项 + 统计页重排，后续版本顺延为「1.99.62 库备份轮转」。
+
+### 可见变化
+- 「更多」面板（安卓底部导航溢出菜单）：材质与详情面板、曲目列表一致，顶角弧度统一。
+- 统计页在窄屏（360dp）上：左右边距 48 → 16，三张统计卡由一排改为竖排，
+  读数过长时单行省略；三颗状态胶囊放不下会折行，不再溢出。
+
+### 实现
+- `home_screen._openMoreSheet`：`backgroundColor: Colors.transparent` +
+  `M3ESheet(variant: M3ESheetVariant.bottom)` 包 `SafeArea(M3EList(...))`，
+  删掉手写的 `surfaceContainerLow` + `Radius.circular(M3EShape.xl)`
+  （这是同一份材质的第三份拷贝；`fullscreen_player_screen:1236` 的曲目列表本来就是正确写法，未动）。
+- `stats_view.dart`：`LayoutBuilder` 按 `maxWidth >= 720` 决定横向边距（48 / 16）与卡片排布
+  （`Row` + `Expanded` / `Column`）；`_statCard` 不再自带 `Expanded`（宽窄两种布局共用一件
+  widget），值文本 `maxLines: 1` + ellipsis；三颗 chip 由固定 `Row` 改 `Wrap(spacing: 8, runSpacing: 8)`。
+- 样式账本锁的约束继续满足：语义色（`M3ESemantic.statFinished/statStarted/statUnplayed/rating`）、
+  无自持色值、`radius: M3EShape.lg`。
+
+### 验证
+- `flutter test`：**957 passed / 2 skipped**（1.99.60 基线 953 + 新增 4 条）。
+- `flutter analyze`：**42 条、0 error**（与基线持平）。
+- 新增 `test/ui/stats_view_test.dart`（4 条）：360dp 三卡竖排 + 六颗文案在位、
+  720dp 三卡同排、360dp 超长时长（999小时59分钟）不溢出、窄屏标题从 x=16 起。
+- macOS 包 `Info.plist` = 1.99.61 / 174；APK `apksigner verify --min-sdk-version 21`
+  v1+v2+v3 全 true、`META-INF/HIKO.SF` 在、`aapt2` versionCode=174 / versionName=1.99.61。
+
+### 交付
+- 版本 `1.99.61+174`；Release：`hiko-v1.99.61-macos.zip`（34,118,416 B）+
+  `hiko-v1.99.61-android.apk`（70,267,547 B），远端字节数与本地逐一比对一致。
+- https://github.com/michiru233/hiko/releases/tag/v1.99.61

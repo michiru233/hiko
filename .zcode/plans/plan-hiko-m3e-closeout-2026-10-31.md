@@ -9,9 +9,9 @@
 | 版本 | 内容 | 为什么排这个位置 |
 |---|---|---|
 | **1.99.60** | `M3ETextField` 收口（11 处）+ 小件（加载环 2、分割线 2） | 输入框是**唯一完全没有 M3E 覆盖的控件族**；补完之后「新页面不用再手写 Material 控件」这句话才成立 |
-| **1.99.61** | 菜单收口（`PopupMenuButton` 6 + `MenuAnchor` 1 → `M3EMenu`） | 视觉上最看得见：现在三套行高/圆角/字号，桌面 hover 状态层只有自绘菜单有 |
-| **1.99.62** | 移动弹层（`showModalBottomSheet` 2 → `M3ESheet(bottom)`）+ 统计页重排 | 安卓上唯一手感与详情面板不一致的弹层；纯移动端收益 |
-| **1.99.63** | 库备份轮转（`library.json` 滚动快照 + 恢复入口） | 唯一一个**功能**项，不是样式项；`library.json` 现在只有原子写、没有历史快照，误删不可回滚 |
+| ~~1.99.61~~ | ~~菜单收口~~ → **已于 1.99.40 完成**，作废 | 核实发现 `PopupMenuButton(` / `showMenu(` 全仓为 0，12 处 `M3EMenu` |
+| **1.99.61**（改） | 底部弹层材质统一（「更多」面板 → `M3ESheet(bottom)`）+ 统计页自适应 | 「更多」面板手写了一份与 `M3ESheet` 重复的材质；统计页 48dp 横向 padding 在 360dp 上挤三张卡 |
+| **1.99.62**（改） | 库备份轮转（`library.json` 滚动快照 + 恢复入口） | 唯一一个**功能**项，不是样式项；`library.json` 现在只有原子写、没有历史快照，误删不可回滚 |
 
 每版独立 bump patch（`1.99.60+173` 起，build 位独立递增）、独立 `gh release`、独立 plan 章节与提交。
 
@@ -22,10 +22,10 @@
 | 按钮 / 图标按钮 / FAB / 按钮组 | ✅ | — |
 | 开关 / 复选 / 滑杆 / 下拉 / 搜索栏 / Chip | ✅ | — |
 | **输入框** | ❌ | `TextField(` **11 处**，三种写法各写一遍 |
-| 菜单 | 组件有，未全量采用 | `PopupMenuButton` **6**、`MenuAnchor` **1** |
+| 菜单 | ✅（1.99.40） | `PopupMenuButton` **0**、`showMenu` **0**、12 处 `M3EMenu`；仅 `context_menu.dart` 是自绘实现但规格已一致 |
 | 加载 | 组件有，未全量采用 | `CircularProgressIndicator` **2** |
 | 分割线 | ❌ | 裸 `Divider` **2**（其中一处还在用旧的 `theme.dividerColor`） |
-| 底部弹层 | 组件有，未全量采用 | `showModalBottomSheet` **2** |
+| 底部弹层 | 组件有，未全量采用 | `showModalBottomSheet` **2**，其中「更多」面板手写了一份与 `M3ESheet` 重复的材质 |
 
 ## 2. 1.99.60：`M3ETextField` + 小件
 
@@ -116,27 +116,34 @@ enum M3ETextFieldSize { compact, regular }
 - 新增 `hiko/test/ui/m3e/m3e_text_field_test.dart`：高度（compact 32 / regular 40）、标签在框上方、focus 描边出现、错误态文案、`obscureText` 生效、`onSubmitted` 触发
 - 样式账本锁（`test/ui/style_ledger_lock_test.dart`）**不改**就能过：新组件在 `lib/ui/m3e/` 内，调用点不引入字面圆角/字号/时长
 
-## 3. 1.99.61：菜单收口
+## 3. 1.99.61：底部弹层材质统一 + 统计页自适应
 
-| 位置 | 现状 |
-|---|---|
-| `fullscreen_player_screen` 1 处 | `PopupMenuButton`，行高与 M3E 菜单不一致 |
-| `online_favorites` 1 处 | 同上 |
-| `online_appearance` 1 处 | 同上 |
-| `online_sort_menu` 2 处 | 已有一层自绘壳，但仍是 `PopupMenuButton` |
-| `online_work_grid` 1 处 | `MenuAnchor` |
-| `home_screen` 1 处 | 排序下拉已是自绘（1.99.x），作为参照实现 |
+> **原计划「菜单收口」作废**（2026-10-31 实地核实）：`grep -rn "PopupMenuButton(" hiko/lib` = **0**、
+> `showMenu(` = **0**、`MenuAnchor(` 只剩 `m3e_menu.dart:66`（M3EMenu 自己的引擎），
+> `PopupMenuItem` 只出现在注释里。仓库已有 **12 处 `M3EMenu(` 调用点**，且
+> `plan-hiko-flutter-rewrite.md:4138` 记着「1.99.40：M3EMenu 落地 + 六处菜单统一」——
+> 这一版在 1.99.40 就做完了，§0 表里的「`PopupMenuButton` 6 + `MenuAnchor` 1」是把注释算进去的旧计数。
+> 唯一剩下的自绘菜单 `lib/ui/widgets/context_menu.dart`（`showHikoContextMenu`，2 个调用点）
+> 行规格 48dp / `M3EShape.xs` / `labelLarge` 已与 `M3EMenu` 一致，去重属纯重构（界面零变化、
+> 要自己补 `FocusTraversal`），**不作**，留作将来的 `chore:`。
 
-做法：逐处换 `M3EMenu`（`showMenu` 语义 + 自绘 hover 层），保留原回调与选中勾；**不改菜单项内容**。
-风险：`PopupMenuButton` 自带键盘导航与 `Semantics`，替换后要手动补 `FocusTraversal`——先做 1 处验证，再全量换。
+本版实际内容：
 
-## 4. 1.99.62：移动弹层
+- **「更多」面板**（`hiko/lib/ui/screens/home_screen.dart:928` `_openMoreSheet`）：
+  现在手写 `backgroundColor: surfaceContainerLow` + `RoundedRectangleBorder(Radius.circular(M3EShape.xl))`，
+  与 `M3ESheet(variant: bottom)` 的材质定义重复（改一处会漏另一处）→ 改成
+  `backgroundColor: Colors.transparent` + `M3ESheet(variant: M3ESheetVariant.bottom)` 包内容。
+- **曲目列表 sheet**（`fullscreen_player_screen:1236`）：已经是 `transparent` + `M3ESheet(bottom)`，
+  只核对不改（这个就是「正确写法」的样板）。
+- **统计页**（`hiko/lib/ui/widgets/stats_view.dart`，179 行）：
+  - 横向 padding 硬编码 `48` —— 360dp 手机上三张卡只剩 264dp 宽，`累计收听` 的长文本（如「12小时34分钟」）
+    在 `titleMedium` 下溢出。改成 `LayoutBuilder`：`maxWidth >= 720` 用 48 / 否则 16。
+  - 三张卡固定 `Row` + `Expanded` → 宽屏三列、窄屏竖排（`Column`），卡片本身抽出不带 `Expanded` 的 widget。
+  - 三颗状态 chip 固定 `Row`（`听完 N` / `听过 N` / `未听 N`）→ `Wrap(spacing: 8, runSpacing: 8)`。
+- 验收：`test/ui/business_surface_style_lock_test.dart` 的三条统计断言继续成立（语义色、无自持色值、
+  `radius: M3EShape.lg`）；新增统计页在 360dp / 720dp 两档的溢出自查。
 
-- `home_screen:928`「更多」面板：`showModalBottomSheet` + 自配 `surfaceContainerLow` + 28 顶角 → `M3ESheet(bottom)`（与详情面板同一手感）
-- `fullscreen_player_screen:1236` 曲目列表 sheet：同上
-- 统计页：去掉内部重复的「统计」大标题、横向 padding 48 → 24、三张卡由固定 `Row` 改 `Wrap`、`M3EType()` → `M3ETheme.of(context).type`
-
-## 5. 1.99.63：库备份轮转
+## 4. 1.99.62：库备份轮转
 
 - `library_store.save()` 写完 `library.json` 后，把上一份内容写进 `backups/library-YYYYMMDD-HHmmss.json`（滚动保留最近 5 份、总量上限 50 MB）
 - 危险操作前额外留一份：`clearAll()`、备份导入（`restoreToPrefs`）、全量扫描
@@ -172,3 +179,16 @@ enum M3ETextFieldSize { compact, regular }
   语义（与 `M3EMenuDivider` 的 8/6 padding 不同），归到 1.99.61 菜单收口一起处理。
 - 计划书 §2.5 的验收「`grep TextField(` == 0」达成；「analyze 不多一条」达成（中途多出的
   一条 `unnecessary_cast` 出在测试里，已消）。
+
+### 1.99.61（2026-10-31，已发布 `v1.99.61`）
+
+- ✅ 计划书 §3 的「菜单收口」**作废**：`grep -rn "PopupMenuButton(" hiko/lib` = 0、`showMenu(` = 0、
+  `MenuAnchor(` 只剩 `m3e_menu.dart:66`、`PopupMenuItem` 只在注释里、12 处 `M3EMenu(` 调用点，
+  `plan-hiko-flutter-rewrite.md` §1.99.40 已记「M3EMenu 落地 + 六处菜单统一」→ 这一项 1.99.40 就做完了。
+  `context_menu.dart` 去重属纯重构（界面零变化），不做，记为将来的 `chore:`。
+- ✅ 「更多」面板改走 `M3ESheet(bottom)`（`home_screen._openMoreSheet`），删掉手写材质。
+- ✅ 统计页自适应：`LayoutBuilder` 断点 720，边距 48 / 16，三卡 `Row` / `Column`，
+  值单行省略，三颗 chip 改 `Wrap`。
+- ✅ 新增 `test/ui/stats_view_test.dart` 4 条；全量 **957 passed / 2 skipped**；analyze 42/0。
+- ✅ `1.99.61+174` 双端构建 + APK 后签（v1/v2/v3 全 true）+ `gh release create v1.99.61`。
+- 顺序调整：后续版本顺延 —— 1.99.62 = 库备份轮转（原 §5 内容）。

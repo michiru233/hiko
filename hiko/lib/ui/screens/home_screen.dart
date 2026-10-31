@@ -924,36 +924,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   /// 「更多」面板：放不下的目的地 + 设置。
+  ///
+  /// 1.99.61：底色与顶角交给 `M3ESheet(bottom)` —— 原来这里又手写了一遍
+  /// `surfaceContainerLow` + `Radius.circular(M3EShape.xl)`，与详情面板、曲目列表
+  /// 是同一份材质的第三份拷贝，改一处必漏两处。此方法现在只剩「路由 + 内容」。
   Future<void> _openMoreSheet(List<M3ENavigationDestination> overflow) async {
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: context.m3e.colors.surfaceContainerLow,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(M3EShape.xl)),
-      ),
-      builder: (sheetContext) => SafeArea(
-        child: M3EList(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          children: <Widget>[
-            for (final destination in overflow)
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => M3ESheet(
+        variant: M3ESheetVariant.bottom,
+        child: SafeArea(
+          child: M3EList(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            children: <Widget>[
+              for (final destination in overflow)
+                M3EListItem(
+                  title: destination.label,
+                  leading: Icon(destination.icon),
+                  selected: destination.label == _view,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    setState(() => _view = destination.label);
+                  },
+                ),
               M3EListItem(
-                title: destination.label,
-                leading: Icon(destination.icon),
-                selected: destination.label == _view,
+                title: '设置',
+                leading: const Icon(Icons.settings_outlined),
                 onTap: () {
                   Navigator.pop(sheetContext);
-                  setState(() => _view = destination.label);
+                  _openSettings(context);
                 },
               ),
-            M3EListItem(
-              title: '设置',
-              leading: const Icon(Icons.settings_outlined),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                _openSettings(context);
-              },
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
