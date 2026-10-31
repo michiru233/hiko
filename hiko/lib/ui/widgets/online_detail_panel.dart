@@ -201,13 +201,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
     final body = HikoDetailTextScale(
       scale: _textScale,
       child: ref.watch(onlineDetailProvider(widget.workId)).when(
-            loading: () => const Center(
-              child: SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            ),
+            loading: () => const Center(child: M3ELoadingIndicator(size: 22)),
             error: (error, _) => _ErrorView(
               message: '$error',
               onRetry: () =>

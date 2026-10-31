@@ -86,18 +86,13 @@ class _CategoryEditDialogState extends ConsumerState<_CategoryEditDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          TextField(
+          M3ETextField(
             controller: _nameController,
             autofocus: true,
-            decoration: InputDecoration(
-              labelText: '分类名称',
-              hintText: '如：治愈系、角色扮演、同人音声',
-              errorText: _errorText,
-              isDense: true,
-              border: OutlineInputBorder(
-                borderRadius: M3EShape.radius(M3EShape.sm),
-              ),
-            ),
+            size: M3ETextFieldSize.regular,
+            label: '分类名称',
+            hintText: '如：治愈系、角色扮演、同人音声',
+            errorText: _errorText,
             onChanged: (_) {
               if (_errorText != null) setState(() => _errorText = null);
             },

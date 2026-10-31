@@ -176,7 +176,7 @@ class _OfflineDownloadDialogState extends ConsumerState<OfflineDownloadDialog> {
                       '${_selected.isEmpty ? '' : ' · $_sizeLabel'}',
             onToggle: _selectable.isEmpty ? null : _toggleAll,
           ),
-          Divider(height: 1, thickness: 1, color: colors.outlineVariant),
+          const M3EDivider(),
           const SizedBox(height: 4),
           if (groups.isEmpty)
             Padding(

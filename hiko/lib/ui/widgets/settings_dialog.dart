@@ -72,9 +72,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _updateChecking = false;
   GithubRelease? _latestRelease; // 检查到的新版本(null=未检查/已是最新)
 
+  // ---- 两个行内输入框（1.99.60）----
+  // 此前每次 build 都 new 一个 TextEditingController，打字时整棵子树重建会把
+  // 光标重置到开头；现在只建一次，外部值变（备份导入/改服务器）时才同步回去。
+  late final TextEditingController _serverController;
+  late final TextEditingController _proxyController;
+  final FocusNode _serverFocus = FocusNode();
+  final FocusNode _proxyFocus = FocusNode();
+
   @override
   void initState() {
     super.initState();
+    final settings = ref.read(settingsProvider);
+    _serverController = TextEditingController(text: settings.onlineServer);
+    _proxyController = TextEditingController(text: settings.scrapeProxy);
     _loadVersion();
     if (widget.autoCheckUpdate) {
       // 菜单栏「检查更新」跳进来时直接落在「关于」页：抽屉化之后结果卡片
@@ -87,6 +98,25 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _loadVersion() async {
     final info = await PackageInfo.fromPlatform();
     if (mounted) setState(() => _appVersion = info.version);
+  }
+
+  @override
+  void dispose() {
+    _serverController.dispose();
+    _proxyController.dispose();
+    _serverFocus.dispose();
+    _proxyFocus.dispose();
+    super.dispose();
+  }
+
+  /// 把外部值同步回控制器；正在输入（有焦点）时不打断。
+  void _syncController(
+    TextEditingController controller,
+    FocusNode focus,
+    String value,
+  ) {
+    if (focus.hasFocus || controller.text == value) return;
+    controller.text = value;
   }
 
   /// 检查 GitHub 最新 Release
@@ -882,6 +912,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     final favorites = ref.watch(onlineFavoritesProvider);
     final index = favorites.index;
 
+    // 保持输入框与设置值同步（备份导入、自建服务器等外部改动）；有焦点时不打断。
+    _syncController(_serverController, _serverFocus, settings.onlineServer);
+
     return [
       _SettingRow(
         label: '登录状态',
@@ -1027,31 +1060,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ),
       _SettingRow(
         label: '在线服务器',
-        trailing: SizedBox(
+        trailing: M3ETextField(
+          controller: _serverController,
+          focusNode: _serverFocus,
+          hintText: 'api.asmr.one',
           width: 220,
-          child: TextField(
-            controller: TextEditingController(text: settings.onlineServer),
-            onChanged: (v) =>
-                ref.read(settingsProvider.notifier).setOnlineServer(v),
-            decoration: InputDecoration(
-              hintText: 'api.asmr.one',
-              hintStyle: context.hintText,
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 10,
-                vertical: 8,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: M3EShape.radius(M3EShape.sm),
-                borderSide: BorderSide(color: theme.dividerColor),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: M3EShape.radius(M3EShape.sm),
-                borderSide: BorderSide(color: theme.dividerColor),
-              ),
-            ),
-            style: context.m3eTheme.type.labelSmall,
-          ),
+          onChanged: (v) =>
+              ref.read(settingsProvider.notifier).setOnlineServer(v),
         ),
       ),
       Padding(
@@ -1215,7 +1230,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   // ---- 数据 ----
 
-  List<Widget> _dataPage(ThemeData theme, AppSettings settings) => [
+  List<Widget> _dataPage(ThemeData theme, AppSettings settings) {
+    // 同在线服务器：外部改值（备份导入）时同步进控制器，有焦点时不打断。
+    _syncController(_proxyController, _proxyFocus, settings.scrapeProxy);
+    return [
         _SettingRow(
           label: '导入音声',
           trailing: _ActionButton(
@@ -1308,34 +1326,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         ),
         _SettingRow(
           label: '刮削代理',
-          trailing: SizedBox(
+          trailing: M3ETextField(
+            controller: _proxyController,
+            focusNode: _proxyFocus,
+            hintText: '留空使用系统代理',
             width: 220,
-            child: TextField(
-              controller: TextEditingController(
-                text: settings.scrapeProxy,
-              ),
-              onChanged: (v) => ref
-                  .read(settingsProvider.notifier)
-                  .setScrapeProxy(v.trim()),
-              decoration: InputDecoration(
-                hintText: '留空使用系统代理',
-                hintStyle: context.hintText,
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 8,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: M3EShape.radius(M3EShape.sm),
-                  borderSide: BorderSide(color: theme.dividerColor),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: M3EShape.radius(M3EShape.sm),
-                  borderSide: BorderSide(color: theme.dividerColor),
-                ),
-              ),
-              style: context.m3eTheme.type.labelSmall,
-            ),
+            onChanged: (v) => ref
+                .read(settingsProvider.notifier)
+                .setScrapeProxy(v.trim()),
           ),
         ),
         Padding(
@@ -1353,6 +1351,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
         ),
       ];
+  }
 
   /// 缓存上限展示：`0.5 GB` / `5 GB`
   static String _formatGb(double gb) =>

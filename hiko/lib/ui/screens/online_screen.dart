@@ -454,7 +454,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                 ],
               ),
             ),
-            Divider(height: 1, color: theme.dividerColor.withValues(alpha: 0.4)),
+            const M3EDivider(),
             Flexible(
               child: ListView(
                 shrinkWrap: true,
@@ -926,11 +926,7 @@ class _OnlineAccountEntry extends ConsumerWidget {
         width: compact ? 34 : 56,
         height: 32,
         child: const Center(
-          child: SizedBox(
-            width: 13,
-            height: 13,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
+          child: M3ELoadingIndicator(size: 16),
         ),
       );
     }

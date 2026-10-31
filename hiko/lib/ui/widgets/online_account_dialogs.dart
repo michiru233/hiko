@@ -88,30 +88,22 @@ class _LoginDialogState extends ConsumerState<_LoginDialog> {
               ),
             ),
             const SizedBox(height: 14),
-            TextField(
+            M3ETextField(
               controller: _name,
               autofocus: true,
               textInputAction: TextInputAction.next,
               enabled: !_busy,
-              decoration: const InputDecoration(
-                labelText: '用户名',
-                isDense: true,
-                border: OutlineInputBorder(),
-              ),
-              style: M3ETheme.of(context).type.bodySmall,
+              size: M3ETextFieldSize.regular,
+              label: '用户名',
             ),
             const SizedBox(height: 12),
-            TextField(
+            M3ETextField(
               controller: _password,
               obscureText: true,
               enabled: !_busy,
+              size: M3ETextFieldSize.regular,
+              label: '密码',
               onSubmitted: (_) => unawaited(_submit()),
-              decoration: const InputDecoration(
-                labelText: '密码',
-                isDense: true,
-                border: OutlineInputBorder(),
-              ),
-              style: M3ETheme.of(context).type.bodySmall,
             ),
             if (_error != null) ...[
               const SizedBox(height: 12),
@@ -502,17 +494,13 @@ Future<String?> showPlaylistNameDialog(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextField(
+              M3ETextField(
                 controller: controller,
                 autofocus: true,
                 maxLength: 40,
+                size: M3ETextFieldSize.regular,
+                label: '歌单名',
                 onSubmitted: (_) => submit(),
-                decoration: const InputDecoration(
-                  labelText: '歌单名',
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                ),
-                style: M3ETheme.of(context).type.bodySmall,
               ),
               Text(
                 '新建的歌单默认「私享」，只有你自己看得到。',

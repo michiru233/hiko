@@ -5004,3 +5004,57 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 ### 交付
 - 版本 `1.99.59+172`；Release 上传 `hiko-v1.99.59-macos.zip` + `hiko-v1.99.59-android.apk`。
 - 效果图与源文件：`.zcode/plans/assets/player-bar-options.png`、`assets/mock-player-bar.html`。
+
+## 1.99.60（2026-10-31）：输入框收口 + 小件清账
+
+### 可见变化
+- 所有输入框变成同一套外观：填充 `surfaceContainerHigh`、无底描边、focus 时 1.5dp 主色
+  描边、错误态红框 + 下方文案。设置页的在线服务器 / 刮削代理、分类对话框、登录与
+  新建歌单、编辑作品信息、标签搜索、在线翻页跳转，全部换掉。
+- 设置页两个行内输入框修掉「打字时光标跳回开头」——此前每次 build 都 new 一个
+  `TextEditingController`，重建即重置光标。
+- 在线搜索建议、在线详情加载的转圈改 `M3ELoadingIndicator`（同一套粗细与颜色）。
+- 在线页两处分割线换 `M3EDivider`，其中一处在深色主题下原本偏灰（用的还是
+  Material 2 的 `theme.dividerColor`）。
+
+### 实现
+- 需求来自用户 m01356「按顺序来做吧，依旧先写计划书，然后再做」；计划书
+  `.zcode/plans/plan-hiko-m3e-closeout-2026-10-31.md` 定下四版顺序
+  （1.99.60 输入框 + 小件 → 1.99.61 菜单 → 1.99.62 移动弹层 → 1.99.63 备份轮转）。
+- 新组件 `lib/ui/m3e/components/inputs/m3e_text_field.dart`：`M3ETextField`
+  + `enum M3ETextFieldSize { compact, regular }`。
+  - 尺寸：compact 32（`M3EShape.sm` + `labelSmall`）/ regular 40（`M3EShape.md` + `bodySmall`），
+    用 `InputDecoration(isCollapsed: true)` + 显式 `contentPadding` 钉死，不吃平台
+    `isDense` 差异。
+  - 标签画在框**上方**（`labelSmall` + 6dp）：Material 的框内浮动标签会在有/无内容
+    之间改变行高，设置行的 72dp 双行会跟着跳。
+  - 内部仍是 `TextField`：IME / 选区 / 快捷键 / 无障碍交框架，与 `M3ESearchBar`
+    同一策略（搜索栏不动 —— 它是 56 全圆 + 前置图标的搜索语义）。
+  - 错误态：`errorBorder` / `focusedErrorBorder` 变 `error`，文案由组件画在下方，
+    调用点不再各写一份样式。
+- 新组件 `lib/ui/m3e/components/surfaces/m3e_divider.dart`：`M3EDivider`（`height: 1`、
+  `thickness: 1`、默认 `outlineVariant`，可选 `indent` / `endIndent`）。
+- 11 处 `TextField(` 全数迁移：`settings_dialog.dart`（在线服务器 220 / 刮削代理 220）、
+  `online_work_grid.dart`（跳页 54）、`category_dialog.dart`、`online_account_dialogs.dart`
+  （用户名 / 密码 / 歌单名）、`home_screen.dart`（编辑作品的标题 / 声优 / 社团、标签搜索）。
+  `settings_dialog` 两个控制器改成 `late final` + `FocusNode`，`_syncController` 只在
+  未聚焦时把外部值同步回控制器（备份导入 / 改服务器后仍然对得上）。
+- 小件：`CircularProgressIndicator(strokeWidth: 2)` 2 处 → `M3ELoadingIndicator(size: 16 / 22)`；
+  裸 `Divider` 2 处 → `M3EDivider`。
+
+### 验证
+- `grep -rn 'TextField(' hiko/lib --include=*.dart | grep -v 'lib/ui/m3e/'` → **0 处**。
+- `flutter test`：**953 passed / 2 skipped**（1.99.59 基线 947 + 新增 6 条）。
+- `flutter analyze`：**42 条、0 error**（与基线持平；第一版多出的一条
+  `unnecessary_cast` 已在测试里消掉）。
+- 新增 `test/ui/m3e/m3e_text_field_test.dart`（6 条）：compact 比 regular 矮且各自
+  ≤36 / ≤44、标签底边在输入框顶边之上、`focusedBorder` 1.5dp 且点击后 `EditableText`
+  拿到焦点、错误态文案 + `errorBorder` 带宽度、`obscureText` 与 `onSubmitted` 透传、
+  `width: 220` 生效且 `helperText` 在框下方。
+- macOS 包 `Info.plist` = 1.99.60 / 173；APK `apksigner verify --min-sdk-version 21`
+  v1+v2+v3 全 true、`META-INF/HIKO.SF` 在、`aapt2` versionCode=173 / versionName=1.99.60。
+
+### 交付
+- 版本 `1.99.60+173`；Release：`hiko-v1.99.60-macos.zip`（34,117,286 B）+
+  `hiko-v1.99.60-android.apk`（70,202,011 B），远端字节数与本地逐一比对一致。
+- https://github.com/michiru233/hiko/releases/tag/v1.99.60

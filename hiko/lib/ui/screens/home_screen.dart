@@ -2074,6 +2074,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
     final tags = aggregateTags(base);
     var search = '';
+    final tagSearch = TextEditingController();
 
     await showDialog(
       context: context,
@@ -2098,12 +2099,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             children: <Widget>[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: TextField(
+                child: M3ETextField(
+                  controller: tagSearch,
                   autofocus: true,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    hintText: '搜索标签',
-                    prefixIcon: Icon(Icons.search, size: 16),
+                  size: M3ETextFieldSize.regular,
+                  hintText: '搜索标签',
+                  prefixIcon: Padding(
+                    padding: const EdgeInsets.only(left: 12, right: 8),
+                    child: Icon(
+                      Icons.search_rounded,
+                      size: 16,
+                      color: theme.colors.onSurfaceVariant,
+                    ),
                   ),
                   onChanged: (v) => setDialogState(() => search = v),
                 ),
@@ -2165,6 +2172,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         },
       ),
     );
+    tagSearch.dispose();
   }
 
   /// `updateAlbum` 写回后筛选、统计、详情页都读库，立刻生效。
@@ -2180,18 +2188,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            TextField(
+            M3ETextField(
               controller: titleController,
               autofocus: true,
-              decoration: const InputDecoration(labelText: '标题'),
+              size: M3ETextFieldSize.regular,
+              label: '标题',
             ),
-            TextField(
+            const SizedBox(height: 12),
+            M3ETextField(
               controller: artistController,
-              decoration: const InputDecoration(labelText: '声优'),
+              size: M3ETextFieldSize.regular,
+              label: '声优',
             ),
-            TextField(
+            const SizedBox(height: 12),
+            M3ETextField(
               controller: circleController,
-              decoration: const InputDecoration(labelText: '社团（专辑艺术家）'),
+              size: M3ETextFieldSize.regular,
+              label: '社团（专辑艺术家）',
             ),
           ],
         ),

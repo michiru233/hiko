@@ -485,31 +485,19 @@ class _PageJumpFieldState extends State<_PageJumpField> {
               ),
         ),
         const SizedBox(width: 8),
-        SizedBox(
+        M3ETextField(
+          controller: _controller,
           width: 54,
-          height: 28,
-          child: TextField(
-            controller: _controller,
-            keyboardType: TextInputType.number,
-            textAlign: TextAlign.center,
-            style: M3ETheme.of(context).type.labelSmall,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: InputDecoration(
-              isDense: true,
-              hintText: '跳页',
-              hintStyle: M3ETheme.of(context).type.labelSmall.copyWith(
-                color: M3ETheme.of(context).colors.onSurfaceVariant,
-              ),
-              contentPadding: const EdgeInsets.symmetric(vertical: 4),
-              border: OutlineInputBorder(borderRadius: M3EShape.radius(M3EShape.sm)),
-            ),
-            onSubmitted: (value) {
-              final page = int.tryParse(value.trim());
-              if (page == null) return;
-              widget.onSubmit(page);
-              _controller.clear();
-            },
-          ),
+          keyboardType: TextInputType.number,
+          textAlign: TextAlign.center,
+          hintText: '跳页',
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          onSubmitted: (value) {
+            final page = int.tryParse(value.trim());
+            if (page == null) return;
+            widget.onSubmit(page);
+            _controller.clear();
+          },
         ),
       ],
     );
