@@ -341,6 +341,9 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     final currentIndex = lyrics.activeIndex;
     final lyricsFontScale = settings.lyricsFontScale;
 
+    // 手动滚动打断过跟随、现在刚刚恢复：清掉去重记账，让下面这一段立刻回中。
+    syncAutoScrollState(lyrics.autoScrollEnabled);
+
     // 自动滚动到当前行
     if (currentIndex >= 0 &&
         currentIndex != lastRevealedIndex &&
@@ -424,7 +427,7 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
                     tooltip: '回到当前句',
                     onPressed: () {
                       ref.read(lyricsProvider.notifier).resumeAutoScroll();
-                      revealLyricsLine(currentIndex);
+                      recenterNow(currentIndex);
                     },
                   ),
                   const SizedBox(height: 8),

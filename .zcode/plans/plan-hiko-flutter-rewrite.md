@@ -5162,3 +5162,56 @@ M3E 收口四版（`plan-hiko-m3e-closeout-2026-10-31.md`）的最后一版，�
 - 版本 `1.99.62+175`；Release：`hiko-v1.99.62-macos.zip`（34,138,577 B）+
   `hiko-v1.99.62-android.apk`（70,316,699 B），远端字节数与本地逐一比对一致。
 - https://github.com/michiru233/hiko/releases/tag/v1.99.62
+
+## 1.99.63（2026-10-31）：歌词跟随修复（长句定位 + 恢复回中）
+
+### 可见变化
+- 长句歌词（一行折成 2–7 行的那种）不再卡住：点开歌词时歌已播到中段、拖进度条
+  跳到远处、或在详情页歌词 tab 里翻动，当前句都能自己回到正中并继续跟下去。
+  修复前这些场景下列表**永久冻结**在某个偏移上，高亮照常走、歌词不动。
+- 手动滑走歌词后不再需要自己去按按钮：停手 3 秒自动接回跟随，并立刻把当前句
+  滚回正中（修复前开关虽然翻回 true，列表却停在手指留下的位置）。
+- 「回到当前句」按下即到位，不再慢一帧（真机上按钮到抵住的那一下有明显迟滞）。
+- 远距离跳转不再做「飞越几十行」的长动画（那动画会被下一句的定位打断，观感是
+  「一直在滚却总不对」），超过一屏半直接落位。
+
+### 实现
+- `hiko/lib/ui/lyrics/lyrics_auto_scroll.dart`（核心，mixin）：
+  - 粗定位不再用固定估算行高 `index × lyricsEstimatedLineHeight`。新链路
+    `_estimateOffsetFor()`：找**离目标最近的已构建行**当锚点，用它的实测滚动偏移
+    + `_measuredLineHeight()`（已构建行里取最上/最下的斜率求平均行高，少于 3 个
+    采样点回退 `lyricsEstimatedLineHeight`）推算落点；`_maxRevealAttempts = 5`
+    每轮重估，正常两轮收敛。
+  - `_lineOffset()` 支持 `alignment`（默认 0.5 居中），锚点与目标同参照系，
+    单跳就接近正中。
+  - 落点策略：`attempt > 0`（重估轮）或距离超过 `_smoothRevealViewports = 1.5`
+    屏时用 `jumpTo` 并再验一轮；只有首次近距离对齐才走 `animateTo`。重估轮再叠
+    动画会让两段落点互相打断（抽屉视图实测残留 148px）。
+  - 新增 `syncAutoScrollState(bool enabled)`：手动滚动把跟随关掉、3 秒计时器再
+    打开时，清掉 `lastRevealedIndex` 让宿主视图下一次 build 立刻回中。
+  - 新增 `recenterNow(int index)`：给「回到当前句」按钮用，同步起动画（不等 build
+    那一帧），并 `_pendingRecenter` 记账避免同帧再排一次队。
+- `hiko/lib/ui/screens/fullscreen_player_screen.dart`：build 开头调
+  `syncAutoScrollState(lyrics.autoScrollEnabled)`；「回到当前句」按钮改为
+  `resumeAutoScroll() + recenterNow(currentIndex)`。
+- `hiko/lib/ui/lyrics/drawer_lyrics_view.dart`：同上（`M3EFab` 那颗按钮）。
+
+### 验证
+- `flutter test`：**976 passed / 2 skipped**（1.99.62 基线 970 + 新增 6 条）。
+- `flutter analyze`：**42 条、0 error**（与基线持平）。
+- 新增 `test/ui/lyrics_wrapped_line_center_test.dart` 3 条（全屏「播到第 30 句才
+  点开歌词」、全屏「播放中远跳到第 25 句」、抽屉 tab「长句远跳」）。
+- 新增 `test/ui/lyrics_follow_resume_test.dart` 3 条（全屏「手动滑走 3 秒后回中」、
+  全屏「连续播放 20 秒每句都居中」、抽屉「滑走 3 秒后回中」）。
+- 反向验证：把这四个改动 `git stash` 掉后 6 条里 **5 条红**（长句目标行完全没被
+  构建、恢复跟随偏差 Infinity），恢复后全绿。
+- 探针证据（临时文件已删）：手机宽度下 80 全角字的句子折 4 行、行高约 124px，
+  修复前第 20 句估算落点只有真实位置的 1/4，列表停在 `offset=900`（= 20 × 45）。
+  真实库 `library.json`：190 条音轨带歌词，13% 平均每句 > 20 字，最长 145 字。
+- macOS 包 `Info.plist` = 1.99.63 / 176；APK `apksigner verify --min-sdk-version 21`
+  v1+v2+v3 全 true、`META-INF/HIKO.SF` 在、`aapt2` versionCode=176 / versionName=1.99.63。
+
+### 交付
+- 版本 `1.99.63+176`；Release：`hiko-v1.99.63-macos.zip` + `hiko-v1.99.63-android.apk`，
+  远端字节数与本地逐一比对一致。
+- https://github.com/michiru233/hiko/releases/tag/v1.99.63

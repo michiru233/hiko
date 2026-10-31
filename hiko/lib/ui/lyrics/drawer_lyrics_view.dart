@@ -43,6 +43,9 @@ class _DrawerLyricsViewState extends ConsumerState<DrawerLyricsView>
     final theme = M3ETheme.of(context);
     final colors = theme.colors;
 
+    // 恢复自动跟随时先清掉去重记账，否则当前句会一直停在用户手指留下的位置。
+    syncAutoScrollState(lyricsState.autoScrollEnabled);
+
     // 监听高亮行变化并在允许自动滚动时触发丝滑平移
     if (lyricsState.autoScrollEnabled &&
         lyricsState.activeIndex != lastRevealedIndex &&
@@ -145,7 +148,7 @@ class _DrawerLyricsViewState extends ConsumerState<DrawerLyricsView>
                 semanticLabel: '回到当前播放行',
                 onPressed: () {
                   ref.read(lyricsProvider.notifier).resumeAutoScroll();
-                  revealLyricsLine(lyricsState.activeIndex);
+                  recenterNow(lyricsState.activeIndex);
                 },
                 child: const Icon(Icons.vertical_align_center_rounded),
               ),
