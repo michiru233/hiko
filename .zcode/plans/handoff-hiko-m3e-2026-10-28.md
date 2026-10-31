@@ -1,7 +1,8 @@
-# Hiko 交接文档（2026-10-31 更新，M3E 收口：1.99.61 弹层与统计页）
+# Hiko 交接文档（2026-10-31 更新，M3E 收口完毕：1.99.62 库文件历史快照）
 
-> 读者：接手 Hiko 的 agent。**先读 §0，再读 §5 的 P1 表**——1.99.61 已发版，M3E 收口剩「库备份轮转」一版
-> （`.zcode/plans/plan-hiko-m3e-closeout-2026-10-31.md`；原「菜单收口」经实测已在 1.99.40 完成，作废）。
+> 读者：接手 Hiko 的 agent。**先读 §0，再读 §5 的 P1 表**——1.99.62 已发版，M3E 收口计划
+> （`.zcode/plans/plan-hiko-m3e-closeout-2026-10-31.md`）**全部完成**：1.99.60 输入框 → 1.99.61 弹层与统计页
+> → 1.99.62 库文件历史快照；原「菜单收口」经实测已在 1.99.40 完成，作废。
 > 本文档只描述「截至本文写作时的真实状态」，凡是没验证过的都标了「未验证」。
 > 上一个同名前缀的交接文档是 `handoff-hiko-m3e-2026-10-26.md`（基线 797，已过期，只作历史参考）。
 
@@ -13,12 +14,12 @@
 |---|---|
 | 项目 | Hiko，本地优先 DLsite 音声库管理器，Flutter 主线在 `hiko/` |
 | 当前主题 | M3E（Material 3 Expressive）设计系统收口 + 清账（1.99.58 起转 UI 结构与桌面布局整理） |
-| 最后一个**已发布**版本 | `v1.99.61`（底部弹层材质统一 + 统计页自适应），tag `v1.99.61`，双资产已上传 |
-| 上一个版本 | `v1.99.60`（输入框收口 + 小件清账），commit `68e48e2` |
-| 工作区改动 | **无未提交改动**（1.99.61 已提交并 push，见 §3.1/§3.3） |
+| 最后一个**已发布**版本 | `v1.99.62`（库文件历史快照），tag `v1.99.62`，双资产已上传 |
+| 上一个版本 | `v1.99.61`（底部弹层材质统一 + 统计页自适应），commit `4af3568` |
+| 工作区改动 | **无未提交改动**（1.99.62 已提交并 push，见 §3.1/§3.3） |
 | analyze | **42 条 / 0 error**（= 基线，未见新增） |
-| test | **957 passed / 2 skipped**（1.99.60 的 953 + 新增 4 条统计页自适应） |
-| 接手第一件事 | 按 `plan-hiko-m3e-closeout-2026-10-31.md` §4 做 **1.99.62 库备份轮转**（`library.json` 滚动快照 + 恢复入口） |
+| test | **970 passed / 2 skipped**（1.99.61 的 957 + 新增 13 条快照/时间格式） |
+| 接手第一件事 | M3E 收口已清账，等用户点名下一版；§5 P1 表里没做的只剩「移动端播放条时间码」这类待裁决项 |
 
 **别做的事**：§4.1 那两条测试是靠 `pump(3400ms)` 让 toast 的 `kToastLinger` 走完收口的，
 不要为了「测试快点」把这行删掉，也不要改回 `ScaffoldMessenger`。
@@ -117,7 +118,34 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 - `test/ui/feedback_single_path_test.dart`（3 条源码锁：禁 `showSnackBar`·`SnackBar(`·`ScaffoldMessenger.`；
   禁业务层 `LinearProgressIndicator`；`toastSurface` 只允许出现在 `activity_overlay.dart`）
 
-### 2.3 本轮 1.99.61 做了什么（**已发布 v1.99.61**）
+### 2.3 本轮 1.99.62 做了什么（**已发布 v1.99.62**）
+
+主题：**库文件历史快照**（计划书 §4）。动手前的事实：`hiko/lib/data/library_store.dart` 的
+`save()` 只有「临时文件 → rename」的原子写，`library.json` 一份历史版本都不留；重置数据库、
+备份导入、全量扫描覆盖元数据之后无处回滚，只能靠用户自己导出过备份——而用户往往没导过。
+
+- 新增 `hiko/lib/data/library_snapshots.dart`：`LibrarySnapshot`（file / createdAt / bytes /
+  reason / `albumCount()`）+ `LibrarySnapshots`（`list()` / `capture()` / `prune()` / `restore()`）。
+  快照落在 `<数据目录>/library-backups/`，文件名 `library-YYYYMMDD-HHmmss-<reason>.json`；
+  `keepCount = 5`、`maxTotalBytes = 50 MB`，超了淘汰最旧的（最新一份无论多大都留着，
+  否则用户手上没有任何可回滚的点）。
+- 节流：`capture(force: false)` 在 `minInterval = 15 分钟` 内只留一份——播放进度落盘是高频写，
+  9 MB 的库每次复制一份会把磁盘 IO 拖垮；`clearAll` / `mergeNew` / `removeAlbums` /
+  `replaceAll` 走 `force: true` 强制留档。
+- `library_store.dart`：新增 `dataDirectory()` / `libraryFile()` / `writeRaw(String)`；
+  `save()` 改为 `writeRaw(jsonEncode(...))`。恢复走 `writeRaw` **直接写回备份原文**，不经过
+  `Album.fromJson` 往返——恢复过程本身不该再丢一次字段。
+- `library_provider.dart`：新增 `librarySnapshotsProvider`；`LibraryNotifier` 构造多一个可选
+  `LibrarySnapshots`；`_snapshot(reason, {force})` 吞异常只打日志（留档失败不能连累库操作）。
+  `updatePlayed` 不留档（高频），`updateAlbum` / `updateAlbums` 走 `edit` + 节流。
+- 设置页：数据与维护 →「历史快照」一格 → `_snapshotsPage`：列表（时间 / 张数 / 大小 / 来源）、
+  「立即留一份快照」按钮、`M3EDialog` 二次确认恢复、恢复后 `libraryProvider.load()` 重新读盘。
+  恢复前会自动再留一份 `restore` 快照，恢复错了还能退回来。
+- `utils/time.dart`：新增 `formatTimestamp(DateTime)`（`2026-10-31 20:48`）与
+  `formatBytes(int)`（`9.5 MB`）。
+- 验证：**970 passed / 2 skipped**（957 + 9 条快照 + 2 条设置入口 + 2 组格式测试）、analyze 42/0。
+
+### 2.4 本轮 1.99.61 做了什么（**已发布 v1.99.61**）
 
 主题：**底部弹层材质统一 + 统计页自适应**。**原计划的「菜单收口」作废**——动手前实测
 `grep -rn "PopupMenuButton(" hiko/lib` = 0、`showMenu(` = 0、`MenuAnchor(` 只剩
@@ -137,7 +165,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 - 验证：**957 passed / 2 skipped**（953 + 新增 4 条）、analyze 42/0、
   新增 `test/ui/stats_view_test.dart`（360 竖排 / 720 同排 / 999小时59分钟不溢出 / 窄屏边距 16）。
 
-### 2.4 本轮 1.99.60 做了什么（**已发布 v1.99.60**）
+### 2.5 本轮 1.99.60 做了什么（**已发布 v1.99.60**）
 
 主题：**输入框收口 + 小件清账**。需求来自用户 m01356「按顺序来做吧，依旧先写计划书，
 然后再做」；计划书 `.zcode/plans/plan-hiko-m3e-closeout-2026-10-31.md` 定下四版顺序：
@@ -162,7 +190,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 - 验证：`grep -rn 'TextField(' hiko/lib | grep -v lib/ui/m3e/` → 0；953 passed / 2 skipped；
   analyze 42/0；新增 `test/ui/m3e/m3e_text_field_test.dart` 6 条。
 
-### 2.5 本轮 1.99.59 做了什么（**已发布 v1.99.59**）
+### 2.6 本轮 1.99.59 做了什么（**已发布 v1.99.59**）
 
 主题：**桌面播放条改三段式**。需求来自用户 m00844（贴了通栏播放条截图：「做成这么
 一个超级长条是不是太丑了」）。流程同样是「先效果图、用户裁决、再动代码」。
@@ -181,7 +209,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 - 新增 `test/ui/player_bar_seek_test.dart`（5 条）；`test/ui/player_bar_mini_test.dart`
   的桌面用例从「细线非交互」改成「三段式：`player-bar-seek` 在场、`LinearProgressIndicator` 为 0」。
 
-### 2.6 上一轮 1.99.58 做了什么（**已发布 v1.99.58**）
+### 2.7 上一轮 1.99.58 做了什么（**已发布 v1.99.58**）
 
 主题：**设置页抽屉化 + 死设置清账**。需求来自用户 m00301（设置页杂糅了以前写过、
 现在完全用不到的功能；要分门别类、改抽屉跳转），交付流程是「先计划书 + 效果图，
@@ -207,7 +235,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
   新增 `settings_navigation_test.dart`（6 条导航契约），`activity_overlay_test.dart` 改成
   先进「库与扫描」再点扫描。
 
-### 2.7 关键决策留痕（不要推翻）
+### 2.8 关键决策留痕（不要推翻）
 
 | # | 决策 | 理由 |
 |---|---|---|
@@ -228,9 +256,22 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 
 ### 3.1 工作区状态（**已提交并 push**）
 
-分支 `main`，1.99.61 已提交并推送到 `origin/main`，未提交改动为零。
+分支 `main`，1.99.62 已提交并推送到 `origin/main`，未提交改动为零（只有未跟踪的 `.memsearch/`）。
 
-1.99.57 那次的清单留档（14 改 + 5 新增）；1.99.61 / 1.99.60 / 1.99.59 / 1.99.58 的改动见下面各条目：
+1.99.57 那次的清单留档（14 改 + 5 新增）；1.99.62 / 1.99.61 / 1.99.60 / 1.99.59 / 1.99.58 的改动见下面各条目：
+
+```
+1.99.62（库文件历史快照）：
+  hiko/pubspec.yaml                        （1.99.61+174 → 1.99.62+175）
+  hiko/lib/data/library_snapshots.dart     （新增：快照列表 / 捕获 / 淘汰 / 恢复）
+  hiko/lib/data/library_store.dart         （+dataDirectory / libraryFile / writeRaw）
+  hiko/lib/data/library_provider.dart      （+librarySnapshotsProvider、_snapshot 钩子）
+  hiko/lib/ui/widgets/settings_dialog.dart （数据与维护 →「历史快照」子页）
+  hiko/lib/utils/time.dart                 （+formatTimestamp / formatBytes）
+  hiko/test/data/library_snapshots_test.dart（新增 9 条）
+  hiko/test/ui/settings_snapshots_test.dart（新增 2 条）
+  hiko/test/utils/time_test.dart           （+2 组格式测试）
+```
 
 ```
 1.99.61（底部弹层材质统一 + 统计页自适应）：
@@ -307,17 +348,19 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 已跟踪文件净变化：**+72 / −174 行**（这一版是纯减法），另有 5 个新文件共 410 行
 （两个组件 156 行 + 三个测试 254 行）。
 
-### 3.2 验证状态（以 1.99.61 为准）
+### 3.2 验证状态（以 1.99.62 为准）
 
 | 项 | 结果 | 说明 |
 |---|---|---|
 | `flutter analyze` | **42 issues / 0 error** | 与基线一致，未新增。含 `unused_import` 之类历史告警 42 条，属已知 |
-| 定向测试 | 4/4 通过 | 新增 `stats_view_test`（4 条：360 竖排 / 720 同排 / 超长时长不溢出 / 边距 16） |
-| `flutter test`（全量） | **957 passed / 2 skipped** | 1.99.60 的 953 + 新增 4 条 |
-| 双端构建 | **已跑** | macOS `Hiko.app` 76.6 MB（Info.plist 1.99.60 / 173）；APK 70.2 MB |
-| APK 后签 | **已签并核验** | `apksigner verify --min-sdk-version 21`：v1/v2/v3 全 true；`META-INF/HIKO.SF` 在；`aapt2` versionCode=173 / versionName=1.99.60 |
-| Release | **已发布** | `v1.99.60`，资产字节数与本地逐一致（zip 34,117,286 / apk 70,202,011） |
+| 定向测试 | 9/9 + 2/2 + 7/7 通过 | 新增 `library_snapshots_test`（9 条）、`settings_snapshots_test`（2 条）、`time_test` 两组格式 |
+| `flutter test`（全量） | **970 passed / 2 skipped** | 1.99.61 的 957 + 新增 13 条 |
+| 双端构建 | **已跑** | macOS `Hiko.app` 76.6 MB（Info.plist 1.99.62 / 175）；APK 70.3 MB |
+| APK 后签 | **已签并核验** | `apksigner verify --min-sdk-version 21`：v1/v2/v3 全 true；`META-INF/HIKO.SF` 在；`aapt2` versionCode=175 / versionName=1.99.62 |
+| Release | **已发布** | `v1.99.62`，资产字节数与本地逐一致（zip 34,138,577 / apk 70,316,699） |
 
+> 1.99.61 的留档：`957 passed / 2 skipped`、analyze 42/0、zip 34,118,416 / apk 70,267,547。
+> 1.99.60 的留档：`953 passed / 2 skipped`、analyze 42/0、zip 34,117,286 / apk 70,202,011。
 > 1.99.59 的留档：`947 passed / 2 skipped`、analyze 42/0、zip 34,132,125 / apk 70,300,315。
 > 1.99.58 的留档：`942 passed / 2 skipped`、analyze 42/0、zip 34,122,810 / apk 70,300,315。
 
@@ -410,7 +453,16 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 > 裸 `IconButton`、Material 按钮、`DropdownButton`、裸 `Switch/Checkbox` **全部为 0**，
 > `HikoColors` 只剩 3 处注释。剩下的都是**具体控件缺位**，不再有「成片旧样式」。
 
-### P0（1.99.61，**已完成并发布**）
+### P0（1.99.62，**已完成并发布**）
+
+- ✅ `library.json` 历史快照：`<数据目录>/library-backups/`，滚动保留 5 份 / 50 MB
+- ✅ 危险操作强制留档（重置 / 导入合并 / 删除 / 整体替换），编辑走 15 分钟节流
+- ✅ 设置 → 数据与维护 →「历史快照」：列表（时间/张数/大小/来源）+ 二次确认恢复 +
+  手动「立即留一份快照」，恢复前自动再留一份
+- ✅ 恢复走 `writeRaw` 原文写回，不经过 `Album.fromJson` 往返
+- ✅ 测试：970 passed / 2 skipped（新增 13 条），analyze 42/0
+
+### P0（1.99.61，留档）
 
 - ✅ 「更多」面板改走 `M3ESheet(bottom)`（`home_screen._openMoreSheet`），删掉手写材质
 - ✅ 统计页自适应：边距 48/16、三卡 `Row`/`Column`、值单行省略、状态 chip 改 `Wrap`
@@ -451,14 +503,14 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
   → `M3EProgress`，共 11 个调用点）
 - ✅ 修 2 条测试 → 封包发版 `v1.99.57`
 
-### P1（按 `plan-hiko-m3e-closeout-2026-10-31.md` 的顺序推进，只剩一版）
+### P1（`plan-hiko-m3e-closeout-2026-10-31.md` 四版已全部完成）
 
 | 项 | 实测现状 | 建议 |
 |---|---|---|
 | ✅ `M3ETextField` | 1.99.60 已收口（`TextField(` 0 处） | 完成 |
 | ✅ 菜单收口 | `PopupMenuButton(` / `showMenu(` 全仓 **0**，`MenuAnchor(` 只剩 `m3e_menu.dart:66`，12 处 `M3EMenu(` | **1.99.40 已完成**，计划书 §3 作废 |
 | ✅ 小件 / 弹层 / 统计页 | `CircularProgressIndicator` 0 处；`showModalBottomSheet` 2 处均已是 `transparent` + `M3ESheet(bottom)`；统计页自适应 1.99.61 | 完成 |
-| 库备份轮转（1.99.62） | `library_store.save()` 只有原子写，`library.json` 没有历史快照 | 计划书 §4 已有做法：滚动保留最近 5 份 + 危险操作前额外留一份 + 设置页「历史快照」恢复入口 |
+| ✅ 库备份轮转 | 1.99.62 已收口：`library-backups/` 滚动 5 份 / 50 MB + 设置页恢复入口 | 完成 |
 
 ### P2（页面级，看用户要不要）
 
@@ -475,7 +527,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 |---|---|
 | Android edge-to-edge / 系统栏（M-09） | `lib/` 里**零 `SystemChrome` 调用**，Android 15 强制 edge-to-edge 下状态栏图标亮度靠默认；需实机核 |
 | Windows 实机验收（Q6） | 需要 Win 机器 |
-| 库备份轮转 | 现在只有手动导出/导入（`HikoBackup`），`library.json` 有原子写但**没有历史快照**，误删/损坏无回滚 |
+| ~~库备份轮转~~ | 1.99.62 已做（快照 + 恢复入口）|
 | 点击那一帧整页重建 | 1.87 遗留性能项：点曲目时 `libraryProvider` 同步发新列表 → `HomeScreen` 全量重建，与 `Navigator.push` 撞同一帧。三个候选方案要先 grill |
 | 歌词字阶（Q5） | 未裁决，且行高承重（见 §4.3） |
 | 下载暂停/继续 | 用户已明确「比较困难，先不做」 |
@@ -588,7 +640,7 @@ fix(m3e): …
 docs(plan): …
 ```
 
-提交正文写「改了什么 + 为什么」，**验证结果写一行**（`957 passed / 2 skipped，analyze 42 条 / 0 error`）+ `版本：1.99.xx+N`。
+提交正文写「改了什么 + 为什么」，**验证结果写一行**（`970 passed / 2 skipped，analyze 42 条 / 0 error`）+ `版本：1.99.xx+N`。
 
 ### 6.5 环境事实（本机）
 
@@ -616,11 +668,10 @@ docs(plan): …
 
 ## 7. 接手建议（一句话版）
 
-1.99.61 已发版（957 passed / 2 skipped，analyze 42 条 / 0 error），工作区干净。
-用户已批准按 **`.zcode/plans/plan-hiko-m3e-closeout-2026-10-31.md`** 的顺序推进
-（m01356「按顺序来做吧，依旧先写计划书，然后再做」）。四版里已完成 1.99.60（输入框 + 小件）、
-1.99.61（弹层 + 统计页）；中间的「菜单收口」经实测 1.99.40 已做完，作废。
-**下一版是 1.99.62 库备份轮转**（`library.json` 滚动快照 + 恢复入口），计划书 §4 有做法与验收。
+1.99.62 已发版（970 passed / 2 skipped，analyze 42 条 / 0 error），工作区干净。
+用户批准的四版计划 **`.zcode/plans/plan-hiko-m3e-closeout-2026-10-31.md` 已全部落地**：
+1.99.60 输入框 + 小件、1.99.61 弹层 + 统计页、1.99.62 库文件历史快照；中间的「菜单收口」
+经实测 1.99.40 已做完，作废。**M3E 收口到此清账，下一版等用户点名。**
 路线图没排但用户提过的：移动端播放条要不要也上时间码（桌面三段式落地后两端观感差异变大）。
 封包流程见 §6.2/§6.3，硬规则见 §6.4。
 

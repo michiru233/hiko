@@ -22,7 +22,7 @@
 | 设计系统 | 自建 **M3E**（Material 3 Expressive），位于 `hiko/lib/ui/m3e/`，业务只允许 `import 'm3e.dart'` |
 | 当前重心 | M3E 增量重构：把全站从旧自绘体系迁到 M3E 组件 + token |
 | 代码规模 | `lib` 125 个 `.dart`、约 33,300 行；`test` 117 个测试文件 |
-| 验证基线 | `flutter test` **957 passed / 2 skipped**；`flutter analyze` **42 issues / 0 error** |
+| 验证基线 | `flutter test` **970 passed / 2 skipped**；`flutter analyze` **42 issues / 0 error** |
 | 发版节奏 | 每改一次代码 → patch 位 +1 → 双端构建 → APK 后签 → GitHub Release |
 
 **一句话现状**：M3E 已收口。骨架（token / 主题 / 组件库）完备，主链路页面迁完 10 个版本

@@ -192,3 +192,20 @@ enum M3ETextFieldSize { compact, regular }
 - ✅ 新增 `test/ui/stats_view_test.dart` 4 条；全量 **957 passed / 2 skipped**；analyze 42/0。
 - ✅ `1.99.61+174` 双端构建 + APK 后签（v1/v2/v3 全 true）+ `gh release create v1.99.61`。
 - 顺序调整：后续版本顺延 —— 1.99.62 = 库备份轮转（原 §5 内容）。
+
+### 1.99.62（2026-10-31，已发布 `v1.99.62`）
+
+- ✅ 计划书 §4「库备份轮转」落地：`lib/data/library_snapshots.dart`（`LibrarySnapshot` +
+  `LibrarySnapshots`：`list` / `capture` / `prune` / `restore`），快照落在
+  `<数据目录>/library-backups/`，滚动 5 份 / 50 MB。
+- ✅ 留档时机：`clearAll` / `mergeNew` / `removeAlbums` / `replaceAll` 强制；`updateAlbum(s)`
+  走 15 分钟节流；`updatePlayed` 不留（高频）。
+- ✅ `library_store.dart` 新增 `dataDirectory` / `libraryFile` / `writeRaw`，恢复原文写回、
+  不经模型往返；坏快照在校验阶段就被拒，不会先冲掉现有库。
+- ✅ 设置 → 数据与维护 →「历史快照」子页：列表（时间/张数/大小/来源）+ 二次确认恢复 +
+  「立即留一份快照」；恢复前自动再留一份 `restore` 快照。
+- ✅ 新增 `test/data/library_snapshots_test.dart` 9 条、`test/ui/settings_snapshots_test.dart` 2 条、
+  `time_test` 两组；全量 **970 passed / 2 skipped**；analyze 42/0。
+- ✅ `1.99.62+175` 双端构建 + APK 后签（v1/v2/v3 全 true）+ `gh release create v1.99.62`。
+- **四版计划全部完成**：1.99.60（输入框 + 小件）、1.99.61（弹层 + 统计页）、1.99.62（库快照）；
+  原 1.99.61「菜单收口」作废（1.99.40 已完成）。

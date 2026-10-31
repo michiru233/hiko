@@ -2,15 +2,34 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/album.dart';
+import 'library_snapshots.dart';
 import 'library_store.dart';
 
 final libraryStoreProvider = Provider<LibraryStore>((ref) => LibraryStore());
 
+/// 库历史快照（1.99.62）：落盘前留一份上一版，误删/误覆盖可回滚
+final librarySnapshotsProvider = Provider<LibrarySnapshots>((ref) {
+  return LibrarySnapshots(store: ref.watch(libraryStoreProvider));
+});
+
 /// 音声库状态：加载 / 合并导入 / 单张更新（收藏、刮削）/ 删除 / 落盘
 class LibraryNotifier extends StateNotifier<List<Album>> {
-  LibraryNotifier(this._store) : super([]);
+  LibraryNotifier(this._store, [this._snapshots]) : super([]);
 
   final LibraryStore _store;
+  final LibrarySnapshots? _snapshots;
+
+  /// 留一份快照。`force: false` 走节流（进度类高频写不重复留档）。
+  /// 快照失败绝不影响库操作本身，所以这里吞掉异常只打日志。
+  Future<void> _snapshot(String reason, {bool force = true}) async {
+    final snapshots = _snapshots;
+    if (snapshots == null) return;
+    try {
+      await snapshots.capture(reason: reason, force: force);
+    } catch (e) {
+      debugPrint('[Snapshot] capture failed ($reason): $e');
+    }
+  }
 
   Future<void> load() async {
     state = await _store.load();
@@ -18,12 +37,14 @@ class LibraryNotifier extends StateNotifier<List<Album>> {
 
   /// 整体替换（清理失效记录后使用）
   Future<void> replaceAll(List<Album> albums) async {
+    await _snapshot('replace');
     state = albums;
     await _store.save(albums);
   }
 
   /// 清空全部专辑数据（重置数据库，仅清空 library.json，不删除源文件）
   Future<void> clearAll() async {
+    await _snapshot('reset');
     state = [];
     await _store.save([]);
   }
@@ -77,12 +98,14 @@ class LibraryNotifier extends StateNotifier<List<Album>> {
       ...mergedIncoming,
       ...kept,
     ];
+    await _snapshot('import');
     state = next;
     await _store.save(next);
   }
 
   /// 单张专辑变换（收藏切换 / 刮削结果回写），变换后整体落盘
   Future<void> updateAlbum(String id, Album Function(Album) transform) async {
+    await _snapshot('edit', force: false);
     state = [
       for (final a in state) a.id == id ? transform(a) : a,
     ];
@@ -94,6 +117,7 @@ class LibraryNotifier extends StateNotifier<List<Album>> {
     Set<String> ids,
     Album Function(Album) transform,
   ) async {
+    await _snapshot('edit', force: false);
     state = [
       for (final a in state) ids.contains(a.id) ? transform(a) : a,
     ];
@@ -102,6 +126,7 @@ class LibraryNotifier extends StateNotifier<List<Album>> {
 
   /// 删除专辑（仅从库移除；源文件删除由平台层负责）
   Future<void> removeAlbums(Set<String> ids) async {
+    await _snapshot('remove');
     state = state.where((a) => !ids.contains(a.id)).toList();
     await _store.save(state);
   }
@@ -155,6 +180,9 @@ class LibraryNotifier extends StateNotifier<List<Album>> {
 
 final libraryProvider =
     StateNotifierProvider<LibraryNotifier, List<Album>>((ref) {
-  final notifier = LibraryNotifier(ref.watch(libraryStoreProvider));
+  final notifier = LibraryNotifier(
+    ref.watch(libraryStoreProvider),
+    ref.watch(librarySnapshotsProvider),
+  );
   return notifier;
 });

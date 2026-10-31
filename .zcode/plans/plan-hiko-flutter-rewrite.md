@@ -5100,3 +5100,65 @@ macOS 27 的新窗口样式下，标题栏（白底黑字 + 红绿灯）与深�
 - 版本 `1.99.61+174`；Release：`hiko-v1.99.61-macos.zip`（34,118,416 B）+
   `hiko-v1.99.61-android.apk`（70,267,547 B），远端字节数与本地逐一比对一致。
 - https://github.com/michiru233/hiko/releases/tag/v1.99.61
+
+## 1.99.62（2026-10-31）：库文件历史快照
+
+M3E 收口四版（`plan-hiko-m3e-closeout-2026-10-31.md`）的最后一版，原计划里的「1.99.63」。
+动机是数据安全而不是视觉：`library_store.dart` 的 `save()` 一直是「临时文件 → rename」的
+原子写，只保证「不会写坏」，不保证「写坏了能回去」——重置数据库、备份导入、全量扫描覆盖
+元数据之后，`library.json` 一份历史版本都没有，用户想回滚只能靠自己导出过的备份文件，
+而绝大多数人没导过。
+
+### 可见变化
+- 设置 → 数据与维护 →「历史快照」：列出每份快照的时间、张数、大小和来源
+  （重置前 / 导入 / 删除 / 编辑 / 恢复前），点一行弹二次确认，确认后整库恢复到那一刻。
+- 同一页底部有「立即留一份快照」，可以手动存一个还原点。
+- 编辑库、导入、删除、重置数据库之前**自动**留档；恢复快照前也会先把当前状态再留一份。
+
+### 实现
+- 新增 `hiko/lib/data/library_snapshots.dart`：
+  - `LibrarySnapshot`：`file` / `createdAt` / `bytes` / `reason` / `albumCount()`（列表显示张数）。
+  - `LibrarySnapshots`：`list()`（按文件名里的时间戳解析、最新在前）、
+    `capture({reason, force})`、`prune()`、`restore(snapshot)`。
+  - 落地位置 `<数据目录>/library-backups/library-YYYYMMDD-HHmmss-<reason>.json`；
+    重名加 `-1`、`-2` 后缀。
+  - 淘汰规则：`keepCount = 5` 份、`maxTotalBytes = 50 MB`；**最新一份无论多大都留着**
+    （否则用户手上完全没有可回滚的点）。
+  - 节流：`force: false` 时若最新快照在 `minInterval = 15 分钟` 内则不再留档。播放进度
+    落盘是高频写（一首歌几十次），9 MB 的库每次复制一份会把 IO 拖垮；危险操作传
+    `force: true`。
+  - `restore()` 先 `_validate()`（必须是能解析、且带 `albums` 列表的 JSON），再留一份
+    `restore` 快照，最后覆盖。校验放在覆盖**之前**，坏快照不会把现有库冲掉。
+- `hiko/lib/data/library_store.dart`：新增 `dataDirectory()`、`libraryFile()`、
+  `writeRaw(String json)`；`save()` 改为 `writeRaw(jsonEncode(...))`，两条路径共用同一
+  个写队列（串行化不变）。恢复走 `writeRaw` **直接写回备份原文**，不经过 `Album.fromJson`
+  往返——恢复过程本身不该再丢一次字段。
+- `hiko/lib/data/library_provider.dart`：新增 `librarySnapshotsProvider`；`LibraryNotifier`
+  多一个可选 `LibrarySnapshots` 参数；`_snapshot(reason, {force})` 吞异常只打日志
+  （留档失败不能连累库操作）。钩子位置：`clearAll` → `reset`、`mergeNew` → `import`、
+  `removeAlbums` → `remove`、`replaceAll` → `replace`（这四个 `force: true`），
+  `updateAlbum` / `updateAlbums` → `edit`（节流）；`updatePlayed` 不留档。
+- 设置页 `settings_dialog.dart`：数据与维护页插入「历史快照」`_indexTile` → 新子页
+  `_snapshotsPage`（`FutureBuilder` 列表 + 空态文案 + 「立即留一份快照」`M3EButton.tonal`），
+  `_snapshotRow` 沿用索引格的 40×40 图标底 + `M3EListItem`；`_restoreSnapshot` 走
+  `M3EDialog` 二次确认，恢复后 `libraryProvider.notifier.load()` 重新读盘再刷新列表。
+- `hiko/lib/utils/time.dart`：新增 `formatTimestamp(DateTime)`（`2026-10-31 20:48`）与
+  `formatBytes(int)`（`512 B` / `9.5 MB` / `1.1 GB`）。
+
+### 验证
+- `flutter test`：**970 passed / 2 skipped**（1.99.61 基线 957 + 新增 13 条）。
+- `flutter analyze`：**42 条、0 error**（与基线持平；中途新增的两条
+  `unnecessary_brace_in_string_interps` 出在测试里，已消）。
+- 新增 `test/data/library_snapshots_test.dart`（9 条，普通 `test` + 临时目录，
+  不用 `testWidgets`——真实 IO 在 FakeAsync 下会挂死）：捕获记来源、库缺失不留档、
+  节流窗口内只留一份、`prune` 留最新 5、总量上限但保最新、恢复覆盖且先留当前状态、
+  坏快照拒绝且不动当前库、`list` 最新在前且忽略非快照文件、来源标签。
+- 新增 `test/ui/settings_snapshots_test.dart`（2 条，用假 `LibrarySnapshots` 只锁跳转与空态）。
+- `test/utils/time_test.dart` 补 `formatTimestamp` / `formatBytes` 两组。
+- macOS 包 `Info.plist` = 1.99.62 / 175；APK `apksigner verify --min-sdk-version 21`
+  v1+v2+v3 全 true、`META-INF/HIKO.SF` 在、`aapt2` versionCode=175 / versionName=1.99.62。
+
+### 交付
+- 版本 `1.99.62+175`；Release：`hiko-v1.99.62-macos.zip`（34,138,577 B）+
+  `hiko-v1.99.62-android.apk`（70,316,699 B），远端字节数与本地逐一比对一致。
+- https://github.com/michiru233/hiko/releases/tag/v1.99.62

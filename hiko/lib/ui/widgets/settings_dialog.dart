@@ -11,6 +11,7 @@ import '../m3e/m3e.dart';
 import '../../data/backup.dart';
 import '../../data/categories_provider.dart';
 import '../../data/library_provider.dart';
+import '../../data/library_snapshots.dart';
 import '../../data/online/offline_downloads.dart';
 import '../../data/online/online_account.dart';
 import '../../data/online/online_favorites.dart';
@@ -18,6 +19,7 @@ import '../../data/online/online_provider.dart';
 import '../../data/settings_store.dart';
 import '../../data/update_checker.dart';
 import '../../playback/gain_chain.dart';
+import '../../utils/time.dart';
 import '../../playback/playback_controller.dart';
 import '../../platform/platform_service.dart';
 import 'seed_image_picker.dart';
@@ -63,6 +65,9 @@ class SettingsPage extends ConsumerStatefulWidget {
 
 class _SettingsPageState extends ConsumerState<SettingsPage> {
   double? _gainDrag; // 增益滑动条拖动中的临时值（松手才提交）
+
+  /// 历史快照列表（1.99.62）：进入子页时才拉一次，恢复后重新拉
+  Future<List<LibrarySnapshot>>? _snapshotsFuture;
 
   /// 当前子页 id（1.99.58 抽屉化）：null = 索引页，其余见 [_routeTitle]。
   String? _route;
@@ -391,7 +396,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     ];
   }
 
-  void _open(String route) => setState(() => _route = route);
+  void _open(String route) => setState(() {
+        _route = route;
+        if (route == 'snapshots') {
+          _snapshotsFuture = ref.read(librarySnapshotsProvider).list();
+        }
+      });
 
   String _routeTitle(String route) => switch (route) {
         'appearance' => '外观与显示',
@@ -402,6 +412,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         'cache' => '缓存明细',
         'library' => '库与扫描',
         'data' => '数据与维护',
+        'snapshots' => '历史快照',
         'about' => '关于',
         _ => '设置',
       };
@@ -418,6 +429,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       'cache' => _cachePage(theme, settings),
       'library' => _foldersPage(theme, settings),
       'data' => _dataPage(theme, settings),
+      'snapshots' => _snapshotsPage(theme, settings),
       'about' => _aboutPage(theme, settings),
       _ => _indexPage(settings),
     };
@@ -1230,6 +1242,162 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   // ---- 数据 ----
 
+  /// 历史快照（1.99.62）：库文件落盘前的自动留存，列表 + 二次确认恢复。
+  /// 不放索引页 —— 日常不看它，真要救库的时候才进来。
+  List<Widget> _snapshotsPage(ThemeData theme, AppSettings settings) {
+    _snapshotsFuture ??= ref.read(librarySnapshotsProvider).list();
+    return [
+      FutureBuilder<List<LibrarySnapshot>>(
+        future: _snapshotsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: M3ELoadingIndicator(size: 22)),
+            );
+          }
+          final items = snapshot.data ?? const <LibrarySnapshot>[];
+          if (items.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                '还没有历史快照。编辑库、导入、删除、重置数据库之前会自动留一份，'
+                '也可以在这里立即留一份当前状态。',
+                style: context.hintText,
+              ),
+            );
+          }
+          return Column(
+            children: [
+              for (final item in items) _snapshotRow(theme, item),
+              const SizedBox(height: 4),
+            ],
+          );
+        },
+      ),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Text(
+          '最多保留最近 5 份、合计 50 MB，超过上限时最旧的自动清掉。'
+          '恢复会用快照覆盖当前库文件（不删除音频文件），恢复前会先把当前状态再留一份。',
+          style: context.hintText,
+        ),
+      ),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: M3EButton(
+          label: '立即留一份快照',
+          variant: M3EButtonVariant.tonal,
+          onPressed: () async {
+            await ref.read(librarySnapshotsProvider).capture(reason: 'auto');
+            if (!mounted) return;
+            _reloadSnapshots();
+            _toast('已保存当前库快照');
+          },
+        ),
+      ),
+    ];
+  }
+
+  Widget _snapshotRow(ThemeData theme, LibrarySnapshot snapshot) {
+    final colors = theme.colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.surfaceContainerLow,
+          borderRadius: M3EShape.radius(M3EShape.md),
+        ),
+        child: FutureBuilder<int?>(
+          future: snapshot.albumCount(),
+          builder: (context, count) {
+            final albums = count.data;
+            final meta = <String>[
+              if (albums != null) '$albums 张',
+              formatBytes(snapshot.bytes),
+              snapshotReasonLabel(snapshot.reason),
+            ].join(' · ');
+            return M3EListItem(
+              title: formatTimestamp(snapshot.createdAt),
+              subtitle: meta,
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: colors.primaryContainer.withValues(alpha: 0.35),
+                  borderRadius: M3EShape.radius(M3EShape.sm),
+                ),
+                child: Icon(
+                  Icons.history_rounded,
+                  size: 20,
+                  color: colors.primary,
+                ),
+              ),
+              trailing: Icon(
+                Icons.restore_rounded,
+                size: 20,
+                color: colors.onSurfaceVariant,
+              ),
+              onTap: () => _restoreSnapshot(snapshot),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _reloadSnapshots() {
+    setState(() {
+      _snapshotsFuture = ref.read(librarySnapshotsProvider).list();
+    });
+  }
+
+  Future<void> _restoreSnapshot(LibrarySnapshot snapshot) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final theme = M3ETheme.of(ctx);
+        return M3EDialog(
+          title: '确认恢复快照',
+          content: Text(
+            '将用 ${formatTimestamp(snapshot.createdAt)} 的快照'
+            '覆盖当前库文件（${formatBytes(snapshot.bytes)}）。\n\n'
+            '只覆盖库记录，不删除音频文件；恢复前会先把当前状态再留一份。',
+            style: theme.type.bodyMedium.copyWith(
+              color: theme.colors.onSurfaceVariant,
+              height: 1.6,
+            ),
+          ),
+          actions: <Widget>[
+            M3EButton(
+              label: '取消',
+              variant: M3EButtonVariant.text,
+              onPressed: () => Navigator.pop(ctx, false),
+            ),
+            M3EButton(
+              label: '恢复这份',
+              variant: M3EButtonVariant.destructive,
+              onPressed: () => Navigator.pop(ctx, true),
+            ),
+          ],
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await ref.read(librarySnapshotsProvider).restore(snapshot);
+      await ref.read(libraryProvider.notifier).load();
+      if (!mounted) return;
+      _reloadSnapshots();
+      _toast('已恢复 ${formatTimestamp(snapshot.createdAt)} 的库快照');
+    } on LibrarySnapshotException catch (e) {
+      if (mounted) _toast('恢复失败：${e.message}');
+    } catch (e) {
+      if (mounted) _toast('恢复失败：$e');
+    }
+  }
+
   List<Widget> _dataPage(ThemeData theme, AppSettings settings) {
     // 同在线服务器：外部改值（备份导入）时同步进控制器，有焦点时不打断。
     _syncController(_proxyController, _proxyFocus, settings.scrapeProxy);
@@ -1323,6 +1491,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               }
             },
           ),
+        ),
+        _indexTile(
+          icon: Icons.history_rounded,
+          title: '历史快照',
+          subtitle: '库文件自动留存 · 误删可回滚',
+          onTap: () => _open('snapshots'),
         ),
         _SettingRow(
           label: '刮削代理',

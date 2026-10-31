@@ -24,4 +24,21 @@ void main() {
       expect(formatDuration(4980), '1小时23分钟');
     });
   });
+
+  group('formatTimestamp', () {
+    test('补零到分钟', () {
+      expect(formatTimestamp(DateTime(2026, 1, 2, 3, 4)), '2026-01-02 03:04');
+      expect(formatTimestamp(DateTime(2026, 12, 31, 23, 59)), '2026-12-31 23:59');
+    });
+  });
+
+  group('formatBytes', () {
+    test('按量级换单位', () {
+      expect(formatBytes(512), '512 B');
+      expect(formatBytes(2048), '2.0 KB');
+      expect(formatBytes(1015808), '992 KB');
+      expect(formatBytes(9955328), '9.5 MB');
+      expect(formatBytes(1181116006), '1.1 GB');
+    });
+  });
 }

@@ -24,6 +24,12 @@ class LibraryStore {
     return File('${dir.path}${Platform.pathSeparator}library.json');
   }
 
+  /// 库文件所在目录（历史快照放在它下面的 `library-backups/`）
+  Future<Directory> dataDirectory() => _dataDir();
+
+  /// 库文件本体（快照模块要复制它）
+  Future<File> libraryFile() => _file();
+
   /// 读取全库；文件缺失/损坏返回空列表
   Future<List<Album>> load() async {
     try {
@@ -53,6 +59,13 @@ class LibraryStore {
       'version': 1,
       'albums': albums.map((a) => a.toJson()).toList(),
     });
+    return writeRaw(json);
+  }
+
+  /// 把一段已经是库文件格式的 JSON 原子写进 `library.json`。
+  /// 快照恢复走这条路：直接写回备份原文，不经过模型往返，避免恢复过程本身
+  /// 丢字段（`Album.fromJson` 不认识的新字段会被丢）。
+  Future<void> writeRaw(String json) {
     _writeQueue = _writeQueue.then((_) => _writeAtomic(json));
     return _writeQueue;
   }
