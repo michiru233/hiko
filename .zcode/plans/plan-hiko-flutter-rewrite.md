@@ -5215,3 +5215,44 @@ M3E 收口四版（`plan-hiko-m3e-closeout-2026-10-31.md`）的最后一版，�
 - 版本 `1.99.63+176`；Release：`hiko-v1.99.63-macos.zip` + `hiko-v1.99.63-android.apk`，
   远端字节数与本地逐一比对一致。
 - https://github.com/michiru233/hiko/releases/tag/v1.99.63
+
+## 1.99.64（2026-11-01）：专辑卡人名胶囊的明暗分色
+
+### 可见变化
+- 亮色主题下专辑卡上的声优胶囊与社团胶囊从「浅底 + 同色浅字」变成「浅底深字」，
+  卡片上终于读得清；深色主题保持不变（仍是暗底亮字），只是把这对值也收进了语义表。
+- 实测对比度（按实际叠在卡片面上的结果算 WCAG）：声优 **1.20:1 → 6.11:1**、
+  社团 **1.34:1 → 7.13:1**；深色主题分别是 6.6:1 / 6.3:1。
+- 色相没动：蓝仍是声优、紫仍是社团（1.44 起的分色约定），用户报的是清晰度不是配色。
+
+### 实现
+- `hiko/lib/ui/m3e/tokens/semantic_color_tokens.dart`：新增一节「本地专辑卡人名胶囊」，
+  `M3ESemantic.albumVoicePill(bool isDark)` / `albumCirclePill(bool isDark)` 返回
+  `M3ETintPair`——亮色浅底深字（`#E1EFFC`/`#1D5B8E`、`#F0E9FB`/`#573E8F`），
+  暗色暗底亮字（`0x3390CAF9`/`#B6DBFC`、`0x33B39DDB`/`#D8C7F4`）。
+  与在线卡片的 `artistPill` / `circlePill` 同一套语法：**底色与字色成对给出**，
+  从类型上就不可能再出现「记住了底色、漏了字色」。
+- `hiko/lib/ui/widgets/album_card.dart`：`_PersonPillMini` 由收 `Color color` 改成收
+  `M3ETintPair tint`，底色取 `tint.background`、字色取 `tint.foreground`；卡片
+  `build()` 里 `final isDark = colors.brightness == Brightness.dark;` 选对。
+  删掉老写法 `color.withValues(alpha: 0.14)` + `color: color`。
+- 为什么不在 `M3ESemantic` 里直接改 `voiceTint` / `circleTint`：那两支是详情页与筛选
+  标记上的 **4dp 圆点**色，深色背景上做小色点正合适；胶囊需要的是「底 + 字」一对值，
+  两者职责不同，混用会把圆点也一起变暗。
+
+### 验证
+- `flutter test`：**981 passed / 2 skipped**（1.99.63 基线 976 + 新增 5 条）。
+- `flutter analyze`：**42 条、0 error**（与基线持平）。
+- 新增 `test/ui/album_card_pills_test.dart` 5 条：明暗两套主题下「色对 ≥ 4.5:1」+
+  「卡片上真的用了这对色（字色与底色逐一比对，按实际叠加算对比度）」+ 一条源码锁
+  （`album_card.dart` 里必须出现两个新方法名、不得再出现 `color.withValues(alpha: 0.14`）。
+- 负向验证：把亮色那两支字色换回旧的 `voiceTint` / `circleTint` 后，测试立刻报
+  `light 主题下「声优」胶囊对比度只有 1.50:1`，恢复后全绿。
+
+### 交付
+- 版本 `1.99.64+177`；macOS `Hiko.app` 76.7 MB（Info.plist 1.99.64 / 177）、APK 70.3 MB。
+- 后签：`apksigner verify --min-sdk-version 21` v1+v2+v3 全 true；`aapt2`
+  versionCode=177 / versionName=1.99.64。
+- Release：`hiko-v1.99.64-macos.zip` 34,139,850 B + `hiko-v1.99.64-android.apk`
+  70,316,699 B，远端字节数与本地逐一致。
+- https://github.com/michiru233/hiko/releases/tag/v1.99.64

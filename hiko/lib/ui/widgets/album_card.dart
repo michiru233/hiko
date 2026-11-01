@@ -38,6 +38,8 @@ class AlbumCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = M3ETheme.of(context);
     final colors = theme.colors;
+    // 人名胶囊要按明暗取不同的「底 + 字」对（同色相 14% 底在亮色下读不出来）
+    final isDark = colors.brightness == Brightness.dark;
     Offset? pointerPosition;
 
     return Listener(
@@ -126,11 +128,12 @@ class AlbumCard extends ConsumerWidget {
                           in splitVoiceNames(
                               normalizeVoiceSeparators(album.artist)))
                         _PersonPillMini(
-                            name: voice, color: M3ESemantic.voiceTint),
+                            name: voice,
+                            tint: M3ESemantic.albumVoicePill(isDark)),
                       if (_showCirclePill)
                         _PersonPillMini(
                             name: album.albumArtist,
-                            color: M3ESemantic.circleTint),
+                            tint: M3ESemantic.albumCirclePill(isDark)),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -250,18 +253,21 @@ class _MetaPill extends StatelessWidget {
 }
 
 /// 卡片级迷你人名胶囊：声优（蓝）/ 社团（紫）分色，文字超长在胶囊内换行。
+///
+/// 1.99.64：底色与字色改由 [M3ETintPair] 成对给出。原来底取同色相 14%、
+/// 字取同一支颜色，亮色主题下两者只有 1.2:1 —— 字在卡片上基本看不见。
 class _PersonPillMini extends StatelessWidget {
-  const _PersonPillMini({required this.name, required this.color});
+  const _PersonPillMini({required this.name, required this.tint});
 
   final String name;
-  final Color color;
+  final M3ETintPair tint;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
+        color: tint.background,
         borderRadius: M3EShape.radius(M3EShape.full),
       ),
       child: Text(
@@ -270,7 +276,7 @@ class _PersonPillMini extends StatelessWidget {
         style: M3ETheme.of(context).type.labelSmall.copyWith(
           fontWeight: FontWeight.w500,
           height: 1.25,
-          color: color,
+          color: tint.foreground,
         ),
       ),
     );

@@ -1,9 +1,10 @@
-# Hiko 交接文档（2026-10-31 更新：1.99.63 歌词跟随修复）
+# Hiko 交接文档（2026-11-01 更新：1.99.64 专辑卡胶囊明暗分色）
 
-> 读者：接手 Hiko 的 agent。**先读 §0，再读 §5 的 P1 表**——1.99.63 已发版。M3E 收口计划
+> 读者：接手 Hiko 的 agent。**先读 §0，再读 §5 的 P1 表**——1.99.64 已发版。M3E 收口计划
 > （`.zcode/plans/plan-hiko-m3e-closeout-2026-10-31.md`）**全部完成**（1.99.60 输入框 → 1.99.61 弹层与统计页
 > → 1.99.62 库文件历史快照；原「菜单收口」经实测已在 1.99.40 完成，作废）。
-> 1.99.63 起转入用户报障驱动：**歌词跟随修复**（长句定位 + 恢复回中）。
+> 1.99.63 起转入用户报障驱动：**歌词跟随修复**（长句定位 + 恢复回中）；
+> 1.99.64 修亮色主题下专辑卡人名胶囊「浅底浅字」读不出来（对比度 1.2:1 → 6.1:1）。
 > 本文档只描述「截至本文写作时的真实状态」，凡是没验证过的都标了「未验证」。
 > 上一个同名前缀的交接文档是 `handoff-hiko-m3e-2026-10-26.md`（基线 797，已过期，只作历史参考）。
 
@@ -14,13 +15,13 @@
 | 项 | 状态 |
 |---|---|
 | 项目 | Hiko，本地优先 DLsite 音声库管理器，Flutter 主线在 `hiko/` |
-| 当前主题 | M3E 收口已清账，转用户报障驱动迭代（1.99.63 = 歌词跟随） |
-| 最后一个**已发布**版本 | `v1.99.63`（歌词跟随修复），tag `v1.99.63`，双资产已上传 |
-| 上一个版本 | `v1.99.62`（库文件历史快照），commit `d2923e5` |
-| 工作区改动 | **无未提交改动**（1.99.63 已提交并 push，见 §3.1/§3.3） |
+| 当前主题 | M3E 收口已清账，转用户报障驱动迭代（1.99.63 歌词跟随 / 1.99.64 亮色胶囊对比度） |
+| 最后一个**已发布**版本 | `v1.99.64`（专辑卡胶囊明暗分色），tag `v1.99.64`，双资产已上传 |
+| 上一个版本 | `v1.99.63`（歌词跟随修复），commit `33c479b` |
+| 工作区改动 | **无未提交改动**（1.99.64 已提交并 push，见 §3.1/§3.3） |
 | analyze | **42 条 / 0 error**（= 基线，未见新增） |
-| test | **976 passed / 2 skipped**（1.99.62 的 970 + 新增 6 条歌词跟随回归） |
-| 接手第一件事 | 歌词跟随已修（§2.3）；下一个候选是「全屏歌词显示角色名」+ `translation` 死字段，等用户裁决 |
+| test | **981 passed / 2 skipped**（1.99.63 的 976 + 新增 5 条胶囊对比度回归） |
+| 接手第一件事 | 歌词跟随（§2.3）与胶囊对比度（§2.4）已修；下一个候选是「全屏歌词显示角色名」+ `translation` 死字段，等用户裁决 |
 
 **别做的事**：§4.1 那两条测试是靠 `pump(3400ms)` 让 toast 的 `kToastLinger` 走完收口的，
 不要为了「测试快点」把这行删掉，也不要改回 `ScaffoldMessenger`。
@@ -95,7 +96,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
   - **NaN 收成 0**（下载进度 `received/total` 在 total 未就绪时是 `0/0`）。
 - `lib/ui/m3e/components/surfaces/m3e_snackbar.dart` → `M3ESnackbar`
   - 只画「面」，**不含定位**：`M3ESemantic.toastSurface` + `onToastSurface` + `M3EShape.sm` + 12blur/4y 投影；
-  - 明暗主题**共用同一个深色面**（这一点是刻意保留的既有观感，见 §2.9 决策 D3）。
+  - 明暗主题**共用同一个深色面**（这一点是刻意保留的既有观感，见 §2.10 决策 D3）。
 
 替换的调用点：
 
@@ -119,7 +120,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 - `test/ui/feedback_single_path_test.dart`（3 条源码锁：禁 `showSnackBar`·`SnackBar(`·`ScaffoldMessenger.`；
   禁业务层 `LinearProgressIndicator`；`toastSurface` 只允许出现在 `activity_overlay.dart`）
 
-### 2.3 本轮 1.99.63 做了什么（**已发布 v1.99.63**）
+### 2.3 上一轮 1.99.63 做了什么（**已发布 v1.99.63**）
 
 主题：**歌词跟随修复**。用户报障原话（m01982）：「实际播放当前句不能自动居中，然后音频
 跟随也有一点问题」；后续澄清（m02097）「问题不是高亮慢半拍，只是跟随断了」。
@@ -143,7 +144,28 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
   `_pendingRecenter` 记账，`syncAutoScrollState` 见到 pending 就不再补排一次。
 - 反向验证：把四个改动 `git stash` 掉后新增 6 条回归里 **5 条红**，恢复后全绿。
 
-### 2.4 上一轮 1.99.62 做了什么（**已发布 v1.99.62**）
+### 2.4 本轮 1.99.64 做了什么（**已发布 v1.99.64**）
+
+主题：**专辑卡人名胶囊的明暗分色**。用户贴同一张卡的明暗对比图（m02140）：
+「很明显亮色模式显示上太不清晰了，你专门为两个模式进行适配调整」。
+
+- 根因：`hiko/lib/ui/widgets/album_card.dart` 的 `_PersonPillMini` 用
+  「同色相 14% 底 + 同色相当字色」（`color.withValues(alpha: 0.14)` + `color: color`）。
+  暗色主题下字比底亮得多、勉强能读；亮色主题下字与底同色系同明度，实测
+  **声优 1.20:1 / 社团 1.34:1**，等于没写字（截图取色：字最深处只有 `#7DB3DC`）。
+  同一张卡的 RJ 胶囊（`primaryContainer` / `onPrimaryContainer`）与时长/标签胶囊
+  （`surfaceContainerHigh` / `onSurfaceVariant`）实测都在 5.8:1 以上，只有人名胶囊有问题。
+- 修法：`M3ESemantic` 新增 `albumVoicePill(bool isDark)` / `albumCirclePill(bool isDark)`
+  两对色（亮色浅底深字 `#E1EFFC`/`#1D5B8E`、`#F0E9FB`/`#573E8F`；暗色 `0x3390CAF9`/`#B6DBFC`、
+  `0x33B39DDB`/`#D8C7F4`），`_PersonPillMini` 由收 `Color` 改成收 `M3ETintPair`。
+  色相保持不变（蓝=声优、紫=社团）。修后对比度：亮色 6.11:1 / 7.13:1，暗色 6.6:1 / 6.3:1。
+- 没动 `voiceTint` / `circleTint`：那两支是详情页与筛选标记的 4dp 圆点色，职责不同，
+  混用会把圆点也一起改暗。
+- 测试：`test/ui/album_card_pills_test.dart` 5 条（明暗两套主题的色对 AA 断言 +
+  「卡片上真的用了这对色并按实际叠加算对比度」+ 一条源码锁）。
+  负向验证：把亮色字色换回 `voiceTint` / `circleTint` 后立刻报 1.50:1。
+
+### 2.5 上一轮 1.99.62 做了什么（**已发布 v1.99.62**）
 
 主题：**库文件历史快照**（计划书 §4）。动手前的事实：`hiko/lib/data/library_store.dart` 的
 `save()` 只有「临时文件 → rename」的原子写，`library.json` 一份历史版本都不留；重置数据库、
@@ -170,7 +192,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
   `formatBytes(int)`（`9.5 MB`）。
 - 验证：**970 passed / 2 skipped**（957 + 9 条快照 + 2 条设置入口 + 2 组格式测试）、analyze 42/0。
 
-### 2.5 本轮 1.99.61 做了什么（**已发布 v1.99.61**）
+### 2.6 本轮 1.99.61 做了什么（**已发布 v1.99.61**）
 
 主题：**底部弹层材质统一 + 统计页自适应**。**原计划的「菜单收口」作废**——动手前实测
 `grep -rn "PopupMenuButton(" hiko/lib` = 0、`showMenu(` = 0、`MenuAnchor(` 只剩
@@ -190,7 +212,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 - 验证：**957 passed / 2 skipped**（953 + 新增 4 条）、analyze 42/0、
   新增 `test/ui/stats_view_test.dart`（360 竖排 / 720 同排 / 999小时59分钟不溢出 / 窄屏边距 16）。
 
-### 2.6 本轮 1.99.60 做了什么（**已发布 v1.99.60**）
+### 2.7 本轮 1.99.60 做了什么（**已发布 v1.99.60**）
 
 主题：**输入框收口 + 小件清账**。需求来自用户 m01356「按顺序来做吧，依旧先写计划书，
 然后再做」；计划书 `.zcode/plans/plan-hiko-m3e-closeout-2026-10-31.md` 定下四版顺序：
@@ -215,7 +237,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 - 验证：`grep -rn 'TextField(' hiko/lib | grep -v lib/ui/m3e/` → 0；953 passed / 2 skipped；
   analyze 42/0；新增 `test/ui/m3e/m3e_text_field_test.dart` 6 条。
 
-### 2.7 本轮 1.99.59 做了什么（**已发布 v1.99.59**）
+### 2.8 本轮 1.99.59 做了什么（**已发布 v1.99.59**）
 
 主题：**桌面播放条改三段式**。需求来自用户 m00844（贴了通栏播放条截图：「做成这么
 一个超级长条是不是太丑了」）。流程同样是「先效果图、用户裁决、再动代码」。
@@ -234,7 +256,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 - 新增 `test/ui/player_bar_seek_test.dart`（5 条）；`test/ui/player_bar_mini_test.dart`
   的桌面用例从「细线非交互」改成「三段式：`player-bar-seek` 在场、`LinearProgressIndicator` 为 0」。
 
-### 2.8 上一轮 1.99.58 做了什么（**已发布 v1.99.58**）
+### 2.9 上一轮 1.99.58 做了什么（**已发布 v1.99.58**）
 
 主题：**设置页抽屉化 + 死设置清账**。需求来自用户 m00301（设置页杂糅了以前写过、
 现在完全用不到的功能；要分门别类、改抽屉跳转），交付流程是「先计划书 + 效果图，
@@ -260,7 +282,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
   新增 `settings_navigation_test.dart`（6 条导航契约），`activity_overlay_test.dart` 改成
   先进「库与扫描」再点扫描。
 
-### 2.9 关键决策留痕（不要推翻）
+### 2.10 关键决策留痕（不要推翻）
 
 | # | 决策 | 理由 |
 |---|---|---|
@@ -283,7 +305,15 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 
 分支 `main`，1.99.62 已提交并推送到 `origin/main`，未提交改动为零（只有未跟踪的 `.memsearch/`）。
 
-1.99.57 那次的清单留档（14 改 + 5 新增）；1.99.63 / 1.99.62 / 1.99.61 / 1.99.60 / 1.99.59 / 1.99.58 的改动见下面各条目：
+1.99.57 那次的清单留档（14 改 + 5 新增）；1.99.64 / 1.99.63 / 1.99.62 / 1.99.61 / 1.99.60 / 1.99.59 / 1.99.58 的改动见下面各条目：
+
+```
+1.99.64（专辑卡人名胶囊明暗分色）：
+  hiko/pubspec.yaml                        （1.99.63+176 → 1.99.64+177）
+  hiko/lib/ui/m3e/tokens/semantic_color_tokens.dart（+albumVoicePill / albumCirclePill）
+  hiko/lib/ui/widgets/album_card.dart      （_PersonPillMini 改收 M3ETintPair）
+  hiko/test/ui/album_card_pills_test.dart  （新增 5 条：明暗 AA + 卡片实际用色 + 源码锁）
+```
 
 ```
 1.99.63（歌词跟随修复）：
@@ -384,17 +414,18 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 已跟踪文件净变化：**+72 / −174 行**（这一版是纯减法），另有 5 个新文件共 410 行
 （两个组件 156 行 + 三个测试 254 行）。
 
-### 3.2 验证状态（以 1.99.63 为准）
+### 3.2 验证状态（以 1.99.64 为准）
 
 | 项 | 结果 | 说明 |
 |---|---|---|
 | `flutter analyze` | **42 issues / 0 error** | 与基线一致，未新增。含 `unused_import` 之类历史告警 42 条，属已知 |
-| 定向测试 | 6/6 通过 | `lyrics_wrapped_line_center_test`（3 条）+ `lyrics_follow_resume_test`（3 条）；stash 掉修复后 5/6 红 |
-| `flutter test`（全量） | **976 passed / 2 skipped** | 1.99.62 的 970 + 新增 6 条 |
-| 双端构建 | **已跑** | macOS `Hiko.app` 76.6 MB（Info.plist 1.99.63 / 176）；APK 70.3 MB |
-| APK 后签 | **已签并核验** | `apksigner verify --min-sdk-version 21`：v1/v2/v3 全 true；`META-INF/HIKO.SF` 在；`aapt2` versionCode=176 / versionName=1.99.63 |
-| Release | **已发布** | `v1.99.63`，资产字节数与本地逐一致（zip 34,139,002 / apk 70,316,699） |
+| 定向测试 | 5/5 通过 | `album_card_pills_test`（明暗色对 AA + 卡片实际用色 + 源码锁）；负向验证换回旧色立刻报 1.50:1 |
+| `flutter test`（全量） | **981 passed / 2 skipped** | 1.99.63 的 976 + 新增 5 条 |
+| 双端构建 | **已跑** | macOS `Hiko.app` 76.7 MB（Info.plist 1.99.64 / 177）；APK 70.3 MB |
+| APK 后签 | **已签并核验** | `apksigner verify --min-sdk-version 21`：v1/v2/v3 全 true；`META-INF/HIKO.SF` 在；`aapt2` versionCode=177 / versionName=1.99.64 |
+| Release | **已发布** | `v1.99.64`，资产字节数与本地逐一致（zip 34,139,850 / apk 70,316,699） |
 
+> 1.99.63 的留档：`976 passed / 2 skipped`、analyze 42/0、zip 34,139,002 / apk 70,316,699。
 > 1.99.62 的留档：`970 passed / 2 skipped`、analyze 42/0、zip 34,138,577 / apk 70,316,699。
 > 1.99.61 的留档：`957 passed / 2 skipped`、analyze 42/0、zip 34,118,416 / apk 70,267,547。
 > 1.99.60 的留档：`953 passed / 2 skipped`、analyze 42/0、zip 34,117,286 / apk 70,202,011。
@@ -490,7 +521,17 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 > 裸 `IconButton`、Material 按钮、`DropdownButton`、裸 `Switch/Checkbox` **全部为 0**，
 > `HikoColors` 只剩 3 处注释。剩下的都是**具体控件缺位**，不再有「成片旧样式」。
 
-### P0（1.99.63，**已完成并发布**）
+### P0（1.99.64，**已完成并发布**）
+
+- ✅ 亮色主题下专辑卡人名胶囊读不出来：`_PersonPillMini` 原来是「同色相 14% 底 +
+  同色相字」，实测 1.20:1 / 1.34:1 → 改成 `M3ESemantic.albumVoicePill` /
+  `albumCirclePill` 两对色（浅底深字 / 暗底亮字），6.11:1 / 7.13:1
+- ✅ `_PersonPillMini` 由收 `Color` 改收 `M3ETintPair`：底色与字色成对给出，
+  从类型上杜绝「记住了底色、漏了字色」
+- ✅ 回归锁 5 条（明暗 AA + 卡片实际用色 + 源码锁），负向验证换回旧色立刻红
+- ✅ 测试：981 passed / 2 skipped，analyze 42/0
+
+### P0（1.99.63，留档）
 
 - ✅ 长句歌词（折行）远跳不再冻结：粗定位改「最近已构建行锚点 + 实测平均行高」，
   最多 5 轮重估；重估轮与 >1.5 屏距离用 `jumpTo`，不做长动画
@@ -672,11 +713,11 @@ unzip -l build/app/outputs/flutter-apk/app-release.apk | grep "META-INF/HIKO"
 发版：
 
 ```bash
-gh release create v1.99.63 hiko-v1.99.63-macos.zip hiko-v1.99.63-android.apk \
-  --title "v1.99.63" --notes-file -
+gh release create v1.99.64 hiko-v1.99.64-macos.zip hiko-v1.99.64-android.apk \
+  --title "v1.99.64" --notes-file -
 # 大资产可能超时被 SIGTERM（Release 建了资产没传上）→
-# gh release upload v1.99.63 <产物> --clobber 补传
-# notes 只写「本次更新了什么」，修订用 gh release edit v1.99.63 --notes-file -
+# gh release upload v1.99.64 <产物> --clobber 补传
+# notes 只写「本次更新了什么」，修订用 gh release edit v1.99.64 --notes-file -
 ```
 
 ### 6.4 提交信息格式
@@ -687,7 +728,7 @@ fix(m3e): …
 docs(plan): …
 ```
 
-提交正文写「改了什么 + 为什么」，**验证结果写一行**（`976 passed / 2 skipped，analyze 42 条 / 0 error`）+ `版本：1.99.xx+N`。
+提交正文写「改了什么 + 为什么」，**验证结果写一行**（`981 passed / 2 skipped，analyze 42 条 / 0 error`）+ `版本：1.99.xx+N`。
 
 ### 6.5 环境事实（本机）
 
@@ -715,10 +756,10 @@ docs(plan): …
 
 ## 7. 接手建议（一句话版）
 
-1.99.63 已发版（976 passed / 2 skipped，analyze 42 条 / 0 error），工作区干净。
+1.99.64 已发版（981 passed / 2 skipped，analyze 42 条 / 0 error），工作区干净。
 M3E 收口早已清账（`.zcode/plans/plan-hiko-m3e-closeout-2026-10-31.md` 四版全落地：1.99.60 输入框
 + 小件、1.99.61 弹层 + 统计页、1.99.62 库文件历史快照），1.99.63 起是**用户报障驱动**：
-歌词跟随修复（见 §2.3）。下一步的候选（都要先问用户）：① 全屏歌词显示角色名（`LyricLine.speaker`
+歌词跟随（§2.3）与亮色胶囊对比度（§2.4）。下一步的候选（都要先问用户）：① 全屏歌词显示角色名（`LyricLine.speaker`
 已解析但只有抽屉视图渲染）；② `LyricLine.translation` 是死字段，要做双语得先加解析规则。
 路线图没排但用户提过的：移动端播放条要不要也上时间码（桌面三段式落地后两端观感差异变大）。
 封包流程见 §6.2/§6.3，硬规则见 §6.4。

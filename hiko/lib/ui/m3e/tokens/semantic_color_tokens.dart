@@ -115,6 +115,35 @@ abstract final class M3ESemantic {
           foreground: Color(0xFF888B92),
         );
 
+  // ------------------------------------------------------ 本地专辑卡人名胶囊
+  //
+  // 1.99.64 修：这两颗胶囊原来是「同色相 14% 底 + 同色相当字色」
+  // （`voiceTint` 直接当字色）。暗色主题下字比底亮得多，勉强能读；亮色主题下
+  // 字和底同色系、同明度 —— 卡片上实测对比度只有 1.20:1 与 1.34:1，等于没写。
+  // 改成与在线卡片同一套语法：亮色浅底深字、暗色暗底亮字，色相保持不变。
+
+  /// 本地卡片的声优胶囊（蓝，与 [voiceTint] 同色相）
+  static M3ETintPair albumVoicePill(bool isDark) => isDark
+      ? const M3ETintPair(
+          background: Color(0x3390CAF9),
+          foreground: Color(0xFFB6DBFC),
+        )
+      : const M3ETintPair(
+          background: Color(0xFFE1EFFC),
+          foreground: Color(0xFF1D5B8E),
+        );
+
+  /// 本地卡片的社团胶囊（紫，与 [circleTint] 同色相）
+  static M3ETintPair albumCirclePill(bool isDark) => isDark
+      ? const M3ETintPair(
+          background: Color(0x33B39DDB),
+          foreground: Color(0xFFD8C7F4),
+        )
+      : const M3ETintPair(
+          background: Color(0xFFF0E9FB),
+          foreground: Color(0xFF573E8F),
+        );
+
   // ---------------------------------------------------------------- 提示层
   //
   // 恒暗面：toast / 活动条在亮暗两套主题下都是深底白字（与 `inverseSurface`
