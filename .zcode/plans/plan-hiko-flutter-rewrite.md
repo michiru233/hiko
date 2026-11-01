@@ -5256,3 +5256,45 @@ M3E 收口四版（`plan-hiko-m3e-closeout-2026-10-31.md`）的最后一版，�
 - Release：`hiko-v1.99.64-macos.zip` 34,139,850 B + `hiko-v1.99.64-android.apk`
   70,316,699 B，远端字节数与本地逐一致。
 - https://github.com/michiru233/hiko/releases/tag/v1.99.64
+
+## 1.99.65（2026-11-01）：移动端导航改左抽屉 + 分页条极简
+
+### 可见变化
+- 移动端底部的五宫格导航整条消失，内容一直铺到屏幕底（在线页瀑布流多出约 68dp）。
+- 导航改到**左侧抽屉**：从屏幕左缘往右拖才出现（左边留一条 4dp 细把手作提示），
+  点条目后抽屉自动收起；桌面端行为不变。
+- 在线页的翻页条从「‹ 1 2 3 › 共 3028 页 [跳…]」收成「‹ · 1 / 3028 · › · [跳转]」；
+  要跳页点「跳转」，弹 M3E 对话框输入页码。
+
+### 实现
+- 新组件 `hiko/lib/ui/m3e/navigation/m3e_nav_drawer.dart`（`M3ENavDrawer`，宽 308dp、
+  右缘圆角、选中项实心 pill、56dp 行、徽标）与 `m3e_nav_edge_handle.dart`
+  （`M3ENavEdgeHandle` 4×56dp，`IgnorePointer` 不吃手势），均已进 `m3e.dart`。
+- `hiko/lib/ui/screens/home_screen.dart`：删 `bottomNavigationBar`，改
+  `drawer` + `drawerEnableOpenDragGesture` + `_scaffoldKey`；新增 `_mobileNavItems` /
+  `_buildNavDrawer` / `_onDrawerSelected`。**折叠规则不变**：仍是 `foldDestinations(...,
+  reservedSlots: 1)` 取前 3 +「正在播放」+「更多」，只是换个壳呈现。
+  详情面板底部留位 `118/60 → 74/0`。
+- `hiko/lib/ui/widgets/online_work_grid.dart`：移动分支改 `‹ 页码/总页 ›` + 「跳转」
+  `M3EChip`，删 `mobilePageItems()`；新增 `_showJumpDialog` 与 `_MobileJumpDialog`
+  （`M3EDialog` + `M3ETextField`，越界夹到 `1..总页数`）。桌面保持页码格子 + 内联输入。
+- 计划书：`.zcode/plans/plan-hiko-mobile-nav-drawer-2026-11-01.md`；效果图
+  `.zcode/plans/assets/pager-navdrawer-options.png`（源 `assets/mock-navdrawer.html`）。
+
+### 验证
+- `flutter test`：**986 passed / 2 skipped**（1.99.64 的 981 − 3 条废弃的页码格子用例 + 8 条新用例）。
+- `flutter analyze`：**42 条、0 error**（与基线持平）。
+- 新增 `test/ui/m3e/m3e_nav_drawer_test.dart` 5 条（条目/宽度/徽标、回调与禁用、
+  选中唯一、hint、selectedIndex −1）与 `test/ui/mobile_nav_drawer_test.dart` 3 条
+  （左缘真拖能拉开、点「更多」收起抽屉并出设置面板、无播放时「正在播放」禁用）。
+  `online_pager_test.dart` 重写（移动 5 条 + 桌面 1 条）。
+- 连带修 4 个老测试：`mobile_player_bar_flow` / `online_aa_menu` / `player_detail_jump`
+  改走抽屉（在线页加载圈是无限动画，只能 `_pumpFrames`，不能 `pumpAndSettle`），
+  `online_toolbar_narrow` 的 `M3EChip` 期望 5 → 6（多出「跳转」）。
+
+### 交付
+- 版本 `1.99.65+178`；macOS `Hiko.app` 76.7 MB（Info.plist 1.99.65 / 178）、APK 70.4 MB。
+- 后签：`apksigner verify --min-sdk-version 21` v1+v2+v3 全 true；`aapt2`
+  versionCode=178 / versionName=1.99.65。
+- Release：`hiko-v1.99.65-macos.zip` 34,149,252 B + `hiko-v1.99.65-android.apk` 70,415,003 B。
+- https://github.com/michiru233/hiko/releases/tag/v1.99.65

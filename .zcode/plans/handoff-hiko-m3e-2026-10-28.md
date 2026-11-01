@@ -1,10 +1,12 @@
-# Hiko 交接文档（2026-11-01 更新：1.99.64 专辑卡胶囊明暗分色）
+# Hiko 交接文档（2026-11-01 更新：1.99.65 移动端导航改左抽屉 + 分页条极简）
 
-> 读者：接手 Hiko 的 agent。**先读 §0，再读 §5 的 P1 表**——1.99.64 已发版。M3E 收口计划
+> 读者：接手 Hiko 的 agent。**先读 §0，再读 §5 的 P1 表**——1.99.65 已发版。M3E 收口计划
 > （`.zcode/plans/plan-hiko-m3e-closeout-2026-10-31.md`）**全部完成**（1.99.60 输入框 → 1.99.61 弹层与统计页
 > → 1.99.62 库文件历史快照；原「菜单收口」经实测已在 1.99.40 完成，作废）。
 > 1.99.63 起转入用户报障驱动：**歌词跟随修复**（长句定位 + 恢复回中）；
-> 1.99.64 修亮色主题下专辑卡人名胶囊「浅底浅字」读不出来（对比度 1.2:1 → 6.1:1）。
+> 1.99.64 修亮色主题下专辑卡人名胶囊「浅底浅字」读不出来（对比度 1.2:1 → 6.1:1）；
+> 1.99.65 按用户裁决把移动端底部五宫格导航搬进**左侧抽屉**（左缘右划、日常隐藏），
+> 底部只留一条极简分页条（‹ 第几页/共几页 › + 跳转）。
 > 本文档只描述「截至本文写作时的真实状态」，凡是没验证过的都标了「未验证」。
 > 上一个同名前缀的交接文档是 `handoff-hiko-m3e-2026-10-26.md`（基线 797，已过期，只作历史参考）。
 
@@ -15,13 +17,13 @@
 | 项 | 状态 |
 |---|---|
 | 项目 | Hiko，本地优先 DLsite 音声库管理器，Flutter 主线在 `hiko/` |
-| 当前主题 | M3E 收口已清账，转用户报障驱动迭代（1.99.63 歌词跟随 / 1.99.64 亮色胶囊对比度） |
-| 最后一个**已发布**版本 | `v1.99.64`（专辑卡胶囊明暗分色），tag `v1.99.64`，双资产已上传 |
-| 上一个版本 | `v1.99.63`（歌词跟随修复），commit `33c479b` |
-| 工作区改动 | **无未提交改动**（1.99.64 已提交并 push，见 §3.1/§3.3） |
+| 当前主题 | M3E 收口已清账，转用户报障驱动迭代（1.99.63 歌词跟随 / 1.99.64 亮色胶囊对比度 / 1.99.65 移动端导航布局） |
+| 最后一个**已发布**版本 | `v1.99.65`（移动端导航改左抽屉 + 分页条极简），tag `v1.99.65`，双资产已上传 |
+| 上一个版本 | `v1.99.64`（专辑卡胶囊明暗分色），commit `3f63f1f` |
+| 工作区改动 | **无未提交改动**（1.99.65 已提交并 push，见 §3.1/§3.3） |
 | analyze | **42 条 / 0 error**（= 基线，未见新增） |
-| test | **981 passed / 2 skipped**（1.99.63 的 976 + 新增 5 条胶囊对比度回归） |
-| 接手第一件事 | 歌词跟随（§2.3）与胶囊对比度（§2.4）已修；下一个候选是「全屏歌词显示角色名」+ `translation` 死字段，等用户裁决 |
+| test | **986 passed / 2 skipped**（1.99.64 的 981 − 3 条已废弃的移动端页码格子用例 + 8 条抽屉/分页新用例） |
+| 接手第一件事 | 1.99.65 的抽屉与极简分页条刚落地（§2.3），最能帮上忙的是**在真机上试手势**；功能候选仍是「全屏歌词显示角色名」+ `translation` 死字段，等用户裁决 |
 
 **别做的事**：§4.1 那两条测试是靠 `pump(3400ms)` 让 toast 的 `kToastLinger` 走完收口的，
 不要为了「测试快点」把这行删掉，也不要改回 `ScaffoldMessenger`。
@@ -120,7 +122,42 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 - `test/ui/feedback_single_path_test.dart`（3 条源码锁：禁 `showSnackBar`·`SnackBar(`·`ScaffoldMessenger.`；
   禁业务层 `LinearProgressIndicator`；`toastSurface` 只允许出现在 `activity_overlay.dart`）
 
-### 2.3 上一轮 1.99.63 做了什么（**已发布 v1.99.63**）
+### 2.3 本轮 1.99.65 做了什么（**已发布 v1.99.65**）
+
+用户原话（m03149）：「我的想法是把底部导航全部放到左侧（类似桌面端，但是要遵循安卓的使用习惯，
+左边缘右划出现，日常隐藏），然后分页条变成更加简单一点，保留前后翻页以及跳转功能，设计遵循 m3e。」
+效果图四屏（现状 / 日常态 / 抽屉划出 / 跳转对话框）在 `.zcode/plans/assets/pager-navdrawer-options.png`，
+源文件 `assets/mock-navdrawer.html`，计划书 `.zcode/plans/plan-hiko-mobile-nav-drawer-2026-11-01.md`。
+
+**移动端导航 → 左抽屉**
+- `hiko/lib/ui/screens/home_screen.dart`：撤掉 `bottomNavigationBar`（`_buildNavBar` 删除），
+  改 `Scaffold(drawer: isMobile ? _buildNavDrawer(navViews) : null, drawerEnableOpenDragGesture: isMobile)`。
+  左缘右划用 Flutter 内置识别器（`kEdgeDragWidth` 20dp + `MainActivity` 的系统手势排除区），
+  不再自己拿 `Listener` 抢指针（1.54 那套的注释已更新）。
+- 条目集合与旧底栏**完全相同**（`_mobileNavItems`：`foldDestinations` 折叠结果 + 常驻「正在播放」+ 末尾「更多」），
+  「更多」仍开底部面板（溢出目的地 + 设置）。
+- 新增 `hiko/lib/ui/m3e/navigation/m3e_nav_drawer.dart`（`M3ENavDrawer`：308dp、右缘 `xl` 圆角、
+  `surfaceContainerLow`、条目 56dp、选中铺 `secondaryContainer`、`NavBadge` 角标）与
+  `m3e_nav_edge_handle.dart`（`M3ENavEdgeHandle`：4×56dp 贴左缘把手，外层 `IgnorePointer`），
+  barrel `m3e.dart` 已导出。
+- 详情面板底部留位 `playerBarVisible ? 118 : 60` → `74 : 0`（导航 60dp 撤掉，播放条 compact 高 64 + 10dp 外边距）。
+
+**移动端分页条 → 极简**
+- `hiko/lib/ui/widgets/online_work_grid.dart`：`OnlinePager` 移动分支改成 `‹ 2 / 3123 ›` + 右侧「跳转」`M3EChip`，
+  页码格子与常驻输入框撤掉；`mobilePageItems()` 删除（含 5 条单测）；`_MobileJumpDialog` 新增
+  （M3E 对话框：标题「跳转到第几页」/ 副文案「共 N 页，当前第 M 页」/ 数字输入框 / 取消 + 前往，越界 `clamp(1, 总页数)`）。
+- 桌面形态（每页条数 chip + 首页/末页 + 省略号 + 内联跳页输入）一字未动。
+
+**验证与发版**
+- `flutter test` **986 passed / 2 skipped**；`flutter analyze` **42 条 / 0 error**。
+- 回归锁：新增 `test/ui/m3e/m3e_nav_drawer_test.dart` 5 条、`test/ui/mobile_nav_drawer_test.dart` 3 条；
+  重写 `test/ui/online_pager_test.dart`（移动端 5 条 + 桌面 1 条）；连带更新
+  `test/ui/mobile_player_bar_flow_test.dart`（底栏固定格改抽屉）、`test/ui/online_aa_menu_test.dart`、
+  `test/ui/player_detail_jump_test.dart`（切视图改左缘拖拽 + 更多面板）、`test/ui/online_toolbar_narrow_test.dart`（多了 1 枚「跳转」chip）。
+- 版本 `1.99.65+178`；macOS `Hiko.app` 76.7 MB；APK 70.4 MB、后签 v1/v2/v3 全 true、`versionCode=178`；
+  zip 34,149,252 B / apk 70,415,003 B；`gh release create v1.99.65`。
+
+### 2.4 上一轮 1.99.63 做了什么（**已发布 v1.99.63**）
 
 主题：**歌词跟随修复**。用户报障原话（m01982）：「实际播放当前句不能自动居中，然后音频
 跟随也有一点问题」；后续澄清（m02097）「问题不是高亮慢半拍，只是跟随断了」。
@@ -144,7 +181,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
   `_pendingRecenter` 记账，`syncAutoScrollState` 见到 pending 就不再补排一次。
 - 反向验证：把四个改动 `git stash` 掉后新增 6 条回归里 **5 条红**，恢复后全绿。
 
-### 2.4 本轮 1.99.64 做了什么（**已发布 v1.99.64**）
+### 2.5 本轮 1.99.64 做了什么（**已发布 v1.99.64**）
 
 主题：**专辑卡人名胶囊的明暗分色**。用户贴同一张卡的明暗对比图（m02140）：
 「很明显亮色模式显示上太不清晰了，你专门为两个模式进行适配调整」。
@@ -165,7 +202,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
   「卡片上真的用了这对色并按实际叠加算对比度」+ 一条源码锁）。
   负向验证：把亮色字色换回 `voiceTint` / `circleTint` 后立刻报 1.50:1。
 
-### 2.5 上一轮 1.99.62 做了什么（**已发布 v1.99.62**）
+### 2.6 上一轮 1.99.62 做了什么（**已发布 v1.99.62**）
 
 主题：**库文件历史快照**（计划书 §4）。动手前的事实：`hiko/lib/data/library_store.dart` 的
 `save()` 只有「临时文件 → rename」的原子写，`library.json` 一份历史版本都不留；重置数据库、
@@ -192,7 +229,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
   `formatBytes(int)`（`9.5 MB`）。
 - 验证：**970 passed / 2 skipped**（957 + 9 条快照 + 2 条设置入口 + 2 组格式测试）、analyze 42/0。
 
-### 2.6 本轮 1.99.61 做了什么（**已发布 v1.99.61**）
+### 2.7 本轮 1.99.61 做了什么（**已发布 v1.99.61**）
 
 主题：**底部弹层材质统一 + 统计页自适应**。**原计划的「菜单收口」作废**——动手前实测
 `grep -rn "PopupMenuButton(" hiko/lib` = 0、`showMenu(` = 0、`MenuAnchor(` 只剩
@@ -212,7 +249,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 - 验证：**957 passed / 2 skipped**（953 + 新增 4 条）、analyze 42/0、
   新增 `test/ui/stats_view_test.dart`（360 竖排 / 720 同排 / 999小时59分钟不溢出 / 窄屏边距 16）。
 
-### 2.7 本轮 1.99.60 做了什么（**已发布 v1.99.60**）
+### 2.8 本轮 1.99.60 做了什么（**已发布 v1.99.60**）
 
 主题：**输入框收口 + 小件清账**。需求来自用户 m01356「按顺序来做吧，依旧先写计划书，
 然后再做」；计划书 `.zcode/plans/plan-hiko-m3e-closeout-2026-10-31.md` 定下四版顺序：
@@ -237,7 +274,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 - 验证：`grep -rn 'TextField(' hiko/lib | grep -v lib/ui/m3e/` → 0；953 passed / 2 skipped；
   analyze 42/0；新增 `test/ui/m3e/m3e_text_field_test.dart` 6 条。
 
-### 2.8 本轮 1.99.59 做了什么（**已发布 v1.99.59**）
+### 2.9 本轮 1.99.59 做了什么（**已发布 v1.99.59**）
 
 主题：**桌面播放条改三段式**。需求来自用户 m00844（贴了通栏播放条截图：「做成这么
 一个超级长条是不是太丑了」）。流程同样是「先效果图、用户裁决、再动代码」。
@@ -256,7 +293,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 - 新增 `test/ui/player_bar_seek_test.dart`（5 条）；`test/ui/player_bar_mini_test.dart`
   的桌面用例从「细线非交互」改成「三段式：`player-bar-seek` 在场、`LinearProgressIndicator` 为 0」。
 
-### 2.9 上一轮 1.99.58 做了什么（**已发布 v1.99.58**）
+### 2.10 上一轮 1.99.58 做了什么（**已发布 v1.99.58**）
 
 主题：**设置页抽屉化 + 死设置清账**。需求来自用户 m00301（设置页杂糅了以前写过、
 现在完全用不到的功能；要分门别类、改抽屉跳转），交付流程是「先计划书 + 效果图，
@@ -282,7 +319,7 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
   新增 `settings_navigation_test.dart`（6 条导航契约），`activity_overlay_test.dart` 改成
   先进「库与扫描」再点扫描。
 
-### 2.10 关键决策留痕（不要推翻）
+### 2.11 关键决策留痕（不要推翻）
 
 | # | 决策 | 理由 |
 |---|---|---|
@@ -306,6 +343,19 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 分支 `main`，1.99.62 已提交并推送到 `origin/main`，未提交改动为零（只有未跟踪的 `.memsearch/`）。
 
 1.99.57 那次的清单留档（14 改 + 5 新增）；1.99.64 / 1.99.63 / 1.99.62 / 1.99.61 / 1.99.60 / 1.99.59 / 1.99.58 的改动见下面各条目：
+
+```
+1.99.65（移动端导航改左抽屉 + 分页条极简）：
+  hiko/pubspec.yaml                        （1.99.64+177 → 1.99.65+178）
+  hiko/lib/ui/m3e/navigation/m3e_nav_drawer.dart（新增 M3ENavDrawer）
+  hiko/lib/ui/m3e/navigation/m3e_nav_edge_handle.dart（新增 M3ENavEdgeHandle）
+  hiko/lib/ui/m3e/m3e.dart                 （导出两个新组件）
+  hiko/lib/ui/screens/home_screen.dart     （撤底部导航，改 Scaffold.drawer + 左缘拖拽；详情面板留位 74/0）
+  hiko/lib/ui/widgets/online_work_grid.dart（移动端极简分页条 + 跳转对话框；删 mobilePageItems）
+  hiko/test/ui/m3e/m3e_nav_drawer_test.dart（新增 5 条）
+  hiko/test/ui/mobile_nav_drawer_test.dart （新增 3 条）
+  hiko/test/ui/online_pager_test.dart      （重写：移动端 5 条 + 桌面 1 条）
+```
 
 ```
 1.99.64（专辑卡人名胶囊明暗分色）：
@@ -521,7 +571,16 @@ Hiko 是一个**本地优先**的 DLsite 音声作品管理器：扫描本地音
 > 裸 `IconButton`、Material 按钮、`DropdownButton`、裸 `Switch/Checkbox` **全部为 0**，
 > `HikoColors` 只剩 3 处注释。剩下的都是**具体控件缺位**，不再有「成片旧样式」。
 
-### P0（1.99.64，**已完成并发布**）
+### P0（1.99.65，**已完成并发布**）
+
+- ✅ 移动端底部五宫格导航搬进左侧抽屉：左缘右划拉出、日常隐藏，条目与旧底栏一致
+  （`M3ENavDrawer` 308dp / 条目 56dp / `secondaryContainer` 选中态 / 角标沿用 `NavBadge`）
+- ✅ 左缘 4×56dp 把手提示可划出（`M3ENavEdgeHandle`，`IgnorePointer` 不吃手势）
+- ✅ 移动端在线分页条极简：`‹ 2 / 3123 ›` + 「跳转」对话框，页码格子与常驻输入框撤掉
+- ✅ 详情面板底部留位从 118/60 收到 74/0（导航条撤掉后不再留空档）
+- ✅ 测试：986 passed / 2 skipped，analyze 42/0
+
+### P0（1.99.64，留档）
 
 - ✅ 亮色主题下专辑卡人名胶囊读不出来：`_PersonPillMini` 原来是「同色相 14% 底 +
   同色相字」，实测 1.20:1 / 1.34:1 → 改成 `M3ESemantic.albumVoicePill` /
@@ -728,7 +787,7 @@ fix(m3e): …
 docs(plan): …
 ```
 
-提交正文写「改了什么 + 为什么」，**验证结果写一行**（`981 passed / 2 skipped，analyze 42 条 / 0 error`）+ `版本：1.99.xx+N`。
+提交正文写「改了什么 + 为什么」，**验证结果写一行**（`986 passed / 2 skipped，analyze 42 条 / 0 error`）+ `版本：1.99.xx+N`。
 
 ### 6.5 环境事实（本机）
 
@@ -756,10 +815,10 @@ docs(plan): …
 
 ## 7. 接手建议（一句话版）
 
-1.99.64 已发版（981 passed / 2 skipped，analyze 42 条 / 0 error），工作区干净。
+1.99.65 已发版（986 passed / 2 skipped，analyze 42 条 / 0 error），工作区干净。
 M3E 收口早已清账（`.zcode/plans/plan-hiko-m3e-closeout-2026-10-31.md` 四版全落地：1.99.60 输入框
 + 小件、1.99.61 弹层 + 统计页、1.99.62 库文件历史快照），1.99.63 起是**用户报障驱动**：
-歌词跟随（§2.3）与亮色胶囊对比度（§2.4）。下一步的候选（都要先问用户）：① 全屏歌词显示角色名（`LyricLine.speaker`
+歌词跟随（§2.4）、亮色胶囊对比度（§2.5）、移动端导航左抽屉（§2.3）。下一步的候选（都要先问用户）：① 全屏歌词显示角色名（`LyricLine.speaker`
 已解析但只有抽屉视图渲染）；② `LyricLine.translation` 是死字段，要做双语得先加解析规则。
 路线图没排但用户提过的：移动端播放条要不要也上时间码（桌面三段式落地后两端观感差异变大）。
 封包流程见 §6.2/§6.3，硬规则见 §6.4。

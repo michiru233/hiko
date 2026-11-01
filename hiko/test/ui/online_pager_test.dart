@@ -4,38 +4,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hiko/ui/m3e/m3e.dart';
 import 'package:hiko/ui/widgets/online_work_grid.dart';
 
-/// 在线分页条的移动端回归锁（1.99.0）。
+/// 在线分页条回归锁。
 ///
-/// 1.98.x 及之前移动端与桌面共用一整条（首页/末页 + 页码 + 省略号 +
-/// 共 N 页 + 跳页），窄屏塞不下，「下一页」被挤出可视区 ——
-/// 用户翻到下一页得先把分页条往右滑。修复后移动端：上一页/下一页
-/// 钉在两端不参与横滑，页码只留当前页 ±1。
+/// 演进：1.98.x 移动端与桌面共用一整条（首页/末页 + 页码 + 省略号 + 共 N 页 +
+/// 跳页），窄屏塞不下；1.99.0 改成「上一页/下一页钉两端 + 当前页 ±1」；
+/// **1.99.65 再收一档**（用户裁决 m03166）——页码格子与常驻输入框都撤掉，
+/// 只留 `‹  当前页 / 总页数  ›` + 「跳转」对话框，一行 52dp。
 ///
 /// 溢出在 widget test 里会以 FlutterError 抛出，「不抛异常」本身就是断言。
 void main() {
-  group('mobilePageItems', () {
-    test('中间页：±1 三颗', () {
-      expect(mobilePageItems(2, 3123), [1, 2, 3]);
-    });
-
-    test('第 1 页：不出现 0', () {
-      expect(mobilePageItems(1, 3123), [1, 2]);
-    });
-
-    test('末页：不出现 N+1', () {
-      expect(mobilePageItems(3123, 3123), [3122, 3123]);
-    });
-
-    test('两页库：去重后 [1, 2]', () {
-      expect(mobilePageItems(1, 2), [1, 2]);
-    });
-
-    test('单页库：[1]', () {
-      expect(mobilePageItems(1, 1), [1]);
-    });
-  });
-
-  group('OnlinePager（移动端布局不变量）', () {
+  group('OnlinePager（移动端极简形态）', () {
     Future<List<int>> pumpPager(
       WidgetTester tester, {
       required int page,
@@ -59,7 +37,7 @@ void main() {
       return log;
     }
 
-    testWidgets('360px 窄屏：不溢出，下一页在屏内可点', (tester) async {
+    testWidgets('360px 窄屏：只留页码文本与箭头，不溢出', (tester) async {
       tester.view.physicalSize = const Size(360, 640);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
@@ -67,21 +45,26 @@ void main() {
       final log = await pumpPager(tester, page: 2, total: 3123);
       expect(tester.takeException(), isNull, reason: '窄屏分页条不允许溢出');
 
-      // 移动端不放首末页图标，页码只有 ±1
+      // 页码格子、首末页图标、常驻输入框都不再出现
       expect(find.byTooltip('首页'), findsNothing);
       expect(find.byTooltip('末页'), findsNothing);
-      expect(find.text('1'), findsOneWidget);
-      expect(find.text('2'), findsOneWidget);
-      expect(find.text('3'), findsOneWidget);
+      expect(find.text('1'), findsNothing);
+      expect(find.text('3'), findsNothing);
+      expect(find.byType(TextField), findsNothing);
+      // 取而代之的是「当前页 / 总页数」与跳转入口
+      expect(find.text('2 / 3123'), findsOneWidget);
+      expect(find.text('跳转'), findsOneWidget);
 
       await tester.tap(find.byTooltip('下一页'));
       expect(log, [3]);
+      await tester.tap(find.byTooltip('上一页'));
+      expect(log, [3, 1]);
     });
 
     testWidgets('第 1 页：上一页禁用', (tester) async {
       await pumpPager(tester, page: 1, total: 100);
       expect(tester.takeException(), isNull);
-      // 1.99.45：分页箭头换成 M3EIconButton
+      expect(find.text('1 / 100'), findsOneWidget);
       final btn = tester.widget<M3EIconButton>(
         find.ancestor(
           of: find.byTooltip('上一页'),
@@ -91,11 +74,10 @@ void main() {
       expect(btn.onPressed, isNull);
     });
 
-    testWidgets('末页：下一页禁用，页码夹到 N', (tester) async {
+    testWidgets('末页：下一页禁用', (tester) async {
       await pumpPager(tester, page: 100, total: 100);
       expect(tester.takeException(), isNull);
-      expect(find.text('99'), findsOneWidget);
-      expect(find.text('100'), findsOneWidget);
+      expect(find.text('100 / 100'), findsOneWidget);
       final btn = tester.widget<M3EIconButton>(
         find.ancestor(
           of: find.byTooltip('下一页'),
@@ -104,10 +86,44 @@ void main() {
       );
       expect(btn.onPressed, isNull);
     });
+
+    testWidgets('跳转对话框：输入越界夹到末页', (tester) async {
+      final log = await pumpPager(tester, page: 2, total: 3123);
+
+      await tester.tap(find.text('跳转'));
+      await tester.pumpAndSettle();
+      expect(find.text('跳转到第几页'), findsOneWidget);
+      expect(find.text('共 3123 页，当前第 2 页'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), '9999');
+      await tester.tap(find.text('前往'));
+      await tester.pumpAndSettle();
+
+      expect(log, [3123]);
+      expect(find.text('跳转到第几页'), findsNothing);
+    });
+
+    testWidgets('跳转对话框：0 夹到第 1 页；取消不发请求', (tester) async {
+      final log = await pumpPager(tester, page: 50, total: 100);
+
+      await tester.tap(find.text('跳转'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '0');
+      await tester.tap(find.text('前往'));
+      await tester.pumpAndSettle();
+      expect(log, [1]);
+
+      await tester.tap(find.text('跳转'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '7');
+      await tester.tap(find.text('取消'));
+      await tester.pumpAndSettle();
+      expect(log, [1], reason: '取消不该翻页');
+    });
   });
 
   group('OnlinePager（桌面端不回归）', () {
-    testWidgets('维持完整形态：首末页图标 + 省略号', (tester) async {
+    testWidgets('维持完整形态：每页条数 + 首末页图标 + 省略号 + 内联跳页', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -126,6 +142,9 @@ void main() {
       expect(find.byTooltip('首页'), findsOneWidget);
       expect(find.byTooltip('末页'), findsOneWidget);
       expect(find.text('…'), findsWidgets);
+      expect(find.text('每页 20 条'), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.text('跳转'), findsNothing);
     });
   });
 }

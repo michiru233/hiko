@@ -21,8 +21,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 锁四件事：
 /// 1. 划掉 → 播放栏消失 **且** 调用 pause（裁决 Q1=B）；
 /// 2. 划掉后「暂停 → 播放」的跳变把播放栏叫回来（裁决 Q8=A）；
-/// 3. 划掉后底栏固定格「正在播放」仍然在（没有任何一次播放也能找回全屏播放页）；
+/// 3. 划掉后抽屉里的「正在播放」仍然在（没有任何一次播放也能找回全屏播放页）；
 /// 4. 左边缘起手落在播放栏上时不呼出抽屉（裁决 Q4=A，否则「想划播放栏却拉出侧栏」）。
+///
+/// 1.99.65 起导航从底部五宫格搬到左侧抽屉：这里断言「没有 M3ENavBar」+ 用
+/// 左缘拖拽把抽屉拉出来再点条目（`openDrawer` 只有 Scaffold 自己的手势能触发）。
 class _FakePlayback extends PlaybackController {
   _FakePlayback(super._ref);
 
@@ -101,7 +104,8 @@ void main() {
   testWidgets('划掉播放栏 → 栏消失 + 暂停；下次开始播放 → 栏自己回来', (tester) async {
     await pumpHome(tester);
     expect(find.byType(PlayerBar), findsOneWidget, reason: '有正在播放的专辑就该显示');
-    expect(find.byType(M3ENavBar), findsOneWidget);
+    // 1.99.65：底部导航已撤，改左抽屉
+    expect(find.byType(M3ENavBar), findsNothing);
 
     final start = tester.getTopLeft(find.byType(PlayerBar)) + const Offset(30, 25);
     await tester.dragFrom(start, const Offset(500, 0));
@@ -111,8 +115,14 @@ void main() {
     expect(playback.pauseCalls, 1, reason: '划掉 = 收起 + 暂停（裁决 Q1=B）');
     expect(playback.state.playing, isFalse);
 
-    // 底栏固定格仍在：划掉之后「一定找得回来」的兜底没有被破坏
+    // 抽屉里的固定条目仍在：划掉之后「一定找得回来」的兜底没有被破坏
+    await tester.dragFrom(const Offset(2, 700), const Offset(320, 0));
+    await tester.pumpAndSettle();
     expect(find.text('正在播放'), findsOneWidget);
+    // 点遮罩收起抽屉（Scaffold 的遮罩会调用 closeDrawer）
+    await tester.tapAt(const Offset(360, 700));
+    await tester.pumpAndSettle();
+    expect(find.text('正在播放'), findsNothing);
 
     // 还原判据 = 任何一次「暂停 → 播放」的跳变（点歌/媒体键/耳机键都算）
     playback.state = playback.state.copyWith(playing: true);
@@ -128,7 +138,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(PlayerBar), findsNothing);
 
-    // 固定格此时可点（album != null），点击进全屏播放页
+    // 固定条目此时可点（album != null），点开抽屉再点它 → 进全屏播放页
+    await tester.dragFrom(const Offset(2, 700), const Offset(320, 0));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('正在播放'));
     // 全屏播放页的唱片是**无限旋转**动画（播放中不停），不能 pumpAndSettle
     for (var i = 0; i < 3; i++) {

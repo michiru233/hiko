@@ -1,0 +1,234 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<style>
+  :root{
+    --surface:#141218; --low:#1B191F; --card:#232028; --high:#2B2830; --highest:#35313A;
+    --on:#E7E1EA; --onvar:#A9A3B3; --outline:#4A4550;
+    --primary:#86D5C9; --onprimary:#00382F; --pcontainer:#2E6B62; --onpcontainer:#C8F3EC;
+    --circle:#C9B6F2; --circle-bg:#3A3348; --voice:#A8CEF5; --voice-bg:#2C3745;
+    --amber:#EFD79B; --amber-bg:#3D3527; --rose:#F0AFC0; --rose-bg:#432B33;
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-font-smoothing:antialiased;}
+  body{background:#0B0A0E; font-family:-apple-system,"PingFang SC","Hiragino Sans",sans-serif; color:var(--on);
+       display:flex; gap:30px; padding:30px 30px 36px; align-items:flex-start;}
+  .cell{display:flex; flex-direction:column; gap:9px;}
+  .cap{font-size:12.5px; color:#8C8797; letter-spacing:.3px;}
+  .cap b{color:#D6D1DE; font-weight:600;}
+  .phone{width:390px; height:844px; background:var(--surface); border-radius:38px; overflow:hidden; position:relative;
+         box-shadow:0 0 0 1px #2A2730, 0 24px 56px rgba(0,0,0,.55); display:flex; flex-direction:column;}
+  .status{height:44px; display:flex; align-items:center; justify-content:space-between; padding:0 22px;
+          font-size:13px; color:#CFCAD6; font-weight:600;}
+  .status .r{display:flex; gap:6px; align-items:center; font-size:11px; color:#B9B3C2;}
+  .hdr{padding:2px 16px 10px; display:flex; align-items:center; gap:8px;}
+  .tab{height:34px; padding:0 14px; border-radius:999px; font-size:14px; display:flex; align-items:center; gap:6px;
+       border:1px solid var(--outline); white-space:nowrap;}
+  .tab.sel{background:var(--highest); border-color:transparent;}
+  .search{flex:1; height:34px; border-radius:999px; background:var(--high); display:flex; align-items:center; gap:8px;
+          padding:0 12px; font-size:14px; color:var(--onvar); min-width:0;}
+  .avatar{width:28px; height:28px; border-radius:50%; background:var(--on); display:flex; align-items:center; justify-content:center;}
+  .avatar::after{content:""; width:12px; height:12px; border-radius:50%; background:var(--surface);}
+  .chips{padding:0 16px 8px; display:flex; gap:8px; overflow:hidden;}
+  .chip{height:30px; padding:0 12px; border-radius:10px; border:1px solid var(--outline); font-size:13px;
+        display:flex; align-items:center; gap:6px; white-space:nowrap;}
+  .grid{flex:1; padding:0 16px; display:grid; grid-template-columns:1fr 1fr; gap:12px; align-content:start; overflow:hidden;}
+  .card{background:var(--card); border-radius:16px; padding:4px 4px 8px; display:flex; flex-direction:column; gap:6px;}
+  .cover{height:168px; border-radius:12px;}
+  .t{font-size:13.5px; line-height:1.32; font-weight:600; padding:0 4px; display:-webkit-box; -webkit-line-clamp:2;
+     -webkit-box-orient:vertical; overflow:hidden;}
+  .pillrow{display:flex; flex-wrap:wrap; gap:4px; padding:0 4px;}
+  .p{font-size:11px; line-height:1; padding:4px 6px; border-radius:5px; white-space:nowrap;}
+  .voice{background:var(--voice-bg); color:var(--voice);} .amberc{background:var(--amber-bg); color:var(--amber);}
+  .rj{background:var(--pcontainer); color:var(--onpcontainer); font-weight:700;}
+  .dur{background:var(--highest); color:#B9B3C2;} .rose{background:var(--rose-bg); color:var(--rose);}
+  .tag{background:transparent; border:1px solid #3A3641; color:#C9C4D2;}
+  .nav{height:64px; display:flex; border-top:1px solid #2A2730; padding-bottom:6px;}
+  .nav .it{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
+           font-size:11px; color:var(--onvar); position:relative;}
+  .nav .it.sel{color:var(--on);} .nav .it.sel .ico{background:#33303C;}
+  .ico{width:52px; height:26px; border-radius:999px; display:flex; align-items:center; justify-content:center;}
+  .badge{position:absolute; top:4px; margin-left:22px; font-size:9px; background:#4A4550; color:#EDE8F1;
+         border-radius:999px; padding:1px 5px;}
+  .pagerold{height:56px; padding:0 16px; display:flex; align-items:center; gap:10px; border-top:1px solid #2A2730;}
+  .pn{min-width:30px; height:30px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:13px;}
+  .pn.cur{background:#3B3750; font-weight:700; color:#E3DEFA;}
+  .pager{gap:12px; font-size:12px; color:var(--onvar);}
+  .count{color:var(--onvar); font-size:12px;}
+  .jump{margin-left:auto; height:30px; width:52px; border-radius:8px; border:1px solid var(--outline);
+        display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--onvar);}
+  /* 新的简化分页条 */
+  .pagerbar{height:52px; padding:0 16px 6px; display:flex; align-items:center; gap:10px;}
+  .pagerbar .pg{height:34px; min-width:34px; padding:0 10px; border-radius:999px; background:var(--high);
+                display:flex; align-items:center; justify-content:center; font-size:13px; color:var(--on);}
+  .pagerbar .num{font-size:12.5px; color:var(--onvar); letter-spacing:.2px;}
+  .pagerbar .num b{color:var(--on); font-weight:600;}
+  .pagerbar .sp{flex:1;}
+  .pagerbar .jumpchip{height:32px; padding:0 14px; border-radius:999px; border:1px solid var(--outline);
+                      display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--on);}
+  .handle{position:absolute; left:0; top:392px; width:4px; height:56px; border-radius:0 3px 3px 0; background:#3E3A47;}
+  .scrim{position:absolute; inset:0; background:rgba(0,0,0,.46);}
+  /* 左侧导航抽屉 */
+  .navdrawer{position:absolute; left:0; top:0; bottom:0; width:308px; background:#1B191F; border-radius:0 28px 28px 0;
+             padding:56px 12px 20px; display:flex; flex-direction:column; box-shadow:16px 0 44px rgba(0,0,0,.6);}
+  .brand{display:flex; align-items:center; gap:10px; padding:0 12px 18px;}
+  .logo{width:34px; height:34px; border-radius:10px; background:var(--primary); color:var(--onprimary);
+        display:flex; align-items:center; justify-content:center; font-weight:800; font-size:17px;}
+  .brand .bn{font-size:16px; font-weight:700; letter-spacing:.2px;}
+  .brand .bs{font-size:11px; color:var(--onvar); margin-top:2px;}
+  .nitem{height:52px; border-radius:999px; display:flex; align-items:center; gap:14px; padding:0 16px;
+         font-size:14px; color:#D9D4E0; position:relative;}
+  .nitem.sel{background:#2F3B39; color:#DFF6F1; font-weight:600;}
+  .nitem .nic{width:22px; display:flex; justify-content:center; font-size:16px;}
+  .nitem .nbadge{margin-left:auto; font-size:11px; background:#3A3644; color:#E7E2EE; border-radius:999px; padding:2px 7px;}
+  .nitem.sel .nbadge{background:#3E5F5A; color:#CFF3EC;}
+  .nfoot{margin-top:auto; padding:12px 16px 0; font-size:11.5px; color:#78727F; line-height:1.5;}
+  .dlgwrap{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; padding:0 40px;}
+  .dlg{width:100%; background:#211E27; border-radius:28px; padding:24px 22px 18px; display:flex; flex-direction:column; gap:14px;
+       box-shadow:0 24px 60px rgba(0,0,0,.6);}
+  .dlg h4{font-size:18px; font-weight:600;}
+  .dlg p{font-size:12.5px; color:var(--onvar); line-height:1.5;}
+  .field{height:52px; border-radius:14px; background:#2B2830; border:1px solid #6E6879; display:flex; align-items:center;
+         padding:0 16px; font-size:15px; color:var(--on); gap:8px;}
+  .field .caret{width:1.5px; height:18px; background:var(--primary);}
+  .dact{display:flex; justify-content:flex-end; gap:10px;}
+  .btn{height:40px; padding:0 18px; border-radius:999px; display:flex; align-items:center; font-size:14px;}
+  .btn.t{color:#9FE0D5;} .btn.f{background:var(--primary); color:var(--onprimary); font-weight:600;}
+  .divider{height:1px; background:#2C2934;}
+</style></head><body>
+
+<!-- A 现状 -->
+<div class="cell"><div class="cap"><b>A · 现状</b> · 底部导航 + 分页条，两行叠着</div>
+<div class="phone">
+  <div class="status"><span>17:10</span><span class="r">5G ▮▮▮ 83</span></div>
+  <div class="hdr"><div class="tab sel">✓ 热门</div><div class="tab">最新</div><div class="search">⌕ 搜索在线…</div><div class="avatar"></div></div>
+  <div class="chips"><div class="chip">只看带字幕</div><div class="chip">⇅ 销量倒序</div><div class="chip">Aa</div></div>
+  <div class="grid">
+    <div class="card"><div class="cover" style="background:linear-gradient(150deg,#8E5A63,#C79C9B 55%,#E7CFC2)"></div>
+      <div class="t">幼馴染とドキドキ押し入れナイト!?in修…</div>
+      <div class="pillrow"><span class="p voice">加藤英美里</span></div>
+      <div class="pillrow"><span class="p amberc">DLsite</span></div>
+      <div class="pillrow"><span class="p rj">RJ243448</span><span class="p dur">33分钟</span></div>
+      <div class="pillrow"><span class="p rose">↓37.4万</span></div>
+      <div class="pillrow"><span class="p tag">青梅竹马</span></div>
+      <div class="pillrow"><span class="p tag">双声道立体声/人头麦</span></div>
+      <div class="pillrow"><span class="p tag">ASMR</span><span class="p tag">亲热/甜蜜</span></div></div>
+    <div class="card"><div class="cover" style="background:linear-gradient(150deg,#6E7FA8,#A8BBD2 55%,#CFE0E6)"></div>
+      <div class="t">後輩彼女、ゆずきと癒されおうちデー…</div>
+      <div class="pillrow"><span class="p voice">豊田萌絵</span></div>
+      <div class="pillrow"><span class="p amberc">DLsite</span></div>
+      <div class="pillrow"><span class="p rj">RJ254160</span><span class="p dur">19分钟</span></div>
+      <div class="pillrow"><span class="p rose">↓33.8万</span></div>
+      <div class="pillrow"><span class="p tag">治愈</span><span class="p tag">前辈/后辈</span></div>
+      <div class="pillrow"><span class="p tag">掏耳</span></div>
+      <div class="pillrow"><span class="p tag">双声道立体声/人头麦</span></div></div>
+  </div>
+  <div class="pagerold"><div class="pn">‹</div><div class="pn cur">1</div><div class="pn">2</div><div class="pn">›</div>
+    <div class="count">共 3028 页</div><div class="jump">跳…</div></div>
+  <div class="nav"><div class="it"><div class="ico">▦</div>本地音声<span class="badge">51</span></div>
+    <div class="it sel"><div class="ico">☁</div>在线</div>
+    <div class="it"><div class="ico">⤓</div>在线收藏<span class="badge">99+</span></div>
+    <div class="it"><div class="ico">▶</div>正在播放</div>
+    <div class="it"><div class="ico">…</div>更多</div></div>
+</div></div>
+
+<!-- B 目标·日常 -->
+<div class="cell"><div class="cap"><b>B · 目标（日常态）</b> · 底部导航整条撤掉，内容到底；底部只留一条极简分页条</div>
+<div class="phone">
+  <div class="status"><span>17:10</span><span class="r">5G ▮▮▮ 83</span></div>
+  <div class="hdr"><div class="tab sel">✓ 热门</div><div class="tab">最新</div><div class="search">⌕ 搜索在线…</div><div class="avatar"></div></div>
+  <div class="chips"><div class="chip">只看带字幕</div><div class="chip">⇅ 销量倒序</div><div class="chip">Aa</div></div>
+  <div class="grid">
+    <div class="card"><div class="cover" style="background:linear-gradient(150deg,#8E5A63,#C79C9B 55%,#E7CFC2)"></div>
+      <div class="t">幼馴染とドキドキ押し入れナイト!?in修…</div>
+      <div class="pillrow"><span class="p voice">加藤英美里</span></div>
+      <div class="pillrow"><span class="p rj">RJ243448</span><span class="p dur">33分钟</span></div>
+      <div class="pillrow"><span class="p rose">↓37.4万</span></div>
+      <div class="pillrow"><span class="p tag">青梅竹马</span></div>
+      <div class="pillrow"><span class="p tag">双声道立体声/人头麦</span></div>
+      <div class="pillrow"><span class="p tag">ASMR</span><span class="p tag">亲热/甜蜜</span></div></div>
+    <div class="card"><div class="cover" style="background:linear-gradient(150deg,#6E7FA8,#A8BBD2 55%,#CFE0E6)"></div>
+      <div class="t">後輩彼女、ゆずきと癒されおうちデー…</div>
+      <div class="pillrow"><span class="p voice">豊田萌絵</span></div>
+      <div class="pillrow"><span class="p rj">RJ254160</span><span class="p dur">19分钟</span></div>
+      <div class="pillrow"><span class="p rose">↓33.8万</span></div>
+      <div class="pillrow"><span class="p tag">治愈</span><span class="p tag">前辈/后辈</span></div>
+      <div class="pillrow"><span class="p tag">掏耳</span></div>
+      <div class="pillrow"><span class="p tag">双声道立体声/人头麦</span></div></div>
+    <div class="card"><div class="cover" style="background:linear-gradient(150deg,#7E6E9C,#B7A9CE 60%,#D9CFE8)"></div>
+      <div class="t">【耳かき】雨の日はおうちでまったり…</div>
+      <div class="pillrow"><span class="p voice">柚木つばめ</span></div>
+      <div class="pillrow"><span class="p rj">RJ1508841</span></div></div>
+    <div class="card"><div class="cover" style="background:linear-gradient(150deg,#9C8E6E,#D6C9AC 60%,#EFE4CC)"></div>
+      <div class="t">クールで無愛想だけど僕にだけ優しい…</div>
+      <div class="pillrow"><span class="p voice">小花衣こっこ</span></div>
+      <div class="pillrow"><span class="p rj">RJ1702649</span></div></div>
+  </div>
+  <div class="pagerbar">
+    <div class="pg">‹</div>
+    <div class="num"><b>1</b> / 3028</div>
+    <div class="pg">›</div>
+    <div class="sp"></div>
+    <div class="jumpchip">⌨ 跳转</div>
+  </div>
+  <div class="handle"></div>
+</div></div>
+
+<!-- C 导航抽屉 -->
+<div class="cell"><div class="cap"><b>C · 左缘右划 → 导航抽屉</b> · 五个入口竖排（带角标），日常隐藏</div>
+<div class="phone">
+  <div class="status"><span>17:10</span><span class="r">5G ▮▮▮ 83</span></div>
+  <div class="hdr"><div class="tab sel">✓ 热门</div><div class="tab">最新</div><div class="search">⌕ 搜索在线…</div><div class="avatar"></div></div>
+  <div class="chips"><div class="chip">只看带字幕</div><div class="chip">⇅ 销量倒序</div><div class="chip">Aa</div></div>
+  <div class="grid">
+    <div class="card"><div class="cover" style="background:linear-gradient(150deg,#8E5A63,#C79C9B 55%,#E7CFC2)"></div>
+      <div class="t">幼馴染とドキドキ押し入れナイト!?in修…</div></div>
+    <div class="card"><div class="cover" style="background:linear-gradient(150deg,#6E7FA8,#A8BBD2 55%,#CFE0E6)"></div>
+      <div class="t">後輩彼女、ゆずきと癒されおうちデー…</div></div>
+  </div>
+  <div class="pagerbar"><div class="pg">‹</div><div class="num"><b>1</b> / 3028</div><div class="pg">›</div>
+    <div class="sp"></div><div class="jumpchip">⌨ 跳转</div></div>
+  <div class="scrim"></div>
+  <div class="navdrawer">
+    <div class="brand"><div class="logo">H</div><div><div class="bn">Hiko</div><div class="bs">音声收藏室</div></div></div>
+    <div class="nitem"><div class="nic">▦</div>本地音声<span class="nbadge">51</span></div>
+    <div class="nitem sel"><div class="nic">☁</div>在线</div>
+    <div class="nitem"><div class="nic">⤓</div>在线收藏<span class="nbadge">99+</span></div>
+    <div class="nitem"><div class="nic">▶</div>正在播放</div>
+    <div class="nitem"><div class="nic">…</div>更多</div>
+    <div class="nfoot">从屏幕左缘往右拖可随时拉出；<br>点选条目后抽屉自动收起。</div>
+  </div>
+</div></div>
+
+<!-- D 跳转 -->
+<div class="cell"><div class="cap"><b>D · 「跳转」按下去</b> · 极简分页条里只放得下一颗按钮，输入放对话框</div>
+<div class="phone">
+  <div class="status"><span>17:10</span><span class="r">5G ▮▮▮ 83</span></div>
+  <div class="hdr"><div class="tab sel">✓ 热门</div><div class="tab">最新</div><div class="search">⌕ 搜索在线…</div><div class="avatar"></div></div>
+  <div class="chips"><div class="chip">只看带字幕</div><div class="chip">⇅ 销量倒序</div><div class="chip">Aa</div></div>
+  <div class="grid">
+    <div class="card"><div class="cover" style="height:120px;background:linear-gradient(150deg,#8E5A63,#C79C9B)"></div></div>
+    <div class="card"><div class="cover" style="height:120px;background:linear-gradient(150deg,#6E7FA8,#A8BBD2)"></div></div>
+  </div>
+  <div class="pagerbar"><div class="pg">‹</div><div class="num"><b>1</b> / 3028</div><div class="pg">›</div>
+    <div class="sp"></div><div class="jumpchip">⌨ 跳转</div></div>
+  <div class="scrim"></div>
+  <div class="dlgwrap"><div class="dlg">
+    <h4>跳转到第几页</h4>
+    <p>共 3028 页，当前第 1 页</p>
+    <div class="field">128<span class="caret"></span></div>
+    <div class="dact"><div class="btn t">取消</div><div class="btn f">前往</div></div>
+  </div></div>
+</div></div>
+
+<pre id="metrics"></pre>
+<script>
+  const out=[];
+  document.querySelectorAll('.phone').forEach((el,i)=>{
+    out.push(`win${i} ${el.scrollHeight}/${el.clientHeight} w ${el.scrollWidth}/${el.clientWidth}`);
+  });
+  document.querySelectorAll('.grid').forEach((g,i)=>{
+    const f=g.querySelector('.card');
+    out.push(`grid${i} h=${g.clientHeight} card=${f?f.getBoundingClientRect().height.toFixed(0):'-'}`);
+  });
+  out.push(`page=${document.documentElement.scrollWidth}x${document.documentElement.scrollHeight}`);
+  document.getElementById('metrics').textContent=out.join(' | ');
+</script>
+</body></html>

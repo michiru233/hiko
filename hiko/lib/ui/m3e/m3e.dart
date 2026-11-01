@@ -39,6 +39,8 @@ export 'navigation/m3e_app_bar.dart';
 export 'navigation/m3e_floating_header.dart';
 export 'navigation/m3e_nav_badge.dart';
 export 'navigation/m3e_nav_bar.dart';
+export 'navigation/m3e_nav_drawer.dart';
+export 'navigation/m3e_nav_edge_handle.dart';
 export 'navigation/m3e_nav_rail.dart';
 export 'navigation/m3e_navigation_destination.dart';
 export 'theme/m3e_theme.dart';

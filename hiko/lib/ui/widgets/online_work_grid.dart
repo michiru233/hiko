@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -248,10 +250,10 @@ class OnlinePager extends StatelessWidget {
     final pad = isMobile ? 16.0 : 48.0;
     final total = totalPages;
 
+    // 1.99.65：移动端不再有页码格子（窄屏点不准，一条 52dp 的分页条也塞不下），
+    // 页码序列只服务桌面形态。
     final numbers = <Widget>[
-      for (final item in isMobile
-          ? mobilePageItems(page, total)
-          : buildPageItems(page, total, radius: 2))
+      for (final item in buildPageItems(page, total, radius: 2))
         if (item == null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -287,26 +289,37 @@ class OnlinePager extends StatelessWidget {
             const SizedBox(width: 10),
           ],
           if (isMobile) ...[
+            // 1.99.65：极简形态 —— 上一页 / `当前页 / 总页数` / 下一页 + 跳转。
+            // 页码格子与常驻输入框都撤掉（用户裁决 m03166：保留前后翻页与跳转即可），
+            // 跳页改走对话框，一行只占 52dp。
             _PagerIcon(
               icon: Icons.chevron_left_rounded,
               tooltip: '上一页',
               onPressed: hasPrev ? () => onPage(page - 1) : null,
             ),
-            // ±1 三颗页码最宽 ~114px，Expanded 内放得下；极端字号缩放时
-            // FittedBox 等比缩而不是溢出/滚动
-            Expanded(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: numbers,
-                ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                '$page / ${total <= 0 ? 1 : total}',
+                key: const ValueKey('mobile-pager-label'),
+                style: M3ETheme.of(context).type.labelMedium.copyWith(
+                      color: M3ETheme.of(context).colors.onSurface,
+                      fontFeatures: const <FontFeature>[
+                        FontFeature.tabularFigures(),
+                      ],
+                    ),
               ),
             ),
             _PagerIcon(
               icon: Icons.chevron_right_rounded,
               tooltip: '下一页',
               onPressed: hasNext ? () => onPage(page + 1) : null,
+            ),
+            const Spacer(),
+            M3EChip(
+              label: '跳转',
+              showCheckmark: false,
+              onTap: () => unawaited(_showJumpDialog(context)),
             ),
           ] else
             Expanded(
@@ -340,20 +353,33 @@ class OnlinePager extends StatelessWidget {
                 ),
               ),
             ),
-          const SizedBox(width: 10),
-          _PageJumpField(totalPages: total, onSubmit: onPage),
+          if (!isMobile) ...[
+            const SizedBox(width: 10),
+            _PageJumpField(totalPages: total, onSubmit: onPage),
+          ],
         ],
       ),
     );
   }
-}
 
-/// 移动端页码序列：当前页 ±1 夹到 1..N 去重（如第 1 页 → `[1, 2]`）。
-/// 不放首末页与省略号 —— 它们是分页条在窄屏上溢出的元凶，远页跳转交给跳页输入。
-List<int> mobilePageItems(int page, int total) => [
-      for (final p in {page - 1, page, page + 1})
-        if (p >= 1 && p <= total) p,
-    ]..sort();
+  /// 「跳转」对话框（1.99.65 移动端专用）。
+  ///
+  /// 越界在这里夹到 `1..totalPages` —— 分页条自己不做校验（它只把点击
+  /// 翻译成页码意图，见类注释），对话框是用户手输的唯一入口。
+  Future<void> _showJumpDialog(BuildContext context) async {
+    final total = totalPages;
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => _MobileJumpDialog(
+        currentPage: page,
+        totalPages: total <= 0 ? 1 : total,
+      ),
+    );
+    if (picked == null) return;
+    final lastPage = total <= 0 ? 1 : total;
+    onPage(picked.clamp(1, lastPage));
+  }
+}
 
 /// 每页条数选择（20 / 60 / 100；实测服务端支持到 500）
 ///
@@ -499,6 +525,79 @@ class _PageJumpFieldState extends State<_PageJumpField> {
             _controller.clear();
           },
         ),
+      ],
+    );
+  }
+}
+
+/// 「跳转到第几页」对话框（1.99.65）。
+///
+/// 控制器归自己所有 —— 对话框自己的 State 负责 dispose，不在调用方
+/// 构造/释放 `TextEditingController`（那里容易在路由退场动画期间就 dispose，
+/// 报 `A TextEditingController was used after being disposed`）。
+class _MobileJumpDialog extends StatefulWidget {
+  const _MobileJumpDialog({
+    required this.currentPage,
+    required this.totalPages,
+  });
+
+  final int currentPage;
+  final int totalPages;
+
+  @override
+  State<_MobileJumpDialog> createState() => _MobileJumpDialogState();
+}
+
+class _MobileJumpDialogState extends State<_MobileJumpDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final page = int.tryParse(_controller.text.trim());
+    if (page == null) return;
+    Navigator.of(context).pop(page);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = M3ETheme.of(context);
+    return M3EDialog(
+      title: '跳转到第几页',
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            '共 ${widget.totalPages} 页，当前第 ${widget.currentPage} 页',
+            style: theme.type.bodySmall.copyWith(
+              color: theme.colors.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 16),
+          M3ETextField(
+            controller: _controller,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            hintText: '页码',
+            inputFormatters: <TextInputFormatter>[
+              FilteringTextInputFormatter.digitsOnly,
+            ],
+            onSubmitted: (_) => _submit(),
+          ),
+        ],
+      ),
+      actions: <Widget>[
+        M3EButton(
+          label: '取消',
+          variant: M3EButtonVariant.text,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        M3EButton(label: '前往', onPressed: _submit),
       ],
     );
   }

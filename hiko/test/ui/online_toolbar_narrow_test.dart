@@ -54,8 +54,9 @@ void main() {
     }
 
     expect(find.byType(OnlineScreen), findsOneWidget);
-    // 1.99.45：预设两枚 + 字幕 + 排序 + Aa，整页胶囊统一成 5 枚 M3EChip
-    expect(find.byType(M3EChip), findsNWidgets(5));
+    // 1.99.45：预设两枚 + 字幕 + 排序 + Aa，工具栏统一成 5 枚 M3EChip；
+    // 1.99.65：底部极简分页条又多了 1 枚「跳转」，所以整页是 6 枚。
+    expect(find.byType(M3EChip), findsNWidgets(6));
     expect(find.byType(FilterChip), findsNothing);
     expect(find.byType(ChoiceChip), findsNothing);
   });

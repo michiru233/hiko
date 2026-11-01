@@ -124,12 +124,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   String? _locateTargetId; // 需要定位的专辑 id（定位完成后清除）
   String? _highlightedAlbumId; // 高亮中的专辑 id
   Timer? _highlightTimer;
-  // 1.54 移动端左边缘右滑呼出抽屉：起手点在左缘 ≤24dp 时累计横向位移
+  // 1.99.65：移动端导航抽屉的关闭入口（M3ENavDrawer 的条目回调里 closeDrawer）
   // 1.99.6（裁决 Q1=B / Q8=A / Q9=A）：移动端从左往右划掉播放栏 = 收起 + 暂停；
   // 任何一次「从暂停变成播放」（含系统媒体键 / 锁屏 / 耳机键）都会把它还原。
   bool _playerBarDismissed = false;
   // 播放栏矩形（用于裁决 Q4=A：手势落在播放栏上时，播放栏的横划优先于左边缘呼出抽屉）
   final _playerBarKey = GlobalKey();
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
@@ -607,6 +608,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         }
       },
       child: Scaffold(
+        key: _scaffoldKey,
+        // 1.99.65：移动端导航改左抽屉（左缘右划拉出、日常隐藏）；桌面仍走
+        // HikoShell 的 M3ENavRail，两条路共用同一份目的地数据。
+        drawer: isMobile ? _buildNavDrawer(navViews) : null,
+        // 只认左缘 20dp 起手（Flutter 的 kEdgeDragWidth + 系统手势区内缩），
+        // 网格的竖向滚动与外层横滑不会误触。
+        drawerEnableOpenDragGesture: isMobile,
         // 1.99.33：macOS 标题栏透明 + 全尺寸内容后，body 顶层让出红绿灯区
         body: Padding(
           padding: EdgeInsets.only(top: windowTopInset(context)),
@@ -664,9 +672,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
             },
             child: SafeArea(
-              // 移动端：左边缘右滑呼出抽屉（1.54，安卓惯例）。用 Listener 直接跟踪指针
-              //（不进手势竞技场，网格垂直滚动识别器不会吞掉水平拖动）；竖向位移大于
-              // 横向即视为滚动放弃呼出。配合 MainActivity 的系统手势排除区使用。
+              // 1.99.65：移动端左缘右划呼出导航抽屉 —— 交给 Scaffold 的
+              // `drawerEnableOpenDragGesture`（只认左缘 20dp 起手的内置识别器，
+              // 与 MainActivity 的系统手势排除区配合），不再自己拿 Listener 抢指针。
               // 1.99.30：玻璃时代的「全局动态封面光晕」（σ80 氛围模糊）随玻璃
               // 一起退场（plan §9.1 滤波清零锁）；播放氛围由全屏播放页的
               // 封面主色渐变承担。
@@ -703,6 +711,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         ),
                     ],
                   ),
+                  // 1.99.65：抽屉把手（仅移动端）——日常态提示「左缘可以往右划」，
+                  // 包了 IgnorePointer，手势仍归 Scaffold 的 drawer 识别器。
+                  if (isMobile)
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: M3ENavEdgeHandle(),
+                    ),
                   // 详情遮罩（桌面）：点击抽屉外区域关闭（不阻断抽屉内交互，
                   // Stack hit test 短路保证上层抽屉命中时遮罩不参与）；遮罩非按钮不加水波纹
                   if (_detailAlbum != null && !isMobile)
@@ -734,7 +749,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       top: 0,
                       // 移动端：播放条显示时留播放条+导航位，未播放/已划掉只留底部导航
                       // （1.54 / 1.99.6）
-                      bottom: isMobile ? (playerBarVisible ? 118 : 60) : 0,
+                      // 1.99.65：底部导航条撤掉后这里只剩播放条（compact 高 64 + 10dp 外边距）
+                      bottom: isMobile ? (playerBarVisible ? 74 : 0) : 0,
                       left: isMobile ? 0 : null,
                       // 桌面：面板宽 420（1.99.44 裁决，与在线详情统一），
                       // 窗口过窄时收缩，避免溢出右缘
@@ -763,8 +779,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ),
         ),
         ),
-        // 移动端底部导航（M3E NavigationBar，1.99.27）
-        bottomNavigationBar: isMobile ? _buildNavBar(navViews) : null,
       ),
     );
   }
@@ -872,55 +886,78 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  /// 移动端底部导航。
+  /// 移动端导航抽屉里的条目。
   ///
-  /// 折叠规则（1.99.27）：最多 5 格，其中「正在播放」常驻 1 格
-  /// （1.99.6 裁决 Q7=A 的「一定找得回来」不能丢），末尾 1 格「更多」——
-  /// 余下的目的地与「设置」都收进更多面板。所以可见导航项 =
-  /// min(navViews, 3)。
-  Widget _buildNavBar(List<String> navViews) {
+  /// 折叠规则沿用 1.99.27（底部导航时代）：最多 5 格，其中「正在播放」常驻
+  /// 1 格（1.99.6 裁决 Q7=A 的「一定找得回来」不能丢），末尾 1 格「更多」——
+  /// 余下的目的地与「设置」都收进更多面板。所以可见导航项 = min(navViews, 3)。
+  ///
+  /// 1.99.65 只是把这一列从屏幕底搬到屏幕左，条目集合一个字没改。
+  ({
+    List<M3ENavigationDestination> visible,
+    List<M3ENavigationDestination> overflow,
+  }) _mobileNavItems(List<String> navViews) {
     final all = _navDestinations(navViews);
     final folded = foldDestinations(all, reservedSlots: 1);
     final playerReady = ref.watch(playbackProvider).album != null;
-    final items = <M3ENavigationDestination>[
-      ...folded.visible,
-      M3ENavigationDestination(
-        label: '正在播放',
-        icon: Icons.play_circle_outline,
-        selectedIcon: Icons.play_circle,
-        enabled: playerReady,
-      ),
-      const M3ENavigationDestination(
-        label: '更多',
-        icon: Icons.more_horiz,
-        selectedIcon: Icons.more_horiz,
-      ),
-    ];
+    return (
+      visible: <M3ENavigationDestination>[
+        ...folded.visible,
+        M3ENavigationDestination(
+          label: '正在播放',
+          icon: Icons.play_circle_outline,
+          selectedIcon: Icons.play_circle,
+          enabled: playerReady,
+        ),
+        const M3ENavigationDestination(
+          label: '更多',
+          icon: Icons.more_horiz,
+          selectedIcon: Icons.more_horiz,
+        ),
+      ],
+      overflow: folded.overflow,
+    );
+  }
+
+  /// 移动端导航抽屉（1.99.65）：底部五宫格撤掉，改左缘右划拉出、日常隐藏。
+  Widget _buildNavDrawer(List<String> navViews) {
+    final items = _mobileNavItems(navViews);
     var selectedIndex = -1;
-    for (var i = 0; i < folded.visible.length; i++) {
-      if (folded.visible[i].label == _view) {
+    for (var i = 0; i < items.visible.length; i++) {
+      if (items.visible[i].label == _view) {
         selectedIndex = i;
         break;
       }
     }
-    return M3ENavBar(
-      destinations: items,
+    return M3ENavDrawer(
+      destinations: items.visible,
       selectedIndex: selectedIndex,
-      onSelected: (index) {
-        if (index == items.length - 1) {
-          unawaited(_openMoreSheet(folded.overflow));
-          return;
-        }
-        if (index == items.length - 2) {
-          // 「正在播放」：有播放条时从其封面形变进入，无播放条则普通转场
-          //（目标 tag 无来源时 Hero 静默跳过，1.99.29）
-          Navigator.of(context)
-              .push(FullscreenPlayerRoute(heroTag: 'bar-cover'));
-          return;
-        }
-        setState(() => _view = folded.visible[index].label);
-      },
+      header: _railHeader(),
+      hint: '从屏幕左缘往右拖可随时拉出；点条目后自动收起',
+      onSelected: (index) => _onDrawerSelected(index, items),
     );
+  }
+
+  void _onDrawerSelected(
+    int index,
+    ({
+      List<M3ENavigationDestination> visible,
+      List<M3ENavigationDestination> overflow,
+    }) items,
+  ) {
+    _scaffoldKey.currentState?.closeDrawer();
+    final last = items.visible.length - 1;
+    if (index == last) {
+      unawaited(_openMoreSheet(items.overflow));
+      return;
+    }
+    if (index == last - 1) {
+      // 「正在播放」：有播放条时从其封面形变进入，无播放条则普通转场
+      //（目标 tag 无来源时 Hero 静默跳过，1.99.29）
+      Navigator.of(context).push(FullscreenPlayerRoute(heroTag: 'bar-cover'));
+      return;
+    }
+    setState(() => _view = items.visible[index].label);
   }
 
   /// 「更多」面板：放不下的目的地 + 设置。

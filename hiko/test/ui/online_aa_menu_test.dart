@@ -12,7 +12,6 @@ import 'package:hiko/models/album.dart';
 import 'package:hiko/ui/screens/home_screen.dart';
 import 'package:hiko/ui/screens/online_favorites_screen.dart';
 import 'package:hiko/ui/screens/online_screen.dart';
-import 'package:hiko/ui/m3e/m3e.dart';
 import 'package:hiko/ui/widgets/online_appearance.dart';
 
 /// 1.99.20 回归锁：移动端在线页顶栏图标收敛 + 「Aa」三合一菜单。
@@ -122,10 +121,11 @@ void main() {
     expect(find.byTooltip('切换主题'), findsOneWidget);
     expect(find.byTooltip('随机播放'), findsOneWidget);
 
-    // 切到「在线」（1.99.27 起「在线」排第 4 位，收在「更多」面板里）
-    await tester.tap(
-      find.descendant(of: find.byType(M3ENavBar), matching: find.text('更多')),
-    );
+    // 切到「在线」（「在线」排在第 4 位，收在「更多」面板里）
+    // 1.99.65：导航搬到左侧抽屉 —— 左缘往右拖拉出来，再点「更多」
+    await tester.dragFrom(const Offset(2, 700), const Offset(320, 0));
+    await _pumpFrames(tester);
+    await tester.tap(find.text('更多'));
     await _pumpFrames(tester);
     await tester.tap(find.text('在线').last);
     await _pumpFrames(tester);
@@ -138,14 +138,11 @@ void main() {
     // 两个有用功能改从 Aa 菜单进
     expect(find.text('Aa'), findsOneWidget);
 
-    // 切回本地视图 —— 必须原样恢复
-    await tester.tap(
-      find.descendant(
-        of: find.byType(M3ENavBar),
-        matching: find.text('本地音声'),
-      ),
-    );
-    await tester.pumpAndSettle();
+    // 切回本地视图 —— 必须原样恢复（1.99.65：从左侧抽屉里选）
+    await tester.dragFrom(const Offset(2, 700), const Offset(320, 0));
+    await _pumpFrames(tester);
+    await tester.tap(find.text('本地音声').last);
+    await _pumpFrames(tester);
     expect(find.byTooltip('随机播放'), findsOneWidget);
     expect(find.byTooltip('定位当前播放'), findsOneWidget);
   });
