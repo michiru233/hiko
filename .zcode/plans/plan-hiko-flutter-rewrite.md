@@ -5298,3 +5298,46 @@ M3E 收口四版（`plan-hiko-m3e-closeout-2026-10-31.md`）的最后一版，�
   versionCode=178 / versionName=1.99.65。
 - Release：`hiko-v1.99.65-macos.zip` 34,149,252 B + `hiko-v1.99.65-android.apk` 70,415,003 B。
 - https://github.com/michiru233/hiko/releases/tag/v1.99.65
+
+## 1.99.66（2026-11-01）：抽屉收窄 + 「更多」并入 + 左缘手势重做
+
+### 可见变化
+- 抽屉从 308dp（占 390dp 屏 79%）收到 **216dp（55%）**，右边留得下内容做对照。
+- 顶部那个巨大的「K」色块没了：1.99.65 的 `CrossAxisAlignment.stretch` 把 32dp 的
+  logo 拉成了整宽方块，现在头部只占自身尺寸（32dp logo + 一行 Hiko）。
+- **「更多」入口取消**：抽屉不折叠，开着的视图全部平铺，「下载」直接可见；
+  「设置」作为抽屉底部的独立动作（分隔线下方），不再弹底部面板。
+- 条目 56 → 48dp、内边距收紧，一屏放得下更多项。
+- 左缘右划**终于好用了**：可拖区从 20dp 放宽到 48dp（绕开安卓系统返回手势的
+  24dp 带），并且播放条那一段不再抢手势；本地顶栏与在线顶栏各加了一颗菜单按钮。
+
+### 实现
+- `hiko/lib/ui/m3e/navigation/m3e_nav_drawer.dart`：`width` 308 → 216；新增
+  `edgeDragWidth = 48`；头部改 `Align(centerLeft)` 不再被拉伸；新增 `trailing` /
+  `onTrailing`（设置）；条目 48dp。
+- `hiko/lib/ui/screens/home_screen.dart`：`_mobileNavItems` 去掉折叠与「更多」，
+  改为「全部 navViews + 正在播放」；新增 `_drawerHeader()`；删掉 `_openMoreSheet`
+  与 `foldDestinations(..., reservedSlots: 1)` 那条旧规则。
+- 手势：`drawerEnableOpenDragGesture: false`，改用自绘 `_NavEdgeDragRegion`
+  （`Positioned(left: 0, top: 0, bottom: playerBarVisible ? 84 : 0, width: 48)`，
+  横滑累计 32dp 即开）。原因：`Scaffold` 内置识别器盖在 body 之上，和移动端播放条
+  「右边划掉 = 收起 + 暂停」（1.99.6 裁决 Q1=B）抢同一条起手线，放宽到 48dp 后
+  播放条再也划不掉；自绘热区把底部 84dp 让出去，两套手势各归各的。
+- `hiko/lib/ui/screens/online_screen.dart`：新增 `onOpenNav`，移动端顶栏左侧加
+  `M3EIconButton(menu_rounded)`；本地顶栏同样加一颗（`M3EAppBar.small` 的 `leading`）。
+
+### 验证
+- `flutter test`：**987 passed / 2 skipped**（986 + 1 条 trailing 用例，并改写 4 个
+  走「更多」的老测试）。
+- `flutter analyze`：**42 条、0 error**。
+- 新增 `m3e_nav_drawer_test` 的 trailing 用例；`mobile_nav_drawer_test` 改为
+  「抽屉里能看见 在线/下载/设置、没有 更多」与「点设置 → 抽屉收起 + 设置页进来」。
+- 关键回归：`mobile_player_bar_flow_test` 的「右划掉播放栏」在放宽后可拖区后仍然
+  通过（正是自绘热区让位的证据）。
+
+### 交付
+- 版本 `1.99.66+179`；macOS `Hiko.app` 76.7 MB（Info.plist 1.99.66 / 179）、APK 70.4 MB。
+- 后签：`apksigner verify --min-sdk-version 21` v1+v2+v3 全 true；`aapt2`
+  versionCode=179 / versionName=1.99.66。
+- Release：`hiko-v1.99.66-macos.zip` + `hiko-v1.99.66-android.apk`。
+- https://github.com/michiru233/hiko/releases/tag/v1.99.66

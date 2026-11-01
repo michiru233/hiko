@@ -40,3 +40,21 @@
 ## 4. 非目标
 - 桌面侧栏、抽屉里的「设置」直达（仍在「更多」里，1.99.61 后位置不变）。
 - 在线页顶部工具栏（热门/最新/搜索/chips 行）不动。
+
+## 5. 1.99.66 反馈迭代（用户真机实测后的第二版）
+
+1.99.65 发出去后用户回三条：①界面太大 ②「更多」里那两项不如直接并进抽屉 ③左缘手势很不灵敏、
+经常划不出来反而触发系统返回。按这三点改：
+
+| 反馈 | 改法 | 落点 |
+|---|---|---|
+| 太大 | 抽屉 308 → **216dp**（一行「四字标签 + 99+」实测 ≈168dp）；条目 56 → 48dp | `m3e_nav_drawer.dart` `width` |
+| 顶部大色块 | `Column(stretch)` 把 32dp logo 拉成整宽 → 改 `Align(centerLeft)` + `Row(min)` | `m3e_nav_drawer.dart` `_buildHeader` |
+| 更多要并进来 | 取消 `foldDestinations(..., reservedSlots: 1)`，「下载」平铺、「设置」做底部 `trailing`；`_openMoreSheet` 删除 | `home_screen.dart` |
+| 手势不灵敏 | 可拖区 20 → **48dp**；`drawerEnableOpenDragGesture: false` + 自绘 `_NavEdgeDragRegion`（32dp 阈值、`bottom: playerBarVisible ? 84 : 0` 给播放条让位）；顶栏加汉堡键兜底 | `home_screen.dart` / `online_screen.dart` |
+
+第二条「设置」的落点按用户原话是「保留原本更多里面的设置和下载两个选项」，所以是**下载进导航列表、
+设置做底部动作**——不是两个都进列表（设置不是视图，选中态语义不成立）。
+
+验证：987 passed / 2 skipped，analyze 42/0。关键回归是 `mobile_player_bar_flow_test` 的
+「右划掉播放栏」——放宽可拖区后它一度被抽屉抢走手势，自绘热区让出底部 84dp 后才恢复。

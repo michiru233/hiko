@@ -121,11 +121,8 @@ void main() {
     expect(find.byTooltip('切换主题'), findsOneWidget);
     expect(find.byTooltip('随机播放'), findsOneWidget);
 
-    // 切到「在线」（「在线」排在第 4 位，收在「更多」面板里）
-    // 1.99.65：导航搬到左侧抽屉 —— 左缘往右拖拉出来，再点「更多」
+    // 切到「在线」——1.99.66 抽屉不再折叠，所有视图都在抽屉里，直接点
     await tester.dragFrom(const Offset(2, 700), const Offset(320, 0));
-    await _pumpFrames(tester);
-    await tester.tap(find.text('更多'));
     await _pumpFrames(tester);
     await tester.tap(find.text('在线').last);
     await _pumpFrames(tester);

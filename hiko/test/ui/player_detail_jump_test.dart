@@ -203,17 +203,15 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
 
     // 切到「在线」视图（OnlineScreen 在场 = 指令通道的消费方已注册）。
-    // 1.99.65：导航改左侧抽屉；折叠规则不变 —— 「在线」排第 4 位，收进「更多」。
+    // 1.99.66：导航改左侧抽屉，且不再折叠 —— 所有视图都在抽屉里
     expect(find.byType(M3ENavBar), findsNothing, reason: '移动端不再有底部导航');
     await tester.dragFrom(const Offset(2, 700), const Offset(320, 0));
     await tester.pumpAndSettle();
     expect(
       find.descendant(of: find.byType(Drawer), matching: find.text('在线')),
-      findsNothing,
-      reason: '前 3 个视图之外的导航项必须折进「更多」',
+      findsOneWidget,
+      reason: '抽屉不折叠，在线直接在抽屉里',
     );
-    await tester.tap(find.text('更多'));
-    await _pumpFrames(tester);
     await tester.tap(find.text('在线').last);
     await _pumpFrames(tester);
     expect(find.byType(OnlineScreen), findsOneWidget);

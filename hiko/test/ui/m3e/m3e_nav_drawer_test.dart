@@ -60,7 +60,7 @@ void main() {
     return log;
   }
 
-  testWidgets('四个条目都渲染，宽度 308，徽标按 count 显示', (tester) async {
+  testWidgets('四个条目都渲染，宽度 216，徽标按 count 显示', (tester) async {
     await pumpDrawer(tester);
 
     expect(find.text('本地音声'), findsOneWidget);
@@ -112,6 +112,44 @@ void main() {
   testWidgets('hint 文案在底部显示', (tester) async {
     await pumpDrawer(tester, hint: '从屏幕左缘往右拖可随时拉出');
     expect(find.text('从屏幕左缘往右拖可随时拉出'), findsOneWidget);
+  });
+
+  testWidgets('trailing 动作（设置）在列表下方，点了回调', (tester) async {
+    var settingsTapped = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          drawer: M3ENavDrawer(
+            destinations: destinations,
+            selectedIndex: 0,
+            onSelected: (_) {},
+            trailing: const M3ENavigationDestination(
+              label: '设置',
+              icon: Icons.settings_outlined,
+              selectedIcon: Icons.settings,
+            ),
+            onTrailing: () => settingsTapped++,
+          ),
+          body: const SizedBox.expand(),
+        ),
+      ),
+    );
+    tester.state<ScaffoldState>(find.byType(Scaffold)).openDrawer();
+    await tester.pumpAndSettle();
+
+    expect(find.text('设置'), findsOneWidget);
+    // 设置不属于导航视图：不该被当成选中项
+    expect(
+      tester
+          .widgetList<Semantics>(find.byType(Semantics))
+          .where((w) => w.properties.selected ?? false)
+          .length,
+      1,
+      reason: '「本地音声」是唯一选中项，设置不参与选中',
+    );
+    await tester.tap(find.text('设置'));
+    await tester.pumpAndSettle();
+    expect(settingsTapped, 1);
   });
 
   testWidgets('没有选中项时（分类视图）不崩', (tester) async {

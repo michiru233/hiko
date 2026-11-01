@@ -8,6 +8,7 @@ import 'package:hiko/playback/playback_controller.dart';
 import 'package:hiko/ui/m3e/m3e.dart';
 import 'package:hiko/ui/screens/fullscreen_player_screen.dart';
 import 'package:hiko/ui/screens/home_screen.dart';
+import 'package:hiko/ui/widgets/settings_dialog.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 移动端导航从底部五宫格搬到左抽屉（1.99.65）在**主界面**层的接线。
@@ -75,19 +76,23 @@ void main() {
 
     expect(find.byType(Drawer), findsOneWidget);
     expect(find.text('本地音声'), findsWidgets);
-    expect(find.text('更多'), findsOneWidget);
-    expect(find.textContaining('从屏幕左缘往右拖可随时拉出'), findsOneWidget);
+    // 1.99.66：不再折叠 —— 「在线」「下载」「设置」都直接躺在抽屉里
+    expect(find.text('在线'), findsWidgets);
+    expect(find.text('下载'), findsOneWidget);
+    expect(find.text('设置'), findsOneWidget);
+    expect(find.text('更多'), findsNothing, reason: '「更多」面板已并入抽屉');
+    expect(find.textContaining('左缘右滑'), findsOneWidget);
   });
 
-  testWidgets('点「更多」→ 抽屉收起 + 底部面板出现设置', (tester) async {
+  testWidgets('点「设置」→ 抽屉收起并打开设置页', (tester) async {
     await pumpHome(tester);
     await openDrawer(tester);
 
-    await tester.tap(find.text('更多'));
+    await tester.tap(find.text('设置'));
     await tester.pumpAndSettle();
 
     expect(find.byType(Drawer), findsNothing, reason: '选完条目抽屉要收起');
-    expect(find.text('设置'), findsOneWidget, reason: '更多面板里仍有设置入口');
+    expect(find.byType(SettingsPage), findsOneWidget, reason: '设置页被推进来');
   });
 
   testWidgets('没有播放时「正在播放」禁用，点了不进全屏播放页', (tester) async {

@@ -66,9 +66,14 @@ class OnlineScreen extends ConsumerStatefulWidget {
     super.key,
     required this.isMobile,
     this.onOpenFavorites,
+    this.onOpenNav,
   });
 
   final bool isMobile;
+
+  /// 打开左侧导航抽屉（1.99.66）。安卓的左缘返回手势会吃掉最外 24dp，
+  /// 光靠拖拽在有些机型上拉不出来，所以顶栏左侧给一颗菜单按钮兜底。
+  final VoidCallback? onOpenNav;
 
   /// 切到「在线收藏」视图。账号菜单里的入口用 —— 视图归属在 home_screen，
   /// 这里只上报意图
@@ -365,6 +370,16 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
         children: [
           Row(
             children: [
+              if (widget.isMobile && widget.onOpenNav != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: M3EIconButton(
+                    icon: Icons.menu_rounded,
+                    tooltip: '打开导航',
+                    semanticLabel: '打开导航',
+                    onPressed: widget.onOpenNav,
+                  ),
+                ),
               for (final (preset, label) in _onlinePresets)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),

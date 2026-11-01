@@ -1,0 +1,210 @@
+<!doctype html><html lang="zh"><head><meta charset="utf-8">
+<style>
+  :root{
+    --surface:#141218; --low:#1B191F; --card:#232028; --high:#2B2830; --highest:#35313A;
+    --on:#E7E1EA; --onvar:#A9A3B3; --outline:#4A4550;
+    --primary:#86D5C9; --onprimary:#00382F; --pcontainer:#2E6B62; --onpcontainer:#C8F3EC;
+  }
+  *{box-sizing:border-box; margin:0; padding:0; -webkit-font-smoothing:antialiased;}
+  body{background:#0B0A0E; font-family:-apple-system,"PingFang SC","Hiragino Sans",sans-serif; color:var(--on);
+       display:flex; gap:26px; padding:28px 28px 34px; align-items:flex-start;}
+  .cell{display:flex; flex-direction:column; gap:9px;}
+  .cap{font-size:12.5px; color:#8C8797; letter-spacing:.3px; max-width:390px; line-height:1.45;}
+  .cap b{color:#D6D1DE; font-weight:600;}
+  .phone{width:390px; height:844px; background:var(--surface); border-radius:38px; overflow:hidden; position:relative;
+         box-shadow:0 0 0 1px #2A2730, 0 24px 56px rgba(0,0,0,.55); display:flex; flex-direction:column;}
+  .status{height:44px; display:flex; align-items:center; justify-content:space-between; padding:0 22px;
+          font-size:13px; color:#CFCAD6; font-weight:600;}
+  .status .r{display:flex; gap:6px; align-items:center; font-size:11px; color:#B9B3C2;}
+  .hdr{padding:2px 16px 10px; display:flex; align-items:center; gap:8px;}
+  .tab{height:34px; padding:0 14px; border-radius:999px; font-size:14px; display:flex; align-items:center; gap:6px;
+       border:1px solid var(--outline); white-space:nowrap;}
+  .tab.sel{background:var(--highest); border-color:transparent;}
+  .search{flex:1; height:34px; border-radius:999px; background:var(--high); display:flex; align-items:center; gap:8px;
+          padding:0 12px; font-size:14px; color:var(--onvar); min-width:0;}
+  .avatar{width:28px; height:28px; border-radius:50%; background:var(--on); display:flex; align-items:center; justify-content:center;}
+  .avatar::after{content:""; width:12px; height:12px; border-radius:50%; background:var(--surface);}
+  .chips{padding:0 16px 8px; display:flex; gap:8px; overflow:hidden;}
+  .chip{height:30px; padding:0 12px; border-radius:10px; border:1px solid var(--outline); font-size:13px;
+        display:flex; align-items:center; gap:6px; white-space:nowrap;}
+  .grid{flex:1; padding:0 16px; display:grid; grid-template-columns:1fr 1fr; gap:12px; align-content:start; overflow:hidden;}
+  .card{background:var(--card); border-radius:16px; padding:4px 4px 8px; display:flex; flex-direction:column; gap:6px;}
+  .cover{height:168px; border-radius:12px; background:linear-gradient(135deg,#3A3348,#2A2533);}
+  .t{font-size:13.5px; line-height:1.32; font-weight:600; padding:0 4px; display:-webkit-box; -webkit-line-clamp:2;
+     -webkit-box-orient:vertical; overflow:hidden;}
+  .pillrow{display:flex; flex-wrap:wrap; gap:4px; padding:0 4px;}
+  .p{font-size:11px; line-height:1; padding:4px 6px; border-radius:5px; white-space:nowrap;}
+  .voice{background:#2C3745; color:#A8CEF5;} .rj{background:var(--pcontainer); color:var(--onpcontainer); font-weight:700;}
+  .dur{background:var(--highest); color:#B9B3C2;} .tag{background:transparent; border:1px solid #3A3641; color:#C9C4D2;}
+  .pagerbar{height:52px; padding:0 16px 6px; display:flex; align-items:center; gap:10px;}
+  .pagerbar .pg{height:34px; min-width:34px; padding:0 10px; border-radius:999px; background:var(--high);
+                display:flex; align-items:center; justify-content:center; font-size:13px; color:var(--on);}
+  .pagerbar .num{font-size:12.5px; color:var(--onvar);}
+  .pagerbar .num b{color:var(--on); font-weight:600;}
+  .pagerbar .sp{flex:1;}
+  .pagerbar .jumpchip{height:32px; padding:0 14px; border-radius:999px; border:1px solid var(--outline);
+                      display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--on);}
+  .handle{position:absolute; left:0; top:392px; width:4px; height:56px; border-radius:0 3px 3px 0; background:#3E3A47;}
+  .scrim{position:absolute; inset:0; background:rgba(0,0,0,.46);}
+
+  /* ---------- 现状：308dp，头部被拉伸成一个大色块 ---------- */
+  .navdrawer{position:absolute; left:0; top:0; bottom:0; width:308px; background:var(--low);
+             border-radius:0 28px 28px 0; padding:52px 12px 20px; display:flex; flex-direction:column;
+             box-shadow:16px 0 44px rgba(0,0,0,.6);}
+  .kblock{height:56px; border-radius:10px; background:#BFC6FF; color:#2B2F63; display:flex; align-items:center;
+          justify-content:center; font-weight:800; font-size:22px; margin:0 12px 18px;}
+  .nitem{height:56px; border-radius:999px; display:flex; align-items:center; gap:16px; padding:0 16px;
+         font-size:15px; color:#D9D4E0; position:relative; margin-bottom:4px;}
+  .nitem.sel{background:#2F3B39; color:#DFF6F1; font-weight:600;}
+  .nitem.dim{color:#6E6878;}
+  .nitem .nic{width:22px; display:flex; justify-content:center; font-size:17px;}
+  .nitem .nbadge{margin-left:auto; font-size:11.5px; background:#3A3644; color:#E7E2EE; border-radius:999px; padding:2px 8px;}
+  .hint2{font-size:11.5px; color:var(--onvar); line-height:1.5; padding:0 12px;}
+
+  /* ---------- 方案 A：272dp，紧凑头，更多并入 ---------- */
+  .drawerA{position:absolute; left:0; top:0; bottom:0; width:272px; background:var(--low);
+           border-radius:0 24px 24px 0; padding:52px 10px 16px; display:flex; flex-direction:column;
+           box-shadow:16px 0 44px rgba(0,0,0,.6);}
+  .brandA{display:flex; align-items:center; gap:10px; padding:0 10px 14px;}
+  .logoA{width:32px; height:32px; border-radius:9px; background:var(--primary); color:var(--onprimary);
+         display:flex; align-items:center; justify-content:center; font-weight:800; font-size:16px;}
+  .brandA .bn{font-size:15px; font-weight:700;}
+  .brandA .bs{font-size:10.5px; color:var(--onvar); margin-top:1px;}
+  .itemA{height:52px; border-radius:999px; display:flex; align-items:center; gap:14px; padding:0 14px;
+         font-size:14.5px; color:#D9D4E0; margin-bottom:2px;}
+  .itemA.sel{background:#2F3B39; color:#DFF6F1; font-weight:600;}
+  .itemA.dim{color:#6E6878;}
+  .itemA .nic{width:20px; display:flex; justify-content:center; font-size:16px;}
+  .itemA .nbadge{margin-left:auto; font-size:11px; background:#3A3644; color:#E7E2EE; border-radius:999px; padding:2px 7px;}
+  .divider{height:1px; background:#2E2A34; margin:10px 14px;}
+  .hint1{font-size:11px; color:var(--onvar); padding:6px 14px 0; line-height:1.4;}
+
+  /* ---------- 方案 B：264dp inset ---------- */
+  .drawerB{position:absolute; left:8px; top:8px; bottom:8px; width:264px; background:var(--low);
+           border-radius:26px; padding:44px 10px 14px; display:flex; flex-direction:column;
+           box-shadow:16px 0 44px rgba(0,0,0,.6);}
+  .brandB{display:flex; align-items:center; gap:10px; padding:0 10px 12px;}
+  .logoB{width:30px; height:30px; border-radius:8px; background:var(--primary); color:var(--onprimary);
+         display:flex; align-items:center; justify-content:center; font-weight:800; font-size:15px;}
+  .brandB .bn{font-size:14.5px; font-weight:700;}
+  .itemB{height:50px; border-radius:999px; display:flex; align-items:center; gap:13px; padding:0 13px;
+         font-size:14px; color:#D9D4E0; margin-bottom:2px;}
+  .itemB.sel{background:#2F3B39; color:#DFF6F1; font-weight:600;}
+  .itemB.dim{color:#6E6878;}
+  .itemB .nic{width:20px; display:flex; justify-content:center; font-size:16px;}
+  .itemB .nbadge{margin-left:auto; font-size:11px; background:#3A3644; color:#E7E2EE; border-radius:999px; padding:2px 7px;}
+
+  .burger{width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+          background:var(--high); font-size:16px; color:var(--on);}
+  .hit{position:absolute; left:0; top:352px; width:40px; height:136px; border:1px dashed #6C6A7A; border-radius:0 10px 10px 0;
+       display:flex; align-items:center; justify-content:center;}
+  .hit span{font-size:9.5px; color:#9A94A6; writing-mode:vertical-rl; letter-spacing:2px;}
+</style></head><body>
+
+<!-- 现状 -->
+<div class="cell">
+  <div class="cap"><b>① 现状</b>（你截图那版）＝ 308dp 宽（占 390dp 屏的 <b>79%</b>）＋ 头部被拉伸成一个 56dp 高的浅蓝大色块 ＋ 底部两行提示 ＋ 多一个「更多」</div>
+  <div class="phone">
+    <div class="status"><span>17:42</span><span class="r">5G · 78%</span></div>
+    <div class="hdr"><div class="tab sel">✓ 热门</div><div class="tab">最新</div><div class="search">搜索在线…</div><div class="avatar"></div></div>
+    <div class="chips"><div class="chip">只看带字幕</div><div class="chip">↑↓ 销量倒序</div><div class="chip">Aa</div></div>
+    <div class="grid">
+      <div class="card"><div class="cover"></div><div class="t">幼馴染とドキドキ押し入れナイト!?</div><div class="pillrow"><span class="p voice">加藤英美里</span></div><div class="pillrow"><span class="p rj">RJ243448</span><span class="p dur">33分钟</span></div></div>
+      <div class="card"><div class="cover"></div><div class="t">後輩彼女、ゆずきと癒されおうちデ…</div><div class="pillrow"><span class="p voice">豊田萌絵</span></div><div class="pillrow"><span class="p rj">RJ254160</span><span class="p dur">19分钟</span></div></div>
+    </div>
+    <div class="pagerbar"><div class="pg">‹</div><div class="num"><b>1</b> / 3028</div><div class="pg">›</div><div class="sp"></div><div class="jumpchip">跳转</div></div>
+    <div class="scrim"></div>
+    <div class="navdrawer">
+      <div class="kblock">K</div>
+      <div class="nitem sel"><span class="nic">▦</span>本地音声<span class="nbadge">51</span></div>
+      <div class="nitem"><span class="nic">☁</span>在线</div>
+      <div class="nitem"><span class="nic">♥</span>在线收藏<span class="nbadge">99+</span></div>
+      <div class="nitem dim"><span class="nic">▶</span>正在播放</div>
+      <div class="nitem"><span class="nic">⋯</span>更多</div>
+      <div style="flex:1"></div>
+      <div class="hint2">从屏幕左缘往右拖可随时拉出；点条目后自动收起</div>
+    </div>
+  </div>
+</div>
+
+<!-- 方案 A -->
+<div class="cell">
+  <div class="cap"><b>② 方案 A · 272dp 通栏</b>：宽度收到 272（占 70%），头部改成「32dp logo + 一行 Hiko」共 46dp，条目 52dp，<b>「更多」删掉</b>——设置直接落在抽屉底部；提示压成一行</div>
+  <div class="phone">
+    <div class="status"><span>17:42</span><span class="r">5G · 78%</span></div>
+    <div class="hdr"><div class="tab sel">✓ 热门</div><div class="tab">最新</div><div class="search">搜索在线…</div><div class="avatar"></div></div>
+    <div class="chips"><div class="chip">只看带字幕</div><div class="chip">↑↓ 销量倒序</div><div class="chip">Aa</div></div>
+    <div class="grid">
+      <div class="card"><div class="cover"></div><div class="t">幼馴染とドキドキ押し入れナイト!?</div><div class="pillrow"><span class="p voice">加藤英美里</span></div><div class="pillrow"><span class="p rj">RJ243448</span><span class="p dur">33分钟</span></div></div>
+      <div class="card"><div class="cover"></div><div class="t">後輩彼女、ゆずきと癒されおうちデ…</div><div class="pillrow"><span class="p voice">豊田萌絵</span></div><div class="pillrow"><span class="p rj">RJ254160</span><span class="p dur">19分钟</span></div></div>
+    </div>
+    <div class="pagerbar"><div class="pg">‹</div><div class="num"><b>1</b> / 3028</div><div class="pg">›</div><div class="sp"></div><div class="jumpchip">跳转</div></div>
+    <div class="scrim"></div>
+    <div class="drawerA">
+      <div class="brandA"><div class="logoA">K</div><div><div class="bn">Hiko</div><div class="bs">音声收藏室</div></div></div>
+      <div class="itemA sel"><span class="nic">▦</span>本地音声<span class="nbadge">51</span></div>
+      <div class="itemA"><span class="nic">☁</span>在线</div>
+      <div class="itemA"><span class="nic">♥</span>在线收藏<span class="nbadge">99+</span></div>
+      <div class="itemA dim"><span class="nic">▶</span>正在播放</div>
+      <div style="flex:1"></div>
+      <div class="divider"></div>
+      <div class="itemA"><span class="nic">⚙</span>设置</div>
+      <div class="hint1">左缘右滑，或点左上角菜单</div>
+    </div>
+  </div>
+</div>
+
+<!-- 方案 B -->
+<div class="cell">
+  <div class="cap"><b>③ 方案 B · 264dp 浮起</b>：再窄一点，并且四面留 8dp 边距、四角都圆，像一张浮在内容上的卡片（M3 inset drawer）；条目 50dp</div>
+  <div class="phone">
+    <div class="status"><span>17:42</span><span class="r">5G · 78%</span></div>
+    <div class="hdr"><div class="tab sel">✓ 热门</div><div class="tab">最新</div><div class="search">搜索在线…</div><div class="avatar"></div></div>
+    <div class="chips"><div class="chip">只看带字幕</div><div class="chip">↑↓ 销量倒序</div><div class="chip">Aa</div></div>
+    <div class="grid">
+      <div class="card"><div class="cover"></div><div class="t">幼馴染とドキドキ押し入れナイト!?</div><div class="pillrow"><span class="p voice">加藤英美里</span></div><div class="pillrow"><span class="p rj">RJ243448</span><span class="p dur">33分钟</span></div></div>
+      <div class="card"><div class="cover"></div><div class="t">後輩彼女、ゆずきと癒されおうちデ…</div><div class="pillrow"><span class="p voice">豊田萌絵</span></div><div class="pillrow"><span class="p rj">RJ254160</span><span class="p dur">19分钟</span></div></div>
+    </div>
+    <div class="pagerbar"><div class="pg">‹</div><div class="num"><b>1</b> / 3028</div><div class="pg">›</div><div class="sp"></div><div class="jumpchip">跳转</div></div>
+    <div class="scrim"></div>
+    <div class="drawerB">
+      <div class="brandB"><div class="logoB">K</div><div><div class="bn">Hiko</div></div></div>
+      <div class="itemB sel"><span class="nic">▦</span>本地音声<span class="nbadge">51</span></div>
+      <div class="itemB"><span class="nic">☁</span>在线</div>
+      <div class="itemB"><span class="nic">♥</span>在线收藏<span class="nbadge">99+</span></div>
+      <div class="itemB dim"><span class="nic">▶</span>正在播放</div>
+      <div style="flex:1"></div>
+      <div class="divider"></div>
+      <div class="itemB"><span class="nic">⚙</span>设置</div>
+    </div>
+  </div>
+</div>
+
+<!-- 打开方式 -->
+<div class="cell">
+  <div class="cap"><b>④ 打开方式（治「滑不出来、变成返回」）</b>：左上角加一颗菜单按钮（最可靠）；左缘可拖区域从 20dp 放宽到 40dp——贴着屏幕最外面 24dp 是安卓系统的返回手势区，<b>从 24～40dp 之间起手</b>才能稳定拉出抽屉</div>
+  <div class="phone">
+    <div class="status"><span>17:42</span><span class="r">5G · 78%</span></div>
+    <div class="hdr"><div class="burger">☰</div><div class="tab sel">✓ 热门</div><div class="search">搜索在线…</div><div class="avatar"></div></div>
+    <div class="chips"><div class="chip">只看带字幕</div><div class="chip">↑↓ 销量倒序</div><div class="chip">Aa</div></div>
+    <div class="grid">
+      <div class="card"><div class="cover"></div><div class="t">幼馴染とドキドキ押し入れナイト!?</div><div class="pillrow"><span class="p voice">加藤英美里</span></div><div class="pillrow"><span class="p rj">RJ243448</span><span class="p dur">33分钟</span></div></div>
+      <div class="card"><div class="cover"></div><div class="t">後輩彼女、ゆずきと癒されおうちデ…</div><div class="pillrow"><span class="p voice">豊田萌絵</span></div><div class="pillrow"><span class="p rj">RJ254160</span><span class="p dur">19分钟</span></div></div>
+    </div>
+    <div class="pagerbar"><div class="pg">‹</div><div class="num"><b>1</b> / 3028</div><div class="pg">›</div><div class="sp"></div><div class="jumpchip">跳转</div></div>
+    <div class="handle"></div>
+    <div class="hit"><span>40dp 命中区</span></div>
+  </div>
+</div>
+
+<pre id="metrics"></pre>
+<script>
+const out=[];
+document.querySelectorAll('.phone').forEach((p,i)=>{
+  const d=p.querySelector('.navdrawer,.drawerA,.drawerB');
+  out.push(`win${i} body=${p.scrollHeight}/${p.clientHeight} drawer=${d?d.getBoundingClientRect().width:0}`);
+});
+out.push(`page=${document.documentElement.scrollWidth}x${document.documentElement.scrollHeight}`);
+document.getElementById('metrics').textContent='METRICS:'+out.join(' | ');
+</script>
+</body></html>

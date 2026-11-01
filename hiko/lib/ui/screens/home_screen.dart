@@ -612,9 +612,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         // 1.99.65：移动端导航改左抽屉（左缘右划拉出、日常隐藏）；桌面仍走
         // HikoShell 的 M3ENavRail，两条路共用同一份目的地数据。
         drawer: isMobile ? _buildNavDrawer(navViews) : null,
-        // 只认左缘 20dp 起手（Flutter 的 kEdgeDragWidth + 系统手势区内缩），
-        // 网格的竖向滚动与外层横滑不会误触。
-        drawerEnableOpenDragGesture: isMobile,
+        // 1.99.66：默认 20dp 正好和安卓系统返回手势重叠，放宽到 48dp ——
+        // 从「边缘往里 24～48dp」起手都能拉出来（贴着最外层仍归系统）
+        drawerEdgeDragWidth: M3ENavDrawer.edgeDragWidth,
+        // 1.99.66：内置拖拽关掉，换成下面自绘的左缘热区。
+        //
+        // 原因：`Scaffold` 的左缘识别器盖在 body 之上，而移动端播放条贴着屏幕
+        // 左边（右边划掉 = 收起 + 暂停，1.99.6 裁决 Q1=B）。把可拖区放宽到
+        // 48dp 后，从播放条上起手的横滑会被抽屉抢走，播放条再也划不掉。
+        // 自绘热区把底部播放条那 84dp 让出去，两套手势各归各的。
+        drawerEnableOpenDragGesture: false,
         // 1.99.33：macOS 标题栏透明 + 全尺寸内容后，body 顶层让出红绿灯区
         body: Padding(
           padding: EdgeInsets.only(top: windowTopInset(context)),
@@ -713,11 +720,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ),
                   // 1.99.65：抽屉把手（仅移动端）——日常态提示「左缘可以往右划」，
                   // 包了 IgnorePointer，手势仍归 Scaffold 的 drawer 识别器。
+
+                  // 1.99.66：左缘热区 —— 48dp 宽、到播放条为止；往上任意高度都能起手右划。
                   if (isMobile)
-                    const Align(
-                      alignment: Alignment.centerLeft,
-                      child: M3ENavEdgeHandle(),
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      bottom: playerBarVisible ? 84 : 0,
+                      width: M3ENavDrawer.edgeDragWidth,
+                      child: _NavEdgeDragRegion(
+                        onOpen: () => _scaffoldKey.currentState?.openDrawer(),
+                      ),
                     ),
+                  if (isMobile) const Align(
+                    alignment: Alignment.centerLeft,
+                    child: M3ENavEdgeHandle(),
+                  ),
                   // 详情遮罩（桌面）：点击抽屉外区域关闭（不阻断抽屉内交互，
                   // Stack hit test 短路保证上层抽屉命中时遮罩不参与）；遮罩非按钮不加水波纹
                   if (_detailAlbum != null && !isMobile)
@@ -886,120 +904,94 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
-  /// 移动端导航抽屉里的条目。
+  /// 移动端导航抽屉里的条目（1.99.66）。
   ///
-  /// 折叠规则沿用 1.99.27（底部导航时代）：最多 5 格，其中「正在播放」常驻
-  /// 1 格（1.99.6 裁决 Q7=A 的「一定找得回来」不能丢），末尾 1 格「更多」——
-  /// 余下的目的地与「设置」都收进更多面板。所以可见导航项 = min(navViews, 3)。
-  ///
-  /// 1.99.65 只是把这一列从屏幕底搬到屏幕左，条目集合一个字没改。
-  ({
-    List<M3ENavigationDestination> visible,
-    List<M3ENavigationDestination> overflow,
-  }) _mobileNavItems(List<String> navViews) {
-    final all = _navDestinations(navViews);
-    final folded = foldDestinations(all, reservedSlots: 1);
+  /// 抽屉比底栏高得多，1.99.27 那条「最多 5 格、多的折进更多」的规则没有意义了：
+  /// 现在**不再折叠**，`navViews` 里开着的视图全部平铺，末尾常驻「正在播放」
+  /// （无播放时禁用，1.99.6 裁决 Q7=A 的「一定找得回来」）。「设置」不再是
+  /// 「更多」面板里的一项，而是抽屉底部的独立动作（`trailing`）。
+  List<M3ENavigationDestination> _mobileNavItems(List<String> navViews) {
     final playerReady = ref.watch(playbackProvider).album != null;
-    return (
-      visible: <M3ENavigationDestination>[
-        ...folded.visible,
-        M3ENavigationDestination(
-          label: '正在播放',
-          icon: Icons.play_circle_outline,
-          selectedIcon: Icons.play_circle,
-          enabled: playerReady,
-        ),
-        const M3ENavigationDestination(
-          label: '更多',
-          icon: Icons.more_horiz,
-          selectedIcon: Icons.more_horiz,
-        ),
-      ],
-      overflow: folded.overflow,
-    );
+    return <M3ENavigationDestination>[
+      ..._navDestinations(navViews),
+      M3ENavigationDestination(
+        label: '正在播放',
+        icon: Icons.play_circle_outline,
+        selectedIcon: Icons.play_circle,
+        enabled: playerReady,
+      ),
+    ];
   }
 
   /// 移动端导航抽屉（1.99.65）：底部五宫格撤掉，改左缘右划拉出、日常隐藏。
   Widget _buildNavDrawer(List<String> navViews) {
     final items = _mobileNavItems(navViews);
-    var selectedIndex = -1;
-    for (var i = 0; i < items.visible.length; i++) {
-      if (items.visible[i].label == _view) {
-        selectedIndex = i;
-        break;
-      }
-    }
     return M3ENavDrawer(
-      destinations: items.visible,
-      selectedIndex: selectedIndex,
-      header: _railHeader(),
-      hint: '从屏幕左缘往右拖可随时拉出；点条目后自动收起',
+      destinations: items,
+      selectedIndex: navViews.indexOf(_view),
+      header: _drawerHeader(),
+      hint: '左缘右滑，或点左上角菜单打开',
+      trailing: const M3ENavigationDestination(
+        label: '设置',
+        icon: Icons.settings_outlined,
+        selectedIcon: Icons.settings,
+      ),
+      onTrailing: () {
+        _scaffoldKey.currentState?.closeDrawer();
+        _openSettings(context);
+      },
       onSelected: (index) => _onDrawerSelected(index, items),
     );
   }
 
-  void _onDrawerSelected(
-    int index,
-    ({
-      List<M3ENavigationDestination> visible,
-      List<M3ENavigationDestination> overflow,
-    }) items,
-  ) {
+  /// 抽屉里的品牌区：32dp logo + 一行 Hiko。
+  ///
+  /// 不复用 [_railHeader]：那个在窄窗口下只返回一个 32dp 的 logo（桌面折叠侧栏
+  /// 用得上），抽屉里需要「logo + 名字」一行才不显得空。
+  Widget _drawerHeader() {
+    final theme = M3ETheme.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: theme.colors.primary,
+            borderRadius: M3EShape.radius(M3EShape.sm),
+          ),
+          child: Center(
+            child: Text(
+              'K',
+              style: theme.type.titleSmall.copyWith(
+                color: theme.colors.onPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          'Hiko',
+          style: theme.type.titleSmall.copyWith(
+            fontWeight: FontWeight.w700,
+            color: theme.colors.onSurface,
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _onDrawerSelected(int index, List<M3ENavigationDestination> items) {
     _scaffoldKey.currentState?.closeDrawer();
-    final last = items.visible.length - 1;
-    if (index == last) {
-      unawaited(_openMoreSheet(items.overflow));
-      return;
-    }
-    if (index == last - 1) {
+    if (index == items.length - 1) {
       // 「正在播放」：有播放条时从其封面形变进入，无播放条则普通转场
       //（目标 tag 无来源时 Hero 静默跳过，1.99.29）
       Navigator.of(context).push(FullscreenPlayerRoute(heroTag: 'bar-cover'));
       return;
     }
-    setState(() => _view = items.visible[index].label);
+    setState(() => _view = items[index].label);
   }
-
-  /// 「更多」面板：放不下的目的地 + 设置。
-  ///
-  /// 1.99.61：底色与顶角交给 `M3ESheet(bottom)` —— 原来这里又手写了一遍
-  /// `surfaceContainerLow` + `Radius.circular(M3EShape.xl)`，与详情面板、曲目列表
-  /// 是同一份材质的第三份拷贝，改一处必漏两处。此方法现在只剩「路由 + 内容」。
-  Future<void> _openMoreSheet(List<M3ENavigationDestination> overflow) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => M3ESheet(
-        variant: M3ESheetVariant.bottom,
-        child: SafeArea(
-          child: M3EList(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            children: <Widget>[
-              for (final destination in overflow)
-                M3EListItem(
-                  title: destination.label,
-                  leading: Icon(destination.icon),
-                  selected: destination.label == _view,
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    setState(() => _view = destination.label);
-                  },
-                ),
-              M3EListItem(
-                title: '设置',
-                leading: const Icon(Icons.settings_outlined),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _openSettings(context);
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
 
   /// 从左往右划掉播放栏（1.99.6，裁决 Q1=B）：**收起 + 暂停**。
   ///
@@ -1089,6 +1081,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           Expanded(
             child: OnlineScreen(
               isMobile: isMobile,
+              onOpenNav: isMobile
+                  ? () => _scaffoldKey.currentState?.openDrawer()
+                  : null,
               // 账号菜单里的「在线收藏」入口（1.93.0）：视图归属在这个 State，
               // 在线页只上报意图
               onOpenFavorites: () => setState(() => _view = '在线收藏'),
@@ -1613,6 +1608,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       color: theme.scaffoldBackgroundColor,
       child: M3EAppBar.small(
         padding: const EdgeInsets.symmetric(horizontal: 8),
+        // 1.99.66：安卓左缘最外 24dp 归系统返回手势，光靠拖拽可能拉不出来，
+        // 顶栏左侧给一颗菜单按钮兜底。
+        leading: M3EIconButton(
+          icon: Icons.menu_rounded,
+          tooltip: '打开导航',
+          semanticLabel: '打开导航',
+          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+        ),
         title: AnimatedOpacity(
           opacity: _mobileTopbarTitle ? 1 : 0,
           duration:
@@ -2551,6 +2554,67 @@ class _SortSelector extends StatelessWidget {
             },
           ),
       ],
+    );
+  }
+}
+
+/// 移动端左缘的抽屉热区（1.99.66）。
+///
+/// 替代 `Scaffold.drawerEnableOpenDragGesture`：内置那个盖在 body 之上，会和
+/// 移动端播放条「右边划掉」抢同一条起手线。这个热区由 home_screen 自己摆位置，
+/// 只覆盖播放条以上的屏幕高度，播放条那一段留给 `Dismissible`。
+///
+/// 行为：横滑累计超过 [_threshold] 就开抽屉（不等抬手，跟手就开），抬手复位。
+class _NavEdgeDragRegion extends StatefulWidget {
+  const _NavEdgeDragRegion({required this.onOpen});
+
+  final VoidCallback onOpen;
+
+  @override
+  State<_NavEdgeDragRegion> createState() => _NavEdgeDragRegionState();
+}
+
+class _NavEdgeDragRegionState extends State<_NavEdgeDragRegion> {
+  /// 累计横滑多少 dp 算「想开抽屉」。安卓的返回手势阈值约 20dp，取 32dp
+  /// 免得轻轻一划就弹抽屉；真拖拽时用户通常一划就是上百 dp。
+  static const double _threshold = 32;
+
+  double _dragged = 0;
+  bool _opened = false;
+
+  void _start(DragStartDetails details) {
+    _dragged = 0;
+    _opened = false;
+  }
+
+  void _update(DragUpdateDetails details) {
+    if (_opened) return;
+    _dragged += details.delta.dx;
+    if (_dragged >= _threshold) {
+      _opened = true;
+      widget.onOpen();
+    }
+  }
+
+  void _end(DragEndDetails details) {
+    _dragged = 0;
+    _opened = false;
+  }
+
+  void _cancel() {
+    _dragged = 0;
+    _opened = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      // translucent：热区只拦横滑，点击照常穿到下面的卡片/列表
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragStart: _start,
+      onHorizontalDragUpdate: _update,
+      onHorizontalDragEnd: _end,
+      onHorizontalDragCancel: _cancel,
     );
   }
 }
