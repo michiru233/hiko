@@ -58,3 +58,24 @@
 
 验证：987 passed / 2 skipped，analyze 42/0。关键回归是 `mobile_player_bar_flow_test` 的
 「右划掉播放栏」——放宽可拖区后它一度被抽屉抢走手势，自绘热区让出底部 84dp 后才恢复。
+
+## 6. 1.99.67：改用自绘跟手抽屉（左半屏手势）
+
+1.99.66 的可拖区虽然放宽到 48dp，用户实测仍旧「往右划出不来、反而退回桌面」——因为
+48dp 里真正能用的部分紧贴屏幕左缘，和安卓系统返回手势的 24dp 热区重叠，系统优先级更高。
+
+改法不再和系统抢边缘：
+
+| 项 | 1.99.66 | 1.99.67 |
+|---|---|---|
+| 手势热区 | 左缘 48dp、到播放条为止 | **左半屏**（`width / 2`）、到播放条为止 |
+| 抽屉实现 | `Scaffold.drawer`（只有开/关两态） | 自绘 `AnimationController` + `FractionalTranslation`，**跟手** |
+| 松手行为 | 无（要么开要么关） | 速度 > 0.35 或进度 > 0.4 吸附展开，否则回弹 |
+| 关闭 | 点遮罩 / 返回键（Scaffold 自动） | 点遮罩 / 面板左推 / 返回键（`PopScope` 显式处理） |
+| 动画 | Flutter 默认 | 拖动 1:1 跟手；吸附 `M3EMotion.fallbackCurve`（260ms / 200ms 反转） |
+
+代价：抽屉不再是 `Scaffold` 托管，`openDrawer()/closeDrawer()` 全部换成
+`_openNavDrawer()/_closeNavDrawer()`；测试也从「找 `ScaffoldState`」改成拖拽 + 断言
+面板位置。收益是手感与触发率都上来了，且不再受系统返回手势影响。
+
+验证：990 passed / 2 skipped，analyze 42/0。

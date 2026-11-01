@@ -5341,3 +5341,41 @@ M3E 收口四版（`plan-hiko-m3e-closeout-2026-10-31.md`）的最后一版，�
   versionCode=179 / versionName=1.99.66。
 - Release：`hiko-v1.99.66-macos.zip` + `hiko-v1.99.66-android.apk`。
 - https://github.com/michiru233/hiko/releases/tag/v1.99.66
+
+## 1.99.67（2026-11-01）：左半屏跟手抽屉
+
+### 可见变化
+- **左半屏任意位置往右拖**都能拉出抽屉（1.99.66 只有 48dp 边缘，正好和安卓系统
+  返回手势抢同一块地方，用户实测「一直往右划也出不来，反而退回桌面」）。
+- 抽屉**跟手**：拖动过程中面板随手指位移、遮罩同步淡入；松手按「甩出速度」或
+  「已拖过 40%」吸附，不到 40% 自己弹回去。
+- 抽屉展开时，面板上往左推也能推回去；点遮罩收起；安卓返回键先收抽屉。
+
+### 实现
+- `hiko/lib/ui/screens/home_screen.dart`：`_HomeScreenState` 加
+  `SingleTickerProviderStateMixin` + `late final AnimationController _navDrawer`
+  （开 260ms / 关 200ms，两条具名 `_kNavDrawerOpenDuration` / `_kNavDrawerCloseDuration`）；
+  `Scaffold.drawer` 与 `drawerEnableOpenDragGesture` 全部撤掉，改 `_buildNavDrawerLayer`
+  （`AnimatedBuilder` + `FractionalTranslation(Offset(value - 1, 0))` + `scrim@0.55*value`）。
+- 手势热区从 48dp 改成 `MediaQuery.sizeOf(context).width / 2`，仍给播放条让出底部
+  84dp（「从播放条上右划 = 收起 + 暂停」是 1.99.6 裁决 Q1=B）。
+- 拖动 1:1 跟手（`delta.dx / M3ENavDrawer.width` 直接写进 controller，不过曲线）；
+  吸附走 `M3EMotion.fallbackCurve`，「动效：关闭」档直接落终态。
+- `openDrawer/closeDrawer` 调用点（汉堡键、在线顶栏、设置 trailing、条目点击）改
+  `_openNavDrawer` / `_closeNavDrawer`；`PopScope` 里新增「抽屉开着先收抽屉」。
+- 收缩后 `M3ENavDrawer.edgeDragWidth` 不再被使用（组件里保留，供日后回归）。
+
+### 验证
+- `flutter test`：**990 passed / 2 skipped**（987 + 3 条新用例：左半屏中间起手、
+  拖到一半跟手且 <40% 回弹、>40% 吸附展开 + 点遮罩收起）。
+- `flutter analyze`：**42 条 / 0 error**。
+- 样式账本锁（`style_ledger_lock_test`）当场拦下两处：`Curves.easeOutCubic` /
+  `Curves.easeInCubic`（业务层不得写 `Curves.`）与控制器里的裸 `Duration(...)`
+  ——改成 `motion.fallbackCurve` 与具名常量后通过；遮罩色也从 `Colors.black` 换成
+  `M3ETheme.colors.scrim`。
+
+### 交付
+- 版本 `1.99.67+180`；macOS `Hiko.app` 76.7 MB（Info.plist 1.99.67 / 180）、APK 70.3 MB。
+- 后签：v1+v2+v3 全 true；`aapt2` versionCode=180 / versionName=1.99.67。
+- Release：`hiko-v1.99.67-macos.zip` + `hiko-v1.99.67-android.apk`。
+- https://github.com/michiru233/hiko/releases/tag/v1.99.67

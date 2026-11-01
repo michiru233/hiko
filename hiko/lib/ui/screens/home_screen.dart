@@ -75,7 +75,15 @@ class HomeScreen extends ConsumerStatefulWidget {
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends ConsumerState<HomeScreen> {
+/// 抽屉吸附动画的两段时长（跟手阶段不受它们影响）。
+///
+/// 具名而不塞进 `M3EMotion`：这两段时间只服务「松手后的吸附」，
+/// 拖动过程是 1:1 跟手的，没有弹簧可插。
+const Duration _kNavDrawerOpenDuration = Duration(milliseconds: 260);
+const Duration _kNavDrawerCloseDuration = Duration(milliseconds: 200);
+
+class _HomeScreenState extends ConsumerState<HomeScreen>
+    with SingleTickerProviderStateMixin {
   String _view = '本地音声';
   String _filter = 'all';
   // 1.77 详情页胶囊回传的社团/声优点选筛选（至多一个生效，kind: 'circle' | 'voice'）
@@ -132,6 +140,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   final _playerBarKey = GlobalKey();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
 
+  /// 1.99.67：自绘的跟手抽屉。0 = 收起，1 = 展开。
+  ///
+  /// 不用 `Scaffold.drawer` 是因为它只有「开/关」两态，拖到一半松手只能弹回去，
+  /// 做不到跟手；而且内置的左缘识别器只认 20~48dp 的边缘、正好和安卓系统返回
+  /// 手势打架（用户实测「一直往右划也出不来，反而退出桌面」）。
+  late final AnimationController _navDrawer = AnimationController(
+    vsync: this,
+    duration: _kNavDrawerOpenDuration,
+    reverseDuration: _kNavDrawerCloseDuration,
+  );
+
   @override
   void initState() {
 
@@ -186,6 +205,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _gridScrollController.removeListener(_onGridScroll);
     _gridScrollController.dispose();
     _highlightTimer?.cancel();
+    _navDrawer.dispose();
     super.dispose();
   }
 
@@ -591,6 +611,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       canPop: !isMobile,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop || !isMobile) return;
+        // 1.99.67：抽屉开着就先收抽屉（自绘抽屉不再由 Scaffold 自动处理返回键）
+        if (_navDrawer.value > 0) {
+          _closeNavDrawer();
+          return;
+        }
         // Android 返回键逐层关闭（对应旧版桥接层逻辑）
         if (_multiMode) {
           setState(() {
@@ -609,19 +634,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       },
       child: Scaffold(
         key: _scaffoldKey,
-        // 1.99.65：移动端导航改左抽屉（左缘右划拉出、日常隐藏）；桌面仍走
-        // HikoShell 的 M3ENavRail，两条路共用同一份目的地数据。
-        drawer: isMobile ? _buildNavDrawer(navViews) : null,
-        // 1.99.66：默认 20dp 正好和安卓系统返回手势重叠，放宽到 48dp ——
-        // 从「边缘往里 24～48dp」起手都能拉出来（贴着最外层仍归系统）
-        drawerEdgeDragWidth: M3ENavDrawer.edgeDragWidth,
-        // 1.99.66：内置拖拽关掉，换成下面自绘的左缘热区。
-        //
-        // 原因：`Scaffold` 的左缘识别器盖在 body 之上，而移动端播放条贴着屏幕
-        // 左边（右边划掉 = 收起 + 暂停，1.99.6 裁决 Q1=B）。把可拖区放宽到
-        // 48dp 后，从播放条上起手的横滑会被抽屉抢走，播放条再也划不掉。
-        // 自绘热区把底部播放条那 84dp 让出去，两套手势各归各的。
-        drawerEnableOpenDragGesture: false,
+        // 1.99.67：移动端导航是**自绘**的跟手抽屉（见 _buildNavDrawerLayer），
+        // 不再挂 `Scaffold.drawer`——那套只有开/关两态、拖不到一半，而且内置
+        // 识别器只认 20~48dp 边缘，正好和安卓系统返回手势抢同一块地方。
+        // 桌面仍走 HikoShell 的 M3ENavRail，两条路共用同一份目的地数据。
         // 1.99.33：macOS 标题栏透明 + 全尺寸内容后，body 顶层让出红绿灯区
         body: Padding(
           padding: EdgeInsets.only(top: windowTopInset(context)),
@@ -721,17 +737,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   // 1.99.65：抽屉把手（仅移动端）——日常态提示「左缘可以往右划」，
                   // 包了 IgnorePointer，手势仍归 Scaffold 的 drawer 识别器。
 
-                  // 1.99.66：左缘热区 —— 48dp 宽、到播放条为止；往上任意高度都能起手右划。
+                  // 1.99.67：**左半屏**往右拖就能拉出抽屉（不再挤在左缘那 24dp，
+                  // 那里归安卓系统返回手势）；抽屉跟手位移、松手按速度/进度吸附。
+                  // 底部播放条那 84dp 让出去：「从播放条上右划 = 收起 + 暂停」
+                  // 是 1.99.6 的裁决（Q1=B），不能被抽屉抢走。
                   if (isMobile)
                     Positioned(
                       left: 0,
                       top: 0,
                       bottom: playerBarVisible ? 84 : 0,
-                      width: M3ENavDrawer.edgeDragWidth,
-                      child: _NavEdgeDragRegion(
-                        onOpen: () => _scaffoldKey.currentState?.openDrawer(),
+                      width: MediaQuery.sizeOf(context).width / 2,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onHorizontalDragStart: _navDrawerDragStart,
+                        onHorizontalDragUpdate: _navDrawerDragUpdate,
+                        onHorizontalDragEnd: _navDrawerDragEnd,
+                        onHorizontalDragCancel: _navDrawerDragCancel,
                       ),
                     ),
+                  if (isMobile) _buildNavDrawerLayer(navViews),
                   if (isMobile) const Align(
                     alignment: Alignment.centerLeft,
                     child: M3ENavEdgeHandle(),
@@ -930,14 +954,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       destinations: items,
       selectedIndex: navViews.indexOf(_view),
       header: _drawerHeader(),
-      hint: '左缘右滑，或点左上角菜单打开',
+      hint: '左半屏右滑，或点左上角菜单打开',
       trailing: const M3ENavigationDestination(
         label: '设置',
         icon: Icons.settings_outlined,
         selectedIcon: Icons.settings,
       ),
       onTrailing: () {
-        _scaffoldKey.currentState?.closeDrawer();
+        _closeNavDrawer();
         _openSettings(context);
       },
       onSelected: (index) => _onDrawerSelected(index, items),
@@ -982,8 +1006,101 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     );
   }
 
+  // ------------------------------------------------------------ 跟手抽屉（1.99.67）
+
+  /// 手势起手：先停掉还在跑的吸附动画，从当前位置接着跟手。
+  void _navDrawerDragStart(DragStartDetails details) {
+    _navDrawer.stop();
+  }
+
+  /// 拖动中：位移除以抽屉宽度就是进度，1:1 跟手（不走曲线，否则手感发飘）。
+  void _navDrawerDragUpdate(DragUpdateDetails details) {
+    _navDrawer.value = (_navDrawer.value + details.delta.dx / M3ENavDrawer.width)
+        .clamp(0.0, 1.0);
+  }
+
+  void _navDrawerDragEnd(DragEndDetails details) {
+    _settleNavDrawer((details.primaryVelocity ?? 0) / 1200);
+  }
+
+  void _navDrawerDragCancel() => _settleNavDrawer(0);
+
+  /// 松手吸附：甩得快就按方向走，甩得慢就看已经拖过 40%。
+  void _settleNavDrawer(double velocity) {
+    final open = velocity > 0.35 ||
+        (velocity > -0.35 && _navDrawer.value > 0.4);
+    _animateNavDrawer(open ? 1 : 0);
+  }
+
+  void _openNavDrawer() {
+    if (_navDrawer.value >= 1) return;
+    _animateNavDrawer(1);
+  }
+
+  void _closeNavDrawer() {
+    if (_navDrawer.value <= 0) return;
+    _animateNavDrawer(0);
+  }
+
+  /// 吸附动画统一入口：曲线取 `M3EMotion.fallbackCurve`（业务层不写字面
+  /// `Curves.`，样式账本锁 §1 有断言）；「动效：关闭」档直接落终态。
+  void _animateNavDrawer(double target) {
+    final motion = M3ETheme.of(context).motion;
+    if (!motion.enabled) {
+      _navDrawer.value = target;
+      return;
+    }
+    _navDrawer.animateTo(target, curve: motion.fallbackCurve);
+  }
+
+  /// 抽屉层：遮罩（点击收起）+ 跟手位移的面板（面板上左滑也能推回去）。
+  Widget _buildNavDrawerLayer(List<String> navViews) {
+    return AnimatedBuilder(
+      animation: _navDrawer,
+      builder: (context, child) {
+        final value =
+            M3ETheme.of(context).motion.fallbackCurve.transform(_navDrawer.value);
+        if (value <= 0) return const SizedBox.shrink();
+        return Stack(
+          children: <Widget>[
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _closeNavDrawer,
+                child: ColoredBox(
+                  // 遮罩跟着进度淡入，拖到一半时背景不是一下子就黑掉
+                  color: M3ETheme.of(context)
+                      .colors
+                      .scrim
+                      .withValues(alpha: 0.55 * _navDrawer.value),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: M3ENavDrawer.width,
+              child: FractionalTranslation(
+                translation: Offset(value - 1, 0),
+                child: GestureDetector(
+                  onHorizontalDragStart: _navDrawerDragStart,
+                  onHorizontalDragUpdate: _navDrawerDragUpdate,
+                  onHorizontalDragEnd: _navDrawerDragEnd,
+                  onHorizontalDragCancel: _navDrawerDragCancel,
+                  child: child,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+      child: _buildNavDrawer(navViews),
+    );
+  }
+
   void _onDrawerSelected(int index, List<M3ENavigationDestination> items) {
-    _scaffoldKey.currentState?.closeDrawer();
+    _closeNavDrawer();
     if (index == items.length - 1) {
       // 「正在播放」：有播放条时从其封面形变进入，无播放条则普通转场
       //（目标 tag 无来源时 Hero 静默跳过，1.99.29）
@@ -1081,9 +1198,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           Expanded(
             child: OnlineScreen(
               isMobile: isMobile,
-              onOpenNav: isMobile
-                  ? () => _scaffoldKey.currentState?.openDrawer()
-                  : null,
+              onOpenNav: isMobile ? _openNavDrawer : null,
               // 账号菜单里的「在线收藏」入口（1.93.0）：视图归属在这个 State，
               // 在线页只上报意图
               onOpenFavorites: () => setState(() => _view = '在线收藏'),
@@ -1614,7 +1729,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           icon: Icons.menu_rounded,
           tooltip: '打开导航',
           semanticLabel: '打开导航',
-          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+          onPressed: _openNavDrawer,
         ),
         title: AnimatedOpacity(
           opacity: _mobileTopbarTitle ? 1 : 0,
@@ -2554,67 +2669,6 @@ class _SortSelector extends StatelessWidget {
             },
           ),
       ],
-    );
-  }
-}
-
-/// 移动端左缘的抽屉热区（1.99.66）。
-///
-/// 替代 `Scaffold.drawerEnableOpenDragGesture`：内置那个盖在 body 之上，会和
-/// 移动端播放条「右边划掉」抢同一条起手线。这个热区由 home_screen 自己摆位置，
-/// 只覆盖播放条以上的屏幕高度，播放条那一段留给 `Dismissible`。
-///
-/// 行为：横滑累计超过 [_threshold] 就开抽屉（不等抬手，跟手就开），抬手复位。
-class _NavEdgeDragRegion extends StatefulWidget {
-  const _NavEdgeDragRegion({required this.onOpen});
-
-  final VoidCallback onOpen;
-
-  @override
-  State<_NavEdgeDragRegion> createState() => _NavEdgeDragRegionState();
-}
-
-class _NavEdgeDragRegionState extends State<_NavEdgeDragRegion> {
-  /// 累计横滑多少 dp 算「想开抽屉」。安卓的返回手势阈值约 20dp，取 32dp
-  /// 免得轻轻一划就弹抽屉；真拖拽时用户通常一划就是上百 dp。
-  static const double _threshold = 32;
-
-  double _dragged = 0;
-  bool _opened = false;
-
-  void _start(DragStartDetails details) {
-    _dragged = 0;
-    _opened = false;
-  }
-
-  void _update(DragUpdateDetails details) {
-    if (_opened) return;
-    _dragged += details.delta.dx;
-    if (_dragged >= _threshold) {
-      _opened = true;
-      widget.onOpen();
-    }
-  }
-
-  void _end(DragEndDetails details) {
-    _dragged = 0;
-    _opened = false;
-  }
-
-  void _cancel() {
-    _dragged = 0;
-    _opened = false;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      // translucent：热区只拦横滑，点击照常穿到下面的卡片/列表
-      behavior: HitTestBehavior.translucent,
-      onHorizontalDragStart: _start,
-      onHorizontalDragUpdate: _update,
-      onHorizontalDragEnd: _end,
-      onHorizontalDragCancel: _cancel,
     );
   }
 }
