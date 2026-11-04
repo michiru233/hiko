@@ -351,39 +351,88 @@ void main() {
       expect(resDesc.map((x) => x.id).toList(), ['b', 'a']);
     });
 
-    test('最近添加（新到旧）与最早添加（旧到新）排序测试', () {
-      final a1 = Album(
-        id: 'first',
+    test('最近添加（新到旧）与最早添加（旧到新）按 Album.date 排序（1.99.69）', () {
+      final older = Album(
+        id: 'older',
         sourcePath: '/tmp/1',
         title: '第1张',
-        date: DateTime.now(),
+        date: DateTime(2026, 1, 1),
         tracks: const [],
       );
-      final a2 = Album(
-        id: 'second',
+      final newer = Album(
+        id: 'newer',
         sourcePath: '/tmp/2',
         title: '第2张',
-        date: DateTime.now(),
+        date: DateTime(2026, 6, 1),
         tracks: const [],
       );
 
+      // 入参故意「旧在前」：若排序退回库数组序，这两条会立刻失败
       final resRecent = filterAlbums(
-        albums: [a1, a2],
+        albums: [older, newer],
         view: '本地音声',
         filter: 'all',
         query: '',
         sort: 'recent_desc',
       );
-      expect(resRecent.map((x) => x.id).toList(), ['first', 'second']);
+      expect(resRecent.map((x) => x.id).toList(), ['newer', 'older']);
 
       final resOldest = filterAlbums(
-        albums: [a1, a2],
+        albums: [newer, older],
         view: '本地音声',
         filter: 'all',
         query: '',
         sort: 'recent_asc',
       );
-      expect(resOldest.map((x) => x.id).toList(), ['second', 'first']);
+      expect(resOldest.map((x) => x.id).toList(), ['older', 'newer']);
+    });
+
+    test('同一添加时间：两种排序都保持入参数组顺序（稳定兜底）', () {
+      final a = Album(
+        id: 'a',
+        sourcePath: '/tmp/a',
+        title: 'A',
+        date: DateTime(2026, 1, 1),
+        tracks: const [],
+      );
+      final b = Album(
+        id: 'b',
+        sourcePath: '/tmp/b',
+        title: 'B',
+        date: DateTime(2026, 1, 1),
+        tracks: const [],
+      );
+
+      expect(
+        filterAlbums(
+          albums: [a, b],
+          view: '本地音声',
+          filter: 'all',
+          query: '',
+          sort: 'recent_desc',
+        ).map((x) => x.id).toList(),
+        ['a', 'b'],
+      );
+      expect(
+        filterAlbums(
+          albums: [b, a],
+          view: '本地音声',
+          filter: 'all',
+          query: '',
+          sort: 'recent_desc',
+        ).map((x) => x.id).toList(),
+        ['b', 'a'],
+      );
+      expect(
+        filterAlbums(
+          albums: [a, b],
+          view: '本地音声',
+          filter: 'all',
+          query: '',
+          sort: 'recent_asc',
+        ).map((x) => x.id).toList(),
+        ['a', 'b'],
+      );
     });
 
     test('按专辑艺术家 artist_asc 排序：专辑数多的艺术家整组排前（2 张排在 1 张前），同数按艺术家名自然升序，组内按标题自然排序升序', () {

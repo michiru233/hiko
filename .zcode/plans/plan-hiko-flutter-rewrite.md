@@ -5421,3 +5421,32 @@ M3E 收口四版（`plan-hiko-m3e-closeout-2026-10-31.md`）的最后一版，�
 
 ### 交付
 - 版本 `1.99.68+181`。
+
+## 1.99.69（2026-11-04）：修复「排序 · 最近添加」不是真排序
+
+### 可见变化
+- 「排序 · 最近添加」现在**真的按每张专辑第一次导入的时间**倒序，不再等于库数组顺序。
+- 「最早添加」= 同一字段正序；时间完全相同的专辑保持列表原顺序，不会随排序抖动。
+- 老库里缺添加时间的专辑按**当前显示顺序**一次性补齐，升级后列表不会整库翻转。
+- 顺带修复：「最近播放」视图选「最早添加」时没有按播放时间排序（`recent_asc` 提前
+  return 绕过了播放时间覆盖）。
+
+### 实现
+- `lib/data/filter.dart`：`recent_desc` / `recent_asc` / 未知 sort 值改走 `_sortByDate`，
+  按 `Album.date` 排序；Dart `List.sort` 不稳定，用「入参下标」做同时刻兜底。
+  「最近播放」覆盖提前到 `switch (sort)` 之前并直接 return（顺带省掉一次无效排序）。
+- 新增 `lib/data/album_date_backfill.dart`：纯函数 `backfillMissingDates`。下标越小时间越新；
+  前导缺失段以第一个已知值为基准往上加，其余 `prev - 1ms`（间隙不足时钳到下一个已知值），
+  全库缺失以 `now - index`；返回 `identical` 表示无事可做。
+- `LibraryNotifier.load()`：迁移 + 有变更才 `_store.save`（先留 `migrate-date` 快照）；
+  `replaceAll()`（备份恢复）同样补齐。`mergeNew` 的插入顺序与扫描器写 `date` 的逻辑不变。
+
+### 验证
+- `flutter test`：**1049 passed / 2 skipped**（1032 + 17 条：补齐算法 10、迁移落盘 4、
+  最近播放回归 2、最近添加稳定性 1）。
+- `flutter analyze`：**42 条 / 0 error**（无新增）。
+- 关键回归锁：「补齐后 recent_desc 顺序 == 补齐前数组顺序」「全都有时间时绝不写盘」
+  「最近播放 + 最早添加仍按播放时间倒序」。
+
+### 交付
+- 版本 `1.99.69+182`。

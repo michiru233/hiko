@@ -8,7 +8,7 @@ List<Album> filterAlbums({
   required String view, // 本地音声 / 最近添加 / 最近播放 / 正在播放 / 收藏夹 / 分类名
   required String filter, // all / unplayed / favorite
   required String query,
-  required String sort, // recent_desc / recent_asc / title_asc / title_desc / duration_desc / duration_asc
+  required String sort, // recent_desc / recent_asc（按 Album.date 添加时间）/ title_asc / title_desc / duration_desc / duration_asc
   String? circleFilter, // 社团（albumArtist）点选筛选，详情页胶囊回传（1.77）
   String? voiceFilter, // 声优（artist）点选筛选；与 circleFilter 同时至多一个非空
   String? tagFilter, // 刮削标签点选筛选（1.99.15）：tags 精确匹配，与视图/过滤叠加
@@ -42,6 +42,24 @@ List<Album> filterAlbums({
     }
     return true;
   }).toList();
+
+  // 「最近播放」视图固定按播放时间倒序（1.99.3）：该视图的意义就是「按什么播过
+  // 来排」，排序下拉在这里不生效。断点数据只存在本地库，在线作品不入库，天然不混。
+  // 1.99.69：放在 switch 之前 —— 原先放在末尾，`recent_asc` 提前 return 会绕过它，
+  // 导致该视图选「最早添加」时按库数组倒序显示。
+  if (view == '最近播放') {
+    result.sort((a, b) {
+      final la = a.lastPlayedAt;
+      final lb = b.lastPlayedAt;
+      if (la == null && lb == null) return 0;
+      if (la == null) return 1;
+      if (lb == null) return -1;
+      final cmp = lb.compareTo(la);
+      if (cmp != 0) return cmp;
+      return naturalCompare(a.title, b.title);
+    });
+    return result;
+  }
 
   switch (sort) {
     case 'title':
@@ -105,31 +123,38 @@ List<Album> filterAlbums({
       });
       break;
     case 'recent_asc':
-      // 最早添加在前（列表倒序）
-      return result.reversed.toList();
+      // 最早添加在前：按 Album.date 升序（1.99.69 起真的看时间）
+      _sortByDate(result, ascending: true);
+      break;
     case 'recent':
     case 'recent_desc':
     default:
-      // 最近添加在前：保持库原有顺序
+      // 最近添加在前：按 Album.date 降序；未知 sort 值沿用旧语义
+      _sortByDate(result, ascending: false);
       break;
   }
 
-  // 「最近播放」视图固定按播放时间倒序（1.99.3）：该视图的意义就是「按什么播过
-  // 来排」，排序下拉在这里不生效。断点数据只存在本地库，在线作品不入库，天然不混。
-  if (view == '最近播放') {
-    result.sort((a, b) {
-      final la = a.lastPlayedAt;
-      final lb = b.lastPlayedAt;
-      if (la == null && lb == null) return 0;
-      if (la == null) return 1;
-      if (lb == null) return -1;
-      final cmp = lb.compareTo(la);
-      if (cmp != 0) return cmp;
-      return naturalCompare(a.title, b.title);
-    });
-  }
-
   return result;
+}
+
+/// 按「添加时间」排序。
+///
+/// Dart 的 `List.sort` 不保证稳定，而老库迁移与同批导入都可能产生相同毫秒值 ——
+/// 必须用「入参下标」兜底，否则同时间专辑的相对次序会随排序实现抖动。
+void _sortByDate(List<Album> result, {required bool ascending}) {
+  final order = List<int>.generate(result.length, (i) => i);
+  order.sort((i, j) {
+    final cmp = ascending
+        ? result[i].date.compareTo(result[j].date)
+        : result[j].date.compareTo(result[i].date);
+    if (cmp != 0) return cmp;
+    // 两个方向都用下标升序：同时刻退化为入参顺序
+    return i.compareTo(j);
+  });
+  final sorted = <Album>[for (final i in order) result[i]];
+  result
+    ..clear()
+    ..addAll(sorted);
 }
 
 /// 排序/过滤结果缓存（1.48）：列表实例与全部参数不变时直接复用上次结果。

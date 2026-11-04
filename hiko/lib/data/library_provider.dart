@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/album.dart';
+import 'album_date_backfill.dart';
 import 'library_snapshots.dart';
 import 'library_store.dart';
 
@@ -32,14 +33,27 @@ class LibraryNotifier extends StateNotifier<List<Album>> {
   }
 
   Future<void> load() async {
-    state = await _store.load();
+    final raw = await _store.load();
+    final albums = backfillMissingDates(raw);
+    state = albums;
+    // 幂等：库里没有 date<=0 就绝不写盘（identical 是 backfill 的「无事可做」信号）
+    if (identical(albums, raw)) return;
+    await _snapshot('migrate-date', force: false);
+    try {
+      await _store.save(albums);
+    } catch (e) {
+      // 磁盘不可写/已满：不阻塞启动，下次启动会再试
+      debugPrint('[Migrate] date backfill save failed: $e');
+    }
   }
 
   /// 整体替换（清理失效记录后使用）
   Future<void> replaceAll(List<Album> albums) async {
     await _snapshot('replace');
-    state = albums;
-    await _store.save(albums);
+    // 备份恢复同样要补：老备份里可能没有 date，否则恢复后整库沉到 1970
+    final next = backfillMissingDates(albums);
+    state = next;
+    await _store.save(next);
   }
 
   /// 清空全部专辑数据（重置数据库，仅清空 library.json，不删除源文件）

@@ -50,6 +50,32 @@ void main() {
     expect(result.map((a) => a.id).toList(), ['a1', 'a2']);
   });
 
+  test('最近播放 + 最早添加：仍按播放时间倒序（1.99.69 修早退）', () {
+    // 修复前 recent_asc 会提前 return，把数组倒序当成结果（会是 a2、a1）
+    final result = filterAlbums(
+      albums: [newer, older, never],
+      view: '最近播放',
+      filter: 'all',
+      query: '',
+      sort: 'recent_asc',
+    );
+    expect(result.map((a) => a.id).toList(), ['a1', 'a2']);
+  });
+
+  test('最近播放 + 同一播放时间：按标题自然序兜底', () {
+    final sameA = album('b', lastPlayedAt: DateTime(2026, 9, 1));
+    final sameB = album('c', lastPlayedAt: DateTime(2026, 9, 1));
+    final result = filterAlbums(
+      albums: [sameB, sameA],
+      view: '最近播放',
+      filter: 'all',
+      query: '',
+      sort: 'recent_desc',
+    );
+    // 标题是「专辑b」「专辑c」
+    expect(result.map((a) => a.id).toList(), ['b', 'c']);
+  });
+
   test('其它视图行为不变：本地音声包含从未播放的', () {
     final result = filterAlbums(
       albums: [newer, older, never],
