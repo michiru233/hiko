@@ -17,6 +17,7 @@ import '../../utils/time.dart';
 import '../lyrics/drawer_lyrics_view.dart';
 import '../transitions/fullscreen_player_route.dart';
 import 'detail_kit.dart';
+import '../fonts/hiko_font_area.dart';
 import '../m3e/m3e.dart';
 import 'offline_download_dialog.dart';
 import '../../data/online/offline_downloads.dart';
@@ -118,7 +119,10 @@ class OnlineDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // 1.99.58：全屏在线详情是独立路由，不在在线列表的子树里，单独包一层
+    return HikoFontArea(
+      area: HikoFontAreaId.online,
+      child: Scaffold(
       // 1.99.38：移动在线详情顶栏统一到 M3EAppBar（原 Material AppBar title 15sp）。
       appBar: M3EAppBar.small(
         topInset: MediaQuery.paddingOf(context).top,
@@ -137,6 +141,7 @@ class OnlineDetailScreen extends StatelessWidget {
         onSelectCreator: onSelectCreator,
         onOpenWork: onOpenWork,
         interceptBack: true,
+      ),
       ),
     );
   }
@@ -930,7 +935,7 @@ class _OnlineDetailBodyState extends ConsumerState<OnlineDetailBody> {
           foregroundColor: Colors.white,
           title: Text(
             onlineTrackDisplayName(track.title),
-            style: const M3EType().bodyMedium,
+            style: M3ETheme.of(ctx).type.bodyMedium,
           ),
         ),
         body: InteractiveViewer(
@@ -1276,6 +1281,7 @@ class _EditionChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final type = M3ETheme.of(context).type;
     final label = edition.isOriginal
         ? '${edition.lang}（原版）'
         : edition.lang;
@@ -1304,7 +1310,7 @@ class _EditionChip extends StatelessWidget {
               const SizedBox(width: 5),
               Text(
                 label,
-                style: const M3EType().labelMedium.copyWith(
+                style: type.labelMedium.copyWith(
                   fontWeight: FontWeight.w600,
                   color: theme.colorScheme.onSurface,
                 ),

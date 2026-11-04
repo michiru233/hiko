@@ -6,6 +6,7 @@ import '../../lyrics/lyrics_controller.dart';
 import '../../lyrics/models/lyric_line.dart';
 import '../../utils/time.dart';
 import 'lyrics_auto_scroll.dart';
+import '../fonts/hiko_font_area.dart';
 import '../m3e/m3e.dart';
 
 /// 抽屉歌词视图组件（支持垂直平滑滚动、高亮当前句、悬停显示时间点、点击跳转、角色 Badge）
@@ -38,7 +39,12 @@ class _DrawerLyricsViewState extends ConsumerState<DrawerLyricsView>
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => HikoFontArea(
+        area: HikoFontAreaId.lyrics,
+        child: _buildContent(context),
+      );
+
+  Widget _buildContent(BuildContext context) {
     final lyricsState = ref.watch(lyricsProvider);
     final theme = M3ETheme.of(context);
     final colors = theme.colors;

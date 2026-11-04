@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 
+import '../fonts/hiko_font_area.dart';
 import '../m3e/m3e.dart';
 
 /// 浮层菜单的进出场时长（1.99.49：从裸数字提成具名常量）。
@@ -72,10 +73,14 @@ class _HikoContextMenuRoute<T> extends PopupRoute<T> {
     Animation<double> animation,
     Animation<double> secondaryAnimation,
   ) {
-    return _HikoContextMenuOverlay<T>(
-      position: position,
-      items: items,
-      animation: animation,
+    // 1.99.58：右键菜单是 PopupRoute，页面级字体到不了，跟「对话框与提示」
+    return HikoFontArea(
+      area: HikoFontAreaId.dialog,
+      child: _HikoContextMenuOverlay<T>(
+        position: position,
+        items: items,
+        animation: animation,
+      ),
     );
   }
 }

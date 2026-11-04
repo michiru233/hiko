@@ -22,6 +22,8 @@ class StatsView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // 1.99.58：字体族只在 M3ETheme 里，直用 `const M3EType()` 会绕开用户字体
+    final type = M3ETheme.of(context).type;
     return LayoutBuilder(
       builder: (context, constraints) {
         // 1.99.61：横向边距原来写死 48 —— 360dp 手机上三张卡只剩 264dp，
@@ -32,18 +34,21 @@ class StatsView extends StatelessWidget {
         final cards = <Widget>[
           _statCard(
             theme,
+            type,
             label: '累计收听',
             value: formatDuration(stats.totalListenSeconds),
             icon: Icons.headphones_rounded,
           ),
           _statCard(
             theme,
+            type,
             label: '专辑总数',
             value: '${stats.albumCount}',
             icon: Icons.library_music_rounded,
           ),
           _statCard(
             theme,
+            type,
             label: '已评分',
             value: '${stats.ratedCount}',
             icon: Icons.star_rounded,
@@ -78,13 +83,13 @@ class StatsView extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: [
-                _chip(theme, '听完 ${stats.finishedCount}', M3ESemantic.statFinished),
-                _chip(theme, '听过 ${stats.startedCount}', M3ESemantic.statStarted),
-                _chip(theme, '未听 ${stats.unplayedCount}', M3ESemantic.statUnplayed),
+                _chip(theme, type, '听完 ${stats.finishedCount}', M3ESemantic.statFinished),
+                _chip(theme, type, '听过 ${stats.startedCount}', M3ESemantic.statStarted),
+                _chip(theme, type, '未听 ${stats.unplayedCount}', M3ESemantic.statUnplayed),
               ],
             ),
             const SizedBox(height: 24),
-            Text('最近播放', style: const M3EType().titleSmall.copyWith(
+            Text('最近播放', style: type.titleSmall.copyWith(
               fontWeight: FontWeight.w600,
               color: theme.colorScheme.onSurfaceVariant,
             )),
@@ -94,13 +99,13 @@ class StatsView extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Text(
                   '还没有播放记录',
-                  style: const M3EType().bodySmall.copyWith(
+                  style: type.bodySmall.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               )
             else
-              ...stats.recentlyPlayed.map((a) => _recentRow(context, theme, a)),
+              ...stats.recentlyPlayed.map((a) => _recentRow(context, theme, type, a)),
           ],
         );
       },
@@ -110,7 +115,8 @@ class StatsView extends StatelessWidget {
   /// 三张统计卡之一。**不再自带 `Expanded`** —— 宽屏由调用点包 `Expanded`、
   /// 窄屏放进 `Column`，同一个 widget 两种布局都成立。
   Widget _statCard(
-    ThemeData theme, {
+    ThemeData theme,
+    M3EType type, {
     required String label,
     required String value,
     required IconData icon,
@@ -130,7 +136,7 @@ class StatsView extends StatelessWidget {
                   value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const M3EType().titleMedium.copyWith(
+                  style: type.titleMedium.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -138,7 +144,7 @@ class StatsView extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const M3EType().labelSmall.copyWith(
+                  style: type.labelSmall.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
@@ -150,21 +156,26 @@ class StatsView extends StatelessWidget {
     );
   }
 
-  Widget _chip(ThemeData theme, String label, Color color) {
+  Widget _chip(ThemeData theme, M3EType type, String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
         borderRadius: M3EShape.radius(M3EShape.lgPlus),
       ),
-      child: Text(label, style: const M3EType().labelSmall.copyWith(
+      child: Text(label, style: type.labelSmall.copyWith(
         fontWeight: FontWeight.w600,
         color: color,
       )),
     );
   }
 
-  Widget _recentRow(BuildContext context, ThemeData theme, Album album) {
+  Widget _recentRow(
+    BuildContext context,
+    ThemeData theme,
+    M3EType type,
+    Album album,
+  ) {
     final playedAt = album.lastPlayedAt;
     final dateText = playedAt != null
         ? '${_two(playedAt.month)}-${_two(playedAt.day)} ${_two(playedAt.hour)}:${_two(playedAt.minute)}'
@@ -190,19 +201,19 @@ class StatsView extends StatelessWidget {
                 album.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const M3EType().bodyMedium.copyWith(fontWeight: FontWeight.w500),
+                style: type.bodyMedium.copyWith(fontWeight: FontWeight.w500),
               ),
             ),
             Text(
               album.rating > 0 ? '★' * album.rating : '',
-              style: const M3EType().labelSmall.copyWith(color: M3ESemantic.rating),
+              style: type.labelSmall.copyWith(color: M3ESemantic.rating),
             ),
             const SizedBox(width: 10),
             SizedBox(
               width: 76,
               child: Text(
                 dateText,
-                style: const M3EType().labelSmall.copyWith(
+                style: type.labelSmall.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),

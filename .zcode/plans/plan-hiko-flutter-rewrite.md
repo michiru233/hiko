@@ -5379,3 +5379,45 @@ M3E 收口四版（`plan-hiko-m3e-closeout-2026-10-31.md`）的最后一版，�
 - 后签：v1+v2+v3 全 true；`aapt2` versionCode=180 / versionName=1.99.67。
 - Release：`hiko-v1.99.67-macos.zip` + `hiko-v1.99.67-android.apk`。
 - https://github.com/michiru233/hiko/releases/tag/v1.99.67
+
+## 1.99.68（2026-11-04）：自定义字体（导入 + 分区应用）
+
+### 可见变化
+- 设置 → 外观 → **自定义字体**：导入 .ttf / .otf（单个 ≤32MB，最多 20 个），
+  列表里显示字体内部族名 + 文件名，点一下切换，右侧可删除。
+- 导入后弹出「使用」面板：显示体积/格式、是否含日文字形、五个应用范围开关
+  （界面 / 对话框与提示 / 播放条 / 歌词 / 在线页，首次默认全开）。
+- 外观组新增「应用范围」五个 chip、一行用当前字体渲染的预览。
+- 字体只影响文字，不改配色；字体文件不进备份（换机回默认系统字）。
+- 桌面悬浮歌词是原生 NSPanel，不受该设置影响（设置页有文案说明）。
+
+### 实现
+- 新增 `lib/ui/fonts/`：`sfnt_parser.dart`（手写 sfnt：name 表族名、cmap 4/12/0/6
+  探针检测假名+汉字、ttc/woff/截断拒绝、fvar 识别）、`font_store.dart`
+  （prefs 元数据 + `Application Support/fonts/<sha1>.<ext>`、sha1 去重、32MB/20 个上限、
+  `.part` 原子落盘）、`font_registry.dart`（`FontLoader('HikoUser_<id>')`，同 id 只注册一次）、
+  `hiko_font_area.dart`（`HikoFontScope` / `HikoFontFamilies` / `HikoFontArea`）。
+- **根主题永远无字体**：`showDialog` 会 `InheritedTheme.capture`，字体一旦挂在页面级，
+  从该页打开的对话框必然继承，「对话框」开关就关不掉。改为每个区域从根模板重建
+  `Theme` + `M3ETheme` + `DefaultTextStyle` 三件套；`copyWith(fontFamily: null)` 是空操作，
+  关闭时必须「从无字体模板重建」。
+- `M3EType` 增加可选 `fontFamily`（`const M3EType()` 仍为 null，token 回归锁不破），
+  按族名分桶缓存；`stats_view` / `online_detail_panel` 里 10 处直用 `const M3EType()`
+  改为读 `M3ETheme.of(context).type`。
+- 区域挂载：侧栏/内容区/详情抽屉/移动抽屉/设置页 → 界面；在线列表与在线详情 → 在线页；
+  播放条 → 播放条；全屏页 + 抽屉歌词 → 歌词（内层关闭时真正重置）；`M3EDialog` /
+  `M3EMenu` 子项 / 右键菜单 / Toast 两条路径 → 对话框与提示；Tooltip 只能全局一套，
+  由 `buildHikoTheme(promptFontFamily:)` 下发。
+- 设置项：`userFontId`（12 位 sha1，白名单归一）+ 五个 bool 开关；`hiko-user-font-id`
+  与 `hiko-user-fonts` 进 `backupExcludedKeys`；启动时在 `runApp` 前注册当前字体，
+  文件缺失/损坏静默回退系统字。
+
+### 验证
+- `flutter test`：**1032 passed / 2 skipped**（990 + 42 条新用例：sfnt 解析 18、字体库 11、
+  注册 4、分区作用域 11；含「内层关闭被真正重置」「对话框不继承页面字体」两条关键锁）。
+- `flutter analyze`：**42 条 / 0 error**（无新增）。
+- 新增 `test/ui/fonts/`（4 个文件）；`online_creator_menu_test` / `online_file_rows_test`
+  补 `pump(4s)`，清掉 1.99.57 自绘 Toast 留下的 3.2s 计时器。
+
+### 交付
+- 版本 `1.99.68+181`。

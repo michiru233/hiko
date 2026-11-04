@@ -179,28 +179,63 @@ const Map<M3ETypeRole, M3ETypeSpec> m3eTypeSpecs = <M3ETypeRole, M3ETypeSpec>{
   ),
 };
 
+/// CJK 回退链。
+///
+/// 用户自定义字体绝大多数只覆盖拉丁或只覆盖单一语种，缺字时靠这条链兜到
+/// 系统 CJK（macOS/Android 上 Noto Sans SC/JP 通常存在；Windows 缺字也靠它）。
+const List<String> kM3ECjkFallback = <String>['Noto Sans SC', 'Noto Sans JP'];
+
 /// M3E 字体层。
 ///
 /// **不打包字体**（见 §4.3）：这是个日文内容为主的库，打包 Latin 字体只会让
-/// 中日文与拉丁文混排时字重对不上。这里只给字号/行高/字距/字重，
-/// 字体族留空，由 `DefaultTextStyle` 继承系统字体。
+/// 中日文与拉丁文混排时字重对不上。这里只给字号/行高/字距/字重。
+///
+/// [fontFamily] 默认 null（= 系统字体）。只有用户导入自定义字体、且该区域
+/// 开关打开时，`HikoFontArea` 才会传入族名；**根主题永远是 null**，否则
+/// 对话框的 `InheritedTheme.capture` 会把页面字体带进浮层，开关就关不掉了。
 @immutable
 class M3EType {
-  const M3EType();
+  const M3EType({this.fontFamily});
 
-  /// 基础 15 档。整套值都是常量，构建一次缓存起来，不随主题重建。
-  static final Map<M3ETypeRole, TextStyle> _base =
-      <M3ETypeRole, TextStyle>{
-    for (final role in M3ETypeRole.values) role: _styleOf(role, emphasized: false),
-  };
+  /// 引擎里的族名（`HikoUser_<id>`）。null = 跟随系统字体。
+  final String? fontFamily;
+
+  /// 同族名的另一个实例（用于 `M3EThemeData.copyWith`）。
+  M3EType withFamily(String? family) => M3EType(fontFamily: family);
+
+  /// 基础 15 档。按族名分桶缓存：同一族名只构建一次，切换字体不重复算。
+  static final Map<String?, Map<M3ETypeRole, TextStyle>> _baseCache =
+      <String?, Map<M3ETypeRole, TextStyle>>{};
 
   /// emphasized 15 档（同字号、更重、字距微调）。
-  static final Map<M3ETypeRole, TextStyle> _emphasized =
-      <M3ETypeRole, TextStyle>{
-    for (final role in M3ETypeRole.values) role: _styleOf(role, emphasized: true),
-  };
+  static final Map<String?, Map<M3ETypeRole, TextStyle>> _emphasizedCache =
+      <String?, Map<M3ETypeRole, TextStyle>>{};
 
-  static TextStyle _styleOf(M3ETypeRole role, {required bool emphasized}) {
+  /// 最多同时保留几套族名的缓存（正常只会有 null + 当前字体 2 套）。
+  static const int _cacheBuckets = 8;
+
+  static Map<M3ETypeRole, TextStyle> _table(
+    String? family, {
+    required bool emphasized,
+  }) {
+    final cache = emphasized ? _emphasizedCache : _baseCache;
+    final hit = cache[family];
+    if (hit != null) return hit;
+    // 用户反复切字体时不给缓存无限膨胀的机会
+    if (cache.length >= _cacheBuckets) cache.clear();
+    final built = <M3ETypeRole, TextStyle>{
+      for (final role in M3ETypeRole.values)
+        role: _styleOf(role, emphasized: emphasized, family: family),
+    };
+    cache[family] = built;
+    return built;
+  }
+
+  static TextStyle _styleOf(
+    M3ETypeRole role, {
+    required bool emphasized,
+    String? family,
+  }) {
     final spec = m3eTypeSpecs[role]!;
     return TextStyle(
       fontSize: spec.size,
@@ -208,12 +243,23 @@ class M3EType {
       letterSpacing: emphasized ? spec.emphasizedTracking : spec.tracking,
       fontWeight: emphasized ? spec.emphasizedWeight : spec.weight,
       leadingDistribution: TextLeadingDistribution.even,
+      fontFamily: family,
+      // 只有真的换族名时才写回退链；系统字体模式下保持 null 交给引擎
+      fontFamilyFallback: family == null ? null : kM3ECjkFallback,
     );
   }
 
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is M3EType && other.fontFamily == fontFamily);
+
+  @override
+  int get hashCode => fontFamily.hashCode;
+
   /// 按角色取样式。[emphasized] 为 true 时取加强版（同字号、更重、字距微调）。
   TextStyle role(M3ETypeRole role, {bool emphasized = false}) =>
-      (emphasized ? _emphasized : _base)[role]!;
+      _table(fontFamily, emphasized: emphasized)[role]!;
 
   /// 按倍率缩放某个角色：**只放大字号，行高比例不变**。
   ///

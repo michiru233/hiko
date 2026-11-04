@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../fonts/hiko_font_area.dart';
 import '../../theme/m3e_theme.dart';
 import '../../tokens/elevation_tokens.dart';
 import '../../tokens/shape_tokens.dart';
@@ -86,7 +87,12 @@ class M3EMenu extends StatelessWidget {
         minimumSize: WidgetStatePropertyAll(Size(minWidth, 0)),
         maximumSize: WidgetStatePropertyAll(Size(maxWidth, maxHeight)),
       ),
-      menuChildren: children,
+      // 1.99.58：MenuAnchor 用 OverlayPortal 渲染，页面级字体到不了这里；
+      // 逐个子项包（整列包 Column 会影响面板宽度测量）。
+      menuChildren: <Widget>[
+        for (final child in children)
+          HikoFontArea(area: HikoFontAreaId.dialog, child: child),
+      ],
       builder: builder,
     );
   }

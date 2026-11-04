@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../fonts/hiko_font_area.dart';
 import '../../theme/m3e_theme.dart';
 import '../../tokens/elevation_tokens.dart';
 import '../../tokens/shape_tokens.dart';
@@ -68,7 +69,11 @@ class M3EDialog extends StatelessWidget {
     final padding =
         contentPadding ?? EdgeInsets.fromLTRB(24, 12, 24, hasActions ? 0 : 24);
 
-    return Semantics(
+    // 1.99.58：对话框在 Navigator 的 Overlay 里渲染，页面级字体到不了这里，
+    // 必须在壳里主动包一层「对话框与提示」区域。
+    return HikoFontArea(
+      area: HikoFontAreaId.dialog,
+      child: Semantics(
       scopesRoute: true,
       explicitChildNodes: true,
       label: semanticLabel,
@@ -134,6 +139,7 @@ class M3EDialog extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

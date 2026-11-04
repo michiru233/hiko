@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../fonts/hiko_font_area.dart';
 import '../m3e/m3e.dart';
 import 'activity_overlay.dart';
 
@@ -44,7 +45,11 @@ void showHikoToast(
                 builder: (_, opacity, child) =>
                     Opacity(opacity: opacity, child: child),
                 // 1.99.57：面交给 M3ESnackbar —— 与根通知层那条路径同一材质
-                child: M3ESnackbar(message: message),
+                // 1.99.58：字体跟「对话框与提示」
+                child: HikoFontArea(
+                  area: HikoFontAreaId.dialog,
+                  child: M3ESnackbar(message: message),
+                ),
               ),
           ),
         ),

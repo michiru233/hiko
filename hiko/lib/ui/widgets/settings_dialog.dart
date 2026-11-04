@@ -8,6 +8,11 @@ import 'package:universal_platform/universal_platform.dart';
 
 import '../../platform/desktop_window.dart';
 import '../m3e/m3e.dart';
+import '../fonts/hiko_font_area.dart';
+import '../fonts/sfnt_parser.dart';
+import '../fonts/font_store.dart';
+import '../fonts/font_registry.dart';
+import '../fonts/font_models.dart';
 import '../../data/backup.dart';
 import '../../data/categories_provider.dart';
 import '../../data/library_provider.dart';
@@ -266,12 +271,271 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     }
   }
 
+  // ── 自定义字体（1.99.68）───────────────────────────────────────────
+
+  /// 五个应用范围：键 / 显示名。
+  static const List<(String, String)> _fontAreas = <(String, String)>[
+    ('ui', '界面'),
+    ('dialog', '对话框与提示'),
+    ('player', '播放条'),
+    ('lyrics', '歌词'),
+    ('online', '在线页'),
+  ];
+
+  bool _areaOn(AppSettings s, String key) {
+    if (key == 'ui') return s.userFontOnUi;
+    if (key == 'dialog') return s.userFontOnDialog;
+    if (key == 'player') return s.userFontOnPlayer;
+    if (key == 'lyrics') return s.userFontOnLyrics;
+    return s.userFontOnOnline;
+  }
+
+  Future<void> _setArea(String key, bool on) async {
+    final n = ref.read(settingsProvider.notifier);
+    if (key == 'ui') return n.setUserFontOnUi(on);
+    if (key == 'dialog') return n.setUserFontOnDialog(on);
+    if (key == 'player') return n.setUserFontOnPlayer(on);
+    if (key == 'lyrics') return n.setUserFontOnLyrics(on);
+    return n.setUserFontOnOnline(on);
+  }
+
+  Future<void> _importFont() async {
+    final result =
+        await ref.read(fontLibraryProvider.notifier).importFromPicker();
+    if (!mounted) return;
+    switch (result.status) {
+      case FontImportStatus.cancelled:
+        return;
+      case FontImportStatus.tooLarge:
+        _toast('字体文件超过 32MB');
+        return;
+      case FontImportStatus.libraryFull:
+        _toast('字体库最多 20 个，先删掉不用的');
+        return;
+      case FontImportStatus.badFormat:
+        _toast(describeSfntError(result.error ?? SfntError.notSfnt));
+        return;
+      case FontImportStatus.failed:
+        _toast('导入失败，请换个文件试试');
+        return;
+      case FontImportStatus.duplicate:
+        _toast('这个字体已经在库里');
+        await _useFont(result.font!);
+        return;
+      case FontImportStatus.ok:
+        await _confirmUseFont(result.font!, result.info!);
+        return;
+    }
+  }
+
+  /// 导入结果面板：字体信息 + 五个应用范围（首次导入默认全开）。
+  Future<void> _confirmUseFont(UserFont font, SfntInfo info) async {
+    final settings = ref.read(settingsProvider);
+    final firstTime = settings.userFontId.isEmpty;
+    final chosen = await showDialog<Map<String, bool>>(
+      context: context,
+      builder: (ctx) {
+        final areas = <String, bool>{
+          for (final area in _fontAreas)
+            area.$1: firstTime ? true : _areaOn(settings, area.$1),
+        };
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            final theme = M3ETheme.of(ctx);
+            final muted = theme.type.bodySmall.copyWith(
+              color: theme.colors.onSurfaceVariant,
+            );
+            return M3EDialog(
+              title: '使用「${font.family}」',
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  Text(
+                    '${(font.bytes / 1024 / 1024).toStringAsFixed(1)} MB'
+                    ' · ${font.format.toUpperCase()}',
+                    style: muted,
+                  ),
+                  if (!info.hasJapanese) ...<Widget>[
+                    const SizedBox(height: 8),
+                    Text(
+                      '这个字体不含日文字形，日文会回退系统字体。',
+                      style: theme.type.bodySmall.copyWith(
+                        color: theme.colors.error,
+                      ),
+                    ),
+                  ],
+                  if (info.variable) ...<Widget>[
+                    const SizedBox(height: 8),
+                    Text('这是可变字体，字重可能不按预期变化。', style: muted),
+                  ],
+                  const SizedBox(height: 10),
+                  Text('应用范围', style: theme.type.bodyMedium),
+                  for (final area in _fontAreas)
+                    SizedBox(
+                      height: 44,
+                      child: Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: Text(area.$2, style: theme.type.bodyMedium),
+                          ),
+                          M3ESwitch(
+                            value: areas[area.$1]!,
+                            onChanged: (v) =>
+                                setLocal(() => areas[area.$1] = v),
+                            semanticLabel: area.$2,
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+              actions: <Widget>[
+                M3EButton(
+                  label: '取消',
+                  variant: M3EButtonVariant.text,
+                  size: M3EButtonSize.small,
+                  onPressed: () => Navigator.of(ctx).pop(),
+                ),
+                M3EButton(
+                  label: '使用',
+                  size: M3EButtonSize.small,
+                  onPressed: () =>
+                      Navigator.of(ctx).pop(Map<String, bool>.from(areas)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (chosen == null || !mounted) return;
+    final n = ref.read(settingsProvider.notifier);
+    await n.setUserFontOnUi(chosen['ui']!);
+    await n.setUserFontOnDialog(chosen['dialog']!);
+    await n.setUserFontOnPlayer(chosen['player']!);
+    await n.setUserFontOnLyrics(chosen['lyrics']!);
+    await n.setUserFontOnOnline(chosen['online']!);
+    await _useFont(font);
+  }
+
+  /// 先注册再写设置：顺序反了会有一帧引用引擎里还不存在的族名。
+  Future<void> _useFont(UserFont font) async {
+    final ok = await FontRegistry.ensureLoaded(font);
+    if (!mounted) return;
+    if (!ok) {
+      _toast('字体加载失败，已保持原字体');
+      return;
+    }
+    await ref.read(settingsProvider.notifier).setUserFontId(font.id);
+  }
+
+  Future<void> _deleteFont(UserFont font) async {
+    final n = ref.read(settingsProvider.notifier);
+    if (ref.read(settingsProvider).userFontId == font.id) {
+      await n.setUserFontId('');
+    }
+    await ref.read(fontLibraryProvider.notifier).remove(font);
+    if (mounted) _toast('已删除「${font.family}」');
+  }
+
+  Widget _buildFontList(BuildContext context, AppSettings settings) {
+    final lib = ref.watch(fontLibraryProvider);
+    if (lib.fonts.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Text(
+          '还没有导入字体。支持 .ttf / .otf，单个不超过 32MB。',
+          style: context.hintText,
+        ),
+      );
+    }
+    return ConstrainedBox(
+      // 超过 3 个就内滚，别把设置页拉成一长条
+      constraints: const BoxConstraints(maxHeight: 3 * 56),
+      child: SingleChildScrollView(
+        child: Column(
+          children: <Widget>[
+            for (final font in lib.fonts)
+              _FontRow(
+                font: font,
+                selected: settings.userFontId == font.id,
+                enabled: !lib.busy,
+                onTap: () => _useFont(font),
+                onDelete: () => _deleteFont(font),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFontAreas(BuildContext context, AppSettings settings) {
+    final theme = M3ETheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text('应用范围', style: theme.type.bodyLarge),
+          const SizedBox(height: 2),
+          Text('关掉的区域继续用系统字体', style: context.hintText),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              for (final area in _fontAreas)
+                M3EChip(
+                  label: area.$2,
+                  selected: _areaOn(settings, area.$1),
+                  onTap: () => _setArea(area.$1, !_areaOn(settings, area.$1)),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFontPreview(
+    BuildContext context,
+    AppSettings settings,
+    FontLibraryState lib,
+  ) {
+    final font = lib.byId(settings.userFontId);
+    if (font == null) return const SizedBox.shrink();
+    final theme = M3ETheme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.colors.surfaceContainerHigh,
+        borderRadius: M3EShape.radius(M3EShape.md),
+      ),
+      child: Text(
+        'あア亜 漢字かな 0123 Aa',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.type.bodyLarge.copyWith(
+          // 预览不受「界面」开关影响：调字体时总要看得见效果
+          fontFamily: FontRegistry.familyOf(font.id),
+          fontFamilyFallback: kM3ECjkFallback,
+          color: theme.colors.onSurface,
+        ),
+      ),
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(settingsProvider);
     final route = _route;
-    final content = Scaffold(
+    // 1.99.68：设置页跟随「界面」开关，调字体时当场能看效果
+    final content = HikoFontArea(
+      area: HikoFontAreaId.ui,
+      child: Scaffold(
       // 1.99.33：macOS 红绿灯内缩
       body: Padding(
         padding: EdgeInsets.only(top: windowTopInset(context)),
@@ -318,6 +582,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ],
         ),
       ),
+    ),
     );
     // 安卓返回键：在子页先退回索引页，只在索引页才真的退出设置（1.99.58）
     return PopScope(
@@ -593,6 +858,30 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ref.read(settingsProvider.notifier).setFontScale(v),
           ),
         ),
+        // 1.99.68 自定义字体：导入进 app 私有目录，文件不随备份迁移
+        _SettingRow(
+          label: '自定义字体',
+          subtitle: '导入 .ttf / .otf，只影响文字',
+          trailing: M3EButton(
+            label: '导入字体…',
+            variant: M3EButtonVariant.text,
+            size: M3EButtonSize.small,
+            icon: const Icon(Icons.font_download_outlined),
+            onPressed: ref.watch(fontLibraryProvider).busy ? null : _importFont,
+          ),
+        ),
+        _buildFontList(context, settings),
+        if (settings.userFontId.isNotEmpty) ...<Widget>[
+          _buildFontAreas(context, settings),
+          _buildFontPreview(context, settings, ref.watch(fontLibraryProvider)),
+          Padding(
+            padding: const EdgeInsets.only(top: 6, bottom: 4),
+            child: Text(
+              '切换字体会占用内存，重启后释放；桌面悬浮歌词不受影响。',
+              style: context.hintText,
+            ),
+          ),
+        ],
         _SettingRow(
           label: '自选种子图',
           trailing: Row(
@@ -1850,4 +2139,74 @@ extension _SettingsTypography on BuildContext {
   TextStyle get hintText => m3eTheme.type.bodySmall.copyWith(
         color: m3eTheme.colors.onSurfaceVariant,
       );
+}
+
+/// 字体库的一行：选中态 + 族名 + 文件名 + 删除。
+class _FontRow extends StatelessWidget {
+  const _FontRow({
+    required this.font,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+    required this.onDelete,
+  });
+
+  final UserFont font;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = M3ETheme.of(context);
+    final colors = theme.colors;
+    final muted =
+        theme.type.labelSmall.copyWith(color: colors.onSurfaceVariant);
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: M3EShape.radius(M3EShape.sm),
+      child: SizedBox(
+        height: 56,
+        child: Row(
+          children: <Widget>[
+            Icon(
+              selected ? Icons.check_circle_rounded : Icons.circle_outlined,
+              size: 18,
+              color: selected ? colors.primary : colors.onSurfaceVariant,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Text(
+                    font.family,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.type.bodyMedium.copyWith(
+                      color: colors.onSurface,
+                    ),
+                  ),
+                  Text(
+                    font.japanese ? font.fileName : '${font.fileName} · 无日文字形',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: muted,
+                  ),
+                ],
+              ),
+            ),
+            M3EIconButton(
+              icon: Icons.delete_outline_rounded,
+              tooltip: '删除',
+              size: M3EIconButtonSize.small,
+              onPressed: enabled ? onDelete : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

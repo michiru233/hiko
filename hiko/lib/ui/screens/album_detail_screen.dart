@@ -13,6 +13,7 @@ import '../../utils/rj.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
 import '../lyrics/drawer_lyrics_view.dart';
+import '../fonts/hiko_font_area.dart';
 import '../m3e/m3e.dart';
 import '../widgets/category_dialog.dart';
 import '../widgets/detail_kit.dart';
@@ -68,7 +69,10 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
         : 0;
     final rj = albumRjCode(album);
 
-    return Scaffold(
+    // 1.99.58：专辑详情算「界面」（歌词 tab 内部自己再包一层「歌词」）
+    return HikoFontArea(
+      area: HikoFontAreaId.ui,
+      child: Scaffold(
       extendBodyBehindAppBar: true,
       // 1.99.38：移动全屏页顶栏统一到 M3EAppBar（原先的透明 Material AppBar +
       // 黑白 scrim 圆钮是玻璃时代的残留）。压在封面上时用色调圆钮保证对比度。
@@ -147,6 +151,7 @@ class _AlbumDetailScreenState extends ConsumerState<AlbumDetailScreen> {
               child: DrawerLyricsView(),
             ),
         ],
+      ),
       ),
     );
   }

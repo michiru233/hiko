@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../fonts/hiko_font_area.dart';
 import '../m3e/m3e.dart';
 
 /// 活动进度条的默认停留时长（非动效：处理完还要让人看清结果）。
@@ -127,10 +128,18 @@ class _ActivityOverlayHostState extends State<ActivityOverlayHost> {
         fit: StackFit.expand,
         children: [
           widget.child,
+          // 1.99.58：这两个浮层是 Navigator 的兄弟，页面级字体覆盖不到，
+          // 统一跟「对话框与提示」开关。
           if (widget.controller.activity case final activity?)
-            _ActivityBanner(activity: activity),
+            HikoFontArea(
+              area: HikoFontAreaId.dialog,
+              child: _ActivityBanner(activity: activity),
+            ),
           if (widget.controller.toast case final message?)
-            _ToastBanner(message: message),
+            HikoFontArea(
+              area: HikoFontAreaId.dialog,
+              child: _ToastBanner(message: message),
+            ),
         ],
       ),
     );

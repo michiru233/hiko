@@ -16,6 +16,9 @@ import 'playback/hiko_media_kit_player.dart';
 import 'playback/playback_controller.dart';
 import 'ui/covers/cover_cache.dart';
 import 'ui/covers/cover_color.dart';
+import 'ui/fonts/font_registry.dart';
+import 'ui/fonts/font_store.dart';
+import 'ui/fonts/hiko_font_area.dart';
 import 'ui/global_shortcuts.dart';
 import 'ui/m3e/theme/m3e_theme.dart';
 import 'ui/m3e/theme/m3e_theme_builder.dart';
@@ -35,11 +38,22 @@ Future<void> main() async {
   final container = ProviderContainer();
   // 封面磁盘缓存（Application Support/hiko/covers；失败静默降级纯内存，1.48）
   // 在线封面下载复用刮削代理设置（动态读取，改设置即刻生效，1.90）
-  CoverCache.proxyResolver =
-      () => container.read(settingsProvider).scrapeProxy;
+  CoverCache.proxyResolver = () => container.read(settingsProvider).scrapeProxy;
   unawaited(CoverCache.instance.init());
   // 加载设置与音声库与分类
   await container.read(settingsProvider.notifier).load();
+  // 用户字体（1.99.58）：先读字体库元数据，再把**当前选中**的那一个注册进引擎。
+  // 必须赶在 runApp 之前 —— 否则首帧是系统字，注册完成后整页跳一下。
+  await container.read(fontLibraryProvider.notifier).load();
+  final fontId = container.read(settingsProvider).userFontId;
+  if (fontId.isNotEmpty) {
+    final font = container.read(fontLibraryProvider.notifier).find(fontId);
+    final ok = font != null && await FontRegistry.ensureLoaded(font);
+    if (!ok) {
+      // 文件被清理/损坏：静默回退系统字，不阻塞启动
+      unawaited(container.read(settingsProvider.notifier).setUserFontId(''));
+    }
+  }
   await container.read(libraryProvider.notifier).load();
   await container.read(categoriesProvider.notifier).load();
   // 在线账号：读磁盘令牌并用它问一次服务端。**不 await** ——
@@ -145,10 +159,8 @@ class _HikoAppState extends ConsumerState<HikoApp> with WidgetsBindingObserver {
         return await CoverColor.fromFile(path);
       }
       if (Platform.isAndroid) {
-        final argb =
-            await const MethodChannel('hiko/system').invokeMethod<int>(
-          'accentColor',
-        );
+        final argb = await const MethodChannel('hiko/system')
+            .invokeMethod<int>('accentColor');
         if (argb == null) return null;
         return Color(argb);
       }
@@ -174,7 +186,15 @@ class _HikoAppState extends ConsumerState<HikoApp> with WidgetsBindingObserver {
       title: 'Hiko · 音声库',
       debugShowCheckedModeBanner: false,
       navigatorKey: hikoNavigatorKey,
-      theme: buildHikoTheme(settings),
+      theme: buildHikoTheme(
+        settings,
+        // Tooltip 在 OverlayPortal 里，区域作用域够不到，只能全应用一套，
+        // 归「对话框与提示」开关（1.99.58 用户裁决）。
+        promptFontFamily:
+            settings.userFontOnDialog && settings.userFontId.isNotEmpty
+            ? FontRegistry.familyOf(settings.userFontId)
+            : null,
+      ),
       builder: (context, child) {
         // 全局字号大小响应（1.56）：读取 settings.fontScale，应用 TextScaler 覆盖
         final mediaQuery = MediaQuery.of(context);
@@ -190,19 +210,27 @@ class _HikoAppState extends ConsumerState<HikoApp> with WidgetsBindingObserver {
           _resolvedSeed = null; // 解析期间先用强调色，避免旧图颜色滞留
           unawaited(_resolveSeed(settings));
         }
+        final m3e = _m3eTheme(settings);
         return M3ETheme(
-          data: _m3eTheme(settings),
-          child: MediaQuery(
-            data: scaledMediaQuery,
-            // 标签胶囊字号（1.96.0）：挂在根层，本地与在线一次生效 ——
-            // `HikoTagChip` 共用一份实现，字号也必须只有一份（裁决 Q2=甲）
-            child: HikoTagFontScope(
-              fontSize: settings.tagFontSize,
-              child: HikoGlobalShortcuts(
-                navigatorKey: hikoNavigatorKey,
-                child: ActivityOverlayHost(
-                  controller: activityOverlayController,
-                  child: content,
+          data: m3e,
+          // 字体作用域必须挂在 ActivityOverlayHost **之外**：Toast/活动浮层是
+          // Navigator 的兄弟节点，挂在里面它们就取不到族名了（1.99.58）。
+          child: HikoFontScope(
+            families: HikoFontFamilies.fromSettings(settings),
+            template: Theme.of(context),
+            baseM3E: m3e,
+            child: MediaQuery(
+              data: scaledMediaQuery,
+              // 标签胶囊字号（1.96.0）：挂在根层，本地与在线一次生效 ——
+              // `HikoTagChip` 共用一份实现，字号也必须只有一份（裁决 Q2=甲）
+              child: HikoTagFontScope(
+                fontSize: settings.tagFontSize,
+                child: HikoGlobalShortcuts(
+                  navigatorKey: hikoNavigatorKey,
+                  child: ActivityOverlayHost(
+                    controller: activityOverlayController,
+                    child: content,
+                  ),
                 ),
               ),
             ),

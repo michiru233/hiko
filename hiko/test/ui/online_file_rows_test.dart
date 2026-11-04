@@ -107,9 +107,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('无法加载文件内容'), findsOneWidget);
-
-    // toast 自己有 3.2s 的停留计时器；测试结束前让它走完，
-    // 否则 binding 会因为「widget 树销毁时还有 pending timer」报错。
-    await tester.pump(const Duration(milliseconds: 3400));
+    // 同上：让 toast 的 3.2s 计时器在用例内跑完
+    await tester.pump(const Duration(seconds: 4));
   });
 }

@@ -22,6 +22,7 @@ import '../covers/cover_art.dart';
 import '../covers/cover_color.dart';
 import '../detail_jump_requests.dart';
 import '../lyrics/lyrics_auto_scroll.dart';
+import '../fonts/hiko_font_area.dart';
 import '../m3e/m3e.dart';
 import '../widgets/online_account_dialogs.dart';
 import '../widgets/toast.dart';
@@ -106,7 +107,11 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
     final wide = MediaQuery.sizeOf(context).width >= 1000;
 
     final m3eColors = M3ETheme.of(context).colors;
-    return Scaffold(
+    // 1.99.58：封面/曲目/控制归「播放条」；歌词是它内部单独的一块（见
+    // `_buildLyricsView`），内层从根模板重建，所以「歌词关、播放条开」也关得掉。
+    return HikoFontArea(
+      area: HikoFontAreaId.playerBar,
+      child: Scaffold(
       // 背景由 [_PlayerBackdrop]（封面主色三停渐变）承担（1.99.30 起永远渐变：
       // 根层已无 BackgroundLayer 可透出）
       backgroundColor: m3eColors.surface,
@@ -231,6 +236,7 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
           ),
         ],
       ),
+      ),
     );
   }
 
@@ -301,7 +307,14 @@ class _FullscreenPlayerScreenState extends ConsumerState<FullscreenPlayerScreen>
   /// 歌词视图（带自动滚动）
   ///
   /// [allowToggle] 为 false（1.83 宽屏并排模式）时留白点按不切唱片。
-  Widget _buildLyricsView(ThemeData theme, bool isDark, {bool allowToggle = true}) {
+  Widget _buildLyricsView(ThemeData theme, bool isDark, {bool allowToggle = true}) =>
+      HikoFontArea(
+        area: HikoFontAreaId.lyrics,
+        child: _buildLyricsContent(theme, isDark, allowToggle: allowToggle),
+      );
+
+  Widget _buildLyricsContent(ThemeData theme, bool isDark,
+      {bool allowToggle = true}) {
     final lyrics = ref.watch(lyricsProvider);
     final settings = ref.watch(settingsProvider);
 

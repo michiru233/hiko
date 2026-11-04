@@ -99,6 +99,23 @@ class AppSettings {
   /// [navViewHome]（本地音声）是根视图、永久显示，归一化保证它总在列表里。
   final List<String> navViews;
 
+  /// 选中的自定义字体 id（1.99.68）。
+  ///
+  /// 空串 = 系统默认。字体文件本身存在 `Application Support/fonts/`，
+  /// 元数据在 `hiko-user-fonts` 键（见 `lib/ui/fonts/font_store.dart`）。
+  /// 这个字段只存 12 位 sha1 前缀，**不存路径** —— 换机/清理后自然失效。
+  final String userFontId;
+
+  /// 自定义字体的五个应用范围（1.99.68）。
+  ///
+  /// 拆成五个独立布尔而不是一个位掩码：设置页每行一个开关，
+  /// 归一化只需 bool，备份也能逐键比对。默认全开（导入面板里可改）。
+  final bool userFontOnUi;
+  final bool userFontOnDialog;
+  final bool userFontOnPlayer;
+  final bool userFontOnLyrics;
+  final bool userFontOnOnline;
+
   const AppSettings({
     this.theme = 'light',
     this.accent = defaultAccent,
@@ -130,6 +147,12 @@ class AppSettings {
     this.blockedTags = const [],
     this.blockedCreators = const [],
     this.navViews = navViewsAll,
+    this.userFontId = '',
+    this.userFontOnUi = true,
+    this.userFontOnDialog = true,
+    this.userFontOnPlayer = true,
+    this.userFontOnLyrics = true,
+    this.userFontOnOnline = true,
   });
 
   /// 导航根视图（1.99.4 起由「全部音声」改名）：永久显示、不可隐藏。
@@ -206,6 +229,12 @@ class AppSettings {
     List<OnlineTag>? blockedTags,
     List<OnlineCreatorBlock>? blockedCreators,
     List<String>? navViews,
+    String? userFontId,
+    bool? userFontOnUi,
+    bool? userFontOnDialog,
+    bool? userFontOnPlayer,
+    bool? userFontOnLyrics,
+    bool? userFontOnOnline,
   }) =>
       AppSettings(
         theme: theme ?? this.theme,
@@ -240,6 +269,12 @@ class AppSettings {
         blockedTags: blockedTags ?? this.blockedTags,
         blockedCreators: blockedCreators ?? this.blockedCreators,
         navViews: navViews ?? this.navViews,
+        userFontId: userFontId ?? this.userFontId,
+        userFontOnUi: userFontOnUi ?? this.userFontOnUi,
+        userFontOnDialog: userFontOnDialog ?? this.userFontOnDialog,
+        userFontOnPlayer: userFontOnPlayer ?? this.userFontOnPlayer,
+        userFontOnLyrics: userFontOnLyrics ?? this.userFontOnLyrics,
+        userFontOnOnline: userFontOnOnline ?? this.userFontOnOnline,
       );
 }
 
@@ -293,6 +328,12 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kBlockedTags = 'hiko-online-blocked-tags';
   static const _kBlockedCreators = 'hiko-online-blocked-creators';
   static const _kNavViews = 'hiko-nav-views';
+  static const _kUserFontId = 'hiko-user-font-id';
+  static const _kUserFontUi = 'hiko-user-font-ui';
+  static const _kUserFontDialog = 'hiko-user-font-dialog';
+  static const _kUserFontPlayer = 'hiko-user-font-player';
+  static const _kUserFontLyrics = 'hiko-user-font-lyrics';
+  static const _kUserFontOnline = 'hiko-user-font-online';
 
   /// 备份导出排除的键（1.99.14）：本机路径类设置（跨机无效）
   /// + JWT 登录令牌（key 归 online_account 管理；用户裁决：令牌不打入备份）。
@@ -300,6 +341,10 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const backupExcludedKeys = <String>{
     _kMusicFolders,
     _kBackgroundPath,
+    // 1.99.68：字体 id 与字体库元数据都是本机资源，换机后文件不在，
+    // 带过去只会得到一个引用不到任何文件的死 id。五个开关保留在备份里。
+    _kUserFontId,
+    'hiko-user-fonts',
     'hiko-online-token',
   };
 
@@ -524,6 +569,12 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   /// 导航可见视图的归一化：白名单过滤 + 去重 + 保序，
   /// 并保证 [AppSettings.navViewHome] 永远在列（Q1=B：根视图不可隐藏，
   /// 缺失时补回首位）。空列表 / 全坏数据回退全集（升级兼容：老用户无此键 = 全显示）。
+  /// 字体 id 白名单：12 位小写 hex（sha1 前缀）。非法值一律回空 = 系统字。
+  static String _normalizeUserFontId(String? raw) {
+    if (raw == null) return '';
+    return RegExp(r'^[0-9a-f]{12}$').hasMatch(raw) ? raw : '';
+  }
+
   static List<String> _normalizeNavViewList(List<dynamic> raw) {
     final seen = <String>{};
     final out = <String>[];
@@ -613,6 +664,12 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
       blockedCreators:
           _decodeBlockedCreators(prefs.getString(_kBlockedCreators)),
       navViews: _migrateNavViews(prefs),
+      userFontId: _normalizeUserFontId(prefs.getString(_kUserFontId)),
+      userFontOnUi: prefs.getBool(_kUserFontUi) ?? true,
+      userFontOnDialog: prefs.getBool(_kUserFontDialog) ?? true,
+      userFontOnPlayer: prefs.getBool(_kUserFontPlayer) ?? true,
+      userFontOnLyrics: prefs.getBool(_kUserFontLyrics) ?? true,
+      userFontOnOnline: prefs.getBool(_kUserFontOnline) ?? true,
     );
   }
 
@@ -662,6 +719,30 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     final valid = _normalizeMobileGridColumns(columns);
     return _save(_kMobileGridColumns, valid, state.copyWith(mobileGridColumns: valid));
   }
+
+  /// 选中自定义字体（'' = 系统默认，1.99.68）。
+  ///
+  /// 调用方**必须先完成字体注册**（`FontRegistry.ensureLoaded`）再写这里，
+  /// 否则中间会有一帧引用一个引擎里还不存在的族名。
+  Future<void> setUserFontId(String id) {
+    final valid = _normalizeUserFontId(id);
+    return _save(_kUserFontId, valid, state.copyWith(userFontId: valid));
+  }
+
+  Future<void> setUserFontOnUi(bool on) =>
+      _save(_kUserFontUi, on, state.copyWith(userFontOnUi: on));
+
+  Future<void> setUserFontOnDialog(bool on) =>
+      _save(_kUserFontDialog, on, state.copyWith(userFontOnDialog: on));
+
+  Future<void> setUserFontOnPlayer(bool on) =>
+      _save(_kUserFontPlayer, on, state.copyWith(userFontOnPlayer: on));
+
+  Future<void> setUserFontOnLyrics(bool on) =>
+      _save(_kUserFontLyrics, on, state.copyWith(userFontOnLyrics: on));
+
+  Future<void> setUserFontOnOnline(bool on) =>
+      _save(_kUserFontOnline, on, state.copyWith(userFontOnOnline: on));
 
   /// 字号缩放比例：0.85/1.0/1.15/1.30（1.56）
   Future<void> setFontScale(double scale) {

@@ -30,6 +30,7 @@ import '../../utils/masonry_layout.dart';
 import '../../utils/rj.dart';
 import '../../utils/time.dart';
 import '../covers/cover_art.dart';
+import '../fonts/hiko_font_area.dart';
 import '../widgets/album_card.dart';
 import '../widgets/activity_overlay.dart';
 import '../widgets/category_dialog.dart';
@@ -707,12 +708,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                     children: [
                       Expanded(
                         child: HikoShell(
-                          rail: isMobile ? null : _buildRail(navViews),
-                          child: _buildMain(
-                            filtered,
-                            theme,
-                            isMobile,
-                            currentSort,
+                          // 1.99.68：侧栏与内容区分开包 —— 在线视图跟
+                          // 「在线页」开关，其余跟「界面」。
+                          rail: isMobile
+                              ? null
+                              : HikoFontArea(
+                                  area: HikoFontAreaId.ui,
+                                  child: _buildRail(navViews),
+                                ),
+                          child: HikoFontArea(
+                            area: _isOnlineView
+                                ? HikoFontAreaId.online
+                                : HikoFontAreaId.ui,
+                            child: _buildMain(
+                              filtered,
+                              theme,
+                              isMobile,
+                              currentSort,
+                            ),
                           ),
                         ),
                       ),
@@ -720,7 +733,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                       // 1.99.6：移动端从左往右划掉（收起 + 暂停）后同样隐藏，
                       // 直到重新开始播放（见 build 开头的 ref.listen）
                       if (playerBarVisible)
-                        PlayerBar(
+                        HikoFontArea(
+                          area: HikoFontAreaId.playerBar,
+                          child: PlayerBar(
                           key: _playerBarKey,
                           compact: isMobile,
                           onDismiss: isMobile ? _dismissPlayerBar : null,
@@ -731,6 +746,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                             Navigator.of(context)
                                 .push(FullscreenPlayerRoute(heroTag: 'bar-cover'));
                           },
+                        ),
                         ),
                     ],
                   ),
@@ -755,7 +771,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                         onHorizontalDragCancel: _navDrawerDragCancel,
                       ),
                     ),
-                  if (isMobile) _buildNavDrawerLayer(navViews),
+                  if (isMobile)
+                    HikoFontArea(
+                      area: HikoFontAreaId.ui,
+                      child: _buildNavDrawerLayer(navViews),
+                    ),
                   if (isMobile) const Align(
                     alignment: Alignment.centerLeft,
                     child: M3ENavEdgeHandle(),
@@ -800,7 +820,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                           ? null
                           : MediaQuery.sizeOf(context).width
                                 .clamp(200.0, kHikoDetailPanelWidth),
-                      child: DetailDrawer(
+                      child: HikoFontArea(
+                        area: HikoFontAreaId.ui,
+                        child: DetailDrawer(
                         album: _detailAlbum!,
                         onClose: () => setState(() => _detailAlbum = null),
                         sheetVariant: isMobile
@@ -813,6 +835,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                           _personFilterKind = kind;
                           _personFilterName = name;
                         }),
+                      ),
                       ),
                     ),
                 ],

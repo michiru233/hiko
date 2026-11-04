@@ -22,7 +22,10 @@ const Duration kTooltipWaitDuration = Duration(milliseconds: 400);
 /// 已全部删除，文字 / 分隔线 / 卡片面改为从 `ColorScheme` 的角色派生
 /// （见下方的 `ink / line / card`）。
 /// 业务代码需要颜色时只能用 M3E 角色或 `M3ESemantic`，不要再往这里加常量。
-ThemeData buildHikoTheme(AppSettings settings) {
+/// [promptFontFamily] 只作用于**浮层里的文字**（对话框标题 / Tooltip）——
+/// 这两类由 Overlay/OverlayPortal 渲染，页面级的 `HikoFontArea` 够不到，
+/// 只能从根主题下发。根 [textTheme] 永远不带字体（1.99.58）。
+ThemeData buildHikoTheme(AppSettings settings, {String? promptFontFamily}) {
   // 1.99.30：主题三态（light/dark/system）；system 走 platformDispatcher
   //（与 m3e_theme_builder.hikoBrightness 同语义，就地内联避免反向依赖）
   final dark = switch (settings.theme) {
@@ -105,7 +108,7 @@ ThemeData buildHikoTheme(AppSettings settings) {
     dialogTheme: DialogThemeData(
       backgroundColor: scheme.surfaceContainerHigh,
       shape: RoundedRectangleBorder(borderRadius: M3EShape.radius(M3EShape.xl)),
-      titleTextStyle: const M3EType().headlineSmall.copyWith(
+      titleTextStyle: M3EType(fontFamily: promptFontFamily).headlineSmall.copyWith(
         color: scheme.onSurface,
         fontFamilyFallback: const ['Noto Sans SC', 'Noto Sans JP'],
       ),
@@ -153,7 +156,7 @@ ThemeData buildHikoTheme(AppSettings settings) {
         color: scheme.inverseSurface,
         borderRadius: M3EShape.radius(M3EShape.xs),
       ),
-      textStyle: const M3EType().bodySmall.copyWith(
+      textStyle: M3EType(fontFamily: promptFontFamily).bodySmall.copyWith(
         color: scheme.onInverseSurface,
         fontFamilyFallback: const ['Noto Sans SC', 'Noto Sans JP'],
       ),
