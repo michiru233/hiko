@@ -429,13 +429,17 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
   /// 胶囊仍与结果一致，不会出现「框空着、列表还是旧搜索」。
   Widget _buildSearchEntry(OnlineBrowseState state) {
     final applied = state.source == OnlineSource.search ? state.keyword : '';
+    // 1.99.71：用户可调的搜索面不透明度，与放大浮层共用同一档
+    final opacity = ref.watch(
+      settingsProvider.select((s) => s.onlineSearchSurfaceOpacity),
+    );
     return ValueListenableBuilder<TextEditingValue>(
       valueListenable: _searchController,
       builder: (context, value, _) => M3ESearchEntry(
-        height: 40,
         hintText: '搜索在线作品（日文原关键词命中率最高）',
         text: applied.isNotEmpty ? applied : value.text,
         semanticLabel: '搜索在线作品',
+        surfaceOpacity: opacity,
         onTap: _openSearchOverlay,
       ),
     );
@@ -457,6 +461,7 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
         history: _searchHistory,
         onSubmit: (keyword) => unawaited(_submitSearch(keyword)),
         onClearHistory: _clearSearchHistory,
+        surfaceOpacity: ref.read(settingsProvider).onlineSearchSurfaceOpacity,
       );
     } finally {
       if (mounted) _searchOverlayOpen = false;

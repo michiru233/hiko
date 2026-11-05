@@ -50,6 +50,9 @@ void main() {
     expect(SettingsNotifier.trackTitleFontSizeMin, 10.0);
     expect(SettingsNotifier.trackTitleFontSizeMax, 20.0);
     expect(SettingsNotifier.trackTitleFontSizeDefault, 12.0);
+    expect(SettingsNotifier.searchSurfaceOpacityMin, 0.0);
+    expect(SettingsNotifier.searchSurfaceOpacityMax, 1.0);
+    expect(SettingsNotifier.searchSurfaceOpacityDefault, 1.0);
   });
 
   test('连续值往返：范围内原样保留、范围外 clamp 到边界（两组倍率 + 两个绝对字号）',
@@ -69,6 +72,11 @@ void main() {
     for (final v in [10.0, 13.5, 20.0]) {
       await notifier.setOnlineTrackTitleFontSize(v);
       expect(notifier.state.onlineTrackTitleFontSize, v);
+    }
+    // 不透明度：0 与 1 都是合法端点（用户裁决允许完全透明）
+    for (final v in [0.0, 0.35, 0.8, 1.0]) {
+      await notifier.setOnlineSearchSurfaceOpacity(v);
+      expect(notifier.state.onlineSearchSurfaceOpacity, v);
     }
   });
 
@@ -113,7 +121,7 @@ void main() {
   // ------------------------------------------------------------ Aa 对话框
 
   group('Aa 对话框（1.97.0 滑杆版）', () {
-    /// 默认 800×600 放不下五组竖排（会被限高截断），把视口拉高让整份内容可见
+    /// 默认 800×600 放不下六组竖排（会被限高截断），把视口拉高让整份内容可见
     Future<void> pumpDialog(WidgetTester tester) async {
       tester.view.physicalSize = const Size(1200, 2800);
       tester.view.devicePixelRatio = 1.0;
@@ -130,7 +138,7 @@ void main() {
       await tester.pump();
     }
 
-    testWidgets('五组设置都在（四组滑杆 + 列数单选）', (tester) async {
+    testWidgets('六组设置都在（五组滑杆 + 列数单选）', (tester) async {
       await pumpDialog(tester);
 
       for (final title in [
@@ -138,12 +146,13 @@ void main() {
         '在线卡片文字',
         '在线详情文字',
         '曲目标题字号',
+        '搜索框不透明度',
         '每行卡片数',
       ]) {
         expect(find.text(title), findsOneWidget);
       }
-      // 四组滑杆：标签字号 / 卡片倍率 / 详情倍率 / 曲目标题
-      expect(find.byType(Slider), findsNWidgets(4));
+      // 五组滑杆：标签字号 / 卡片倍率 / 详情倍率 / 曲目标题 / 搜索框不透明度
+      expect(find.byType(Slider), findsNWidgets(5));
       // 列数仍是单选档位
       expect(find.text('5 列'), findsOneWidget);
     });
@@ -167,7 +176,7 @@ void main() {
       final container =
           ProviderScope.containerOf(tester.element(find.byType(OnlineAppearanceDialog)));
 
-      // 滑杆顺序：0 标签字号 / 1 卡片 / 2 详情 / 3 曲目标题
+      // 滑杆顺序：0 标签字号 / 1 卡片 / 2 详情 / 3 曲目标题 / 4 不透明度
       await tester.drag(find.byType(Slider).at(1), const Offset(160, 0));
       await tester.pump();
 
@@ -190,7 +199,7 @@ void main() {
       expect(container.read(settingsProvider).tagFontSize,
           greaterThan(11.0));
 
-      // 四颗重置里第一颗属于标签字号那一行（都叫「重置为默认」，按位置取）
+      // 五颗重置里第一颗属于标签字号那一行（都叫「重置为默认」，按位置取）
       await tester.tap(find.byTooltip('重置为默认').first);
       await tester.pump();
 
@@ -210,6 +219,26 @@ void main() {
           lessThan(12.0), reason: '向左拖应当减小字号');
       expect(container.read(settingsProvider).onlineDetailTextScale, 1.0,
           reason: '曲目标题不乘详情倍率，是两把独立的旋钮');
+    });
+
+    testWidgets('搜索框不透明度是独立的一组滑杆（拖它不动字号）', (tester) async {
+      await pumpDialog(tester);
+      final container = ProviderScope.containerOf(
+          tester.element(find.byType(OnlineAppearanceDialog)));
+
+      await tester.drag(find.byType(Slider).at(4), const Offset(-160, 0));
+      await tester.pump();
+
+      expect(
+        container.read(settingsProvider).onlineSearchSurfaceOpacity,
+        lessThan(1.0),
+      );
+      expect(container.read(settingsProvider).tagFontSize, 11.0);
+      expect(container.read(settingsProvider).onlineCardTextScale, 1.0);
+
+      await tester.tap(find.byTooltip('重置为默认').at(4));
+      await tester.pump();
+      expect(container.read(settingsProvider).onlineSearchSurfaceOpacity, 1.0);
     });
 
     testWidgets('点每行卡片数档位会写进设置', (tester) async {

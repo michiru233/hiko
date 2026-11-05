@@ -114,8 +114,9 @@ void main() {
     await tester.tap(find.text('在线外观'));
     await settle(tester);
 
-    // 对话框里的四组旋钮 —— 与在线页工具栏 Aa 菜单是同一个组件
+    // 对话框里的旋钮 —— 与在线页工具栏 Aa 菜单是同一个组件
     expect(find.text('标签胶囊字号'), findsOneWidget);
+    expect(find.text('搜索框不透明度'), findsOneWidget);
     expect(find.text('每行卡片数'), findsOneWidget);
     // 设置页自己没换页：标题仍是「设置」
     expect(find.text('设置'), findsOneWidget);

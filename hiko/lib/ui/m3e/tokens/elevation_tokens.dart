@@ -37,20 +37,22 @@ abstract final class M3EElevation {
     level12,
   ];
 
-  /// 把海拔换成 Flutter 的阴影列表。
+  /// 把海拔换成 Flutter 的阴影列表。[opacity] < 1 时阴影同比淡出（0 时直接空表）。
   ///
   /// 0dp 返回空表（不是「透明阴影」）—— 空表在合成阶段零开销，
   /// 而 alpha=0 的 BoxShadow 仍会参与绘制列表的遍历。
-  static List<BoxShadow> shadow(double dp, Color color) {
-    if (dp <= 0) return const <BoxShadow>[];
+  static List<BoxShadow> shadow(double dp, Color color, {double opacity = 1}) {
+    final o = opacity.clamp(0.0, 1.0);
+    // 0dp 或完全透明：返回空表（不画一层 alpha=0 的阴影，合成阶段零开销）
+    if (dp <= 0 || o <= 0) return const <BoxShadow>[];
     return <BoxShadow>[
       BoxShadow(
-        color: color.withValues(alpha: 0.30),
+        color: color.withValues(alpha: 0.30 * o),
         blurRadius: dp * 2,
         offset: Offset(0, dp),
       ),
       BoxShadow(
-        color: color.withValues(alpha: 0.12),
+        color: color.withValues(alpha: 0.12 * o),
         blurRadius: dp * 3,
         spreadRadius: -dp,
       ),

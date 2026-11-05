@@ -5485,3 +5485,35 @@ M3E 收口四版（`plan-hiko-m3e-closeout-2026-10-31.md`）的最后一版，�
 
 ### 交付
 - 版本 `1.99.70+183`。
+
+## 1.99.71（2026-11-05）：搜索框不透明度 + M3E 全套校准
+
+### 可见变化
+- 在线页 Aa「在线外观」新增「搜索框不透明度」（0–100%）：折叠胶囊与放大后的搜索浮层
+  （面板 + 输入框）一起变；0% 时只剩文字与图标。
+- 修复放大浮层里输入框几乎看不见的问题：面板是 `surfaceContainerHigh`，输入框原来也是
+  同色且无描边/海拔，同色叠同色。
+- 折叠胶囊 40 → 48dp（M3 最小热区），并补 M3E 海拔 3；浮层输入框抬到
+  `surfaceContainerHighest` 与面板拉开一档。
+- 浮层内边距回到 24 系、顶部对齐改为顶栏 64 + 8、搜索历史改用 `M3EList`
+  （小标题 `labelMedium`、图标 24）、清除钮换成 `M3EIconButton`。
+- 顺手修掉「历史条目多 + 软键盘弹起」时浮层 RenderFlex 溢出：改为整面板滚动。
+
+### 实现
+- 新增 `M3ESurfaceOpacity` token（1.0 原样返回，保证默认路径逐位不变）；
+  `M3EElevation.shadow` 增加 `opacity` 参数（0 时返回空表）。
+- 新增 `M3ESearchSurface` 作为折叠胶囊与输入框的唯一壳（全圆 / 填充 / 海拔 / 图标 / 尾部槽），
+  两处不再各写一份 `Container`。
+- `M3ESearchEntry` / `M3ESearchBar` / `M3EDialog` 增加 `surfaceOpacity`；
+  `M3ESearchBar` 增加 `fillColor`、默认高度 48→56、文字 `bodyLarge`、清除钮换 M3E。
+- `AppSettings.onlineSearchSurfaceOpacity`（0–1，默认 1，键 `hiko-online-search-opacity`），
+  Aa 对话框追加第 5 根滑杆；在线页与浮层共用同一档值。
+- 浮层 scrim 提成 `kOnlineSearchScrimOpacity`、顶部偏移 `kOnlineSearchTopInset = 72`。
+
+### 验证
+- `flutter test`：**1086 passed / 2 skipped**（1072 + 14 条：token 5、组件 4、浮层 3、
+  流程 1、设置 1）。
+- `flutter analyze`：**42 条 / 0 error**（无新增）。
+
+### 交付
+- 版本 `1.99.71+184`。

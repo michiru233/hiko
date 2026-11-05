@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../fonts/hiko_font_area.dart';
 import '../../theme/m3e_theme.dart';
+import '../../tokens/opacity_tokens.dart';
 import '../../tokens/elevation_tokens.dart';
 import '../../tokens/shape_tokens.dart';
 
@@ -36,6 +37,7 @@ class M3EDialog extends StatelessWidget {
     this.alignment,
     this.insetPadding,
     this.fontArea = HikoFontAreaId.dialog,
+    this.surfaceOpacity = 1,
   });
 
   final String? title;
@@ -74,10 +76,15 @@ class M3EDialog extends StatelessWidget {
   /// `HikoFontAreaId.online`，让输入框沿用在线页字体。
   final HikoFontAreaId fontArea;
 
+  /// 面板不透明度（1.99.71）：0 = 完全透明，1 = 默认的 M3E 不透明色调面。
+  /// 只作用于面板底与阴影，内容一律不透明。
+  final double surfaceOpacity;
+
   @override
   Widget build(BuildContext context) {
     final theme = M3ETheme.of(context);
     final colors = theme.colors;
+    final opacity = M3ESurfaceOpacity.clamp(surfaceOpacity);
     final hasActions = actions.isNotEmpty;
     final padding =
         contentPadding ?? EdgeInsets.fromLTRB(24, 12, 24, hasActions ? 0 : 24);
@@ -91,7 +98,14 @@ class M3EDialog extends StatelessWidget {
       explicitChildNodes: true,
       label: semanticLabel,
       child: Dialog(
-        backgroundColor: colors.surfaceContainerHigh,
+        backgroundColor: M3ESurfaceOpacity.apply(
+          colors.surfaceContainerHigh,
+          opacity,
+        ),
+        // 1.0 时传 null：与旧实现逐位一致（默认取主题的阴影色）
+        shadowColor: opacity >= 1
+            ? null
+            : colors.shadow.withValues(alpha: opacity),
         // 不用 primary 染色：层深靠色阶（§3 原则 1）
         surfaceTintColor: Colors.transparent,
         elevation: M3EElevation.level3,

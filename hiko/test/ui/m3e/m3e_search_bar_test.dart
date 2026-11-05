@@ -99,4 +99,64 @@ void main() {
     expect(controller.text, isEmpty);
     expect(cleared, 1);
   });
+
+  testWidgets('默认 56 高、bodyLarge、清除钮是 M3EIconButton', (tester) async {
+    final controller = TextEditingController(text: 'アリス');
+    addTearDown(controller.dispose);
+    final theme = testTheme();
+
+    await tester.pumpWidget(
+      wrapM3E(
+        SizedBox(width: 320, child: M3ESearchBar(controller: controller)),
+        theme: theme,
+      ),
+    );
+
+    expect(tester.getSize(find.byType(M3ESearchBar)).height, 56);
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.style?.fontSize, theme.type.bodyLarge.fontSize);
+    expect(
+      find.descendant(
+        of: find.byType(M3ESearchBar),
+        matching: find.byType(M3EIconButton),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byType(IconButton), findsNothing);
+  });
+
+  testWidgets('fillColor 与 surfaceOpacity：填充色可覆盖、透明度生效', (tester) async {
+    final controller = TextEditingController();
+    addTearDown(controller.dispose);
+    final theme = testTheme();
+
+    BoxDecoration decoOf() =>
+        tester
+            .widget<Container>(
+              find
+                  .descendant(
+                    of: find.byType(M3ESearchBar),
+                    matching: find.byType(Container),
+                  )
+                  .first,
+            )
+            .decoration! as BoxDecoration;
+
+    await tester.pumpWidget(
+      wrapM3E(
+        SizedBox(
+          width: 320,
+          child: M3ESearchBar(
+            controller: controller,
+            fillColor: theme.colors.surfaceContainerHighest,
+            surfaceOpacity: 0.5,
+          ),
+        ),
+        theme: theme,
+      ),
+    );
+    final deco = decoOf();
+    expect(deco.color!.a, closeTo(0.5, 0.001));
+    expect(deco.boxShadow!.first.color.a, closeTo(0.15, 0.001));
+  });
 }

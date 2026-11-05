@@ -10,11 +10,11 @@ import 'm3e_test_harness.dart';
 /// 在线页窄屏时真正可点区域约 23×26dp。这里断言**整条胶囊**（左内边距、
 /// 放大镜、右端留白）都能命中。
 void main() {
-  testWidgets('壳：高度可调、全圆、surfaceContainerHigh、无描边', (tester) async {
+  testWidgets('壳：默认 48、全圆、surfaceContainerHigh、海拔 3、无描边', (tester) async {
     final theme = testTheme();
     await tester.pumpWidget(
       wrapM3E(
-        SizedBox(width: 320, child: M3ESearchEntry(height: 40, onTap: () {})),
+        SizedBox(width: 320, child: M3ESearchEntry(onTap: () {})),
         theme: theme,
       ),
     );
@@ -28,10 +28,75 @@ void main() {
           .first,
     );
     final deco = box.decoration! as BoxDecoration;
-    expect(tester.getSize(find.byType(M3ESearchEntry)).height, 40);
+    expect(tester.getSize(find.byType(M3ESearchEntry)).height, 48);
     expect(deco.borderRadius, BorderRadius.circular(M3EShape.full));
     expect(deco.border, isNull, reason: '搜索入口靠色阶，不描边');
     expect(deco.color, theme.colors.surfaceContainerHigh);
+    expect(deco.boxShadow, isNotNull, reason: 'M3E 搜索栏要求海拔 3');
+  });
+
+  testWidgets('surfaceOpacity：填充与阴影同比变淡，0 时阴影消失', (tester) async {
+    await tester.pumpWidget(
+      wrapM3E(
+        SizedBox(
+          width: 320,
+          child: M3ESearchEntry(surfaceOpacity: 0.4, onTap: () {}),
+        ),
+      ),
+    );
+    BoxDecoration decoOf() =>
+        tester
+            .widget<Container>(
+              find
+                  .descendant(
+                    of: find.byType(M3ESearchEntry),
+                    matching: find.byType(Container),
+                  )
+                  .first,
+            )
+            .decoration! as BoxDecoration;
+
+    var deco = decoOf();
+    expect(deco.color!.a, closeTo(0.4, 0.001));
+    expect(deco.boxShadow!.first.color.a, closeTo(0.12, 0.001));
+
+    await tester.pumpWidget(
+      wrapM3E(
+        SizedBox(
+          width: 320,
+          child: M3ESearchEntry(surfaceOpacity: 0, onTap: () {}),
+        ),
+      ),
+    );
+    deco = decoOf();
+    expect(deco.color!.a, 0);
+    expect(deco.boxShadow, isEmpty, reason: '0% 不留一圈黑影');
+  });
+
+  testWidgets('禁用态：容器 12%、前景 38%', (tester) async {
+    final theme = testTheme();
+    await tester.pumpWidget(
+      wrapM3E(
+        const SizedBox(
+          width: 320,
+          child: M3ESearchEntry(hintText: '搜索在线作品'),
+        ),
+        theme: theme,
+      ),
+    );
+    final deco = tester
+        .widget<Container>(
+          find
+              .descendant(
+                of: find.byType(M3ESearchEntry),
+                matching: find.byType(Container),
+              )
+              .first,
+        )
+        .decoration! as BoxDecoration;
+    expect(deco.color!.a, closeTo(0.12, 0.001));
+    final hint = tester.widget<Text>(find.text('搜索在线作品'));
+    expect(hint.style!.color!.a, closeTo(0.38, 0.001));
   });
 
   testWidgets('空文本显示 hint，有文本显示内容', (tester) async {

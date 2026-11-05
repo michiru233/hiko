@@ -25,6 +25,7 @@ void main() {
     M3EThemeData? theme,
     ValueChanged<String>? onSubmit,
     Future<void> Function()? onClearHistory,
+    double surfaceOpacity = 1,
   }) => wrapM3E(
     Builder(
       builder: (context) => TextButton(
@@ -35,6 +36,7 @@ void main() {
           history: history,
           onSubmit: onSubmit ?? (_) {},
           onClearHistory: onClearHistory ?? () async {},
+          surfaceOpacity: surfaceOpacity,
         ),
         child: const Text('open'),
       ),
@@ -63,7 +65,56 @@ void main() {
     final dy = tester
         .getTopLeft(find.byKey(const ValueKey('online-search-field')))
         .dy;
-    expect(dy, lessThan(200), reason: '顶部居中：输入框应贴近窗口上方');
+    // 顶部 72（M3EAppBar 64 + 8）+ 内容内边距 24
+    expect(dy, closeTo(96, 8), reason: '紧贴顶栏下方，不压住顶栏');
+  });
+
+  testWidgets('输入框抬到 surfaceContainerHighest，并透传不透明度', (tester) async {
+    await tester.pumpWidget(host(surfaceOpacity: 0.4));
+    await open(tester);
+    final data = M3ETheme.of(tester.element(find.byType(OnlineSearchOverlay)));
+
+    final deco = tester
+        .widget<Container>(
+          find
+              .descendant(
+                of: find.byKey(const ValueKey('online-search-field')),
+                matching: find.byType(Container),
+              )
+              .first,
+        )
+        .decoration! as BoxDecoration;
+    expect(deco.color!.a, closeTo(0.4, 0.001));
+    // 与面板的 High 差一档：Highest 的 RGB 必须保留
+    expect(deco.color!.r, data.colors.surfaceContainerHighest.r);
+    expect(deco.color!.g, data.colors.surfaceContainerHighest.g);
+    expect(deco.color!.b, data.colors.surfaceContainerHighest.b);
+    // 面板本身也吃同一档（M3EDialog）
+    final dialog = tester.widget<Dialog>(find.byType(Dialog));
+    expect(dialog.backgroundColor!.a, closeTo(0.4, 0.001));
+  });
+
+  testWidgets('历史区：小标题 labelMedium、图标 24、10 条不溢出', (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      host(history: const <String>[
+        '一つ目', '二つ目', '三つ目', '四つ目', '五つ目',
+        '六つ目', '七つ目', '八つ目', '九つ目', '十番目',
+      ]),
+    );
+    await open(tester);
+
+    final label = tester.widget<Text>(find.text('搜索历史'));
+    expect(label.style!.fontSize, 12);
+    final iconCtx = tester.element(find.byIcon(Icons.history_rounded).first);
+    expect(IconTheme.of(iconCtx).size, 24);
+    expect(tester.takeException(), isNull, reason: '整面板滚动，不该 RenderFlex 溢出');
+
+    await tester.tap(find.text('取消'));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('输入 + 搜索键：回调 trim 后的词并自动收起', (tester) async {
@@ -119,6 +170,7 @@ void main() {
       'アリス',
     );
     await tester.pump(); // 让 ValueListenableBuilder 把 ✕ 画出来
+    expect(find.byType(M3EIconButton), findsWidgets);
     await tester.tap(find.byIcon(Icons.close_rounded));
     await tester.pumpAndSettle();
 

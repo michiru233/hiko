@@ -67,10 +67,27 @@ void main() {
 
     final dialog = tester.widget<Dialog>(find.byType(Dialog));
     expect(dialog.backgroundColor, data.colors.surfaceContainerHigh);
+    expect(dialog.shadowColor, isNull, reason: '默认路径不改渲染');
     expect(dialog.surfaceTintColor, Colors.transparent);
     expect(dialog.elevation, M3EElevation.level3);
     final shape = dialog.shape! as RoundedRectangleBorder;
     expect(shape.borderRadius, BorderRadius.circular(M3EShape.xl));
+  });
+
+  testWidgets('surfaceOpacity：面板与阴影同比变淡（1.99.71）', (tester) async {
+    await openDialog(
+      tester,
+      M3EDialog(
+        title: '搜索',
+        content: const Text('正文'),
+        surfaceOpacity: 0.5,
+      ),
+    );
+
+    final dialog = tester.widget<Dialog>(find.byType(Dialog));
+    expect(dialog.backgroundColor!.a, closeTo(0.5, 0.001));
+    expect(dialog.shadowColor!.a, closeTo(0.5, 0.001));
+    expect(dialog.elevation, M3EElevation.level3);
   });
 
   testWidgets('标题 headlineSmall 24；正文与按钮都在', (tester) async {

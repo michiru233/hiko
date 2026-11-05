@@ -3,6 +3,13 @@ import 'package:flutter/material.dart';
 import '../fonts/hiko_font_area.dart';
 import '../m3e/m3e.dart';
 
+/// 遮罩不透明度（1.99.71）：面板本身可以被调到 0%，遮罩是最后一道
+/// 「浮层在哪里」的提示。不随面板透明度联动（避免隐式魔法）。
+const double kOnlineSearchScrimOpacity = 0.32;
+
+/// 浮层顶部偏移：`M3EAppBar.small` 64 + 8，紧贴顶栏但不压住它。
+const double kOnlineSearchTopInset = 72;
+
 /// 在线页的「放大搜索」浮层（1.99.70）。
 ///
 /// 点折叠态的 [M3ESearchEntry] 打开：顶部居中、约 90% 宽、56dp 高的输入面板，
@@ -19,6 +26,7 @@ Future<void> showOnlineSearchOverlay(
   required List<String> history,
   required ValueChanged<String> onSubmit,
   required Future<void> Function() onClearHistory,
+  double surfaceOpacity = 1,
 }) {
   final theme = M3ETheme.of(context);
   final motion = theme.motion;
@@ -26,7 +34,7 @@ Future<void> showOnlineSearchOverlay(
     context: context,
     barrierDismissible: true,
     barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
-    barrierColor: theme.colors.scrim.withValues(alpha: 0.32),
+    barrierColor: theme.colors.scrim.withValues(alpha: kOnlineSearchScrimOpacity),
     transitionDuration: motion.duration(
       M3ESpringType.spatial,
       M3ESpringSpeed.fast,
@@ -38,6 +46,7 @@ Future<void> showOnlineSearchOverlay(
       history: history,
       onSubmit: onSubmit,
       onClearHistory: onClearHistory,
+      surfaceOpacity: surfaceOpacity,
     ),
     transitionBuilder: (context, animation, _, child) {
       // 动效关闭：直接给终态，连曲线都不建
@@ -66,6 +75,7 @@ class OnlineSearchOverlay extends StatefulWidget {
     required this.history,
     required this.onSubmit,
     required this.onClearHistory,
+    this.surfaceOpacity = 1,
   });
 
   final TextEditingController controller;
@@ -78,6 +88,9 @@ class OnlineSearchOverlay extends StatefulWidget {
   final ValueChanged<String> onSubmit;
 
   final Future<void> Function() onClearHistory;
+
+  /// 用户可调的搜索面不透明度（0–1）：面板与输入框共用同一档。
+  final double surfaceOpacity;
 
   @override
   State<OnlineSearchOverlay> createState() => _OnlineSearchOverlayState();
@@ -140,23 +153,24 @@ class _OnlineSearchOverlayState extends State<OnlineSearchOverlay> {
       alignment: Alignment.topCenter,
       insetPadding: EdgeInsets.fromLTRB(
         16,
-        MediaQuery.paddingOf(context).top + 56,
+        MediaQuery.paddingOf(context).top + kOnlineSearchTopInset,
         16,
         16,
       ),
       maxWidth: 560,
-      // 内容自带 ListView，不能再套一层滚动
-      scrollable: false,
+      // 整面板滚动：历史条目 + 软键盘一起出现时不会把 Column 挤爆
       semanticLabel: '搜索在线作品',
-      contentPadding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      contentPadding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+      surfaceOpacity: widget.surfaceOpacity,
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
           M3ESearchBar(
             key: const ValueKey('online-search-field'),
-            height: 56,
+            // 面板是 surfaceContainerHigh；输入框抬到 Highest，两档色差才看得见
+            fillColor: theme.colors.surfaceContainerHighest,
+            surfaceOpacity: widget.surfaceOpacity,
             autofocus: true,
             controller: widget.controller,
             focusNode: widget.focusNode,
@@ -174,7 +188,7 @@ class _OnlineSearchOverlayState extends State<OnlineSearchOverlay> {
                 Expanded(
                   child: Text(
                     '搜索历史',
-                    style: theme.type.labelLarge.copyWith(
+                    style: theme.type.labelMedium.copyWith(
                       color: theme.colors.onSurfaceVariant,
                     ),
                   ),
@@ -187,23 +201,17 @@ class _OnlineSearchOverlayState extends State<OnlineSearchOverlay> {
                 ),
               ],
             ),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 260),
-              child: ListView(
-                shrinkWrap: true,
-                children: <Widget>[
-                  for (final term in _history)
-                    M3EListItem(
-                      title: term,
-                      leading: Icon(
-                        Icons.history_rounded,
-                        size: 18,
-                        color: theme.colors.onSurfaceVariant,
-                      ),
-                      onTap: () => _useHistory(term),
-                    ),
-                ],
-              ),
+            const SizedBox(height: 4),
+            M3EList(
+              children: <Widget>[
+                for (final term in _history)
+                  M3EListItem(
+                    title: term,
+                    // 尺寸与颜色交给 M3EList 的 IconTheme（24）
+                    leading: const Icon(Icons.history_rounded),
+                    onTap: () => _useHistory(term),
+                  ),
+              ],
             ),
           ],
         ],

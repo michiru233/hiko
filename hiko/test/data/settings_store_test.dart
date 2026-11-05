@@ -481,6 +481,35 @@ void main() {
     expect(AppSettings.navViewsAll.length, 8, reason: '1.99.54 加了「下载」一级项');
   });
 
+  test('1.99.71 搜索框不透明度：默认 1.0、0–1 往返、越界 clamp、坏值回默认', () async {
+    final notifier = SettingsNotifier();
+    await notifier.load();
+    expect(notifier.state.onlineSearchSurfaceOpacity, 1.0);
+    expect(SettingsNotifier.searchSurfaceOpacityDefault, 1.0);
+
+    for (final v in [0.0, 0.35, 0.8, 1.0]) {
+      await notifier.setOnlineSearchSurfaceOpacity(v);
+      expect(notifier.state.onlineSearchSurfaceOpacity, v);
+    }
+
+    final reloaded = SettingsNotifier();
+    await reloaded.load();
+    expect(reloaded.state.onlineSearchSurfaceOpacity, 1.0);
+
+    await notifier.setOnlineSearchSurfaceOpacity(-1);
+    expect(notifier.state.onlineSearchSurfaceOpacity, 0.0);
+    await notifier.setOnlineSearchSurfaceOpacity(2);
+    expect(notifier.state.onlineSearchSurfaceOpacity, 1.0);
+
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'hiko-online-search-opacity': 9.0,
+    });
+    final badPrefs = SettingsNotifier();
+    await badPrefs.load();
+    expect(badPrefs.state.onlineSearchSurfaceOpacity, 1.0,
+        reason: 'load 也要 clamp');
+  });
+
   test('1.99.54 「下载」只补一次：用户隐藏之后不能再回来', () async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('hiko-nav-views', '["本地音声","统计"]');

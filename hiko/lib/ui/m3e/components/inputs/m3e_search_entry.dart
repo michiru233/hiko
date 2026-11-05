@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/m3e_theme.dart';
 import '../../tokens/shape_tokens.dart';
 import '../motion/m3e_pressable.dart';
+import 'm3e_search_surface.dart';
 
 /// 搜索入口（折叠态）：长得像 [M3ESearchBar]，但**整条都可点**，且不含 `TextField`。
 ///
@@ -21,6 +22,7 @@ class M3ESearchEntry extends StatelessWidget {
     this.onTap,
     this.height = 48,
     this.semanticLabel,
+    this.surfaceOpacity = 1,
   });
 
   /// 已填内容（有值时用 `onSurface`，空时显示 [hintText]）。
@@ -35,6 +37,9 @@ class M3ESearchEntry extends StatelessWidget {
   /// 窄到只剩放大镜时，这是唯一的可读信息（无障碍必填）。
   final String? semanticLabel;
 
+  /// 用户可调的搜索面不透明度（1.99.71）：只调填充与阴影，不做模糊。
+  final double surfaceOpacity;
+
   /// 可用宽度小于它时只画放大镜：再挤下去提示文字只会剩半个字，更像坏掉。
   static const double minTextWidth = 96;
 
@@ -43,49 +48,36 @@ class M3ESearchEntry extends StatelessWidget {
     final theme = M3ETheme.of(context);
     final colors = theme.colors;
     final hasText = text.isNotEmpty;
+    final enabled = onTap != null;
 
     return M3EPressable(
       onTap: onTap,
+      enabled: enabled,
       borderRadius: BorderRadius.circular(M3EShape.full),
       pressScale: 0.98,
       semanticLabel: semanticLabel ?? (hasText ? '搜索：$text' : hintText),
-      child: Container(
+      child: M3ESearchSurface(
         height: height,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        decoration: BoxDecoration(
-          color: colors.surfaceContainerHigh,
-          borderRadius: BorderRadius.circular(M3EShape.full),
-        ),
-        child: Row(
-          children: <Widget>[
-            const SizedBox(width: 8),
-            Icon(
-              Icons.search_rounded,
-              size: 20,
-              color: colors.onSurfaceVariant,
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  if (constraints.maxWidth < minTextWidth) {
-                    return const SizedBox.shrink();
-                  }
-                  return Text(
-                    hasText ? text : hintText,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.type.bodyMedium.copyWith(
-                      color: hasText
-                          ? colors.onSurface
-                          : colors.onSurfaceVariant,
-                    ),
-                  );
-                },
+        surfaceOpacity: surfaceOpacity,
+        enabled: enabled,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < minTextWidth) {
+              return const SizedBox.shrink();
+            }
+            return Text(
+              hasText ? text : hintText,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.type.bodyLarge.copyWith(
+                color: !enabled
+                    ? colors.onSurface.withValues(alpha: 0.38)
+                    : hasText
+                        ? colors.onSurface
+                        : colors.onSurfaceVariant,
               ),
-            ),
-            const SizedBox(width: 8),
-          ],
+            );
+          },
         ),
       ),
     );

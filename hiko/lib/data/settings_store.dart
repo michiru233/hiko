@@ -116,6 +116,14 @@ class AppSettings {
   final bool userFontOnLyrics;
   final bool userFontOnOnline;
 
+  /// 在线搜索面不透明度（1.99.71）：0 = 完全透明，1 = M3E 不透明色调面。
+  ///
+  /// 同时作用于**折叠胶囊 / 放大浮层面板 / 浮层输入框**三处 —— 共用一档，
+  /// 否则「收起时半透明、点开变实心」会像两个控件。
+  /// 这不是新材质：M3E 的层深仍由色阶负责，本项只是允许用户主动放弃那层底；
+  /// alpha < 1 时色差被背景稀释、阴影同比淡出（见 `M3ESurfaceOpacity`）。
+  final double onlineSearchSurfaceOpacity;
+
   const AppSettings({
     this.theme = 'light',
     this.accent = defaultAccent,
@@ -153,6 +161,7 @@ class AppSettings {
     this.userFontOnPlayer = true,
     this.userFontOnLyrics = true,
     this.userFontOnOnline = true,
+    this.onlineSearchSurfaceOpacity = 1.0,
   });
 
   /// 导航根视图（1.99.4 起由「全部音声」改名）：永久显示、不可隐藏。
@@ -235,6 +244,7 @@ class AppSettings {
     bool? userFontOnPlayer,
     bool? userFontOnLyrics,
     bool? userFontOnOnline,
+    double? onlineSearchSurfaceOpacity,
   }) =>
       AppSettings(
         theme: theme ?? this.theme,
@@ -275,6 +285,8 @@ class AppSettings {
         userFontOnPlayer: userFontOnPlayer ?? this.userFontOnPlayer,
         userFontOnLyrics: userFontOnLyrics ?? this.userFontOnLyrics,
         userFontOnOnline: userFontOnOnline ?? this.userFontOnOnline,
+        onlineSearchSurfaceOpacity:
+            onlineSearchSurfaceOpacity ?? this.onlineSearchSurfaceOpacity,
       );
 }
 
@@ -325,6 +337,7 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static const _kOnlineGridColumns = 'hiko-online-grid-columns';
   static const _kOnlineTrackTitleFontSize = 'hiko-online-track-title-font-size';
   static const _kOnlinePageSize = 'hiko-online-page-size';
+  static const _kOnlineSearchOpacity = 'hiko-online-search-opacity';
   static const _kBlockedTags = 'hiko-online-blocked-tags';
   static const _kBlockedCreators = 'hiko-online-blocked-creators';
   static const _kNavViews = 'hiko-nav-views';
@@ -460,6 +473,16 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   static double _normalizeTrackTitleFontSize(double? val) => val == null
       ? trackTitleFontSizeDefault
       : val.clamp(trackTitleFontSizeMin, trackTitleFontSizeMax);
+
+  /// 搜索面不透明度范围：0（完全透明）–1（不透明），默认 1。
+  /// 允许 0 是用户裁决：低透明度下的可读性由用户自选，只保证文字/图标不透明。
+  static const searchSurfaceOpacityMin = 0.0;
+  static const searchSurfaceOpacityMax = 1.0;
+  static const searchSurfaceOpacityDefault = 1.0;
+
+  static double _normalizeSearchSurfaceOpacity(double? val) => val == null
+      ? searchSurfaceOpacityDefault
+      : val.clamp(searchSurfaceOpacityMin, searchSurfaceOpacityMax);
 
   /// 每页条数档位（1.97.0 起落盘，设置页下拉）。白名单外的值回退 20。
   static const validOnlinePageSizes = [20.0, 60.0, 100.0];
@@ -660,6 +683,8 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
           prefs.getDouble(_kOnlineTrackTitleFontSize)),
       onlinePageSize:
           _normalizeOnlinePageSize(prefs.getDouble(_kOnlinePageSize)),
+      onlineSearchSurfaceOpacity: _normalizeSearchSurfaceOpacity(
+          prefs.getDouble(_kOnlineSearchOpacity)),
       blockedTags: _decodeBlockedTags(prefs.getString(_kBlockedTags)),
       blockedCreators:
           _decodeBlockedCreators(prefs.getString(_kBlockedCreators)),
@@ -811,6 +836,13 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
     final valid = _normalizeOnlinePageSize(size);
     return _save(
         _kOnlinePageSize, valid, state.copyWith(onlinePageSize: valid));
+  }
+
+  /// 搜索面不透明度（1.99.71）：0–1，即时生效
+  Future<void> setOnlineSearchSurfaceOpacity(double value) {
+    final valid = _normalizeSearchSurfaceOpacity(value);
+    return _save(_kOnlineSearchOpacity, valid,
+        state.copyWith(onlineSearchSurfaceOpacity: valid));
   }
 
   /// 整份替换标签黑名单（1.95.0）

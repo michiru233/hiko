@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/m3e_theme.dart';
-import '../../tokens/shape_tokens.dart';
+import '../actions/m3e_icon_button.dart';
+import 'm3e_search_surface.dart';
 
-/// M3E 搜索框（1.99.45）。
+/// M3E 搜索框（1.99.45，1.99.71 校准）。
 ///
-/// 56dp 全圆、`surfaceContainerHigh` 底、无描边；前置搜索图标、后置清除钮
-/// （有输入才出现）。**内部仍是 `TextField`** —— 输入法、选区、快捷键都由框架
-/// 负责，重新造一个「自绘输入框」只会把 IME 行为做坏；这里统一的是壳与排版。
+/// 56dp 全圆、`surfaceContainerHigh` 底（可覆盖）、海拔 3、无描边；前置搜索图标、
+/// 后置清除钮（有输入才出现）。壳与折叠胶囊共用 [M3ESearchSurface]。
+/// **内部仍是 `TextField`** —— 输入法、选区、快捷键都交给框架。
 ///
 /// 与 Material `SearchBar` 的区别：那个自带 elevation/overlay 与一整套
 /// `SearchAnchor` 语义，而 Hiko 的搜索是「提交式」（回车/点历史才发请求），
@@ -22,7 +23,9 @@ class M3ESearchBar extends StatelessWidget {
     this.onSubmitted,
     this.onClear,
     this.autofocus = false,
-    this.height = 48,
+    this.height = 56,
+    this.fillColor,
+    this.surfaceOpacity = 1,
   });
 
   final TextEditingController controller;
@@ -37,6 +40,12 @@ class M3ESearchBar extends StatelessWidget {
   final bool autofocus;
   final double height;
 
+  /// 覆盖填充色（浮层里用 `surfaceContainerHighest` 与面板拉开一档）。
+  final Color? fillColor;
+
+  /// 用户可调的搜索面不透明度（1.99.71）：只调填充与阴影，不做模糊。
+  final double surfaceOpacity;
+
   @override
   Widget build(BuildContext context) {
     final theme = M3ETheme.of(context);
@@ -47,59 +56,38 @@ class M3ESearchBar extends StatelessWidget {
       valueListenable: controller,
       builder: (context, value, _) {
         final hasText = value.text.isNotEmpty;
-        return Container(
+        return M3ESearchSurface(
           height: height,
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          decoration: BoxDecoration(
-            color: colors.surfaceContainerHigh,
-            borderRadius: BorderRadius.circular(M3EShape.full),
-          ),
-          child: Row(
-            children: <Widget>[
-              const SizedBox(width: 8),
-              Icon(
-                Icons.search_rounded,
-                size: 20,
-                color: colors.onSurfaceVariant,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  autofocus: autofocus,
-                  textInputAction: TextInputAction.search,
-                  style: theme.type.bodyMedium.copyWith(
-                    color: colors.onSurface,
-                  ),
-                  cursorColor: colors.primary,
-                  onChanged: onChanged,
-                  onSubmitted: onSubmitted,
-                  decoration: InputDecoration(
-                    isCollapsed: true,
-                    border: InputBorder.none,
-                    hintText: hintText,
-                    hintStyle: theme.type.bodyMedium.copyWith(
-                      color: colors.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ),
-              if (hasText)
-                IconButton(
-                  icon: const Icon(Icons.close_rounded),
-                  iconSize: 18,
-                  color: colors.onSurfaceVariant,
+          fillColor: fillColor,
+          surfaceOpacity: surfaceOpacity,
+          trailing: hasText
+              ? M3EIconButton(
+                  icon: Icons.close_rounded,
                   tooltip: '清除',
-                  visualDensity: VisualDensity.compact,
+                  size: M3EIconButtonSize.small,
                   onPressed: () {
                     controller.clear();
                     onClear?.call();
                   },
                 )
-              else
-                const SizedBox(width: 8),
-            ],
+              : null,
+          child: TextField(
+            controller: controller,
+            focusNode: focusNode,
+            autofocus: autofocus,
+            textInputAction: TextInputAction.search,
+            style: theme.type.bodyLarge.copyWith(color: colors.onSurface),
+            cursorColor: colors.primary,
+            onChanged: onChanged,
+            onSubmitted: onSubmitted,
+            decoration: InputDecoration(
+              isCollapsed: true,
+              border: InputBorder.none,
+              hintText: hintText,
+              hintStyle: theme.type.bodyLarge.copyWith(
+                color: colors.onSurfaceVariant,
+              ),
+            ),
           ),
         );
       },
