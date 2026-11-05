@@ -17,6 +17,7 @@ void main() {
     'lib/ui/widgets/online_work_grid.dart',
     'lib/ui/widgets/online_card_kit.dart',
     'lib/ui/widgets/online_detail_panel.dart',
+    'lib/ui/widgets/online_search_overlay.dart',
   ];
 
   const forbidden = <String>[

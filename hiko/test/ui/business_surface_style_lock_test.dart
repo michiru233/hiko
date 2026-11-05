@@ -59,6 +59,7 @@ void main() {
       'lib/ui/widgets/online_work_grid.dart',
       'lib/ui/widgets/online_filter_marker.dart',
       'lib/ui/widgets/online_cover.dart',
+      'lib/ui/widgets/online_search_overlay.dart',
     ];
 
     test('五个在线文件都不再自持色值', () {

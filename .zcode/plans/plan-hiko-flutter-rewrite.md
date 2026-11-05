@@ -5450,3 +5450,38 @@ M3E 收口四版（`plan-hiko-m3e-closeout-2026-10-31.md`）的最后一版，�
 
 ### 交付
 - 版本 `1.99.69+182`。
+
+## 1.99.70（2026-11-05）：在线搜索改成「点开居中放大」
+
+### 可见变化
+- 在线页顶栏点搜索胶囊**任意位置**都能打开搜索（旧版只有输入框文字那一小块能点，
+  360dp × 1.3 字号下实际可点约 23×26dp，换自定义字体后更严重）。
+- 打开后是**顶部居中的放大浮层**：约 90% 宽、56dp 高、自动聚焦、键盘弹起；
+  下方给「搜索历史」（点即搜 + 清空）。
+- 回车提交后面板与键盘自动收起，直接看结果；空词回车只关闭，不改结果。
+- 取消 / 遮罩 / 安卓返回 / 桌面 Esc 都关闭面板并保留草稿；✕ 只清输入，不动筛选。
+- 顶栏去掉「热门」chip（功能仍在排序菜单的「销量倒序」），「最新」收成 28dp 紧凑档，
+  腾出的宽度给搜索框。
+
+### 实现
+- 新增 `M3ESearchEntry`（`lib/ui/m3e/components/inputs/`）：纯展示 + `M3EPressable` 整条可点，
+  不含 `TextField`；宽度 <96dp 时只画放大镜并保留语义标签。
+- 新增 `lib/ui/widgets/online_search_overlay.dart`：`showGeneralDialog`（返回键 / Esc /
+  遮罩 / 焦点陷阱白送）+ 顶部居中 `M3EDialog`；过渡走 `M3EMotion`（关闭档直接终态）。
+  浮层内 `HikoFontArea(area: online)`，沿用在线页自定义字体。
+- `M3EDialog` 增加 `alignment` / `insetPadding` / `fontArea` 三个可选参数（默认值不变）。
+- `M3EChip` 增加 `compact`（28 高 / 左右 10），默认仍是 32。
+- `online_screen.dart`：折叠态换胶囊、删「热门」预设、历史面板/历史行整体移入浮层、
+  新增 `OnlineSearchLauncher`；`global_shortcuts.dart` 的 Cmd/Ctrl+F 改为
+  「在线页在场就打开浮层，已开则只聚焦」。
+- 折叠态没有 `EditableText` 后，移动端「真身 + 离屏量高副本」共用 FocusNode 的隐患消失；
+  顶栏不再随聚焦变高，也不会闪一帧。
+
+### 验证
+- `flutter test`：**1072 passed / 2 skipped**（1049 + 23 条：搜索入口 6、浮层 11、
+  在线端到端 1、快捷键 1、chip 紧凑 2、dialog 贴顶 1、布局锁补 1）。
+- `flutter analyze`：**42 条 / 0 error**（无新增）。
+- 源码锁 `online_surfaces_lock` / `business_surface_style_lock` 已把新浮层文件纳入扫描。
+
+### 交付
+- 版本 `1.99.70+183`。

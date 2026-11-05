@@ -21,6 +21,7 @@ class M3EChip extends StatelessWidget {
     this.leading,
     this.showCheckmark = true,
     this.enabled = true,
+    this.compact = false,
   });
 
   final String label;
@@ -35,6 +36,10 @@ class M3EChip extends StatelessWidget {
   final bool showCheckmark;
   final bool enabled;
 
+  /// 紧凑档（1.99.70）：高 28、左右内边距 10。只给「最新」这类顶栏预设用 ——
+  /// 默认 32 不变，其它调用点零影响。
+  final bool compact;
+
   @override
   Widget build(BuildContext context) {
     final theme = M3ETheme.of(context);
@@ -48,8 +53,8 @@ class M3EChip extends StatelessWidget {
     final body = AnimatedContainer(
       duration: theme.motion.stateLayerDuration,
       curve: Curves.easeOut,
-      height: 32,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      height: compact ? 28 : 32,
+      padding: EdgeInsets.symmetric(horizontal: compact ? 10 : 12),
       decoration: BoxDecoration(
         color: selected ? colors.secondaryContainer : Colors.transparent,
         borderRadius: BorderRadius.circular(M3EShape.sm),

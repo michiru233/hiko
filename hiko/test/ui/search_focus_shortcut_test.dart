@@ -44,6 +44,64 @@ void main() {
     expect(searchNode.hasFocus, isTrue);
   });
 
+  testWidgets('在线页在场时 Cmd+F 打开搜索浮层（launcher 优先）', (tester) async {
+    var opened = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          builder: (_, child) => HikoGlobalShortcuts(
+            navigatorKey: GlobalKey<NavigatorState>(),
+            child: child!,
+          ),
+          home: Consumer(
+            builder: (context, ref, _) {
+              final launcher = ref.read(onlineSearchLauncherProvider);
+              launcher.onOpen = () => opened++;
+              return const Scaffold(body: SizedBox.shrink());
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyF);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyF);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+    await tester.pump();
+
+    expect(opened, 1);
+  });
+
+  testWidgets('在线页在场时 Cmd+F 打开搜索浮层（launcher 优先）', (tester) async {
+    var opened = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        child: MaterialApp(
+          builder: (_, child) => HikoGlobalShortcuts(
+            navigatorKey: GlobalKey<NavigatorState>(),
+            child: child!,
+          ),
+          home: Consumer(
+            builder: (context, ref, _) {
+              final launcher = ref.read(onlineSearchLauncherProvider);
+              launcher.onOpen = () => opened++;
+              return const Scaffold(body: SizedBox.shrink());
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.metaLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyF);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyF);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.metaLeft);
+    await tester.pump();
+
+    expect(opened, 1);
+  });
+
   testWidgets('节点不在树中（在线页未挂载）时 Cmd+F 安全 no-op', (tester) async {
     await tester.pumpWidget(
       ProviderScope(

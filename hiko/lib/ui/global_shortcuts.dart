@@ -115,6 +115,13 @@ class HikoGlobalShortcuts extends ConsumerWidget {
           FocusSearchIntent: CallbackAction<FocusSearchIntent>(
             onInvoke: (_) {
               // 不做 _typing 拦截：编辑任何文本时按 Cmd+F 也应跳去搜索
+              // 1.99.70：在线页在场就直接打开放大搜索浮层（已开则只聚焦输入框）
+              final launcher = ref.read(onlineSearchLauncherProvider);
+              if (launcher.available) {
+                launcher.open();
+                return null;
+              }
+              // 兜底：节点被别的输入框挂着（单测 / 嵌入式），沿用旧语义
               final node = ref.read(onlineSearchFocusProvider);
               if (node.context != null) node.requestFocus();
               return null;

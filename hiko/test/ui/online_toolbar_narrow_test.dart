@@ -54,9 +54,11 @@ void main() {
     }
 
     expect(find.byType(OnlineScreen), findsOneWidget);
-    // 1.99.45：预设两枚 + 字幕 + 排序 + Aa，工具栏统一成 5 枚 M3EChip；
-    // 1.99.65：底部极简分页条又多了 1 枚「跳转」，所以整页是 6 枚。
-    expect(find.byType(M3EChip), findsNWidgets(6));
+    // 1.99.70：预设只剩「最新」一枚 + 字幕 + 排序 + Aa + 分页「跳转」= 5 枚。
+    // （「热门」chip 已去掉，腾出的宽度留给搜索胶囊。）
+    expect(find.byType(M3EChip), findsNWidgets(5));
+    // 搜索入口换成「整条可点」的胶囊：真身可命中，离屏副本不计
+    expect(find.byType(M3ESearchEntry).hitTestable(), findsOneWidget);
     expect(find.byType(FilterChip), findsNothing);
     expect(find.byType(ChoiceChip), findsNothing);
   });

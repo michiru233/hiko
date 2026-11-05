@@ -229,4 +229,22 @@ void main() {
     expect(rect.left, greaterThanOrEqualTo(0));
     expect(rect.right, lessThanOrEqualTo(360));
   });
+
+  testWidgets('alignment + insetPadding：面板可以贴顶部（1.99.70 搜索浮层用）', (
+    tester,
+  ) async {
+    await openDialog(
+      tester,
+      M3EDialog(
+        alignment: Alignment.topCenter,
+        insetPadding: const EdgeInsets.fromLTRB(16, 40, 16, 16),
+        title: '搜索',
+        content: const Text('贴着窗口上方'),
+      ),
+    );
+
+    final rect = tester.getRect(panel);
+    expect(rect.top, closeTo(40, 2), reason: '默认居中时不会这么靠上');
+    expect(rect.left, greaterThanOrEqualTo(16));
+  });
 }

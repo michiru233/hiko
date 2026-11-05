@@ -19,6 +19,7 @@ import '../widgets/online_card_kit.dart';
 import '../widgets/online_cover.dart';
 import '../widgets/online_detail_panel.dart';
 import '../widgets/online_filter_marker.dart';
+import '../widgets/online_search_overlay.dart';
 import '../widgets/online_sort_menu.dart';
 import '../widgets/online_tag_menu.dart';
 import '../widgets/online_work_grid.dart';
@@ -32,14 +33,11 @@ import '../widgets/toast.dart';
 /// 盖住封面右上角。账本锁按「具名常量」放行，直接写数字仍然会红。
 const double kCoverBadgeFontSize = 9;
 
-/// 顶部两个预设入口：chip 上的短名 + 它指向的排序项。
+/// 顶部唯一的预设入口（1.99.70）。
 ///
-/// 1.92.0 起 chip **只是排序预设**（裁决 Q4=A），不再是「数据来源」——
-/// 两者都走 `/api/works`，区别仅在于把排序切到销量还是发售日期。
-const List<(OnlineSort, String)> _onlinePresets = [
-  (OnlineSort.popularPreset, '热门'),
-  (OnlineSort.latestPreset, '最新'),
-];
+/// 去掉「热门」：用户明确不看热门榜，而它占的 ~60dp 正是搜索框被压扁的主因；
+/// 功能没丢——「热门」等于排序菜单里的「销量倒序」，随时可选。
+const (OnlineSort, String) _latestPreset = (OnlineSort.latestPreset, '最新');
 
 /// 在线页搜索框焦点（1.99.13）：Cmd/Ctrl+F 全局快捷键聚焦用。
 /// App 级单例——OnlineScreen 随视图切换挂载/卸载，节点本身常驻，
@@ -48,6 +46,25 @@ final onlineSearchFocusProvider = Provider<FocusNode>((ref) {
   final node = FocusNode();
   ref.onDispose(node.dispose);
   return node;
+});
+
+/// 在线页搜索浮层的启动器（1.99.70）。
+///
+/// `OnlineScreen` 挂载时注册、卸载时撤销；`Cmd/Ctrl+F` 通过它判断
+/// 「在线页是否在场」并直接打开浮层。不用 `FocusNode.context` 判断：
+/// 节点只在浮层打开期间挂载，detach 后 context 是否归零属于实现细节。
+class OnlineSearchLauncher {
+  VoidCallback? onOpen;
+
+  bool get available => onOpen != null;
+
+  void open() => onOpen?.call();
+}
+
+final onlineSearchLauncherProvider = Provider<OnlineSearchLauncher>((ref) {
+  final launcher = OnlineSearchLauncher();
+  ref.onDispose(() => launcher.onOpen = null);
+  return launcher;
 });
 
 /// 在线音声视图（Kikoeru / asmr.one）。
@@ -100,11 +117,9 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
   static const _searchHistoryLimit = 10;
   List<String> _searchHistory = const [];
 
-  /// 搜索框是否聚焦（1.99.17）：聚焦时把历史从 chips 行展开成历史面板。
-  /// FocusNode 是 app 级单例（Cmd+F 快捷键也聚焦它），监听挂在 State 上，
-  /// dispose 时必须摘掉。
-  bool _searchFocused = false;
-  FocusNode? _searchNode;
+  /// 搜索浮层的启动器（1.99.70）：Cmd/Ctrl+F 与点击胶囊都走它。
+  OnlineSearchLauncher? _launcher;
+  bool _searchOverlayOpen = false;
 
   @override
   void initState() {
@@ -115,22 +130,18 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) =>
         _consumeDetailJumpRequest());
     unawaited(_loadSearchHistory());
-    _searchNode = ref.read(onlineSearchFocusProvider);
-    _searchNode!.addListener(_onSearchFocusChanged);
+    _launcher = ref.read(onlineSearchLauncherProvider);
+    _launcher!.onOpen = _openSearchOverlay;
   }
 
   @override
   void dispose() {
-    _searchNode?.removeListener(_onSearchFocusChanged);
+    if (identical(_launcher?.onOpen, _openSearchOverlay)) {
+      _launcher!.onOpen = null;
+    }
     _searchController.dispose();
     _mobileScroll.dispose();
     super.dispose();
-  }
-
-  void _onSearchFocusChanged() {
-    if (!mounted) return;
-    final focused = _searchNode?.hasFocus ?? false;
-    if (focused != _searchFocused) setState(() => _searchFocused = focused);
   }
 
   void _consumeDetailJumpRequest() {
@@ -380,21 +391,21 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
                     onPressed: widget.onOpenNav,
                   ),
                 ),
-              for (final (preset, label) in _onlinePresets)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: M3EChip(
-                    label: label,
-                    selected: state.isPresetActive(preset),
-                    onTap: () => unawaited(
-                      ref
-                          .read(onlineBrowseProvider.notifier)
-                          .applyPreset(preset),
-                    ),
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: M3EChip(
+                  label: _latestPreset.$2,
+                  compact: true,
+                  selected: state.isPresetActive(_latestPreset.$1),
+                  onTap: () => unawaited(
+                    ref
+                        .read(onlineBrowseProvider.notifier)
+                        .applyPreset(_latestPreset.$1),
                   ),
                 ),
+              ),
               const SizedBox(width: 4),
-              Expanded(child: _buildSearchField(theme)),
+              Expanded(child: _buildSearchEntry(state)),
               const SizedBox(width: 8),
               // 账号入口（裁决 Q2=C：在线页右上角 + 设置里的二级页）
               _OnlineAccountEntry(
@@ -403,16 +414,8 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
               ),
             ],
           ),
-          // 搜索历史（1.99.3）：搜索框为空时显示 chips 行，点了重搜。
-          // 1.99.17 起聚焦时展开成历史面板（不限输入是否为空），失焦回退 chips 行
-          if (_searchFocused && _searchHistory.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            _buildSearchHistoryPanel(theme),
-          ] else if (_searchController.text.isEmpty &&
-              _searchHistory.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            _buildSearchHistoryRow(theme),
-          ],
+          // 搜索历史已收进放大浮层（1.99.70）：顶栏不再随聚焦变高，
+          // 移动端离屏测量也不会因为打开历史而闪一帧。
           const SizedBox(height: 8),
           _buildFilterLine(state, theme),
         ],
@@ -420,136 +423,44 @@ class _OnlineScreenState extends ConsumerState<OnlineScreen> {
     );
   }
 
-  /// 聚焦搜索框时的历史面板（1.99.17）。
+  /// 折叠态：一条**整条可点**的搜索胶囊（1.99.70）。
   ///
-  /// 做成头部流内的一块卡片而不是 OverlayEntry 下拉：搜索框的 FocusNode 是
-  /// app 级单例，移动端头部还有一份离屏测量副本共用它，Overlay 的锚点与
-  /// 生命周期都会被这层共用搅浑；流内展开没有这些坑，代价只是把下方内容推下去。
-  ///
-  /// 条目与「清空」的动作挂在 onTapDown：点击面板必然先让搜索框失焦
-  /// （TapRegion 在 down 即触发），面板随失焦整块销毁，等 onTap 命中测试时
-  /// 面板已经不在了 —— 只有抢在 down 阶段动作才稳。
-  Widget _buildSearchHistoryPanel(ThemeData theme) {
-    return Container(
-      decoration: BoxDecoration(
-        // 1.99.31 M3E：surfaceContainerHigh + 海拔 3（§8.8 Menu 同层）
-        color: M3ETheme.of(context).colors.surfaceContainerHigh,
-        borderRadius: M3EShape.radius(M3EShape.md),
-        boxShadow: M3EElevation.shadow(
-          M3EElevation.level3,
-          M3ETheme.of(context).colors.shadow,
-        ),
-      ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 280),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
-              child: Row(
-                children: [
-                  Text(
-                    '搜索历史',
-                    style: M3ETheme.of(context).type.labelSmall.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: M3ETheme.of(context).colors.onSurfaceVariant,
-                    ),
-                  ),
-                  const Spacer(),
-                  GestureDetector(
-                    onTapDown: (_) => unawaited(_clearSearchHistory()),
-                    child: Text(
-                      '清空',
-                      style: M3ETheme.of(context).type.labelSmall.copyWith(
-                        color: theme.colorScheme.primary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const M3EDivider(),
-            Flexible(
-              child: ListView(
-                shrinkWrap: true,
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                children: [
-                  for (final term in _searchHistory)
-                    InkWell(
-                      onTapDown: (_) {
-                        _searchController.text = term;
-                        unawaited(_submitSearch(term));
-                        setState(() {});
-                      },
-                      child: ListTile(
-                        dense: true,
-                        visualDensity: VisualDensity.compact,
-                        minLeadingWidth: 24,
-                        leading: Icon(Icons.history_rounded,
-                            size: 15, color: M3ETheme.of(context).colors.onSurfaceVariant),
-                        title: Text(
-                          term,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: M3ETheme.of(context).type.bodySmall,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
+  /// 文字优先显示「当前生效的搜索词」，没有才显示草稿 —— 清空输入但不提交时，
+  /// 胶囊仍与结果一致，不会出现「框空着、列表还是旧搜索」。
+  Widget _buildSearchEntry(OnlineBrowseState state) {
+    final applied = state.source == OnlineSource.search ? state.keyword : '';
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _searchController,
+      builder: (context, value, _) => M3ESearchEntry(
+        height: 40,
+        hintText: '搜索在线作品（日文原关键词命中率最高）',
+        text: applied.isNotEmpty ? applied : value.text,
+        semanticLabel: '搜索在线作品',
+        onTap: _openSearchOverlay,
       ),
     );
   }
 
-  Widget _buildSearchHistoryRow(ThemeData theme) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              for (final term in _searchHistory)
-                M3EChip(
-                  label: term,
-                  onTap: () {
-                    _searchController.text = term;
-                    unawaited(_submitSearch(term));
-                    setState(() {});
-                  },
-                ),
-            ],
-          ),
-        ),
-        M3EButton(
-          label: '清空',
-          variant: M3EButtonVariant.text,
-          size: M3EButtonSize.small,
-          onPressed: () => unawaited(_clearSearchHistory()),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSearchField(ThemeData theme) {
-    return M3ESearchBar(
-      height: 40,
-      controller: _searchController,
-      focusNode: ref.watch(onlineSearchFocusProvider),
-      hintText: '搜索在线作品（日文原关键词命中率最高）',
-      onSubmitted: (value) => unawaited(_submitSearch(value)),
-      onClear: () {
-        setState(() {});
-        unawaited(ref
-            .read(onlineBrowseProvider.notifier)
-            .applyPreset(OnlineSort.popularPreset));
-      },
-    );
+  /// 点胶囊 / Cmd+F：打开顶部居中的放大搜索浮层。
+  Future<void> _openSearchOverlay() async {
+    if (_searchOverlayOpen) {
+      // 连按快捷键：不叠第二层，只把焦点放回输入框
+      ref.read(onlineSearchFocusProvider).requestFocus();
+      return;
+    }
+    _searchOverlayOpen = true;
+    try {
+      await showOnlineSearchOverlay(
+        context,
+        controller: _searchController,
+        focusNode: ref.read(onlineSearchFocusProvider),
+        history: _searchHistory,
+        onSubmit: (keyword) => unawaited(_submitSearch(keyword)),
+        onClearHistory: _clearSearchHistory,
+      );
+    } finally {
+      if (mounted) _searchOverlayOpen = false;
+    }
   }
 
   /// 第二行：字幕筛选 + 排序/分级菜单 + 状态行。

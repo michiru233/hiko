@@ -33,6 +33,9 @@ class M3EDialog extends StatelessWidget {
     this.actionsPadding = const EdgeInsets.fromLTRB(24, 8, 24, 24),
     this.scrollable = true,
     this.semanticLabel,
+    this.alignment,
+    this.insetPadding,
+    this.fontArea = HikoFontAreaId.dialog,
   });
 
   final String? title;
@@ -61,6 +64,16 @@ class M3EDialog extends StatelessWidget {
 
   final String? semanticLabel;
 
+  /// 面板对齐（1.99.70）：null = Dialog 默认居中；搜索浮层传 `topCenter`。
+  final AlignmentGeometry? alignment;
+
+  /// 面板与窗口的间距：null = 左右 24 / 上下 24（原行为）。
+  final EdgeInsets? insetPadding;
+
+  /// 字体内层用哪个区域（1.99.70）：默认「对话框与提示」；在线搜索浮层传
+  /// `HikoFontAreaId.online`，让输入框沿用在线页字体。
+  final HikoFontAreaId fontArea;
+
   @override
   Widget build(BuildContext context) {
     final theme = M3ETheme.of(context);
@@ -72,7 +85,7 @@ class M3EDialog extends StatelessWidget {
     // 1.99.58：对话框在 Navigator 的 Overlay 里渲染，页面级字体到不了这里，
     // 必须在壳里主动包一层「对话框与提示」区域。
     return HikoFontArea(
-      area: HikoFontAreaId.dialog,
+      area: fontArea,
       child: Semantics(
       scopesRoute: true,
       explicitChildNodes: true,
@@ -86,8 +99,10 @@ class M3EDialog extends StatelessWidget {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(M3EShape.xl),
         ),
+        alignment: alignment,
         // M3 默认左右各 40，360dp 屏只剩 280；24 给表单留出余量
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        insetPadding: insetPadding ??
+            const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: maxWidth),
           child: Column(
